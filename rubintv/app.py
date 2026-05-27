@@ -12,11 +12,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from rubintv import __version__
-from rubintv.api import health
+from rubintv.api import admin, data, health, nightreport, proxy
 from rubintv.config.loader import load_models
 from rubintv.config.settings import Settings, get_settings
 from rubintv.data.cache import DiskCache
+from rubintv.data.controls import ControlStore
 from rubintv.data.metadata import MetadataCache
+from rubintv.data.nightreport import NightReportFetcher
 from rubintv.data.source import S3Poller
 from rubintv.data.store import EventStore
 from rubintv.data.tasks import PollEngine
@@ -57,7 +59,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     metadata = MetadataCache(s3, buckets)
     state = AppState(
-        settings=settings, models=models, s3=s3, store=store, metadata=metadata
+        settings=settings,
+        models=models,
+        s3=s3,
+        store=store,
+        metadata=metadata,
+        nightreport=NightReportFetcher(s3, buckets),
+        controls=ControlStore(),
     )
     app.state.app_state = state
 
@@ -110,5 +118,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.router.lifespan_context = lifespan
 
     app.include_router(health.router, prefix="/api/health", tags=["health"])
+    app.include_router(data.router, prefix="/api", tags=["data"])
+    app.include_router(nightreport.router, prefix="/api", tags=["night-report"])
+    app.include_router(admin.router, prefix="/api", tags=["admin"])
+    app.include_router(proxy.router, prefix="/api", tags=["proxy"])
 
     return app

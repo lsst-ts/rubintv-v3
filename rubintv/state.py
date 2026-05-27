@@ -11,7 +11,9 @@ from dataclasses import dataclass, field
 
 from rubintv.config.models import Models
 from rubintv.config.settings import Settings
+from rubintv.data.controls import ControlStore
 from rubintv.data.metadata import MetadataCache
+from rubintv.data.nightreport import NightReportFetcher
 from rubintv.data.store import EventStore
 from rubintv.s3.client import S3ClientPool
 
@@ -25,6 +27,8 @@ class AppState:
     s3: S3ClientPool
     store: EventStore
     metadata: MetadataCache
+    nightreport: NightReportFetcher
+    controls: ControlStore
     ready: bool = field(default=False)
     """Flips true once the first data poll completes. Drives the readiness
     probe so k8s doesn't route traffic to an empty store."""
