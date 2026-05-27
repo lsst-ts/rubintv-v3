@@ -24,7 +24,9 @@ from rubintv.data.source import S3Poller
 from rubintv.data.store import EventStore
 from rubintv.data.tasks import PollEngine
 from rubintv.logging import configure_logging, get_logger
+from rubintv.middleware import correlation_middleware
 from rubintv.s3.client import S3ClientPool
+from rubintv.spa import mount_spa
 from rubintv.state import AppState
 from rubintv.subapps import mount_subapps
 from rubintv.ws.handler import WsService
@@ -92,6 +94,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         on_ready=lambda: setattr(state, "ready", True),
         cache_writer=write_cache,
     )
+    # Expose the engine's historical-loading flag to the status endpoint.
+    state.historical_loading = lambda: engine.historical_loading
+
     engine.start()
     ws_service.start()
     await redis_inputs.start()
@@ -119,15 +124,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json_logs=settings.json_logs, level=settings.log_level)
 
-    app = FastAPI(
-        title="RubinTV",
-        version=__version__,
-        # The SPA is served separately in dev (Vite); in prod static assets
-        # mount here in Phase 7. API lives under /api.
-    )
+    app = FastAPI(title="RubinTV", version=__version__)
     app.state.settings = settings
     # Re-bind the lifespan now that settings are on app.state.
     app.router.lifespan_context = lifespan
+
+    app.middleware("http")(correlation_middleware)
 
     app.include_router(health.router, prefix="/api/health", tags=["health"])
     app.include_router(data.router, prefix="/api", tags=["data"])
@@ -149,5 +151,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def list_subapps() -> dict[str, list[str]]:
         """Mounted sub-app paths, for the frontend nav."""
         return {"mounted": app.state.subapps}
+
+    # Serve the built SPA last so its deep-link catch-all never shadows the
+    # API, WebSocket, or sub-app routes registered above.
+    mount_spa(app, settings.spa_dist)
 
     return app

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     """Redis connection URL. ``None`` disables detector/admin live updates."""
 
+    spa_dist: Path | None = None
+    """Directory of the built SPA (web/dist). ``None`` (dev) skips serving
+    static assets; Vite serves the SPA in development."""
+
     ddv_path: Path | None = None
     """Directory of the built DDV Flutter app. ``None`` skips the /ddv mount."""
 

@@ -7,6 +7,7 @@ event bus here; Phase 1 wires config, the S3 pool, and the readiness flag.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from rubintv.config.models import Models
@@ -32,5 +33,8 @@ class AppState:
     controls: ControlStore
     ws: WsService
     ready: bool = field(default=False)
+    historical_loading: Callable[[], bool] = field(default=lambda: True)
+    """Callable returning whether the historical back-catalogue is still
+    loading (the poll engine owns the flag; this reads it)."""
     """Flips true once the first data poll completes. Drives the readiness
     probe so k8s doesn't route traffic to an empty store."""

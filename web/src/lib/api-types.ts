@@ -44,6 +44,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * App Status
+         * @description Detailed status: readiness plus whether history is still loading.
+         */
+        get: operations["app_status_api_health_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations": {
         parameters: {
             query?: never;
@@ -210,6 +230,26 @@ export interface paths {
         };
         /** Proxy Object */
         get: operations["proxy_object_api_locations__location__cameras__camera__channels__channel___date___seq___filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subapps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Subapps
+         * @description Mounted sub-app paths, for the frontend nav.
+         */
+        get: operations["list_subapps_api_subapps_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -408,6 +448,13 @@ export interface components {
             /** Ready */
             ready: boolean;
         };
+        /** StatusResponse */
+        StatusResponse: {
+            /** Ready */
+            ready: boolean;
+            /** Historical Loading */
+            historical_loading: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -466,6 +513,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadyResponse"];
+                };
+            };
+        };
+    };
+    app_status_api_health_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
         };
@@ -825,6 +892,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subapps_api_subapps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string[];
+                    };
                 };
             };
         };

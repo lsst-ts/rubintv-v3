@@ -53,6 +53,9 @@ class PollEngine:
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
         self._ready_fired = False
+        self.historical_loading = True
+        """True until the first full historical scan completes. The frontend
+        shows a non-blocking 'historical still loading' affordance while set."""
 
     def start(self) -> None:
         """Launch the background loops."""
@@ -89,6 +92,10 @@ class PollEngine:
                     await self._cache_writer()
             except Exception:  # noqa: BLE001
                 log.exception("poll.historical.error")
+            finally:
+                if self.historical_loading:
+                    self.historical_loading = False
+                    log.info("poll.historical.idle")
             await self._sleep(12 * 60 * 60)  # 12h
 
     # -- scanning --------------------------------------------------------

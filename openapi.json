@@ -49,6 +49,28 @@
         }
       }
     },
+    "/api/health/status": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "App Status",
+        "description": "Detailed status: readiness plus whether history is still loading.",
+        "operationId": "app_status_api_health_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/locations": {
       "get": {
         "tags": [
@@ -688,6 +710,35 @@
           }
         }
       }
+    },
+    "/api/subapps": {
+      "get": {
+        "tags": [
+          "subapps"
+        ],
+        "summary": "List Subapps",
+        "description": "Mounted sub-app paths, for the frontend nav.",
+        "operationId": "list_subapps_api_subapps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object",
+                  "title": "Response List Subapps Api Subapps Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1186,6 +1237,24 @@
           "ready"
         ],
         "title": "ReadyResponse"
+      },
+      "StatusResponse": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "historical_loading": {
+            "type": "boolean",
+            "title": "Historical Loading"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ready",
+          "historical_loading"
+        ],
+        "title": "StatusResponse"
       },
       "ValidationError": {
         "properties": {

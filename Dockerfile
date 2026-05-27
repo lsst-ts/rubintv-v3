@@ -23,8 +23,11 @@ COPY rubintv/ ./rubintv/
 COPY config/ ./config/
 RUN uv sync --locked --no-dev
 
-# Built SPA assets, served by FastAPI in Phase 7.
+# Built SPA assets, served by FastAPI (catch-all for deep links).
 COPY --from=web /web/dist ./web/dist
+
+ENV RUBINTV_SPA_DIST=/app/web/dist \
+    RUBINTV_JSON_LOGS=true
 
 EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "rubintv.main:app", "--host", "0.0.0.0", "--port", "8000"]
