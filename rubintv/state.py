@@ -16,6 +16,7 @@ from rubintv.data.metadata import MetadataCache
 from rubintv.data.nightreport import NightReportFetcher
 from rubintv.data.store import EventStore
 from rubintv.s3.client import S3ClientPool
+from rubintv.ws.handler import WsService
 
 
 @dataclass
@@ -29,6 +30,7 @@ class AppState:
     metadata: MetadataCache
     nightreport: NightReportFetcher
     controls: ControlStore
+    ws: WsService
     ready: bool = field(default=False)
     """Flips true once the first data poll completes. Drives the readiness
     probe so k8s doesn't route traffic to an empty store."""

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 
 from rubintv import __version__
 from rubintv.api import admin, data, health, nightreport, proxy
@@ -19,12 +19,14 @@ from rubintv.data.cache import DiskCache
 from rubintv.data.controls import ControlStore
 from rubintv.data.metadata import MetadataCache
 from rubintv.data.nightreport import NightReportFetcher
+from rubintv.data.redis_inputs import RedisInputs
 from rubintv.data.source import S3Poller
 from rubintv.data.store import EventStore
 from rubintv.data.tasks import PollEngine
 from rubintv.logging import configure_logging, get_logger
 from rubintv.s3.client import S3ClientPool
 from rubintv.state import AppState
+from rubintv.ws.handler import WsService
 
 log = get_logger(__name__)
 
@@ -58,6 +60,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("cache.loaded", slices=sum(len(d) for d in snapshot.values()))
 
     metadata = MetadataCache(s3, buckets)
+    controls = ControlStore()
+    ws_service = WsService(store)
     state = AppState(
         settings=settings,
         models=models,
@@ -65,9 +69,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store=store,
         metadata=metadata,
         nightreport=NightReportFetcher(s3, buckets),
-        controls=ControlStore(),
+        controls=controls,
+        ws=ws_service,
     )
     app.state.app_state = state
+
+    redis_inputs = RedisInputs(settings.redis_url, store.bus, controls)
 
     async def write_cache() -> None:
         if not cache.enabled:
@@ -85,12 +92,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cache_writer=write_cache,
     )
     engine.start()
+    ws_service.start()
+    await redis_inputs.start()
     log.info("startup.complete", locations=[loc.name for loc in models.locations])
 
     try:
         yield
     finally:
         log.info("shutdown.begin")
+        await redis_inputs.stop()
+        await ws_service.stop()
         await engine.stop()
         await write_cache()
         s3.close()
@@ -122,5 +133,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(nightreport.router, prefix="/api", tags=["night-report"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
     app.include_router(proxy.router, prefix="/api", tags=["proxy"])
+
+    @app.websocket("/ws")
+    async def ws_endpoint(socket: WebSocket) -> None:
+        state: AppState = app.state.app_state
+        await state.ws.handle(socket)
 
     return app
