@@ -1,0 +1,64 @@
+# RubinTV configuration: locations, cameras, channels, services.
+#
+# The loader (rubintv/config/loader.py) validates this into typed models at
+# startup. A location's camera_groups must reference cameras defined below;
+# an unknown reference is a startup error.
+
+cameras:
+  - name: lsstcam
+    title: LSSTCam
+    image_viewer_link: "https://example.org/viewer/{day_obs}/{seq_num}"
+    has_mosaic: true
+    metadata_columns:
+      "Exposure time": "Exposure time in seconds"
+      "Image type": "science / flat / bias / dark"
+      "Airmass": "Airmass at exposure midpoint"
+    channels:
+      - name: witness_detector
+        title: Witness Detector
+        colour: "#4e79a7"
+      - name: focal_plane_mosaic
+        title: Focal Plane Mosaic
+        colour: "#f28e2b"
+      - name: day_movie
+        title: Day Movie
+        colour: "#59a14f"
+        per_day: true
+
+  - name: auxtel
+    title: AuxTel
+    metadata_columns:
+      "Exposure time": "Exposure time in seconds"
+      "Image type": "science / flat / bias / dark"
+    channels:
+      - name: monitor
+        title: Monitor
+        colour: "#e15759"
+      - name: movies
+        title: Movies
+        colour: "#76b7b2"
+        per_day: true
+
+  - name: allsky
+    title: All Sky
+    has_allsky: true
+    channels:
+      - name: stills
+        title: Stills
+        per_day: true
+      - name: movies
+        title: Movies
+        per_day: true
+
+locations:
+  - name: local
+    title: Local (development)
+    bucket: rubintv-local
+    camera_groups:
+      Main: [lsstcam, auxtel]
+      Auxiliary: [allsky]
+    admin_users: [testadmin]
+
+services:
+  - name: backend
+    title: Backend

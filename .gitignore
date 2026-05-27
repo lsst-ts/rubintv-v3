@@ -15,6 +15,7 @@ build/
 # Node / frontend
 node_modules/
 web/dist/
+*.tsbuildinfo
 *.local
 
 # Cache / runtime data

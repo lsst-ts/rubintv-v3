@@ -1,0 +1,54 @@
+:root {
+  --bg: #14171c;
+  --fg: #e6e9ef;
+  --muted: #8b93a3;
+  --accent: #4e79a7;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #2a2f3a;
+}
+
+.breadcrumbs a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.breadcrumbs a + a::before {
+  content: " / ";
+  color: var(--muted);
+}
+
+.app-content {
+  padding: 1rem;
+}
+
+.conn {
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.25rem;
+}
+.conn-open {
+  color: #59a14f;
+}
+.conn-connecting {
+  color: #f2c037;
+}
+.conn-closed {
+  color: #e15759;
+}
+
+.skeleton {
+  color: var(--muted);
+}

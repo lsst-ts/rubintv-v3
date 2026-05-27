@@ -1,0 +1,53 @@
+"""Runtime settings (environment-driven), distinct from the domain models.
+
+``Settings`` covers *how this process runs* — which site, where the config
+file and cache live, Redis URL, poll cadence, log format. The *what exists*
+(cameras, channels, locations) is the validated model tree loaded separately
+by :mod:`rubintv.config.loader`.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Process-level configuration, populated from the environment.
+
+    Environment variables are prefixed ``RUBINTV_`` (e.g.
+    ``RUBINTV_SITE=summit``).
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="RUBINTV_",
+        env_file=".env",
+        extra="ignore",
+    )
+
+    site: str = "local"
+    """Deployment site name; selects which locations are visible."""
+
+    models_path: Path = Path("config/models_data.yaml")
+    """Path to the YAML defining locations, cameras, channels, services."""
+
+    cache_dir: Path | None = None
+    """PVC cache directory for warm starts. ``None`` disables disk cache."""
+
+    redis_url: str | None = None
+    """Redis connection URL. ``None`` disables detector/admin live updates."""
+
+    poll_interval_seconds: float = 1.0
+    """Current-day poll cadence."""
+
+    log_level: str = "INFO"
+    json_logs: bool = False
+    """Emit JSON logs (production). Off by default for local dev."""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return the process settings (cached for the process lifetime)."""
+    return Settings()
