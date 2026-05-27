@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   { ignores: ["dist", "src/lib/api-types.ts"] },
@@ -8,5 +9,7 @@ export default tseslint.config(
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: { ecmaVersion: 2022, sourceType: "module" },
+    plugins: { "react-hooks": reactHooks },
+    rules: reactHooks.configs.recommended.rules,
   },
 );

@@ -1,28 +1,22 @@
-// Hand-written types for Phase 1. Once the backend API lands (Phase 3), the
-// canonical types are generated from the OpenAPI schema into api-types.ts
-// (`npm run gen:api`) and these are replaced by re-exports of those.
+// Canonical API types re-exported from the OpenAPI-generated schema. Run
+// `npm run gen:api` after backend schema changes to regenerate api-types.ts.
 
-export interface Channel {
-  name: string;
-  title: string;
-  label: string;
-  colour: string | null;
-  icon: string | null;
-  per_day: boolean;
-}
+import type { components } from "./api-types";
 
-export interface Camera {
-  name: string;
-  title: string;
-  online: boolean;
-  channels: Channel[];
-  metadata_columns: Record<string, string>;
-  has_mosaic: boolean;
-  has_allsky: boolean;
-}
+type Schemas = components["schemas"];
 
-export interface Location {
-  name: string;
-  title: string;
-  camera_groups: Record<string, string[]>;
-}
+export type LocationSummary = Schemas["LocationSummary"];
+export type LocationOut = Schemas["LocationOut"];
+export type CameraSummary = Schemas["CameraSummary"];
+export type CameraGroupOut = Schemas["CameraGroupOut"];
+export type CameraOut = Schemas["CameraOut"];
+export type ChannelOut = Schemas["ChannelOut"];
+export type DatePayload = Schemas["DatePayload"];
+export type ExtInfoOut = Schemas["ExtInfoOut"];
+export type CalendarOut = Schemas["CalendarOut"];
+export type EventOut = Schemas["EventOut"];
+export type NightReportOut = Schemas["NightReportOut"];
+export type ControlsOut = Schemas["ControlsOut"];
+
+// A metadata payload is seq_num (string) -> { column -> value }.
+export type Metadata = Record<string, Record<string, unknown>>;

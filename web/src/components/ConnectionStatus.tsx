@@ -1,9 +1,9 @@
-import { useWebSocket } from "../lib/ws";
+import { useLive } from "../lib/LiveContext";
 
-// Live indicator of this tab's WebSocket. One connection per tab, so this
-// reflects only this tab's link to the server.
+// Live indicator of this tab's WebSocket, read from the shared LiveProvider
+// (one connection per tab).
 export function ConnectionStatus() {
-  const { status } = useWebSocket();
+  const { status } = useLive();
   const label =
     status === "open"
       ? "live"

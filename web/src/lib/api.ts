@@ -1,6 +1,15 @@
-// Typed fetch client. All calls go to the same-origin /api (Vite proxies to
-// FastAPI in dev; same origin in prod). Endpoints are stubs in Phase 1 and
-// fleshed out in Phase 3.
+// Typed fetch client. All calls go to same-origin /api (Vite proxies to
+// FastAPI in dev). Types come from the OpenAPI-generated schema.
+
+import type {
+  CalendarOut,
+  CameraOut,
+  ControlsOut,
+  DatePayload,
+  LocationOut,
+  LocationSummary,
+  NightReportOut,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -22,11 +31,41 @@ async function getJson<T>(path: string): Promise<T> {
   return (await resp.json()) as T;
 }
 
-export interface HealthLive {
-  status: string;
-  version: string;
-}
+const enc = encodeURIComponent;
 
 export const api = {
-  health: () => getJson<HealthLive>("/health/live"),
+  locations: () => getJson<LocationSummary[]>("/locations"),
+
+  location: (loc: string) => getJson<LocationOut>(`/locations/${enc(loc)}`),
+
+  camera: (loc: string, cam: string) =>
+    getJson<CameraOut>(`/locations/${enc(loc)}/cameras/${enc(cam)}`),
+
+  calendar: (loc: string, cam: string) =>
+    getJson<CalendarOut>(`/locations/${enc(loc)}/cameras/${enc(cam)}/calendar`),
+
+  datePayload: (loc: string, cam: string, date: string) =>
+    getJson<DatePayload>(
+      `/locations/${enc(loc)}/cameras/${enc(cam)}/dates/${enc(date)}`,
+    ),
+
+  nightReport: (loc: string, cam: string, date: string) =>
+    getJson<NightReportOut>(
+      `/locations/${enc(loc)}/cameras/${enc(cam)}/night-report/${enc(date)}`,
+    ),
+
+  controls: (loc: string) =>
+    getJson<ControlsOut>(`/locations/${enc(loc)}/admin/controls`),
+
+  // Build a proxied media URL for a channel artifact.
+  mediaUrl: (
+    loc: string,
+    cam: string,
+    channel: string,
+    date: string,
+    seq: string,
+    filename: string,
+  ) =>
+    `/api/locations/${enc(loc)}/cameras/${enc(cam)}/channels/${enc(channel)}/` +
+    `${enc(date)}/${enc(seq)}/${enc(filename)}`,
 };
