@@ -1,0 +1,66 @@
+"""S3Poller diff behaviour against a moto bucket."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+import boto3
+import pytest
+from moto import mock_aws
+
+from rubintv.config.models import Location
+from rubintv.data.events import ObjectKind
+from rubintv.data.source import S3Poller
+from rubintv.s3.client import S3ClientPool
+
+BUCKET = "rubintv-local"
+
+
+@dataclass
+class PollerFixture:
+    poller: S3Poller
+    put: object  # boto3 client; typed loosely to avoid stub gymnastics
+    delete: object
+
+
+@pytest.fixture
+def poller() -> Iterator[PollerFixture]:
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=BUCKET)
+        pool = S3ClientPool([Location(name="local", title="L", bucket=BUCKET)])
+        p = S3Poller(pool.client_for)
+        p.register_bucket("local", BUCKET)
+
+        def put(key: str) -> None:
+            s3.put_object(Bucket=BUCKET, Key=key, Body=b"x")
+
+        def delete(key: str) -> None:
+            s3.delete_object(Bucket=BUCKET, Key=key)
+
+        yield PollerFixture(poller=p, put=put, delete=delete)
+
+
+def test_first_scan_reports_all_as_created(poller: PollerFixture) -> None:
+    poller.put("lsstcam/2026-04-10/c/000001/a.png")  # type: ignore[operator]
+    changes = poller.poller.scan("local", "lsstcam/")
+    assert len(changes) == 1
+    assert changes[0].kind is ObjectKind.CREATED
+
+
+def test_unchanged_second_scan_reports_nothing(poller: PollerFixture) -> None:
+    poller.put("lsstcam/2026-04-10/c/000001/a.png")  # type: ignore[operator]
+    poller.poller.scan("local", "lsstcam/")
+    assert poller.poller.scan("local", "lsstcam/") == []
+
+
+def test_removed_object_reported(poller: PollerFixture) -> None:
+    key = "lsstcam/2026-04-10/c/000001/a.png"
+    poller.put(key)  # type: ignore[operator]
+    poller.poller.scan("local", "lsstcam/")
+    poller.delete(key)  # type: ignore[operator]
+    changes = poller.poller.scan("local", "lsstcam/")
+    assert len(changes) == 1
+    assert changes[0].kind is ObjectKind.REMOVED
+    assert changes[0].key == key

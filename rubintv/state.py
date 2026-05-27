@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 
 from rubintv.config.models import Models
 from rubintv.config.settings import Settings
+from rubintv.data.metadata import MetadataCache
+from rubintv.data.store import EventStore
 from rubintv.s3.client import S3ClientPool
 
 
@@ -21,6 +23,8 @@ class AppState:
     settings: Settings
     models: Models
     s3: S3ClientPool
+    store: EventStore
+    metadata: MetadataCache
     ready: bool = field(default=False)
-    """Flips true once the first data poll completes (Phase 2). Drives the
-    readiness probe so k8s doesn't route traffic to an empty store."""
+    """Flips true once the first data poll completes. Drives the readiness
+    probe so k8s doesn't route traffic to an empty store."""

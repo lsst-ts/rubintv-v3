@@ -15,6 +15,11 @@ from rubintv import __version__
 from rubintv.api import health
 from rubintv.config.loader import load_models
 from rubintv.config.settings import Settings, get_settings
+from rubintv.data.cache import DiskCache
+from rubintv.data.metadata import MetadataCache
+from rubintv.data.source import S3Poller
+from rubintv.data.store import EventStore
+from rubintv.data.tasks import PollEngine
 from rubintv.logging import configure_logging, get_logger
 from rubintv.s3.client import S3ClientPool
 from rubintv.state import AppState
@@ -26,29 +31,60 @@ log = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Assemble and tear down application state.
 
-    Phase 1 wires config, models, and the S3 client pool. Phase 2 will add
-    the EventStore and start background pollers here; Phase 4 the WS bus.
+    Order: config -> S3 pool -> store/bus -> warm-start from cache ->
+    metadata cache -> start the poll engine. Readiness flips after the first
+    current-day poll completes (the poll engine fires the callback).
     """
     settings: Settings = app.state.settings
     log.info("startup.begin", site=settings.site, version=__version__)
 
     models = load_models(settings.models_path)
     s3 = S3ClientPool(models.locations)
+    buckets = {loc.name: loc.bucket for loc in models.locations}
 
-    app.state.app_state = AppState(settings=settings, models=models, s3=s3)
-    log.info(
-        "startup.ready",
-        locations=[loc.name for loc in models.locations],
+    store = EventStore()
+    poller = S3Poller(s3.client_for)
+    for loc in models.locations:
+        poller.register_bucket(loc.name, loc.bucket)
+
+    # Warm start: seed from disk cache if present (never trusted as truth —
+    # the historical scan reconciles against S3).
+    cache = DiskCache(settings.cache_dir)
+    if cache.enabled:
+        snapshot = cache.load_all()
+        store.load_snapshot(snapshot)
+        log.info("cache.loaded", slices=sum(len(d) for d in snapshot.values()))
+
+    metadata = MetadataCache(s3, buckets)
+    state = AppState(
+        settings=settings, models=models, s3=s3, store=store, metadata=metadata
     )
-    # Phase 1 has no data layer yet, so nothing gates readiness; mark ready
-    # so the probe is meaningful in isolation. Phase 2 moves this behind the
-    # first completed poll.
-    app.state.app_state.ready = True
+    app.state.app_state = state
+
+    async def write_cache() -> None:
+        if not cache.enabled:
+            return
+        for (location, camera), dates in store.snapshot().items():
+            for date, index in dates.items():
+                cache.write(location, camera, date, index)
+
+    engine = PollEngine(
+        models,
+        store,
+        poller,
+        poll_interval=settings.poll_interval_seconds,
+        on_ready=lambda: setattr(state, "ready", True),
+        cache_writer=write_cache,
+    )
+    engine.start()
+    log.info("startup.complete", locations=[loc.name for loc in models.locations])
 
     try:
         yield
     finally:
         log.info("shutdown.begin")
+        await engine.stop()
+        await write_cache()
         s3.close()
         log.info("shutdown.complete")
 
