@@ -26,6 +26,7 @@ from rubintv.data.tasks import PollEngine
 from rubintv.logging import configure_logging, get_logger
 from rubintv.s3.client import S3ClientPool
 from rubintv.state import AppState
+from rubintv.subapps import mount_subapps
 from rubintv.ws.handler import WsService
 
 log = get_logger(__name__)
@@ -138,5 +139,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def ws_endpoint(socket: WebSocket) -> None:
         state: AppState = app.state.app_state
         await state.ws.handle(socket)
+
+    # Optional sub-apps (DDV, exp_checker). Each is isolated: a failure to
+    # mount is logged and skipped, never blocking the main app.
+    mounted = mount_subapps(app, settings)
+    app.state.subapps = mounted
+
+    @app.get("/api/subapps", tags=["subapps"])
+    def list_subapps() -> dict[str, list[str]]:
+        """Mounted sub-app paths, for the frontend nav."""
+        return {"mounted": app.state.subapps}
 
     return app

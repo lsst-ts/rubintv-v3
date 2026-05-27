@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     """Redis connection URL. ``None`` disables detector/admin live updates."""
 
+    ddv_path: Path | None = None
+    """Directory of the built DDV Flutter app. ``None`` skips the /ddv mount."""
+
+    exp_checker_enabled: bool = False
+    """Mount the exp_checker sub-app at /exp_checker (must be importable)."""
+
     poll_interval_seconds: float = 1.0
     """Current-day poll cadence."""
 
