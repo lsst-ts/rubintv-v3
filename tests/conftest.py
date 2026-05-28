@@ -16,15 +16,21 @@ from rubintv.config.settings import Settings
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "models_data.yaml"
 
-# The bucket the sample config's "local" location points at.
-LOCAL_BUCKET = "rubintv-local"
+# The test site exposes a single location named "test" backed by this bucket.
+# Tests never touch the production-shaped sites (usdf, summit, etc.).
+TEST_SITE = "test"
+TEST_LOCATION = "test"
+TEST_BUCKET = "rubintv-local"
+
+# Back-compat aliases for tests written before the rename.
+LOCAL_BUCKET = TEST_BUCKET
 
 
 @pytest.fixture
 def settings() -> Settings:
     """Settings pointed at the repo's sample config, no Redis, no cache."""
     return Settings(
-        site="local",
+        site=TEST_SITE,
         models_path=CONFIG_PATH,
         cache_dir=None,
         redis_url=None,
@@ -34,9 +40,9 @@ def settings() -> Settings:
 
 @pytest.fixture
 def s3_bucket() -> Iterator[None]:
-    """A moto-mocked S3 with the local bucket created."""
+    """A moto-mocked S3 with the test bucket created."""
     with mock_aws():
-        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=LOCAL_BUCKET)
+        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
         yield
 
 

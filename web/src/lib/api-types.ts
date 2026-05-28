@@ -285,6 +285,12 @@ export interface components {
             title: string;
             /** Online */
             online: boolean;
+            /** Logo */
+            logo: string | null;
+            /** Text Colour */
+            text_colour: string | null;
+            /** Icon */
+            icon: string | null;
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
             /** Metadata Columns */
@@ -293,10 +299,23 @@ export interface components {
             };
             /** Image Viewer Link */
             image_viewer_link: string | null;
+            /** Quicklook Viewer Link */
+            quicklook_viewer_link: string | null;
+            /** Night Report Label */
+            night_report_label: string | null;
+            /** Night Report Prefix */
+            night_report_prefix: string | null;
+            /** Copy Row Template */
+            copy_row_template: string | null;
             /** Has Mosaic */
             has_mosaic: boolean;
-            /** Has Allsky */
-            has_allsky: boolean;
+            /** Live View */
+            live_view: boolean;
+            time_since_clock: components["schemas"]["TimeSinceClockOut"] | null;
+            /** Extra Buttons */
+            extra_buttons: components["schemas"]["ExtraButtonOut"][];
+            /** Mosaic View Meta */
+            mosaic_view_meta: components["schemas"]["MosaicViewEntryOut"][];
         };
         /**
          * CameraSummary
@@ -320,6 +339,8 @@ export interface components {
             label: string;
             /** Colour */
             colour: string | null;
+            /** Text Colour */
+            text_colour: string | null;
             /** Icon */
             icon: string | null;
             /** Per Day */
@@ -393,6 +414,19 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** ExtraButtonOut */
+        ExtraButtonOut: {
+            /** Title */
+            title: string;
+            /** Name */
+            name: string;
+            /** Link Url */
+            link_url: string;
+            /** Logo */
+            logo: string | null;
+            /** Text Colour */
+            text_colour: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -411,6 +445,18 @@ export interface components {
             name: string;
             /** Title */
             title: string;
+            /** Logo */
+            logo: string | null;
+            /** Text Colour */
+            text_colour: string | null;
+            /** Text Shadow */
+            text_shadow: boolean;
+            /** Is Teststand */
+            is_teststand: boolean;
+            /** Has Cluster Status */
+            has_cluster_status: boolean;
+            /** Services */
+            services: string[];
             /** Camera Groups */
             camera_groups: components["schemas"]["CameraGroupOut"][];
         };
@@ -420,6 +466,29 @@ export interface components {
             name: string;
             /** Title */
             title: string;
+            /** Logo */
+            logo?: string | null;
+            /** Text Colour */
+            text_colour?: string | null;
+            /**
+             * Text Shadow
+             * @default false
+             */
+            text_shadow: boolean;
+            /**
+             * Is Teststand
+             * @default false
+             */
+            is_teststand: boolean;
+        };
+        /** MosaicViewEntryOut */
+        MosaicViewEntryOut: {
+            /** Channel */
+            channel: string;
+            /** Media Type */
+            media_type: string;
+            /** Meta Columns */
+            meta_columns: string[];
         };
         /** NightReportOut */
         NightReportOut: {
@@ -454,6 +523,11 @@ export interface components {
             ready: boolean;
             /** Historical Loading */
             historical_loading: boolean;
+        };
+        /** TimeSinceClockOut */
+        TimeSinceClockOut: {
+            /** Label */
+            label: string;
         };
         /** ValidationError */
         ValidationError: {

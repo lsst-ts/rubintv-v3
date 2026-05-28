@@ -12,19 +12,19 @@ from moto import mock_aws
 
 from rubintv.app import create_app
 from rubintv.config.settings import Settings
-from tests.conftest import CONFIG_PATH, LOCAL_BUCKET
+from tests.conftest import CONFIG_PATH, TEST_BUCKET
 
 
 @contextmanager
 def run_app(**overrides: object) -> Iterator[TestClient]:
     settings = Settings(
-        site="local",
+        site="test",
         models_path=CONFIG_PATH,
         poll_interval_seconds=0.05,
         **overrides,  # type: ignore[arg-type]
     )
     with mock_aws():
-        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=LOCAL_BUCKET)
+        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
         with TestClient(create_app(settings)) as client:
             yield client
 

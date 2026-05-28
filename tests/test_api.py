@@ -13,7 +13,7 @@ from moto import mock_aws
 
 from rubintv.app import create_app
 from rubintv.config.settings import Settings
-from tests.conftest import LOCAL_BUCKET
+from tests.conftest import TEST_BUCKET
 
 DATE = "2026-04-10"
 
@@ -23,21 +23,21 @@ def seeded_client(settings: Settings) -> Iterator[TestClient]:
     """A client whose bucket is pre-seeded, then polled into the store."""
     with mock_aws():
         s3 = boto3.client("s3", region_name="us-east-1")
-        s3.create_bucket(Bucket=LOCAL_BUCKET)
+        s3.create_bucket(Bucket=TEST_BUCKET)
         for key in [
             f"lsstcam/{DATE}/witness_detector/000001/a.png",
             f"lsstcam/{DATE}/witness_detector/000002/b.jpg",
             f"lsstcam/{DATE}/day_movie/final/m.mp4",
             f"lsstcam/{DATE}/night_report/summary_md.json",
         ]:
-            s3.put_object(Bucket=LOCAL_BUCKET, Key=key, Body=b"x")
+            s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=b"x")
         s3.put_object(
-            Bucket=LOCAL_BUCKET,
+            Bucket=TEST_BUCKET,
             Key=f"lsstcam/{DATE}/metadata.json",
             Body=json.dumps({"1": {"Exposure time": 30.0}}).encode(),
         )
         s3.put_object(
-            Bucket=LOCAL_BUCKET,
+            Bucket=TEST_BUCKET,
             Key=f"lsstcam/{DATE}/night_report/summary_md.json",
             Body=json.dumps(
                 [{"type": "multiline", "key": "s", "title": "S", "content": "hi"}]
@@ -46,7 +46,7 @@ def seeded_client(settings: Settings) -> Iterator[TestClient]:
         app = create_app(settings)
         with TestClient(app) as client:
             for _ in range(60):
-                cal = client.get("/api/locations/local/cameras/lsstcam/calendar").json()
+                cal = client.get("/api/locations/test/cameras/lsstcam/calendar").json()
                 if cal["dates"]:
                     break
                 time.sleep(0.05)
@@ -56,11 +56,11 @@ def seeded_client(settings: Settings) -> Iterator[TestClient]:
 def test_list_locations(seeded_client: TestClient) -> None:
     resp = seeded_client.get("/api/locations")
     assert resp.status_code == 200
-    assert {loc["name"] for loc in resp.json()} == {"local"}
+    assert {loc["name"] for loc in resp.json()} == {"test"}
 
 
 def test_location_detail_groups(seeded_client: TestClient) -> None:
-    resp = seeded_client.get("/api/locations/local")
+    resp = seeded_client.get("/api/locations/test")
     assert resp.status_code == 200
     labels = {g["label"] for g in resp.json()["camera_groups"]}
     assert labels == {"Main", "Auxiliary"}
@@ -71,24 +71,24 @@ def test_unknown_location_404(seeded_client: TestClient) -> None:
 
 
 def test_unknown_camera_404(seeded_client: TestClient) -> None:
-    resp = seeded_client.get("/api/locations/local/cameras/ghost")
+    resp = seeded_client.get("/api/locations/test/cameras/ghost")
     assert resp.status_code == 404
 
 
 def test_camera_detail(seeded_client: TestClient) -> None:
-    resp = seeded_client.get("/api/locations/local/cameras/lsstcam")
+    resp = seeded_client.get("/api/locations/test/cameras/lsstcam")
     body = resp.json()
     assert body["has_mosaic"] is True
     assert {c["name"] for c in body["channels"]} >= {"witness_detector", "day_movie"}
 
 
 def test_calendar(seeded_client: TestClient) -> None:
-    resp = seeded_client.get("/api/locations/local/cameras/lsstcam/calendar")
+    resp = seeded_client.get("/api/locations/test/cameras/lsstcam/calendar")
     assert resp.json()["dates"] == [DATE]
 
 
 def test_date_payload(seeded_client: TestClient) -> None:
-    resp = seeded_client.get(f"/api/locations/local/cameras/lsstcam/dates/{DATE}")
+    resp = seeded_client.get(f"/api/locations/test/cameras/lsstcam/dates/{DATE}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["channels"]["witness_detector"] == [1, 2]
@@ -100,13 +100,13 @@ def test_date_payload(seeded_client: TestClient) -> None:
 
 
 def test_bad_date_422(seeded_client: TestClient) -> None:
-    resp = seeded_client.get("/api/locations/local/cameras/lsstcam/dates/2026-13")
+    resp = seeded_client.get("/api/locations/test/cameras/lsstcam/dates/2026-13")
     assert resp.status_code == 422
 
 
 def test_night_report(seeded_client: TestClient) -> None:
     resp = seeded_client.get(
-        f"/api/locations/local/cameras/lsstcam/night-report/{DATE}"
+        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}"
     )
     body = resp.json()
     assert body["exists"] is True
@@ -116,7 +116,7 @@ def test_night_report(seeded_client: TestClient) -> None:
 def test_event_by_key(seeded_client: TestClient) -> None:
     key = f"lsstcam/{DATE}/witness_detector/000001/a.png"
     resp = seeded_client.get(
-        "/api/locations/local/cameras/lsstcam/events", params={"key": key}
+        "/api/locations/test/cameras/lsstcam/events", params={"key": key}
     )
     assert resp.status_code == 200
     assert resp.json()["seq_num"] == 1
@@ -125,7 +125,7 @@ def test_event_by_key(seeded_client: TestClient) -> None:
 def test_admin_requires_user(seeded_client: TestClient) -> None:
     # No X-Auth-User header -> forbidden.
     resp = seeded_client.post(
-        "/api/locations/local/admin/controls",
+        "/api/locations/test/admin/controls",
         json={"key": "AOS_PIPELINE", "value": "default"},
     )
     assert resp.status_code == 403
@@ -133,18 +133,18 @@ def test_admin_requires_user(seeded_client: TestClient) -> None:
 
 def test_admin_set_and_get(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
-        "/api/locations/local/admin/controls",
+        "/api/locations/test/admin/controls",
         json={"key": "AOS_PIPELINE", "value": "default"},
         headers={"X-Auth-User": "testadmin"},
     )
     assert resp.status_code == 200
-    got = seeded_client.get("/api/locations/local/admin/controls").json()
+    got = seeded_client.get("/api/locations/test/admin/controls").json()
     assert got["values"]["AOS_PIPELINE"] == "default"
 
 
 def test_proxy_streams_object(seeded_client: TestClient) -> None:
     resp = seeded_client.get(
-        f"/api/locations/local/cameras/lsstcam/channels/witness_detector/{DATE}/000001/a.png"
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/000001/a.png"
     )
     assert resp.status_code == 200
     assert resp.content == b"x"
