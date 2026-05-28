@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.models_path.is_absolute()
         else _project_root / settings.models_path
     )
-    models = load_models(models_path)
+    models = load_models(models_path, site=settings.site)
     s3 = S3ClientPool(models.locations)
     buckets = {loc.name: loc.bucket for loc in models.locations}
 
