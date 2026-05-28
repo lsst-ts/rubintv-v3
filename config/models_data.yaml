@@ -53,7 +53,9 @@ cameras:
 locations:
   - name: local
     title: Local (development)
-    bucket: rubintv-local
+    bucket: rubin-rubintv-data-usdf
+    profile: rubin-rubintv-data-usdf-embargo
+    endpoint: https://sdfembs3.sdf.slac.stanford.edu
     camera_groups:
       Main: [lsstcam, auxtel]
       Auxiliary: [allsky]

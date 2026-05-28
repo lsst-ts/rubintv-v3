@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
@@ -45,7 +46,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     log.info("startup.begin", site=settings.site, version=__version__)
 
-    models = load_models(settings.models_path)
+    _project_root = Path(__file__).resolve().parent.parent
+    models_path = (
+        settings.models_path
+        if settings.models_path.is_absolute()
+        else _project_root / settings.models_path
+    )
+    models = load_models(models_path)
     s3 = S3ClientPool(models.locations)
     buckets = {loc.name: loc.bucket for loc in models.locations}
 
