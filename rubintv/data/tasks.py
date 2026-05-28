@@ -108,6 +108,13 @@ class PollEngine:
                     self._poller.scan, location.name, prefix
                 )
                 if events:
+                    log.info(
+                        "poll.scan",
+                        scope="day",
+                        location=location.name,
+                        prefix=prefix,
+                        events=len(events),
+                    )
                     await self._store.apply(events)
 
     async def _scan_all_history(self) -> None:
@@ -119,6 +126,13 @@ class PollEngine:
                 prefix = f"{camera.name}/"
                 events = await asyncio.to_thread(
                     self._poller.scan, location.name, prefix
+                )
+                log.info(
+                    "poll.scan",
+                    scope="historical",
+                    location=location.name,
+                    prefix=prefix,
+                    events=len(events),
                 )
                 if events:
                     await self._store.apply(events)
