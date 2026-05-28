@@ -17,6 +17,7 @@ class ChannelOut(BaseModel):
     title: str
     label: str
     colour: str | None
+    text_colour: str | None
     icon: str | None
     per_day: bool
 
@@ -37,12 +38,40 @@ class CameraGroupOut(BaseModel):
 class LocationSummary(BaseModel):
     name: str
     title: str
+    logo: str | None = None
+    text_colour: str | None = None
+    text_shadow: bool = False
+    is_teststand: bool = False
 
 
 class LocationOut(BaseModel):
     name: str
     title: str
+    logo: str | None
+    text_colour: str | None
+    text_shadow: bool
+    is_teststand: bool
+    has_cluster_status: bool
+    services: list[str]
     camera_groups: list[CameraGroupOut]
+
+
+class TimeSinceClockOut(BaseModel):
+    label: str
+
+
+class ExtraButtonOut(BaseModel):
+    title: str
+    name: str
+    link_url: str
+    logo: str | None
+    text_colour: str | None
+
+
+class MosaicViewEntryOut(BaseModel):
+    channel: str
+    media_type: str
+    meta_columns: list[str]
 
 
 class CameraOut(BaseModel):
@@ -51,11 +80,25 @@ class CameraOut(BaseModel):
     name: str
     title: str
     online: bool
+    logo: str | None
+    text_colour: str | None
+    icon: str | None
     channels: list[ChannelOut]
     metadata_columns: dict[str, str]
     image_viewer_link: str | None
+    quicklook_viewer_link: str | None
+    night_report_label: str | None
+    night_report_prefix: str | None
+    copy_row_template: str | None
     has_mosaic: bool
-    has_allsky: bool
+    live_view: bool
+    """Render this camera as a single 'latest image + latest movie' panel
+    rather than a per-seq-num table. The old ``has_allsky`` flag — renamed
+    to describe the rendering mode positively and to apply to any camera
+    shaped this way, not just All Sky."""
+    time_since_clock: TimeSinceClockOut | None
+    extra_buttons: list[ExtraButtonOut]
+    mosaic_view_meta: list[MosaicViewEntryOut]
 
 
 class ExtInfoOut(BaseModel):

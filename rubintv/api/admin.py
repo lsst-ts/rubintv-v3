@@ -32,12 +32,21 @@ def require_admin(
     location: Location = Depends(get_location),
     x_auth_user: str | None = Header(default=None),
 ) -> str:
-    """Ensure the caller is an admin for this location."""
-    if x_auth_user is None or x_auth_user not in location.admin_users:
+    """Ensure the caller is an admin for this location.
+
+    ``"*"`` in ``admin_users`` means *any authenticated user*. This is the
+    convention used by open deployments (base/tucson/local) where there is
+    no per-user gating.
+    """
+    if x_auth_user is None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "admin access required for this location"
         )
-    return x_auth_user
+    if "*" in location.admin_users or x_auth_user in location.admin_users:
+        return x_auth_user
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN, "admin access required for this location"
+    )
 
 
 @router.get("/locations/{location}/admin/controls", response_model=ControlsOut)

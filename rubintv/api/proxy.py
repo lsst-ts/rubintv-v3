@@ -42,7 +42,12 @@ def proxy_object(
     if_none_match: str | None = Header(default=None),
     range_header: str | None = Header(default=None, alias="Range"),
 ) -> Response:
-    key = f"{camera.name}/{date}/{channel}/{seq}/{filename}"
+    # Channels may override the path segment used in S3 keys (Channel.prefix);
+    # the URL uses the channel *name*, but the bucket may store under a
+    # different prefix.
+    ch = camera.channel(channel)
+    channel_segment = ch.prefix if ch is not None and ch.prefix else channel
+    key = f"{camera.name}/{date}/{channel_segment}/{seq}/{filename}"
     client: S3Client = state.s3.client_for(location.name)
     bucket = location.bucket
 

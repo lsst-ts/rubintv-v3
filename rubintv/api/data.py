@@ -24,8 +24,11 @@ from rubintv.api.schemas import (
     DatePayload,
     EventOut,
     ExtInfoOut,
+    ExtraButtonOut,
     LocationOut,
     LocationSummary,
+    MosaicViewEntryOut,
+    TimeSinceClockOut,
 )
 from rubintv.config.models import Camera, Location, Models
 from rubintv.data.parser import parse_channel_event
@@ -36,7 +39,17 @@ router = APIRouter()
 
 @router.get("/locations", response_model=list[LocationSummary])
 def list_locations(models: Models = Depends(get_models)) -> list[LocationSummary]:
-    return [LocationSummary(name=loc.name, title=loc.title) for loc in models.locations]
+    return [
+        LocationSummary(
+            name=loc.name,
+            title=loc.title,
+            logo=loc.logo,
+            text_colour=loc.text_colour,
+            text_shadow=loc.text_shadow,
+            is_teststand=loc.is_teststand,
+        )
+        for loc in models.locations
+    ]
 
 
 @router.get("/locations/{location}", response_model=LocationOut)
@@ -52,7 +65,17 @@ def get_location_detail(location: Location = Depends(get_location)) -> LocationO
         )
         for label, names in location.camera_groups.items()
     ]
-    return LocationOut(name=location.name, title=location.title, camera_groups=groups)
+    return LocationOut(
+        name=location.name,
+        title=location.title,
+        logo=location.logo,
+        text_colour=location.text_colour,
+        text_shadow=location.text_shadow,
+        is_teststand=location.is_teststand,
+        has_cluster_status=location.has_cluster_status,
+        services=location.services,
+        camera_groups=groups,
+    )
 
 
 @router.get("/locations/{location}/cameras/{camera}", response_model=CameraOut)
@@ -61,12 +84,16 @@ def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
         name=camera.name,
         title=camera.title,
         online=camera.online,
+        logo=camera.logo,
+        text_colour=camera.text_colour,
+        icon=camera.icon,
         channels=[
             ChannelOut(
                 name=ch.name,
                 title=ch.title,
                 label=ch.label,
                 colour=ch.colour,
+                text_colour=ch.text_colour,
                 icon=ch.icon,
                 per_day=ch.per_day,
             )
@@ -74,8 +101,35 @@ def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
         ],
         metadata_columns=camera.metadata_columns,
         image_viewer_link=camera.image_viewer_link,
+        quicklook_viewer_link=camera.quicklook_viewer_link,
+        night_report_label=camera.night_report_label,
+        night_report_prefix=camera.night_report_prefix,
+        copy_row_template=camera.copy_row_template,
         has_mosaic=camera.has_mosaic,
-        has_allsky=camera.has_allsky,
+        live_view=camera.live_view,
+        time_since_clock=(
+            TimeSinceClockOut(label=camera.time_since_clock.label)
+            if camera.time_since_clock
+            else None
+        ),
+        extra_buttons=[
+            ExtraButtonOut(
+                title=b.title,
+                name=b.name,
+                link_url=b.link_url,
+                logo=b.logo,
+                text_colour=b.text_colour,
+            )
+            for b in camera.extra_buttons
+        ],
+        mosaic_view_meta=[
+            MosaicViewEntryOut(
+                channel=m.channel,
+                media_type=m.media_type,
+                meta_columns=m.meta_columns,
+            )
+            for m in camera.mosaic_view_meta
+        ],
     )
 
 

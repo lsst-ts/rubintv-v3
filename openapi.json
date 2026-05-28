@@ -794,6 +794,39 @@
             "type": "boolean",
             "title": "Online"
           },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
           "channels": {
             "items": {
               "$ref": "#/components/schemas/ChannelOut"
@@ -819,13 +852,81 @@
             ],
             "title": "Image Viewer Link"
           },
+          "quicklook_viewer_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quicklook Viewer Link"
+          },
+          "night_report_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Night Report Label"
+          },
+          "night_report_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Night Report Prefix"
+          },
+          "copy_row_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Row Template"
+          },
           "has_mosaic": {
             "type": "boolean",
             "title": "Has Mosaic"
           },
-          "has_allsky": {
+          "live_view": {
             "type": "boolean",
-            "title": "Has Allsky"
+            "title": "Live View"
+          },
+          "time_since_clock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeSinceClockOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extra_buttons": {
+            "items": {
+              "$ref": "#/components/schemas/ExtraButtonOut"
+            },
+            "type": "array",
+            "title": "Extra Buttons"
+          },
+          "mosaic_view_meta": {
+            "items": {
+              "$ref": "#/components/schemas/MosaicViewEntryOut"
+            },
+            "type": "array",
+            "title": "Mosaic View Meta"
           }
         },
         "type": "object",
@@ -833,11 +934,21 @@
           "name",
           "title",
           "online",
+          "logo",
+          "text_colour",
+          "icon",
           "channels",
           "metadata_columns",
           "image_viewer_link",
+          "quicklook_viewer_link",
+          "night_report_label",
+          "night_report_prefix",
+          "copy_row_template",
           "has_mosaic",
-          "has_allsky"
+          "live_view",
+          "time_since_clock",
+          "extra_buttons",
+          "mosaic_view_meta"
         ],
         "title": "CameraOut",
         "description": "Full camera detail for the camera page header."
@@ -891,6 +1002,17 @@
             ],
             "title": "Colour"
           },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
           "icon": {
             "anyOf": [
               {
@@ -913,6 +1035,7 @@
           "title",
           "label",
           "colour",
+          "text_colour",
           "icon",
           "per_day"
         ],
@@ -1092,6 +1215,53 @@
         ],
         "title": "ExtInfoOut"
       },
+      "ExtraButtonOut": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "link_url": {
+            "type": "string",
+            "title": "Link Url"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "name",
+          "link_url",
+          "logo",
+          "text_colour"
+        ],
+        "title": "ExtraButtonOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1133,6 +1303,47 @@
             "type": "string",
             "title": "Title"
           },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "text_shadow": {
+            "type": "boolean",
+            "title": "Text Shadow"
+          },
+          "is_teststand": {
+            "type": "boolean",
+            "title": "Is Teststand"
+          },
+          "has_cluster_status": {
+            "type": "boolean",
+            "title": "Has Cluster Status"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Services"
+          },
           "camera_groups": {
             "items": {
               "$ref": "#/components/schemas/CameraGroupOut"
@@ -1145,6 +1356,12 @@
         "required": [
           "name",
           "title",
+          "logo",
+          "text_colour",
+          "text_shadow",
+          "is_teststand",
+          "has_cluster_status",
+          "services",
           "camera_groups"
         ],
         "title": "LocationOut"
@@ -1158,6 +1375,38 @@
           "title": {
             "type": "string",
             "title": "Title"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "text_shadow": {
+            "type": "boolean",
+            "title": "Text Shadow",
+            "default": false
+          },
+          "is_teststand": {
+            "type": "boolean",
+            "title": "Is Teststand",
+            "default": false
           }
         },
         "type": "object",
@@ -1166,6 +1415,32 @@
           "title"
         ],
         "title": "LocationSummary"
+      },
+      "MosaicViewEntryOut": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "meta_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Meta Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "media_type",
+          "meta_columns"
+        ],
+        "title": "MosaicViewEntryOut"
       },
       "NightReportOut": {
         "properties": {
@@ -1255,6 +1530,19 @@
           "historical_loading"
         ],
         "title": "StatusResponse"
+      },
+      "TimeSinceClockOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "TimeSinceClockOut"
       },
       "ValidationError": {
         "properties": {
