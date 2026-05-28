@@ -40,7 +40,6 @@ export function useWebSocket(url = "/ws") {
   const subscriptionsRef = useRef<Map<string, Subscription>>(new Map());
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
   const backoffRef = useRef(500);
-  const closedByUs = useRef(false);
 
   const send = useCallback((data: unknown) => {
     const sock = socketRef.current;
@@ -50,7 +49,7 @@ export function useWebSocket(url = "/ws") {
   }, []);
 
   useEffect(() => {
-    closedByUs.current = false;
+    let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
@@ -60,6 +59,10 @@ export function useWebSocket(url = "/ws") {
       setStatus("connecting");
 
       sock.onopen = () => {
+        if (cancelled) {
+          sock.close();
+          return;
+        }
         setStatus("open");
         backoffRef.current = 500;
         // Replay subscriptions after a reconnect.
@@ -78,8 +81,8 @@ export function useWebSocket(url = "/ws") {
       };
 
       sock.onclose = () => {
+        if (cancelled) return;
         setStatus("closed");
-        if (closedByUs.current) return;
         const delay = Math.min(backoffRef.current, MAX_BACKOFF_MS);
         backoffRef.current = Math.min(delay * 2, MAX_BACKOFF_MS);
         reconnectTimer = setTimeout(connect, delay);
@@ -89,11 +92,13 @@ export function useWebSocket(url = "/ws") {
     connect();
 
     return () => {
-      closedByUs.current = true;
+      cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socketRef.current?.close();
     };
-  }, [url, send]);
+    // send is stable (useCallback with no deps); url is the real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
 
   const subscribe = useCallback(
     (sub: Subscription) => {
