@@ -143,9 +143,22 @@ def test_admin_set_and_get(seeded_client: TestClient) -> None:
 
 
 def test_proxy_streams_object(seeded_client: TestClient) -> None:
+    # The URL filename is a download-name suggestion, not the real S3 key —
+    # the proxy resolves the object by listing the seq prefix.
     resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/000001/a.png"
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/000001/image.png"
     )
     assert resp.status_code == 200
     assert resp.content == b"x"
     assert "Cache-Control" in resp.headers
+    assert (
+        resp.headers["Content-Disposition"]
+        == f'inline; filename="witness_detector_{DATE}_000001.png"'
+    )
+
+
+def test_proxy_404_when_seq_missing(seeded_client: TestClient) -> None:
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/999999/image.png"
+    )
+    assert resp.status_code == 404
