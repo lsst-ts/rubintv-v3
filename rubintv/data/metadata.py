@@ -49,7 +49,9 @@ class MetadataCache:
         async with lock:
             data = await asyncio.to_thread(self._fetch, location, camera, date)
         # Drop the lock once nobody is waiting, to bound the lock dict.
-        if not self._locks[cache_key].locked():
+        # Another coroutine in the same race may have already popped it.
+        existing = self._locks.get(cache_key)
+        if existing is not None and not existing.locked():
             self._locks.pop(cache_key, None)
         return data
 
