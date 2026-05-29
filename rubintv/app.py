@@ -54,10 +54,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     models = load_models(models_path, site=settings.site)
     s3 = S3ClientPool(models.locations)
+    # Cold-init every client up front in parallel so the first poll cycle
+    # (and the first API request that lands during it) doesn't pay the
+    # boto3 session-creation cost for each location serially.
+    await s3.warm_up()
+    log.info("s3.pool.ready", locations=[loc.name for loc in models.locations])
     buckets = {loc.name: loc.bucket for loc in models.locations}
 
     store = EventStore()
-    poller = S3Poller(s3.client_for)
+    # The poller uses a dedicated client per location so its sustained
+    # list_objects_v2 traffic doesn't share an HTTP connection pool with
+    # the interactive handlers (metadata fetches, proxy GETs).
+    poller = S3Poller(s3.poller_client_for)
     for loc in models.locations:
         poller.register_bucket(loc.name, loc.bucket)
 
