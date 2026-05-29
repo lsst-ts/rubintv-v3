@@ -75,7 +75,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if cache.enabled:
         snapshot = cache.load_all()
         store.load_snapshot(snapshot)
-        log.info("cache.loaded", slices=sum(len(d) for d in snapshot.values()))
+        loc_cams = len(snapshot)
+        slices = sum(len(d) for d in snapshot.values())
+        log.info(
+            "cache.loaded",
+            dir=str(settings.cache_dir),
+            location_cameras=loc_cams,
+            date_slices=slices,
+        )
+    else:
+        log.info("cache.disabled", reason="no cache_dir configured")
 
     metadata = MetadataCache(s3, buckets)
     controls = ControlStore()

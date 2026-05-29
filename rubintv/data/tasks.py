@@ -10,6 +10,44 @@ code path and differ only in *what* they scan and *how often*:
 
 Day rollover (UTC-12) is detected by the current-day loop and published as a
 ``dayChange`` so clients reset their live views.
+
+Polling latency floor (USDF measurement, 2026-05-29)
+----------------------------------------------------
+Benchmarked against the live ``rubin-rubintv-data-usdf`` bucket from
+``sdfianaNN`` with ``scripts/benchmarks/bench_s3_poll.py``. Numbers are
+ms, 4 representative prefixes, 10 samples each:
+
+============================== =========== ===========
+strategy                       call.p50    cycle.p50
+============================== =========== ===========
+serial-shared                  340         823
+paginator-shared               337         804
+raw-shared                     336         800
+parallel-2-shared              528         677
+parallel-4-shared              526         665
+parallel-8-shared              528         658
+parallel-4-per-worker          1290        3050
+head-during-list (shared)      4.6         —
+head-during-list (separate)    4.2         —
+============================== =========== ===========
+
+Conclusions encoded in this module:
+
+- Parallel-across-locations is the right shape — it gets cycle time
+  down ~20%, and a fresh client per worker is ~5× *slower* (boto3
+  session cold-start dominates), so the location-shared client model
+  is correct.
+- The S3 endpoint serialises beyond ~4 concurrent requests; going
+  past that buys nothing. We gather across all locations regardless,
+  which is fine — typical deployments have ~4 locations.
+- ``head_object`` is unaffected by concurrent listings on the same or
+  a separate client (~4ms either way) on-network, so the separate
+  poller client added for laptop-dev contention is essentially free
+  insurance on the pod.
+- The floor is upstream-bound: ~660ms per cycle is the minimum the
+  endpoint will allow, so the current-day ``poll_interval_seconds=1.0``
+  is already close to the upstream limit. Lowering it further has
+  diminishing returns until cycle time itself drops.
 """
 
 from __future__ import annotations
@@ -17,7 +55,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from rubintv.config.models import Models
+from rubintv.config.models import Location, Models
 from rubintv.data.dayobs import get_current_day_obs
 from rubintv.data.events import StoreChange
 from rubintv.data.source import S3Poller
@@ -74,10 +112,31 @@ class PollEngine:
     # -- loops -----------------------------------------------------------
 
     async def _current_day_loop(self) -> None:
+        cycle = 0
+        log.info(
+            "poll.current.start",
+            day=self._current_day,
+            interval_seconds=self._interval,
+            prefixes=[
+                f"{cam.name}/{self._current_day}/"
+                for loc in self._models.locations
+                for cam in loc.cameras
+            ],
+        )
         while not self._stop.is_set():
             try:
                 await self._check_rollover()
-                await self._scan_day(self._current_day)
+                total = await self._scan_day(self._current_day)
+                cycle += 1
+                # Heartbeat at info level every minute or so so operators can
+                # see polling is alive even when nothing is changing.
+                if cycle % max(1, int(60 / max(self._interval, 0.1))) == 0:
+                    log.info(
+                        "poll.current.heartbeat",
+                        day=self._current_day,
+                        cycle=cycle,
+                        events_last_cycle=total,
+                    )
                 self._fire_ready()
             except Exception:  # noqa: BLE001 - a bad cycle must not kill loop
                 log.exception("poll.current.error")
@@ -87,9 +146,15 @@ class PollEngine:
         # One full scan at startup, then refresh on a slow cadence.
         while not self._stop.is_set():
             try:
-                await self._scan_all_history()
+                log.info(
+                    "poll.historical.start",
+                    cameras=sum(len(loc.cameras) for loc in self._models.locations),
+                )
+                total = await self._scan_all_history()
+                log.info("poll.historical.done", events=total)
                 if self._cache_writer is not None:
                     await self._cache_writer()
+                    log.info("cache.written")
             except Exception:  # noqa: BLE001
                 log.exception("poll.historical.error")
             finally:
@@ -100,42 +165,74 @@ class PollEngine:
 
     # -- scanning --------------------------------------------------------
 
-    async def _scan_day(self, day: str) -> None:
-        for location in self._models.locations:
-            for camera in location.cameras:
-                prefix = f"{camera.name}/{day}/"
-                events = await asyncio.to_thread(
-                    self._poller.scan, location.name, prefix
-                )
-                if events:
-                    log.info(
-                        "poll.scan",
-                        scope="day",
-                        location=location.name,
-                        prefix=prefix,
-                        events=len(events),
-                    )
-                    await self._store.apply(events)
+    async def _scan_day(self, day: str) -> int:
+        # Per-location workers run concurrently; each location stays serial
+        # internally so it doesn't fan-out onto its single boto3 client's
+        # connection pool. With N locations each holding the slowest camera
+        # ~10s, this cuts the cycle from sum() to max().
+        per_location = await asyncio.gather(
+            *(self._scan_day_for_location(loc, day) for loc in self._models.locations)
+        )
+        return sum(per_location)
 
-    async def _scan_all_history(self) -> None:
-        # Scan each camera's whole prefix; the poller diffs against last time
-        # so unchanged history produces no churn. Recent dates change, so the
-        # periodic re-scan is what keeps yesterday/last-week current.
-        for location in self._models.locations:
-            for camera in location.cameras:
-                prefix = f"{camera.name}/"
-                events = await asyncio.to_thread(
-                    self._poller.scan, location.name, prefix
-                )
+    async def _scan_day_for_location(
+        self, location: Location, day: str
+    ) -> int:
+        total = 0
+        for camera in location.cameras:
+            prefix = f"{camera.name}/{day}/"
+            events = await asyncio.to_thread(
+                self._poller.scan, location.name, prefix
+            )
+            total += len(events)
+            if events:
                 log.info(
                     "poll.scan",
-                    scope="historical",
+                    scope="day",
                     location=location.name,
                     prefix=prefix,
                     events=len(events),
                 )
-                if events:
-                    await self._store.apply(events)
+                await self._store.apply(events)
+            else:
+                log.debug(
+                    "poll.scan.empty",
+                    scope="day",
+                    location=location.name,
+                    prefix=prefix,
+                )
+        return total
+
+    async def _scan_all_history(self) -> int:
+        # Same shape as _scan_day: locations in parallel, cameras serial
+        # within a location so a single S3 client's connection pool isn't
+        # fanned out across cameras.
+        per_location = await asyncio.gather(
+            *(self._scan_history_for_location(loc) for loc in self._models.locations)
+        )
+        return sum(per_location)
+
+    async def _scan_history_for_location(self, location: Location) -> int:
+        # Scan each camera's whole prefix; the poller diffs against last time
+        # so unchanged history produces no churn. Recent dates change, so the
+        # periodic re-scan is what keeps yesterday/last-week current.
+        total = 0
+        for camera in location.cameras:
+            prefix = f"{camera.name}/"
+            events = await asyncio.to_thread(
+                self._poller.scan, location.name, prefix
+            )
+            total += len(events)
+            log.info(
+                "poll.scan",
+                scope="historical",
+                location=location.name,
+                prefix=prefix,
+                events=len(events),
+            )
+            if events:
+                await self._store.apply(events)
+        return total
 
     async def _check_rollover(self) -> None:
         now_day = get_current_day_obs()
