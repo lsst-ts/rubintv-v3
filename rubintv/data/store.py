@@ -65,6 +65,11 @@ class EventStore:
 
     # -- ingestion -------------------------------------------------------
 
+    # Yield to the event loop every N events so a large poll batch (the
+    # current-day scan can return 6000+ events for a busy camera) doesn't
+    # monopolise the loop and starve in-flight API requests.
+    _YIELD_EVERY = 200
+
     async def apply(self, events: list[ObjectEvent]) -> None:
         """Apply a batch of object events and publish resulting changes.
 
@@ -73,7 +78,7 @@ class EventStore:
         coalesced before publishing.
         """
         changes: set[StoreChange] = set()
-        for event in events:
+        for i, event in enumerate(events):
             parsed = self._classify(event)
             if parsed is None:
                 continue  # non-conforming key — safely ignored
@@ -82,6 +87,8 @@ class EventStore:
                 self._mutate(event.kind, loc_cam, event)
             if change is not None:
                 changes.add(change)
+            if i and i % self._YIELD_EVERY == 0:
+                await asyncio.sleep(0)
         for change in changes:
             self._bus.publish(change)
 
