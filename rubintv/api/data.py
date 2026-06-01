@@ -6,7 +6,7 @@ is separate). Path params are validated by the deps (unknown -> 404).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 
 from rubintv.api.deps import (
     get_app_state,
@@ -188,12 +188,21 @@ async def get_date_payload(
     response_model=dict[str, dict[str, object]],
 )
 async def get_metadata(
+    response: Response,
     date: str = Depends(valid_date),
     location: Location = Depends(get_location),
     camera: Camera = Depends(get_camera),
     state: AppState = Depends(get_app_state),
-) -> dict[str, dict[str, object]]:
-    return await state.metadata.get(location.name, camera.name, date)
+    if_none_match: str | None = Header(default=None),
+) -> Response | dict[str, dict[str, object]]:
+    etag, data = await state.metadata.get_with_etag(
+        location.name, camera.name, date
+    )
+    if etag is not None:
+        response.headers["ETag"] = etag
+        if if_none_match == etag:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+    return data
 
 
 @router.get("/locations/{location}/cameras/{camera}/events", response_model=EventOut)

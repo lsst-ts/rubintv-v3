@@ -44,18 +44,27 @@ class MetadataCache:
 
     async def get(self, location: str, camera: str, date: str) -> Metadata:
         """Return metadata for a date, fetching/refreshing if needed."""
+        _, data = await self.get_with_etag(location, camera, date)
+        return data
+
+    async def get_with_etag(
+        self, location: str, camera: str, date: str
+    ) -> tuple[str | None, Metadata]:
+        """Return ``(etag, metadata)``; etag is the S3 ETag or ``None``."""
         cache_key = (location, camera, date)
         lock = self._locks.setdefault(cache_key, asyncio.Lock())
         async with lock:
-            data = await asyncio.to_thread(self._fetch, location, camera, date)
+            result = await asyncio.to_thread(self._fetch, location, camera, date)
         # Drop the lock once nobody is waiting, to bound the lock dict.
         # Another coroutine in the same race may have already popped it.
         existing = self._locks.get(cache_key)
         if existing is not None and not existing.locked():
             self._locks.pop(cache_key, None)
-        return data
+        return result
 
-    def _fetch(self, location: str, camera: str, date: str) -> Metadata:
+    def _fetch(
+        self, location: str, camera: str, date: str
+    ) -> tuple[str | None, Metadata]:
         cache_key = (location, camera, date)
         s3_key = f"{camera}/{date}/metadata.json"
         bucket = self._buckets[location]
@@ -65,12 +74,14 @@ class MetadataCache:
         try:
             head = client.head_object(Bucket=bucket, Key=s3_key)
         except client.exceptions.ClientError:
-            return cached.data if cached else {}
+            if cached is not None:
+                return cached.etag, cached.data
+            return None, {}
 
         etag = head.get("ETag")
         if cached is not None and cached.etag == etag:
             self._entries.move_to_end(cache_key)
-            return cached.data
+            return cached.etag, cached.data
 
         obj = client.get_object(Bucket=bucket, Key=s3_key)
         data: Metadata = json.loads(obj["Body"].read())
@@ -78,4 +89,4 @@ class MetadataCache:
         self._entries.move_to_end(cache_key)
         while len(self._entries) > _MAX_ENTRIES:
             self._entries.popitem(last=False)
-        return data
+        return etag, data
