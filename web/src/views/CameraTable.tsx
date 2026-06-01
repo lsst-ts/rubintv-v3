@@ -6,6 +6,7 @@ import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
+import { ShareLink } from "../components/ShareLink";
 
 // The main camera view: date picker, per-seq-num table with channel columns
 // and metadata columns, per-day artifacts, night-report link. Subscribes to
@@ -92,6 +93,7 @@ export function CameraTable() {
             ))}
           </select>
         </label>
+        <ShareLink date={date || undefined} />
         {metaProgress && metaProgress.received < metaProgress.total && (
           <span className="metadata-progress" role="status">
             metadata {metaProgress.received}/{metaProgress.total}

@@ -54,10 +54,13 @@ test("metadataChunk merges into the date payload and tracks progress", () => {
     data: { "1": { exp_time: 30 } },
   });
 
-  const payload = qc.getQueryData(key) as { metadata: Record<string, unknown> };
+  const payload = qc.getQueryData(key) as {
+    metadata: Record<string, unknown>;
+    channels: Record<string, number[]>;
+  };
   expect(payload.metadata["1"]).toEqual({ exp_time: 30 });
   // Channel data is preserved (merge, not replace).
-  expect((payload as { channels: unknown }).channels).toEqual({ c: [1, 2] });
+  expect(payload.channels).toEqual({ c: [1, 2] });
 
   const progress = qc.getQueryData(
     queryKeys.metadataProgress("local", "lsstcam", "2026-04-10"),
