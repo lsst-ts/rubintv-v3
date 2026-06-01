@@ -80,10 +80,18 @@ class ConnectionManager:
             conn = self._connections.get(conn_id)
             if conn is None:
                 continue
-            try:
-                conn.queue.put_nowait(message)
-            except asyncio.QueueFull:
-                log.warning("ws.client.slow", conn=conn_id, type=message.type)
+            self.send_to(conn, message)
+
+    def send_to(self, conn: Connection, message: ServerMessage) -> None:
+        """Enqueue a message for one connection, dropping if it's too slow.
+
+        Same backpressure policy as fan-out: a full queue means the client
+        can't keep up, so we drop rather than block the producer.
+        """
+        try:
+            conn.queue.put_nowait(message)
+        except asyncio.QueueFull:
+            log.warning("ws.client.slow", conn=conn.id, type=message.type)
 
     @property
     def connection_count(self) -> int:

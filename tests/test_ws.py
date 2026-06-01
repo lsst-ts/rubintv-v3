@@ -87,3 +87,45 @@ def test_ws_bad_frame_gets_error(ws_client) -> None:  # type: ignore[no-untyped-
         ws.send_json({"action": "subscribe"})  # missing required fields
         msg = ws.receive_json()
         assert msg["type"] == "error"
+
+
+def test_ws_streams_metadata_in_chunks(ws_client) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    from rubintv.ws import handler as handler_mod
+
+    client, s3 = ws_client
+    # 3 rows with a chunk size of 2 -> two metadataChunk frames + complete.
+    rows = {str(n): {"exp_time": n} for n in range(1, 4)}
+    s3.put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps(rows).encode(),
+    )
+
+    monkey = handler_mod._METADATA_CHUNK_SIZE  # noqa: SLF001
+    handler_mod._METADATA_CHUNK_SIZE = 2  # noqa: SLF001
+    try:
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json(
+                {
+                    "action": "subscribe",
+                    "topic": "camera",
+                    "location": "test",
+                    "camera": "lsstcam",
+                    "date": DATE,
+                }
+            )
+            # First frame is the camera snapshot (channelData); then metadata.
+            assert ws.receive_json()["type"] == "channelData"
+            received: dict[str, dict] = {}
+            while True:
+                msg = ws.receive_json()
+                if msg["type"] == "metadataComplete":
+                    assert msg["total"] == 2
+                    break
+                assert msg["type"] == "metadataChunk"
+                received.update(msg["data"])
+            assert received == rows
+    finally:
+        handler_mod._METADATA_CHUNK_SIZE = monkey  # noqa: SLF001

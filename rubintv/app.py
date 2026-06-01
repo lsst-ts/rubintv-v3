@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     metadata = MetadataCache(s3, buckets)
     controls = ControlStore()
-    ws_service = WsService(store)
+    ws_service = WsService(store, metadata)
     state = AppState(
         settings=settings,
         models=models,

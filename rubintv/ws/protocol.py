@@ -23,6 +23,11 @@ class SubscribeRequest(BaseModel):
     location: str
     camera: str | None = None
     channel: str | None = None
+    date: str | None = None
+    """Optional date for a camera subscription. When present, the server
+    streams that date's metadata to this client as ``metadataChunk`` frames.
+    It is *not* part of the topic key — the live-change subscription is per
+    camera, while metadata streaming is a one-shot per (camera, date)."""
 
     def topic_key(self) -> str:
         """Stable string key identifying this topic for the registry."""
@@ -37,6 +42,8 @@ ServerMessageType = Literal[
     "channelData",
     "event",
     "metadata",
+    "metadataChunk",
+    "metadataComplete",
     "perDay",
     "nightReport",
     "dayChange",
@@ -56,3 +63,10 @@ class ServerMessage(BaseModel):
     date: str | None = None
     data: dict[str, object] | None = None
     message: str | None = None
+    # Metadata streaming: a metadataChunk carries one slice of the date's
+    # metadata dict with its position (seq of total) for client progress; the
+    # final metadataComplete carries the S3 etag so the client can skip a
+    # re-stream on resubscribe of an unchanged date.
+    seq: int | None = None
+    total: int | None = None
+    etag: str | None = None
