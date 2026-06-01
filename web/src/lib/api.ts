@@ -9,6 +9,7 @@ import type {
   LocationOut,
   LocationSummary,
   NightReportOut,
+  StatusResponse,
 } from "./types";
 
 export class ApiError extends Error {
@@ -35,6 +36,8 @@ const enc = encodeURIComponent;
 
 export const api = {
   locations: () => getJson<LocationSummary[]>("/locations"),
+
+  status: () => getJson<StatusResponse>("/health/status"),
 
   location: (loc: string) => getJson<LocationOut>(`/locations/${enc(loc)}`),
 

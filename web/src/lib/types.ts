@@ -17,6 +17,7 @@ export type CalendarOut = Schemas["CalendarOut"];
 export type EventOut = Schemas["EventOut"];
 export type NightReportOut = Schemas["NightReportOut"];
 export type ControlsOut = Schemas["ControlsOut"];
+export type StatusResponse = Schemas["StatusResponse"];
 
 // A metadata payload is seq_num (string) -> { column -> value }.
 export type Metadata = Record<string, Record<string, unknown>>;

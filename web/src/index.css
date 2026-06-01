@@ -53,6 +53,25 @@ body {
   color: var(--muted);
 }
 
+.loading-banner {
+  background: #f2c037;
+  color: #1a1a1a;
+  font-size: 0.85rem;
+  padding: 0.35rem 1rem;
+  text-align: center;
+}
+
+.metadata-progress {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+
+.share-link {
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 .card-grid {
   display: flex;
   flex-wrap: wrap;
