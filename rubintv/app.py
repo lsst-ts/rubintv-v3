@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.gzip import GZipMiddleware
 
 from rubintv import __version__
 from rubintv.api import admin, data, health, nightreport, proxy
@@ -154,6 +155,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.router.lifespan_context = lifespan
 
     app.middleware("http")(correlation_middleware)
+    # metadata.json responses can exceed 10 MB; gzip drops that ~10–20x for
+    # the wire. minimum_size skips short responses where compression overhead
+    # outweighs the gain.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     app.include_router(health.router, prefix="/api/health", tags=["health"])
     app.include_router(data.router, prefix="/api", tags=["data"])
