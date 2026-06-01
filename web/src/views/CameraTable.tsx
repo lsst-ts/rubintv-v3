@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { queryKeys } from "../lib/liveQuery";
+import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
@@ -30,7 +30,16 @@ export function CameraTable() {
   const date = params.get("date") ?? calendar?.dates[0] ?? "";
 
   // Live updates for this camera (drives table + calendar invalidation).
-  useLiveTopic({ topic: "camera", location, camera });
+  // Passing the resolved date also asks the server to stream that date's
+  // metadata as it loads, so cells fill progressively rather than after one
+  // big REST round-trip.
+  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+
+  // Progress of the streamed metadata (null once complete / not streaming).
+  const { data: metaProgress } = useQuery<MetadataProgress | null>({
+    queryKey: queryKeys.metadataProgress(location, camera, date),
+    enabled: false, // written by applyLiveMessage; never fetched.
+  });
 
   const { data: payload, isPending } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -83,6 +92,11 @@ export function CameraTable() {
             ))}
           </select>
         </label>
+        {metaProgress && metaProgress.received < metaProgress.total && (
+          <span className="metadata-progress" role="status">
+            metadata {metaProgress.received}/{metaProgress.total}
+          </span>
+        )}
         <details className="column-picker">
           <summary>Columns ({visible.length}/{metaColumns.length})</summary>
           {metaColumns.map((col) => (

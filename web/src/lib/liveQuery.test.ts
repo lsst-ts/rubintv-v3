@@ -30,3 +30,51 @@ test("messages without location/camera are ignored", () => {
   applyLiveMessage(qc, { type: "channelData" });
   expect(calls).toHaveLength(0);
 });
+
+test("metadataChunk merges into the date payload and tracks progress", () => {
+  const qc = new QueryClient();
+  const key = queryKeys.datePayload("local", "lsstcam", "2026-04-10");
+  // Seed a payload as the REST fetch would, with channel data but no metadata.
+  qc.setQueryData(key, {
+    date: "2026-04-10",
+    channels: { c: [1, 2] },
+    extensions: {},
+    per_day: {},
+    metadata: {},
+    has_night_report: false,
+  });
+
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    location: "local",
+    camera: "lsstcam",
+    date: "2026-04-10",
+    seq: 0,
+    total: 2,
+    data: { "1": { exp_time: 30 } },
+  });
+
+  const payload = qc.getQueryData(key) as { metadata: Record<string, unknown> };
+  expect(payload.metadata["1"]).toEqual({ exp_time: 30 });
+  // Channel data is preserved (merge, not replace).
+  expect((payload as { channels: unknown }).channels).toEqual({ c: [1, 2] });
+
+  const progress = qc.getQueryData(
+    queryKeys.metadataProgress("local", "lsstcam", "2026-04-10"),
+  );
+  expect(progress).toEqual({ received: 1, total: 2 });
+});
+
+test("metadataComplete clears progress", () => {
+  const qc = new QueryClient();
+  const pkey = queryKeys.metadataProgress("local", "lsstcam", "2026-04-10");
+  qc.setQueryData(pkey, { received: 1, total: 2 });
+  applyLiveMessage(qc, {
+    type: "metadataComplete",
+    location: "local",
+    camera: "lsstcam",
+    date: "2026-04-10",
+    total: 2,
+  });
+  expect(qc.getQueryData(pkey)).toBeNull();
+});

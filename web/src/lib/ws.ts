@@ -16,6 +16,9 @@ export interface Subscription {
   location?: string;
   camera?: string;
   channel?: string;
+  // When set on a camera subscription, the server streams that date's
+  // metadata to this tab as metadataChunk frames (progressive fill).
+  date?: string;
 }
 
 interface ServerMessage {

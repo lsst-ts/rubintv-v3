@@ -5,6 +5,7 @@
 // based is simplest and correct: the REST endpoint is the formatter.
 
 import type { QueryClient } from "@tanstack/react-query";
+import type { DatePayload } from "./types";
 
 export interface ServerMessage {
   type: string;
@@ -13,6 +14,9 @@ export interface ServerMessage {
   channel?: string;
   date?: string;
   data?: Record<string, unknown>;
+  // Metadata streaming progress (metadataChunk / metadataComplete).
+  seq?: number;
+  total?: number;
 }
 
 // Query key builders shared with the views (Phase 5 imports these too).
@@ -25,12 +29,39 @@ export const queryKeys = {
     ["datePayload", loc, cam, date] as const,
   nightReport: (loc: string, cam: string, date: string) =>
     ["nightReport", loc, cam, date] as const,
+  // Progress of the WS metadata stream for a (loc, cam, date). Written by
+  // applyLiveMessage, read by CameraTable to show "metadata N/total". null
+  // once complete (or never started).
+  metadataProgress: (loc: string, cam: string, date: string) =>
+    ["metadataProgress", loc, cam, date] as const,
 };
+
+/** Progress of an in-flight metadata stream. */
+export interface MetadataProgress {
+  received: number;
+  total: number;
+}
 
 /** Apply a live message by invalidating the affected cached queries. */
 export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
   const { type, location, camera, date } = msg;
   if (!location || !camera) return;
+
+  // Metadata streaming: merge each chunk straight into the date payload's
+  // metadata so cells fill progressively, and track received/total so the
+  // view can show progress. The REST payload stays authoritative — if a
+  // chunk is dropped, the next datePayload refetch fills the gap.
+  if (type === "metadataChunk" && date) {
+    mergeMetadataChunk(qc, location, camera, date, msg);
+    return;
+  }
+  if (type === "metadataComplete" && date) {
+    qc.setQueryData(
+      queryKeys.metadataProgress(location, camera, date),
+      null,
+    );
+    return;
+  }
 
   switch (type) {
     case "channelData":
@@ -54,5 +85,33 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
     case "dayChange":
       qc.invalidateQueries({ queryKey: queryKeys.calendar(location, camera) });
       break;
+  }
+}
+
+type Metadata = Record<string, Record<string, unknown>>;
+
+/** Merge one streamed metadata chunk into the date payload + progress. */
+function mergeMetadataChunk(
+  qc: QueryClient,
+  location: string,
+  camera: string,
+  date: string,
+  msg: ServerMessage,
+): void {
+  const chunk = (msg.data ?? {}) as Metadata;
+
+  qc.setQueryData<DatePayload>(
+    queryKeys.datePayload(location, camera, date),
+    (prev) =>
+      prev
+        ? { ...prev, metadata: { ...prev.metadata, ...chunk } }
+        : prev, // No payload yet; the REST fetch will arrive with metadata.
+  );
+
+  if (typeof msg.seq === "number" && typeof msg.total === "number") {
+    qc.setQueryData<MetadataProgress>(
+      queryKeys.metadataProgress(location, camera, date),
+      { received: msg.seq + 1, total: msg.total },
+    );
   }
 }
