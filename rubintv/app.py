@@ -111,6 +111,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             for date, index in dates.items():
                 cache.write(location, camera, date, index)
 
+    async def write_slices(touched: set[tuple[str, str, str]]) -> None:
+        # Persist just the slices a scan changed, so the disk cache fills in
+        # as history is discovered rather than only every 12h / at shutdown.
+        if not cache.enabled:
+            return
+        for location, camera, date in touched:
+            index = store.date_index(location, camera, date)
+            if index is not None:
+                cache.write(location, camera, date, index)
+
     engine = PollEngine(
         models,
         store,
@@ -118,6 +128,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         poll_interval=settings.poll_interval_seconds,
         on_ready=lambda: setattr(state, "ready", True),
         cache_writer=write_cache,
+        cache_slice_writer=write_slices,
     )
     # Expose the engine's historical-loading flag to the status endpoint.
     state.historical_loading = lambda: engine.historical_loading

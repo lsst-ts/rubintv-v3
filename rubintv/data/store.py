@@ -70,12 +70,15 @@ class EventStore:
     # monopolise the loop and starve in-flight API requests.
     _YIELD_EVERY = 200
 
-    async def apply(self, events: list[ObjectEvent]) -> None:
+    async def apply(self, events: list[ObjectEvent]) -> set[tuple[str, str, str]]:
         """Apply a batch of object events and publish resulting changes.
 
         Batched so a poll cycle's worth of changes are applied under the
         lock once per affected (loc, cam), and duplicate StoreChanges are
         coalesced before publishing.
+
+        Returns the set of ``(location, camera, date)`` slices touched, so a
+        caller (e.g. the poll engine) can persist exactly those to disk.
         """
         changes: set[StoreChange] = set()
         for i, event in enumerate(events):
@@ -91,6 +94,11 @@ class EventStore:
                 await asyncio.sleep(0)
         for change in changes:
             self._bus.publish(change)
+        return {
+            (c.location, c.camera, c.date)
+            for c in changes
+            if c.date is not None
+        }
 
     def _classify(self, event: ObjectEvent) -> tuple[LocCam, StoreChange | None] | None:
         """Route an object event to a (loc, cam) and the change it implies."""

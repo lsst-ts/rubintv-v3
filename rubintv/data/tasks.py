@@ -80,6 +80,9 @@ class PollEngine:
         poll_interval: float = 1.0,
         on_ready: ReadyCallback | None = None,
         cache_writer: Callable[[], Awaitable[None]] | None = None,
+        cache_slice_writer: (
+            Callable[[set[tuple[str, str, str]]], Awaitable[None]] | None
+        ) = None,
     ) -> None:
         self._models = models
         self._store = store
@@ -87,6 +90,7 @@ class PollEngine:
         self._interval = poll_interval
         self._on_ready = on_ready
         self._cache_writer = cache_writer
+        self._cache_slice_writer = cache_slice_writer
         self._current_day = get_current_day_obs()
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
@@ -193,7 +197,8 @@ class PollEngine:
                     prefix=prefix,
                     events=len(events),
                 )
-                await self._store.apply(events)
+                touched = await self._store.apply(events)
+                await self._persist_slices(touched)
             else:
                 log.debug(
                     "poll.scan.empty",
@@ -231,8 +236,16 @@ class PollEngine:
                 events=len(events),
             )
             if events:
-                await self._store.apply(events)
+                touched = await self._store.apply(events)
+                await self._persist_slices(touched)
         return total
+
+    async def _persist_slices(self, touched: set[tuple[str, str, str]]) -> None:
+        """Write just the slices a scan changed, so history is durable as it
+        is discovered rather than only after a full 12h cycle or shutdown."""
+        if self._cache_slice_writer is None or not touched:
+            return
+        await self._cache_slice_writer(touched)
 
     async def _check_rollover(self) -> None:
         now_day = get_current_day_obs()

@@ -69,6 +69,24 @@ async def test_night_report_presence() -> None:
     assert store.has_night_report("local", "lsstcam", "2026-04-10")
 
 
+async def test_apply_returns_touched_slices() -> None:
+    store = EventStore()
+    touched = await store.apply(
+        [
+            created("lsstcam/2026-04-10/c/000001/a.png"),
+            created("lsstcam/2026-04-11/c/000002/b.png"),
+            created("auxtel/2026-04-10/movies/final/m.mp4"),
+        ]
+    )
+    # One (loc, cam, date) per distinct date/camera, so a caller can persist
+    # exactly the changed slices.
+    assert touched == {
+        ("local", "lsstcam", "2026-04-10"),
+        ("local", "lsstcam", "2026-04-11"),
+        ("local", "auxtel", "2026-04-10"),
+    }
+
+
 @pytest.mark.asyncio
 async def test_apply_publishes_coalesced_changes() -> None:
     bus = EventBus()
