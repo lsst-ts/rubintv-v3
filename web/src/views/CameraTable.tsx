@@ -37,9 +37,13 @@ export function CameraTable() {
   useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
 
   // Progress of the streamed metadata (null once complete / not streaming).
+  // The value is pushed by applyLiveMessage via setQueryData; the queryFn is
+  // only a seed so TanStack doesn't warn about a missing fetcher, and
+  // staleTime keeps it from ever overwriting a pushed value.
   const { data: metaProgress } = useQuery<MetadataProgress | null>({
     queryKey: queryKeys.metadataProgress(location, camera, date),
-    enabled: false, // written by applyLiveMessage; never fetched.
+    queryFn: () => null,
+    staleTime: Infinity,
   });
 
   const { data: payload, isPending } = useQuery({
