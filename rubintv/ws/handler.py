@@ -26,11 +26,6 @@ from rubintv.ws.protocol import ServerMessage, SubscribeRequest
 
 log = get_logger(__name__)
 
-# Seq-nums per metadataChunk frame. Small enough that the first rows appear
-# almost immediately and a slow client only drops a chunk's worth; large
-# enough that a full day (~thousands of rows) is a handful of frames.
-_METADATA_CHUNK_SIZE = 200
-
 # Map a StoreChange.type to the topic kind that cares about it.
 _CHANGE_TO_TOPIC = {
     "channelData": "camera",
@@ -155,74 +150,68 @@ class WsService:
     async def _stream_metadata(
         self, conn: Connection, location: str, camera: str, date: str
     ) -> None:
-        """Fetch a date's metadata and fan it to one client in chunks.
+        """Stream a date's metadata to one client as it parses off S3.
 
-        Reuses MetadataCache (cache + ETag dedupe + the S3 round-trip on a
-        worker thread). Chunks are enqueued on the connection's bounded queue;
-        a chunk dropped for a slow client is tolerated — the REST date payload
+        Consumes ``MetadataCache.stream`` so the table fills progressively on
+        slow links rather than after the whole transfer. The total chunk count
+        isn't known until the end (it's a stream), so chunks carry a running
+        row count and the final ``metadataComplete`` carries the totals + etag.
+        A dropped chunk for a slow client is tolerated — the REST date payload
         remains the authoritative metadata source.
         """
+        seq = 0
+        rows_sent = 0
         try:
-            etag, data = await self._metadata.get_with_etag(location, camera, date)
+            async for batch in self._metadata.stream(location, camera, date):
+                if not batch.done:
+                    rows_sent += len(batch.rows)
+                    self.manager.send_to(
+                        conn,
+                        ServerMessage(
+                            type="metadataChunk",
+                            location=location,
+                            camera=camera,
+                            date=date,
+                            seq=seq,
+                            data=batch.rows,
+                        ),
+                    )
+                    log.debug(
+                        "ws.metadata.chunk.enqueued",
+                        conn=conn.id,
+                        camera=camera,
+                        date=date,
+                        seq=seq,
+                        rows_in_chunk=len(batch.rows),
+                        rows_sent=rows_sent,
+                    )
+                    seq += 1
+                    # Yield so a slow stream doesn't hold the loop between
+                    # batches and other connections stay responsive.
+                    await asyncio.sleep(0)
+                else:
+                    self.manager.send_to(
+                        conn,
+                        ServerMessage(
+                            type="metadataComplete",
+                            location=location,
+                            camera=camera,
+                            date=date,
+                            seq=seq,
+                            total=seq,
+                            etag=batch.etag,
+                        ),
+                    )
+                    log.debug(
+                        "ws.metadata.complete",
+                        conn=conn.id,
+                        camera=camera,
+                        date=date,
+                        chunks=seq,
+                        rows=rows_sent,
+                    )
         except Exception:  # noqa: BLE001 - never let one stream kill the socket
-            log.exception("ws.metadata.fetch.error", camera=camera, date=date)
-            return
-
-        items = list(data.items())
-        total = max(1, -(-len(items) // _METADATA_CHUNK_SIZE))  # ceil-div
-        log.debug(
-            "ws.metadata.fetched",
-            conn=conn.id,
-            camera=camera,
-            date=date,
-            rows=len(items),
-            chunks=total,
-            etag=etag,
-        )
-        for i in range(0, len(items), _METADATA_CHUNK_SIZE):
-            chunk = dict(items[i : i + _METADATA_CHUNK_SIZE])
-            seq = i // _METADATA_CHUNK_SIZE
-            self.manager.send_to(
-                conn,
-                ServerMessage(
-                    type="metadataChunk",
-                    location=location,
-                    camera=camera,
-                    date=date,
-                    seq=seq,
-                    total=total,
-                    data=chunk,
-                ),
-            )
-            log.debug(
-                "ws.metadata.chunk.enqueued",
-                conn=conn.id,
-                camera=camera,
-                date=date,
-                seq=seq,
-                total=total,
-                rows_in_chunk=len(chunk),
-            )
-            # Yield so a large payload doesn't starve the pump or other streams.
-            await asyncio.sleep(0)
-        self.manager.send_to(
-            conn,
-            ServerMessage(
-                type="metadataComplete",
-                location=location,
-                camera=camera,
-                date=date,
-                total=total,
-                etag=etag,
-            ),
-        )
-        log.debug(
-            "ws.metadata.complete",
-            conn=conn.id,
-            camera=camera,
-            date=date,
-            chunks=total,
-        )
+            log.exception("ws.metadata.stream.error", camera=camera, date=date)
 
     async def _send_loop(self, conn: Connection) -> None:
         while True:
