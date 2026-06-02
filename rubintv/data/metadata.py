@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -83,8 +84,25 @@ class MetadataCache:
             self._entries.move_to_end(cache_key)
             return cached.etag, cached.data
 
+        # Timing probe (DEBUG): split the GET latency into time-to-first-byte
+        # / transfer / parse so we know whether incremental parsing would help.
+        t0 = time.perf_counter()
         obj = client.get_object(Bucket=bucket, Key=s3_key)
-        data: Metadata = json.loads(obj["Body"].read())
+        t_get = time.perf_counter()
+        body = obj["Body"].read()
+        t_read = time.perf_counter()
+        data: Metadata = json.loads(body)
+        t_parse = time.perf_counter()
+        log.debug(
+            "metadata.fetch.timing",
+            camera=camera,
+            date=date,
+            bytes=len(body),
+            rows=len(data),
+            get_object_s=round(t_get - t0, 3),
+            read_body_s=round(t_read - t_get, 3),
+            json_parse_s=round(t_parse - t_read, 3),
+        )
         self._entries[cache_key] = _Entry(etag=etag, data=data)
         self._entries.move_to_end(cache_key)
         while len(self._entries) > _MAX_ENTRIES:

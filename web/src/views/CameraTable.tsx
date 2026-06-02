@@ -57,10 +57,30 @@ export function CameraTable() {
     () => cameraInfo?.channels.filter((c) => !c.per_day).map((c) => c.name) ?? [],
     [cameraInfo],
   );
-  const metaColumns = useMemo(
-    () => Object.keys(cameraInfo?.metadata_columns ?? {}),
-    [cameraInfo],
-  );
+  // Columns are the union of the configured columns (which carry order and
+  // tooltip descriptions) and every key actually present in the metadata —
+  // metadata.json routinely carries far more fields than the config names,
+  // and the old app surfaced all of them. Configured columns come first (in
+  // config order); data-only keys follow, sorted case-insensitively. Keys
+  // beginning with "_" (per-cell indicators) or "@" (empty-channel
+  // replacement strings) are not columns — they decorate other cells.
+  const metaColumns = useMemo(() => {
+    const configured = Object.keys(cameraInfo?.metadata_columns ?? {});
+    const seen = new Set(configured);
+    const extra: string[] = [];
+    for (const row of Object.values(payload?.metadata ?? {})) {
+      for (const key of Object.keys(row)) {
+        if (!seen.has(key)) {
+          seen.add(key);
+          extra.push(key);
+        }
+      }
+    }
+    extra.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    return [...configured, ...extra].filter(
+      (name) => name[0] !== "_" && name[0] !== "@",
+    );
+  }, [cameraInfo, payload]);
   const { visible, hidden, toggle } = useColumnPrefs(location, camera, metaColumns);
 
   // Union of seq_nums across channels, descending (newest first).
