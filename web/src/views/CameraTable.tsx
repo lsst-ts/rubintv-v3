@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
+import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
@@ -37,12 +38,20 @@ export function CameraTable() {
   useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
 
   // Progress of the streamed metadata (null once complete / not streaming).
-  // The value is pushed by applyLiveMessage via setQueryData; the queryFn is
-  // only a seed so TanStack doesn't warn about a missing fetcher, and
-  // staleTime keeps it from ever overwriting a pushed value.
+  // These two values are pushed by applyLiveMessage via setQueryData; the
+  // queryFn is only a seed so TanStack doesn't warn about a missing fetcher,
+  // and staleTime keeps it from ever overwriting a pushed value.
   const { data: metaProgress } = useQuery<MetadataProgress | null>({
     queryKey: queryKeys.metadataProgress(location, camera, date),
     queryFn: () => null,
+    staleTime: Infinity,
+  });
+  // Metadata streamed over the WebSocket, accumulated as chunks arrive. Kept
+  // separate from the REST payload and merged below, so streamed rows show up
+  // immediately even before the (also slow) REST payload lands.
+  const { data: streamedMeta } = useQuery<Metadata>({
+    queryKey: queryKeys.metadataStream(location, camera, date),
+    queryFn: () => ({}),
     staleTime: Infinity,
   });
 
@@ -52,6 +61,14 @@ export function CameraTable() {
     enabled: date !== "",
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
+
+  // The metadata the table renders: REST payload merged with whatever has
+  // streamed in. The stream usually arrives first on slow links; REST is the
+  // authoritative backstop and fills any chunk that was dropped.
+  const metadata = useMemo<Metadata>(
+    () => ({ ...(streamedMeta ?? {}), ...(payload?.metadata ?? {}) }),
+    [streamedMeta, payload],
+  );
 
   const channelNames = useMemo(
     () => cameraInfo?.channels.filter((c) => !c.per_day).map((c) => c.name) ?? [],
@@ -68,7 +85,7 @@ export function CameraTable() {
     const configured = Object.keys(cameraInfo?.metadata_columns ?? {});
     const seen = new Set(configured);
     const extra: string[] = [];
-    for (const row of Object.values(payload?.metadata ?? {})) {
+    for (const row of Object.values(metadata)) {
       for (const key of Object.keys(row)) {
         if (!seen.has(key)) {
           seen.add(key);
@@ -80,17 +97,23 @@ export function CameraTable() {
     return [...configured, ...extra].filter(
       (name) => name[0] !== "_" && name[0] !== "@",
     );
-  }, [cameraInfo, payload]);
+  }, [cameraInfo, metadata]);
   const { visible, hidden, toggle } = useColumnPrefs(location, camera, metaColumns);
 
-  // Union of seq_nums across channels, descending (newest first).
+  // Union of seq_nums across channels and metadata, descending (newest
+  // first). Including metadata keys means streamed rows appear immediately,
+  // before the (slower) REST channel payload lands.
   const seqNums = useMemo(() => {
     const s = new Set<number>();
     for (const seqs of Object.values(payload?.channels ?? {})) {
       for (const n of seqs) if (typeof n === "number") s.add(n);
     }
+    for (const key of Object.keys(metadata)) {
+      const n = Number(key);
+      if (Number.isInteger(n)) s.add(n);
+    }
     return [...s].sort((a, b) => b - a);
-  }, [payload]);
+  }, [payload, metadata]);
 
   return (
     <section>
@@ -118,9 +141,9 @@ export function CameraTable() {
           </select>
         </label>
         <ShareLink date={date || undefined} />
-        {metaProgress && metaProgress.received < metaProgress.total && (
+        {metaProgress && metaProgress.rows > 0 && (
           <span className="metadata-progress" role="status">
-            metadata {metaProgress.received}/{metaProgress.total}
+            loading metadata… {metaProgress.rows} rows
           </span>
         )}
         <details className="column-picker">
@@ -164,7 +187,7 @@ export function CameraTable() {
         </thead>
         <tbody>
           {seqNums.map((seq) => {
-            const meta = payload?.metadata[String(seq)] ?? {};
+            const meta = metadata[String(seq)] ?? {};
             return (
               <tr key={seq}>
                 <td>{seq}</td>

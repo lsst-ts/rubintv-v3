@@ -31,18 +31,10 @@ test("messages without location/camera are ignored", () => {
   expect(calls).toHaveLength(0);
 });
 
-test("metadataChunk merges into the date payload and tracks progress", () => {
+test("metadataChunk accumulates into the stream slot and tracks rows", () => {
   const qc = new QueryClient();
-  const key = queryKeys.datePayload("local", "lsstcam", "2026-04-10");
-  // Seed a payload as the REST fetch would, with channel data but no metadata.
-  qc.setQueryData(key, {
-    date: "2026-04-10",
-    channels: { c: [1, 2] },
-    extensions: {},
-    per_day: {},
-    metadata: {},
-    has_night_report: false,
-  });
+  const streamKey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
+  const progKey = queryKeys.metadataProgress("local", "lsstcam", "2026-04-10");
 
   applyLiveMessage(qc, {
     type: "metadataChunk",
@@ -50,28 +42,32 @@ test("metadataChunk merges into the date payload and tracks progress", () => {
     camera: "lsstcam",
     date: "2026-04-10",
     seq: 0,
-    total: 2,
     data: { "1": { exp_time: 30 } },
   });
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    location: "local",
+    camera: "lsstcam",
+    date: "2026-04-10",
+    seq: 1,
+    data: { "2": { exp_time: 31 } },
+  });
 
-  const payload = qc.getQueryData(key) as {
-    metadata: Record<string, unknown>;
-    channels: Record<string, number[]>;
-  };
-  expect(payload.metadata["1"]).toEqual({ exp_time: 30 });
-  // Channel data is preserved (merge, not replace).
-  expect(payload.channels).toEqual({ c: [1, 2] });
-
-  const progress = qc.getQueryData(
-    queryKeys.metadataProgress("local", "lsstcam", "2026-04-10"),
-  );
-  expect(progress).toEqual({ received: 1, total: 2 });
+  // Both chunks accumulate; the stream slot holds the union.
+  expect(qc.getQueryData(streamKey)).toEqual({
+    "1": { exp_time: 30 },
+    "2": { exp_time: 31 },
+  });
+  // Progress is the running row count.
+  expect(qc.getQueryData(progKey)).toEqual({ rows: 2 });
 });
 
-test("metadataComplete clears progress", () => {
+test("metadataComplete clears progress but keeps streamed rows", () => {
   const qc = new QueryClient();
   const pkey = queryKeys.metadataProgress("local", "lsstcam", "2026-04-10");
-  qc.setQueryData(pkey, { received: 1, total: 2 });
+  const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
+  qc.setQueryData(pkey, { rows: 2 });
+  qc.setQueryData(skey, { "1": { exp_time: 30 } });
   applyLiveMessage(qc, {
     type: "metadataComplete",
     location: "local",
@@ -80,4 +76,6 @@ test("metadataComplete clears progress", () => {
     total: 2,
   });
   expect(qc.getQueryData(pkey)).toBeNull();
+  // Streamed rows survive completion (the table still renders them).
+  expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 } });
 });

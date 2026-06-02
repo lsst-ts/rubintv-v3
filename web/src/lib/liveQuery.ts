@@ -5,7 +5,6 @@
 // based is simplest and correct: the REST endpoint is the formatter.
 
 import type { QueryClient } from "@tanstack/react-query";
-import type { DatePayload } from "./types";
 import { debugLog } from "./debug";
 
 export interface ServerMessage {
@@ -31,16 +30,21 @@ export const queryKeys = {
   nightReport: (loc: string, cam: string, date: string) =>
     ["nightReport", loc, cam, date] as const,
   // Progress of the WS metadata stream for a (loc, cam, date). Written by
-  // applyLiveMessage, read by CameraTable to show "metadata N/total". null
-  // once complete (or never started).
+  // applyLiveMessage, read by CameraTable to show a running row count while
+  // metadata streams in. null once complete (or never started).
   metadataProgress: (loc: string, cam: string, date: string) =>
     ["metadataProgress", loc, cam, date] as const,
+  // Accumulated streamed metadata for a (loc, cam, date). Kept separate from
+  // the REST date payload so streamed rows are never lost to the payload's
+  // load lifecycle; CameraTable merges the two at render time.
+  metadataStream: (loc: string, cam: string, date: string) =>
+    ["metadataStream", loc, cam, date] as const,
 };
 
-/** Progress of an in-flight metadata stream. */
+/** Progress of an in-flight metadata stream. The total isn't known until the
+ *  stream ends (it parses incrementally), so we report rows received so far. */
 export interface MetadataProgress {
-  received: number;
-  total: number;
+  rows: number;
 }
 
 /** Apply a live message by invalidating the affected cached queries. */
@@ -101,28 +105,24 @@ function mergeMetadataChunk(
 ): void {
   const chunk = (msg.data ?? {}) as Metadata;
 
-  let merged = false;
-  qc.setQueryData<DatePayload>(
-    queryKeys.datePayload(location, camera, date),
-    (prev) => {
-      if (!prev) return prev; // No payload yet; REST fetch will carry metadata.
-      merged = true;
-      return { ...prev, metadata: { ...prev.metadata, ...chunk } };
-    },
+  // Accumulate into the dedicated stream slot (never lost; merged at render).
+  const streamKey = queryKeys.metadataStream(location, camera, date);
+  const next = qc.setQueryData<Metadata>(streamKey, (prev) => ({
+    ...(prev ?? {}),
+    ...chunk,
+  }));
+  const rows = next ? Object.keys(next).length : Object.keys(chunk).length;
+
+  qc.setQueryData<MetadataProgress>(
+    queryKeys.metadataProgress(location, camera, date),
+    { rows },
   );
+
   debugLog("liveQuery.metadataChunk", {
     camera,
     date,
     seq: msg.seq,
-    total: msg.total,
-    rows: Object.keys(chunk).length,
-    mergedIntoPayload: merged,
+    rowsInChunk: Object.keys(chunk).length,
+    rowsTotal: rows,
   });
-
-  if (typeof msg.seq === "number" && typeof msg.total === "number") {
-    qc.setQueryData<MetadataProgress>(
-      queryKeys.metadataProgress(location, camera, date),
-      { received: msg.seq + 1, total: msg.total },
-    );
-  }
 }
