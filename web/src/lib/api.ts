@@ -71,4 +71,16 @@ export const api = {
   ) =>
     `/api/locations/${enc(loc)}/cameras/${enc(cam)}/channels/${enc(channel)}/` +
     `${enc(date)}/${enc(seq)}/${enc(filename)}`,
+
+  // Build a proxied media URL from a raw per-day S3 key. Per-day keys follow
+  // `{camera}/{date}/{channel}/{seq}/{filename}.{ext}` (the seq segment is a
+  // word sentinel like "final"). The proxy route resolves the actual object by
+  // listing that prefix, so we only need channel/date/seq/filename — there is
+  // no `/api/{rawkey}` route to serve the key directly.
+  perDayMediaUrl: (loc: string, cam: string, key: string): string | null => {
+    const parts = key.split("/");
+    if (parts.length < 5) return null;
+    const [, date, channel, seq, ...rest] = parts;
+    return api.mediaUrl(loc, cam, channel, date, seq, rest.join("/"));
+  },
 };

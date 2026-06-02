@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -5,13 +6,33 @@ import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 
-// All-sky: current still + movie playback for a date. Per-day artifacts come
-// from the date payload's per_day map.
+// Live view (live_view cameras, e.g. All Sky): a single panel showing the most
+// recent movie and (on the current date) the latest still, rather than a
+// per-seq-num table. Despite the channels being flagged per_day in config, the
+// bucket stores them as ordinary per-seq-num artifacts (integer seqs under
+// payload.channels).
+//
+// Two modes, keyed off whether the date is the newest one in the calendar:
+//
+//   * Current date: live. Show the latest still AND the latest movie, each at
+//     its highest integer seq. A channelData live message invalidates the date
+//     payload so the panel advances to a newer seq in place, no reload.
+//
+//   * Historical date: movie only. The last movie written for a finished day
+//     carries the "final" sentinel seq (.../movies/final/...), so we request
+//     that directly through the proxy — which resolves it by S3 prefix and so
+//     does NOT depend on the index/cache, which may be incomplete if the
+//     poller was interrupted before the final movie was recorded. Stills are
+//     not shown for past days.
 export function AllSky() {
   const { location = "", camera = "" } = useParams();
   const [params, setParams] = useSearchParams();
 
-  useLiveTopic({ topic: "camera", location, camera });
+  const { data: cameraInfo } = useQuery({
+    queryKey: queryKeys.camera(location, camera),
+    queryFn: () => api.camera(location, camera),
+    staleTime: STALE.config,
+  });
 
   const { data: calendar } = useQuery({
     queryKey: queryKeys.calendar(location, camera),
@@ -19,6 +40,11 @@ export function AllSky() {
     staleTime: STALE.calendar,
   });
   const date = params.get("date") ?? calendar?.dates[0] ?? "";
+  // The newest date with data is the live one; everything else is historical.
+  const isCurrent = date !== "" && date === calendar?.dates[0];
+
+  // Subscribe with the resolved date so channelData updates for today land live.
+  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -27,30 +53,116 @@ export function AllSky() {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  const proxied = (key: string) => `/api/${key}`;
+  // Channels declared as video in the camera's mosaic view are "movie"
+  // channels; the rest (stills) render as images.
+  const videoChannels = useMemo(
+    () =>
+      new Set(
+        cameraInfo?.mosaic_view_meta
+          .filter((m) => m.media_type === "video")
+          .map((m) => m.channel) ?? [],
+      ),
+    [cameraInfo],
+  );
+
+  const tiles = useMemo<Tile[]>(() => {
+    if (!cameraInfo) return [];
+
+    return cameraInfo.channels.flatMap((ch): Tile[] => {
+      const isVideo = videoChannels.has(ch.name);
+
+      // Historical: movie channels resolve to the "final" sentinel directly,
+      // bypassing the (possibly incomplete) index. Stills are skipped.
+      if (!isCurrent) {
+        if (!isVideo) return [];
+        return [
+          {
+            channel: ch.name,
+            title: ch.title,
+            seq: "final",
+            isVideo: true,
+            src: api.mediaUrl(location, camera, ch.name, date, "final", "movie.mp4"),
+          },
+        ];
+      }
+
+      // Current date: latest artifact at the highest integer seq.
+      if (!payload) return [];
+      const seqs = (payload.channels[ch.name] ?? []).filter(
+        (n): n is number => typeof n === "number",
+      );
+      if (seqs.length === 0) return [];
+      const seq = Math.max(...seqs);
+      const ext =
+        payload.extensions[ch.name]?.exceptions?.[String(seq)] ??
+        payload.extensions[ch.name]?.default ??
+        (isVideo ? "mp4" : "png");
+      return [
+        {
+          channel: ch.name,
+          title: ch.title,
+          seq,
+          isVideo,
+          src: api.mediaUrl(
+            location,
+            camera,
+            ch.name,
+            date,
+            String(seq).padStart(6, "0"),
+            `image.${ext}`,
+          ),
+        },
+      ];
+    });
+  }, [cameraInfo, payload, videoChannels, isCurrent, location, camera, date]);
 
   return (
-    <section>
-      <h1>All Sky</h1>
-      <label>
-        Date{" "}
-        <select value={date} onChange={(e) => setParams({ date: e.target.value })}>
-          {calendar?.dates.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="allsky-media">
-        {Object.entries(payload?.per_day ?? {}).map(([chan, key]) =>
-          key.endsWith(".mp4") ? (
-            <video key={chan} src={proxied(key)} controls />
-          ) : (
-            <img key={chan} src={proxied(key)} alt={chan} />
-          ),
+    <section className="live-view">
+      <header className="table-header">
+        <h1>{cameraInfo?.title ?? camera}</h1>
+        <label>
+          Date{" "}
+          <select
+            value={date}
+            onChange={(e) => setParams({ date: e.target.value })}
+          >
+            {calendar?.dates.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+      </header>
+
+      <div className="live-view-media">
+        {tiles.length === 0 && date !== "" && (
+          <p className="skeleton">No imagery yet for {date}.</p>
         )}
+        {tiles.map((t) => (
+          <figure key={t.channel} className="live-view-item">
+            <figcaption>
+              {t.title}{" "}
+              <span className="live-view-seq">
+                {typeof t.seq === "number" ? `#${t.seq}` : t.seq}
+              </span>
+            </figcaption>
+            {t.isVideo ? (
+              <video src={t.src} controls />
+            ) : (
+              <img src={t.src} alt={`${t.title} ${t.seq}`} />
+            )}
+          </figure>
+        ))}
       </div>
     </section>
   );
+}
+
+interface Tile {
+  channel: string;
+  title: string;
+  seq: number | string;
+  isVideo: boolean;
+  src: string;
 }

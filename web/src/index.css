@@ -151,6 +151,34 @@ body {
   align-items: center;
 }
 
+.live-view-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.live-view-item {
+  flex: 1 1 24rem;
+  min-width: 0;
+  margin: 0;
+}
+.live-view-item figcaption {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+.live-view-seq {
+  font-weight: 400;
+  opacity: 0.6;
+}
+.live-view-item img,
+.live-view-item video {
+  width: 100%;
+  height: auto;
+  background: #1b1f27;
+  border: 1px solid #2a2f3a;
+  border-radius: 0.4rem;
+}
+
 .plot-gallery {
   display: flex;
   flex-wrap: wrap;

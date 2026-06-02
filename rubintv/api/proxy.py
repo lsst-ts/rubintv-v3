@@ -26,6 +26,7 @@ from rubintv.state import AppState
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
+    from mypy_boto3_s3.type_defs import GetObjectOutputTypeDef as GetObjectResult
 
 log = get_logger(__name__)
 
@@ -59,33 +60,53 @@ def proxy_object(
     client: S3Client = state.s3.client_for(location.name)
     bucket = location.bucket
 
-    key = _resolve_key(client, bucket, prefix)
-    if key is None:
-        log.info("proxy.miss", location=location.name, prefix=prefix)
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, f"no object under prefix: {prefix}"
-        )
-
-    get_kwargs: dict[str, str] = {"Bucket": bucket, "Key": key}
+    # Object keys follow a fixed convention — the seq directory holds a single
+    # file named for the artifact it identifies:
+    #   {camera}/{date}/{segment}/{seq}/{camera}_{channel}_{date}_{seq}.{ext}
+    #   e.g. lsstcam/2026-05-28/witness_detector/000759/
+    #            lsstcam_witness_detector_2026-05-28_000759.jpg
+    # The filename stem uses the channel *name* (not the prefix segment). So we
+    # can build the key directly from the URL's extension and GET it without a
+    # LIST. The LIST is kept only as a fallback for any object that doesn't
+    # follow the convention (legacy data, unexpected filename).
+    conditional: dict[str, str] = {}
     if if_none_match is not None:
-        get_kwargs["IfNoneMatch"] = if_none_match
+        conditional["IfNoneMatch"] = if_none_match
     if range_header is not None:
-        get_kwargs["Range"] = range_header
+        conditional["Range"] = range_header
 
-    try:
-        obj = client.get_object(**get_kwargs)  # type: ignore[arg-type]
-    except client.exceptions.NoSuchKey:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no object: {key}") from None
-    except client.exceptions.ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code")
-        if code == "304":
-            return Response(status_code=status.HTTP_304_NOT_MODIFIED)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "upstream S3 error") from exc
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else None
+    obj: GetObjectResult | None = None
+    key: str | None = None
+    if ext is not None:
+        # Try the convention key directly (the common case): no LIST.
+        key = f"{prefix}{camera.name}_{channel}_{date}_{seq}.{ext}"
+        result = _get_object(client, bucket, key, conditional)
+        if isinstance(result, Response):
+            return result  # 304 Not Modified
+        obj = result  # None on a miss -> fall through to listing
 
-    # Use the URL-supplied filename only for its extension; build a stable
-    # download name so files saved by the browser identify channel/date/seq.
-    ext = filename.rsplit(".", 1)[-1] if "." in filename else key.rsplit(".", 1)[-1]
-    download_name = f"{channel}_{date}_{seq}.{ext}"
+    if obj is None:
+        # Convention miss (or no extension supplied): resolve by listing.
+        key = _resolve_key(client, bucket, prefix)
+        if key is None:
+            log.info("proxy.miss", location=location.name, prefix=prefix)
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"no object under prefix: {prefix}"
+            )
+        result = _get_object(client, bucket, key, conditional)
+        if isinstance(result, Response):
+            return result  # 304 Not Modified
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"no object: {key}")
+        obj = result
+
+    # Build a stable download name so files saved by the browser identify
+    # camera/channel/date/seq (e.g. allsky_stills_2026-05-28_000966.jpg).
+    # key is set wherever obj is (fast-path convention key, or the listed key).
+    assert key is not None
+    out_ext = ext if ext is not None else key.rsplit(".", 1)[-1]
+    download_name = f"{camera.name}_{channel}_{date}_{seq}.{out_ext}"
 
     headers = {
         "Cache-Control": _CACHE_CONTROL,
@@ -106,6 +127,30 @@ def proxy_object(
         media_type=obj.get("ContentType", "application/octet-stream"),
         headers=headers,
     )
+
+
+def _get_object(
+    client: S3Client, bucket: str, key: str, conditional: dict[str, str]
+) -> GetObjectResult | Response | None:
+    """Fetch an object, mapping S3 outcomes to the proxy's control flow.
+
+    Returns the object on success, ``None`` if the key is absent (caller may
+    fall back to listing), or a 304 ``Response`` when the client's
+    ``If-None-Match`` matched. Any other S3 error becomes a 502.
+    """
+    try:
+        return client.get_object(Bucket=bucket, Key=key, **conditional)
+    except client.exceptions.NoSuchKey:
+        return None
+    except client.exceptions.ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        if code == "304":
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+        if code in ("NoSuchKey", "404"):
+            return None
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "upstream S3 error"
+        ) from exc
 
 
 def _resolve_key(client: S3Client, bucket: str, prefix: str) -> str | None:

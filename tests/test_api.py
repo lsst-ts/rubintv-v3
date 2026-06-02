@@ -143,18 +143,48 @@ def test_admin_set_and_get(seeded_client: TestClient) -> None:
 
 
 def test_proxy_streams_object(seeded_client: TestClient) -> None:
-    # The URL filename is a download-name suggestion, not the real S3 key —
-    # the proxy resolves the object by listing the seq prefix.
+    # The seeded object (a.png) does NOT follow the filename convention, so the
+    # proxy's direct-key GET misses and it falls back to listing the seq prefix.
+    # This exercises the fallback path and confirms it still serves correctly.
     resp = seeded_client.get(
         f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/000001/image.png"
     )
     assert resp.status_code == 200
     assert resp.content == b"x"
     assert "Cache-Control" in resp.headers
+    # The download name is the canonical convention name regardless of the real
+    # key, so saved files identify camera/channel/date/seq.
     assert (
         resp.headers["Content-Disposition"]
-        == f'inline; filename="witness_detector_{DATE}_000001.png"'
+        == f'inline; filename="lsstcam_witness_detector_{DATE}_000001.png"'
     )
+
+
+def test_proxy_fast_path_skips_listing(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A convention-named object is served by a direct GET without any LIST.
+    # We seed the convention key into the already-mocked bucket, then make
+    # _resolve_key explode so any fallback to listing fails the test.
+    import rubintv.api.proxy as proxy
+
+    s3 = boto3.client("s3", region_name="us-east-1")
+    conv_key = (
+        f"lsstcam/{DATE}/witness_detector/000003/"
+        f"lsstcam_witness_detector_{DATE}_000003.png"
+    )
+    s3.put_object(Bucket=TEST_BUCKET, Key=conv_key, Body=b"direct")
+
+    def _no_list(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("fast path must not list the prefix")
+
+    monkeypatch.setattr(proxy, "_resolve_key", _no_list)
+
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/000003/image.png"
+    )
+    assert resp.status_code == 200
+    assert resp.content == b"direct"
 
 
 def test_proxy_404_when_seq_missing(seeded_client: TestClient) -> None:

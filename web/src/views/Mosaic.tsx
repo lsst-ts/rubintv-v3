@@ -40,16 +40,20 @@ export function Mosaic() {
         </select>
       </label>
       <div className="card-grid">
-        {Object.entries(payload?.per_day ?? {}).map(([chan, key]) => (
-          <figure key={chan} className="card">
-            {key.endsWith(".mp4") ? (
-              <video src={`/api/${key}`} controls />
-            ) : (
-              <img src={`/api/${key}`} alt={chan} loading="lazy" />
-            )}
-            <figcaption>{chan}</figcaption>
-          </figure>
-        ))}
+        {Object.entries(payload?.per_day ?? {}).map(([chan, key]) => {
+          const src = api.perDayMediaUrl(location, camera, key);
+          if (src === null) return null;
+          return (
+            <figure key={chan} className="card">
+              {key.endsWith(".mp4") ? (
+                <video src={src} controls />
+              ) : (
+                <img src={src} alt={chan} loading="lazy" />
+              )}
+              <figcaption>{chan}</figcaption>
+            </figure>
+          );
+        })}
       </div>
     </section>
   );

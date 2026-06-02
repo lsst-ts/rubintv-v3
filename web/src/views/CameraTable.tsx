@@ -8,6 +8,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
 import { ShareLink } from "../components/ShareLink";
+import { AllSky } from "./AllSky";
 
 // The main camera view: date picker, per-seq-num table with channel columns
 // and metadata columns, per-day artifacts, night-report link. Subscribes to
@@ -114,6 +115,13 @@ export function CameraTable() {
     }
     return [...s].sort((a, b) => b - a);
   }, [payload, metadata]);
+
+  // Live-view cameras (e.g. All Sky) show a single latest-image/latest-movie
+  // panel instead of a per-seq-num table. Delegate once the config has loaded.
+  // Placed after all hooks above so the rules-of-hooks order is unconditional.
+  if (cameraInfo?.live_view) {
+    return <AllSky />;
+  }
 
   return (
     <section>

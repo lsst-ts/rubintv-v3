@@ -403,10 +403,8 @@ cameras:
     channels:
       - name: movies
         title: Current Movie
-        per_day: true
       - name: stills
         title: Current Image
-        per_day: true
 
   - name: comcam
     title: ComCam
