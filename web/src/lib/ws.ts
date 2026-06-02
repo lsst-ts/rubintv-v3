@@ -8,6 +8,7 @@
 // spam.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { debugLog } from "./debug";
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
@@ -47,7 +48,10 @@ export function useWebSocket(url = "/ws") {
   const send = useCallback((data: unknown) => {
     const sock = socketRef.current;
     if (sock && sock.readyState === WebSocket.OPEN) {
+      debugLog("ws.send", data);
       sock.send(JSON.stringify(data));
+    } else {
+      debugLog("ws.send.dropped", "socket not open", data);
     }
   }, []);
 
@@ -77,6 +81,18 @@ export function useWebSocket(url = "/ws") {
       sock.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data) as ServerMessage;
+          if (msg.type === "metadataChunk" || msg.type === "metadataComplete") {
+            debugLog("ws.recv", msg.type, {
+              camera: msg.camera,
+              date: msg.date,
+              seq: msg.seq,
+              total: msg.total,
+              rows:
+                msg.data && typeof msg.data === "object"
+                  ? Object.keys(msg.data as object).length
+                  : undefined,
+            });
+          }
           handlersRef.current.forEach((h) => h(msg));
         } catch {
           // Ignore non-JSON frames.

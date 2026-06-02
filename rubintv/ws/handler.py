@@ -107,11 +107,33 @@ class WsService:
                     ServerMessage(type="error", message=str(exc)).model_dump_json()
                 )
                 continue
+            log.debug(
+                "ws.frame.recv",
+                conn=conn.id,
+                action=req.action,
+                topic=req.topic,
+                location=req.location,
+                camera=req.camera,
+                date=req.date,
+            )
             if req.action == "subscribe":
                 self.manager.subscribe(conn, req.topic_key())
                 self._send_snapshot(conn, req)
                 if req.topic == "camera" and req.camera and req.date:
+                    log.debug(
+                        "ws.metadata.stream.start",
+                        conn=conn.id,
+                        camera=req.camera,
+                        date=req.date,
+                    )
                     self._start_metadata_stream(conn, req, stream_tasks)
+                elif req.topic == "camera" and req.camera and not req.date:
+                    log.debug(
+                        "ws.metadata.stream.skip",
+                        conn=conn.id,
+                        reason="no_date_on_subscribe",
+                        camera=req.camera,
+                    )
             else:
                 self.manager.unsubscribe(conn, req.topic_key())
 
@@ -148,8 +170,18 @@ class WsService:
 
         items = list(data.items())
         total = max(1, -(-len(items) // _METADATA_CHUNK_SIZE))  # ceil-div
+        log.debug(
+            "ws.metadata.fetched",
+            conn=conn.id,
+            camera=camera,
+            date=date,
+            rows=len(items),
+            chunks=total,
+            etag=etag,
+        )
         for i in range(0, len(items), _METADATA_CHUNK_SIZE):
             chunk = dict(items[i : i + _METADATA_CHUNK_SIZE])
+            seq = i // _METADATA_CHUNK_SIZE
             self.manager.send_to(
                 conn,
                 ServerMessage(
@@ -157,10 +189,19 @@ class WsService:
                     location=location,
                     camera=camera,
                     date=date,
-                    seq=i // _METADATA_CHUNK_SIZE,
+                    seq=seq,
                     total=total,
                     data=chunk,
                 ),
+            )
+            log.debug(
+                "ws.metadata.chunk.enqueued",
+                conn=conn.id,
+                camera=camera,
+                date=date,
+                seq=seq,
+                total=total,
+                rows_in_chunk=len(chunk),
             )
             # Yield so a large payload doesn't starve the pump or other streams.
             await asyncio.sleep(0)
@@ -175,11 +216,28 @@ class WsService:
                 etag=etag,
             ),
         )
+        log.debug(
+            "ws.metadata.complete",
+            conn=conn.id,
+            camera=camera,
+            date=date,
+            chunks=total,
+        )
 
     async def _send_loop(self, conn: Connection) -> None:
         while True:
             msg = await conn.queue.get()
             await conn.socket.send_text(msg.model_dump_json())
+            if msg.type in ("metadataChunk", "metadataComplete"):
+                log.debug(
+                    "ws.frame.sent",
+                    conn=conn.id,
+                    type=msg.type,
+                    camera=msg.camera,
+                    date=msg.date,
+                    seq=msg.seq,
+                    total=msg.total,
+                )
 
     def _send_snapshot(self, conn: Connection, req: SubscribeRequest) -> None:
         """Push the current state for a freshly subscribed camera topic."""

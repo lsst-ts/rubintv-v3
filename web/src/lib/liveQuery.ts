@@ -6,6 +6,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import type { DatePayload } from "./types";
+import { debugLog } from "./debug";
 
 export interface ServerMessage {
   type: string;
@@ -100,13 +101,23 @@ function mergeMetadataChunk(
 ): void {
   const chunk = (msg.data ?? {}) as Metadata;
 
+  let merged = false;
   qc.setQueryData<DatePayload>(
     queryKeys.datePayload(location, camera, date),
-    (prev) =>
-      prev
-        ? { ...prev, metadata: { ...prev.metadata, ...chunk } }
-        : prev, // No payload yet; the REST fetch will arrive with metadata.
+    (prev) => {
+      if (!prev) return prev; // No payload yet; REST fetch will carry metadata.
+      merged = true;
+      return { ...prev, metadata: { ...prev.metadata, ...chunk } };
+    },
   );
+  debugLog("liveQuery.metadataChunk", {
+    camera,
+    date,
+    seq: msg.seq,
+    total: msg.total,
+    rows: Object.keys(chunk).length,
+    mergedIntoPayload: merged,
+  });
 
   if (typeof msg.seq === "number" && typeof msg.total === "number") {
     qc.setQueryData<MetadataProgress>(
