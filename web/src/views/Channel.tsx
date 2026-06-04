@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
+import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 
@@ -25,6 +26,15 @@ export function Channel() {
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
     queryFn: () => api.datePayload(location, camera, date),
+    enabled: date !== "",
+    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
+  });
+
+  // Metadata is fetched separately from the structured payload (shares the
+  // cache with the table's query) so the media renders without waiting on it.
+  const { data: metadata } = useQuery<Metadata>({
+    queryKey: queryKeys.metadata(location, camera, date),
+    queryFn: () => api.metadata(location, camera, date),
     enabled: date !== "",
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
@@ -107,7 +117,7 @@ export function Channel() {
       <aside className="metadata-sidebar">
         <h2>Metadata</h2>
         <dl>
-          {Object.entries(payload?.metadata[String(seq)] ?? {}).map(([k, v]) => (
+          {Object.entries(metadata?.[String(seq)] ?? {}).map(([k, v]) => (
             <div key={k}>
               <dt>{k}</dt>
               <dd>{String(v)}</dd>

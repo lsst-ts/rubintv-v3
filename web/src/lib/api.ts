@@ -8,6 +8,7 @@ import type {
   DatePayload,
   LocationOut,
   LocationSummary,
+  Metadata,
   NightReportOut,
   StatusResponse,
 } from "./types";
@@ -50,6 +51,14 @@ export const api = {
   datePayload: (loc: string, cam: string, date: string) =>
     getJson<DatePayload>(
       `/locations/${enc(loc)}/cameras/${enc(cam)}/dates/${enc(date)}`,
+    ),
+
+  // Backstop for the WS metadata stream: the full metadata.json for a date.
+  // The grid renders without this (from datePayload); cells fill from the
+  // stream, with this REST query covering clients whose stream drops.
+  metadata: (loc: string, cam: string, date: string) =>
+    getJson<Metadata>(
+      `/locations/${enc(loc)}/cameras/${enc(cam)}/metadata/${enc(date)}`,
     ),
 
   nightReport: (loc: string, cam: string, date: string) =>

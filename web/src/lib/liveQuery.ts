@@ -29,6 +29,11 @@ export const queryKeys = {
     ["datePayload", loc, cam, date] as const,
   nightReport: (loc: string, cam: string, date: string) =>
     ["nightReport", loc, cam, date] as const,
+  // The REST metadata.json for a (loc, cam, date) — the backstop fetched
+  // independently of the structured date payload, so the grid never waits on
+  // it. Merged with the streamed metadata at render time.
+  metadata: (loc: string, cam: string, date: string) =>
+    ["metadata", loc, cam, date] as const,
   // Progress of the WS metadata stream for a (loc, cam, date). Written by
   // applyLiveMessage, read by CameraTable to show a running row count while
   // metadata streams in. null once complete (or never started).

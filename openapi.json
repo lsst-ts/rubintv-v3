@@ -1156,14 +1156,6 @@
             "type": "object",
             "title": "Per Day"
           },
-          "metadata": {
-            "additionalProperties": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "object",
-            "title": "Metadata"
-          },
           "has_night_report": {
             "type": "boolean",
             "title": "Has Night Report"
@@ -1175,7 +1167,6 @@
           "channels",
           "extensions",
           "per_day",
-          "metadata",
           "has_night_report"
         ],
         "title": "DatePayload",

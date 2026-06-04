@@ -390,12 +390,6 @@ export interface components {
             per_day: {
                 [key: string]: string;
             };
-            /** Metadata */
-            metadata: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            };
             /** Has Night Report */
             has_night_report: boolean;
         };

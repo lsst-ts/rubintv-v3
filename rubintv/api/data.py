@@ -148,23 +148,25 @@ def get_calendar(
     "/locations/{location}/cameras/{camera}/dates/{date}",
     response_model=DatePayload,
 )
-async def get_date_payload(
+def get_date_payload(
     date: str = Depends(valid_date),
     location: Location = Depends(get_location),
     camera: Camera = Depends(get_camera),
     state: AppState = Depends(get_app_state),
 ) -> DatePayload:
+    # Structured-only: this reads the in-memory store (warm-start cached) and
+    # never touches S3, so the grid renders immediately. Metadata is fetched
+    # separately by the client (WS stream + /metadata/{date} backstop).
     idx = state.store.date_index(location.name, camera.name, date)
-    metadata = await state.metadata.get(location.name, camera.name, date)
     if idx is None:
-        # A date with no structured data may still have metadata; return an
-        # empty-but-valid payload rather than 404 so the table can render.
+        # A date may still have metadata (fetched separately) with no
+        # structured data; return an empty-but-valid payload rather than 404
+        # so the table can still render its metadata rows.
         return DatePayload(
             date=date,
             channels={},
             extensions={},
             per_day={},
-            metadata=metadata,
             has_night_report=False,
         )
     return DatePayload(
@@ -178,7 +180,6 @@ async def get_date_payload(
             for ch, e in idx.extensions.items()
         },
         per_day=idx.per_day,
-        metadata=metadata,
         has_night_report=bool(idx.night_report_keys),
     )
 

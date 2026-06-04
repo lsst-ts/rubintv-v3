@@ -116,9 +116,12 @@ class DatePayload(BaseModel):
     extensions: dict[str, ExtInfoOut]
     per_day: dict[str, str]
     """channel -> S3 key of the per-day artifact."""
-    metadata: dict[str, dict[str, object]]
-    """seq_num (string) -> {column: value}."""
     has_night_report: bool
+    # Metadata is deliberately NOT bundled here. It is a large, slow,
+    # live-from-S3 fetch, whereas channels/per_day come from the warm-start
+    # cache and render instantly. The table loads metadata separately (the WS
+    # stream for progressive fill, the /metadata/{date} endpoint as backstop)
+    # so the grid never waits on it.
 
 
 class CalendarOut(BaseModel):

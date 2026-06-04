@@ -96,7 +96,15 @@ def test_date_payload(seeded_client: TestClient) -> None:
     assert body["extensions"]["witness_detector"]["exceptions"] == {"2": "jpg"}
     assert body["per_day"]["day_movie"].endswith("m.mp4")
     assert body["has_night_report"] is True
-    assert body["metadata"]["1"]["Exposure time"] == 30.0
+    # Metadata is no longer bundled here — it's fetched separately so the grid
+    # never waits on the (slow, live-from-S3) metadata download.
+    assert "metadata" not in body
+
+
+def test_metadata_endpoint(seeded_client: TestClient) -> None:
+    resp = seeded_client.get(f"/api/locations/test/cameras/lsstcam/metadata/{DATE}")
+    assert resp.status_code == 200
+    assert resp.json()["1"]["Exposure time"] == 30.0
 
 
 def test_bad_date_422(seeded_client: TestClient) -> None:

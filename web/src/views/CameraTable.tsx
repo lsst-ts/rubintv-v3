@@ -63,12 +63,22 @@ export function CameraTable() {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  // The metadata the table renders: REST payload merged with whatever has
-  // streamed in. The stream usually arrives first on slow links; REST is the
-  // authoritative backstop and fills any chunk that was dropped.
+  // Metadata is fetched independently of the structured payload so the grid
+  // (channels/seqs) renders immediately from cache without waiting on this
+  // large, live-from-S3 download. It's the backstop for the WS stream.
+  const { data: restMeta } = useQuery<Metadata>({
+    queryKey: queryKeys.metadata(location, camera, date),
+    queryFn: () => api.metadata(location, camera, date),
+    enabled: date !== "",
+    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
+  });
+
+  // The metadata the table renders: streamed rows merged with the REST
+  // backstop. The stream usually arrives first on slow links; REST fills any
+  // chunk that was dropped (and covers clients whose stream never connects).
   const metadata = useMemo<Metadata>(
-    () => ({ ...(streamedMeta ?? {}), ...(payload?.metadata ?? {}) }),
-    [streamedMeta, payload],
+    () => ({ ...(streamedMeta ?? {}), ...(restMeta ?? {}) }),
+    [streamedMeta, restMeta],
   );
 
   const channelNames = useMemo(
