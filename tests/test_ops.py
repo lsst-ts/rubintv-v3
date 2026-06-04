@@ -34,6 +34,10 @@ def test_status_endpoint_reports_loading() -> None:
         body = client.get("/api/health/status").json()
         assert "ready" in body
         assert "historical_loading" in body
+        # Per-camera readiness is present and well-formed for each camera.
+        assert isinstance(body["cameras"], list)
+        for cam in body["cameras"]:
+            assert {"location", "camera", "recent_ready", "full_complete"} <= set(cam)
 
 
 def test_correlation_header_echoed() -> None:

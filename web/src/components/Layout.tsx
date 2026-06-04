@@ -42,10 +42,11 @@ export function Layout() {
               {path.replace("/", "")}
             </a>
           ))}
+          <Link to="/status">status</Link>
           <ConnectionStatus />
         </nav>
       </header>
-      <LoadingBanner />
+      <LoadingBanner location={location} camera={camera} />
       <main className="app-content">
         <Outlet />
       </main>

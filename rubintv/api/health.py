@@ -27,11 +27,24 @@ class ReadyResponse(BaseModel):
     ready: bool
 
 
+class CameraStatus(BaseModel):
+    location: str
+    camera: str
+    recent_ready: bool
+    """The recent-window scan for this camera has been applied; recent dates
+    are viewable even while the full back-catalogue is still loading."""
+    full_complete: bool
+    """The camera's whole back-catalogue has been scanned at least once."""
+
+
 class StatusResponse(BaseModel):
     ready: bool
     historical_loading: bool
     """True while the back-catalogue is still being scanned; the frontend
     shows a non-blocking 'still loading' affordance rather than an error."""
+    cameras: list[CameraStatus]
+    """Per-camera cold-start scan progress, so the frontend can scope the
+    'loading' affordance to the camera being viewed."""
 
 
 @router.get("/live", response_model=LiveResponse)
@@ -52,7 +65,18 @@ def ready(
 
 @router.get("/status", response_model=StatusResponse)
 def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse:
-    """Detailed status: readiness plus whether history is still loading."""
+    """Detailed status: readiness plus per-camera history-loading progress."""
+    cameras = [
+        CameraStatus(
+            location=location,
+            camera=camera,
+            recent_ready=st.recent_ready,
+            full_complete=st.full_complete,
+        )
+        for (location, camera), st in state.camera_status().items()
+    ]
     return StatusResponse(
-        ready=state.ready, historical_loading=state.historical_loading()
+        ready=state.ready,
+        historical_loading=state.historical_loading(),
+        cameras=cameras,
     )

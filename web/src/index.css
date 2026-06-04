@@ -67,6 +67,24 @@ body {
   margin-left: 0.5rem;
 }
 
+.scan-stage {
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.75rem;
+}
+.scan-stage--pending {
+  background: #f2c037;
+  color: #1a1a1a;
+}
+.scan-stage--recent {
+  background: #6fb1fc;
+  color: #1a1a1a;
+}
+.scan-stage--complete {
+  background: #7bc47f;
+  color: #1a1a1a;
+}
+
 .share-link {
   font-size: 0.85rem;
   cursor: pointer;

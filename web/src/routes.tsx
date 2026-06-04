@@ -9,6 +9,7 @@ import { AllSky } from "./views/AllSky";
 import { Detectors } from "./views/Detectors";
 import { Admin } from "./views/Admin";
 import { Mosaic } from "./views/Mosaic";
+import { Status } from "./views/Status";
 
 // Path-based route table — each path fully describes a tab's state, so a
 // deep link restores the exact view on hard reload (Decision 7). The backend
@@ -20,6 +21,9 @@ export const routes: RouteObject[] = [
     element: <Layout />,
     children: [
       { index: true, element: <Home /> },
+      // Site-wide ops view; precedes :location so "status" isn't read as a
+      // location name.
+      { path: "status", element: <Status /> },
       { path: ":location", element: <Location /> },
       { path: ":location/:camera", element: <CameraTable /> },
       { path: ":location/:camera/night-report", element: <NightReport /> },

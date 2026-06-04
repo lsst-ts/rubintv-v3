@@ -126,12 +126,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store,
         poller,
         poll_interval=settings.poll_interval_seconds,
+        recent_window_days=settings.recent_window_days,
         on_ready=lambda: setattr(state, "ready", True),
         cache_writer=write_cache,
         cache_slice_writer=write_slices,
     )
-    # Expose the engine's historical-loading flag to the status endpoint.
+    # Expose the engine's scan-progress to the status endpoint: the global
+    # loading flag plus the per-camera readiness map.
     state.historical_loading = lambda: engine.historical_loading
+    state.camera_status = engine.camera_status
 
     engine.start()
     ws_service.start()

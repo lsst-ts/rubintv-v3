@@ -55,7 +55,7 @@
           "health"
         ],
         "summary": "App Status",
-        "description": "Detailed status: readiness plus whether history is still loading.",
+        "description": "Detailed status: readiness plus per-camera history-loading progress.",
         "operationId": "app_status_api_health_status_get",
         "responses": {
           "200": {
@@ -333,6 +333,22 @@
             "schema": {
               "type": "string",
               "title": "Camera"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
             }
           }
         ],
@@ -953,6 +969,34 @@
         "title": "CameraOut",
         "description": "Full camera detail for the camera page header."
       },
+      "CameraStatus": {
+        "properties": {
+          "location": {
+            "type": "string",
+            "title": "Location"
+          },
+          "camera": {
+            "type": "string",
+            "title": "Camera"
+          },
+          "recent_ready": {
+            "type": "boolean",
+            "title": "Recent Ready"
+          },
+          "full_complete": {
+            "type": "boolean",
+            "title": "Full Complete"
+          }
+        },
+        "type": "object",
+        "required": [
+          "location",
+          "camera",
+          "recent_ready",
+          "full_complete"
+        ],
+        "title": "CameraStatus"
+      },
       "CameraSummary": {
         "properties": {
           "name": {
@@ -1522,12 +1566,20 @@
           "historical_loading": {
             "type": "boolean",
             "title": "Historical Loading"
+          },
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/CameraStatus"
+            },
+            "type": "array",
+            "title": "Cameras"
           }
         },
         "type": "object",
         "required": [
           "ready",
-          "historical_loading"
+          "historical_loading",
+          "cameras"
         ],
         "title": "StatusResponse"
       },

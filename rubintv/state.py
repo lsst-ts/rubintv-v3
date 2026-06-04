@@ -9,8 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from rubintv.config.models import Models
+
+if TYPE_CHECKING:
+    from rubintv.data.tasks import CameraScanState
 from rubintv.config.settings import Settings
 from rubintv.data.controls import ControlStore
 from rubintv.data.metadata import MetadataCache
@@ -36,5 +40,10 @@ class AppState:
     historical_loading: Callable[[], bool] = field(default=lambda: True)
     """Callable returning whether the historical back-catalogue is still
     loading (the poll engine owns the flag; this reads it)."""
+    camera_status: Callable[[], dict[tuple[str, str], CameraScanState]] = field(
+        default=dict
+    )
+    """Callable returning per-camera cold-start scan progress, keyed by
+    ``(location, camera)`` (the poll engine owns it; this reads it)."""
     """Flips true once the first data poll completes. Drives the readiness
     probe so k8s doesn't route traffic to an empty store."""

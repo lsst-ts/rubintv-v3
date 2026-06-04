@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     poll_interval_seconds: float = 1.0
     """Current-day poll cadence."""
 
+    recent_window_days: int = 30
+    """On cold start, scan this many recent observing-days per camera before
+    the full back-catalogue sweep, so recent history is viewable in seconds.
+    ``0`` disables the recent-first phase (full sweep only)."""
+
     log_level: str = "INFO"
     json_logs: bool = False
     """Emit JSON logs (production). Off by default for local dev."""

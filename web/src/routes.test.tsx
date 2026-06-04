@@ -41,6 +41,11 @@ test("mosaic suffix route wins over the channel catch-all", async () => {
   expect(await screen.findByText("Mosaic / Movies")).toBeDefined();
 });
 
+test("/status resolves to the scan-status view, not a location", async () => {
+  renderAt("/status");
+  expect(await screen.findByText("Scan status")).toBeDefined();
+});
+
 // Shared stub for the live_view (All Sky) tests: a camera reporting live_view
 // with a stills (image) and movies (video) channel, a two-date calendar, and a
 // date payload with integer seqs. The newest date (2026-04-10) is "current".

@@ -53,7 +53,7 @@ export interface paths {
         };
         /**
          * App Status
-         * @description Detailed status: readiness plus whether history is still loading.
+         * @description Detailed status: readiness plus per-camera history-loading progress.
          */
         get: operations["app_status_api_health_status_get"];
         put?: never;
@@ -317,6 +317,17 @@ export interface components {
             /** Mosaic View Meta */
             mosaic_view_meta: components["schemas"]["MosaicViewEntryOut"][];
         };
+        /** CameraStatus */
+        CameraStatus: {
+            /** Location */
+            location: string;
+            /** Camera */
+            camera: string;
+            /** Recent Ready */
+            recent_ready: boolean;
+            /** Full Complete */
+            full_complete: boolean;
+        };
         /**
          * CameraSummary
          * @description Camera as listed under a location (no heavy detail).
@@ -523,6 +534,8 @@ export interface components {
             ready: boolean;
             /** Historical Loading */
             historical_loading: boolean;
+            /** Cameras */
+            cameras: components["schemas"]["CameraStatus"][];
         };
         /** TimeSinceClockOut */
         TimeSinceClockOut: {
@@ -762,7 +775,9 @@ export interface operations {
     get_metadata_api_locations__location__cameras__camera__metadata__date__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
             path: {
                 date: string;
                 location: string;

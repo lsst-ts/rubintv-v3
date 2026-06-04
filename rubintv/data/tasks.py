@@ -54,9 +54,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from rubintv.config.models import Location, Models
-from rubintv.data.dayobs import get_current_day_obs
+from rubintv.data.dayobs import get_current_day_obs, recent_day_obs
 from rubintv.data.events import StoreChange
 from rubintv.data.source import S3Poller
 from rubintv.data.store import EventStore
@@ -66,6 +67,23 @@ log = get_logger(__name__)
 
 # Called after the first full current-day scan completes, to flip readiness.
 ReadyCallback = Callable[[], None]
+
+# Per-(location, camera) key, mirroring the store's index keying.
+LocCam = tuple[str, str]
+
+
+@dataclass(slots=True)
+class CameraScanState:
+    """Cold-start scan progress for one camera.
+
+    ``recent_ready`` flips once the recent-window scan has been applied, so
+    recent dates are viewable while the full sweep runs in the background.
+    ``full_complete`` flips once the whole ``{camera}/`` prefix has been
+    scanned at least once.
+    """
+
+    recent_ready: bool = False
+    full_complete: bool = False
 
 
 class PollEngine:
@@ -78,6 +96,7 @@ class PollEngine:
         poller: S3Poller,
         *,
         poll_interval: float = 1.0,
+        recent_window_days: int = 30,
         on_ready: ReadyCallback | None = None,
         cache_writer: Callable[[], Awaitable[None]] | None = None,
         cache_slice_writer: (
@@ -88,6 +107,7 @@ class PollEngine:
         self._store = store
         self._poller = poller
         self._interval = poll_interval
+        self._recent_window_days = recent_window_days
         self._on_ready = on_ready
         self._cache_writer = cache_writer
         self._cache_slice_writer = cache_slice_writer
@@ -95,9 +115,21 @@ class PollEngine:
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
         self._ready_fired = False
+        # Per-camera cold-start progress. Mutated only from the historical
+        # loop (single task), read by the status endpoint — coarse booleans,
+        # so no lock is needed on the event loop.
+        self._camera_status: dict[LocCam, CameraScanState] = {
+            (loc.name, cam.name): CameraScanState()
+            for loc in models.locations
+            for cam in loc.cameras
+        }
         self.historical_loading = True
         """True until the first full historical scan completes. The frontend
         shows a non-blocking 'historical still loading' affordance while set."""
+
+    def camera_status(self) -> dict[LocCam, CameraScanState]:
+        """Snapshot of per-camera cold-start scan progress."""
+        return dict(self._camera_status)
 
     def start(self) -> None:
         """Launch the background loops."""
@@ -147,13 +179,21 @@ class PollEngine:
             await self._sleep(self._interval)
 
     async def _historical_loop(self) -> None:
-        # One full scan at startup, then refresh on a slow cadence.
+        # Recent-window-first, then a full sweep, then refresh on a slow
+        # cadence. The recent phase makes the last N days viewable in seconds
+        # while the full back-catalogue continues to load in the background.
         while not self._stop.is_set():
             try:
-                log.info(
-                    "poll.historical.start",
-                    cameras=sum(len(loc.cameras) for loc in self._models.locations),
-                )
+                cameras = sum(len(loc.cameras) for loc in self._models.locations)
+                if self._recent_window_days > 0:
+                    log.info(
+                        "poll.recent.start",
+                        cameras=cameras,
+                        days=self._recent_window_days,
+                    )
+                    recent = await self._scan_recent_window()
+                    log.info("poll.recent.done", events=recent)
+                log.info("poll.historical.start", cameras=cameras)
                 total = await self._scan_all_history()
                 log.info("poll.historical.done", events=total)
                 if self._cache_writer is not None:
@@ -208,6 +248,44 @@ class PollEngine:
                 )
         return total
 
+    async def _scan_recent_window(self) -> int:
+        # The recent window per camera: scan {camera}/{date}/ for the last N
+        # observing-days first so recent history is viewable while the full
+        # sweep runs. Locations parallel, cameras serial (same client-pool
+        # reasoning as the full sweep).
+        days = recent_day_obs(self._recent_window_days)
+        per_location = await asyncio.gather(
+            *(
+                self._scan_recent_for_location(loc, days)
+                for loc in self._models.locations
+            )
+        )
+        return sum(per_location)
+
+    async def _scan_recent_for_location(
+        self, location: Location, days: list[str]
+    ) -> int:
+        total = 0
+        for camera in location.cameras:
+            for day in days:
+                prefix = f"{camera.name}/{day}/"
+                events = await asyncio.to_thread(
+                    self._poller.scan, location.name, prefix
+                )
+                total += len(events)
+                if events:
+                    log.info(
+                        "poll.scan",
+                        scope="recent",
+                        location=location.name,
+                        prefix=prefix,
+                        events=len(events),
+                    )
+                    touched = await self._store.apply(events)
+                    await self._persist_slices(touched)
+            self._mark(location.name, camera.name, "recent_ready")
+        return total
+
     async def _scan_all_history(self) -> int:
         # Same shape as _scan_day: locations in parallel, cameras serial
         # within a location so a single S3 client's connection pool isn't
@@ -219,7 +297,10 @@ class PollEngine:
 
     async def _scan_history_for_location(self, location: Location) -> int:
         # Scan each camera's whole prefix; the poller diffs against last time
-        # so unchanged history produces no churn. Recent dates change, so the
+        # so unchanged history produces no churn. The recent window uses
+        # {camera}/{date}/ prefixes, which the poller tracks independently of
+        # this {camera}/ prefix, so the first full sweep re-emits those recent
+        # keys once — harmless, the store upserts. Recent dates change, so the
         # periodic re-scan is what keeps yesterday/last-week current.
         total = 0
         for camera in location.cameras:
@@ -238,7 +319,17 @@ class PollEngine:
             if events:
                 touched = await self._store.apply(events)
                 await self._persist_slices(touched)
+            # Recent may not have run (window=0); the full sweep also makes
+            # recent data present, so mark both as it finishes each camera.
+            self._mark(location.name, camera.name, "recent_ready")
+            self._mark(location.name, camera.name, "full_complete")
         return total
+
+    def _mark(self, location: str, camera: str, flag: str) -> None:
+        """Flip a per-camera scan-progress flag (idempotent)."""
+        state = self._camera_status.get((location, camera))
+        if state is not None:
+            setattr(state, flag, True)
 
     async def _persist_slices(self, touched: set[tuple[str, str, str]]) -> None:
         """Write just the slices a scan changed, so history is durable as it

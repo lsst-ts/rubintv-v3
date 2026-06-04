@@ -18,6 +18,7 @@ export type EventOut = Schemas["EventOut"];
 export type NightReportOut = Schemas["NightReportOut"];
 export type ControlsOut = Schemas["ControlsOut"];
 export type StatusResponse = Schemas["StatusResponse"];
+export type CameraStatus = Schemas["CameraStatus"];
 
 // A metadata payload is seq_num (string) -> { column -> value }.
 export type Metadata = Record<string, Record<string, unknown>>;
