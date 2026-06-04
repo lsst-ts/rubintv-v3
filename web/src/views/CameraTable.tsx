@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
@@ -16,6 +16,7 @@ import { AllSky } from "./AllSky";
 export function CameraTable() {
   const { location = "", camera = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  const qc = useQueryClient();
 
   const { data: cameraInfo } = useQuery({
     queryKey: queryKeys.camera(location, camera),
@@ -39,20 +40,25 @@ export function CameraTable() {
   useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
 
   // Progress of the streamed metadata (null once complete / not streaming).
-  // These two values are pushed by applyLiveMessage via setQueryData; the
-  // queryFn is only a seed so TanStack doesn't warn about a missing fetcher,
-  // and staleTime keeps it from ever overwriting a pushed value.
+  // These two values are PUSHED by applyLiveMessage via setQueryData; their
+  // fetcher must only reflect the cache, never produce a default — a queryFn
+  // returning `null`/`{}` would run on mount and clobber the value the WS
+  // stream just pushed (the bug that hid the progress indicator). Returning
+  // the cached value keeps the fetcher inert while still registering one (no
+  // "missing queryFn" warning) and staleTime:Infinity stops refetches.
+  const progressKey = queryKeys.metadataProgress(location, camera, date);
   const { data: metaProgress } = useQuery<MetadataProgress | null>({
-    queryKey: queryKeys.metadataProgress(location, camera, date),
-    queryFn: () => null,
+    queryKey: progressKey,
+    queryFn: () => qc.getQueryData<MetadataProgress | null>(progressKey) ?? null,
     staleTime: Infinity,
   });
   // Metadata streamed over the WebSocket, accumulated as chunks arrive. Kept
   // separate from the REST payload and merged below, so streamed rows show up
   // immediately even before the (also slow) REST payload lands.
+  const streamKey = queryKeys.metadataStream(location, camera, date);
   const { data: streamedMeta } = useQuery<Metadata>({
-    queryKey: queryKeys.metadataStream(location, camera, date),
-    queryFn: () => ({}),
+    queryKey: streamKey,
+    queryFn: () => qc.getQueryData<Metadata>(streamKey) ?? {},
     staleTime: Infinity,
   });
 
