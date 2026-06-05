@@ -15,6 +15,7 @@ build/
 # Node / frontend
 node_modules/
 web/dist/
+web/coverage/
 *.tsbuildinfo
 *.local
 

@@ -15,5 +15,17 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test-setup.ts",
+    // Always-on coverage reporting; no thresholds, so it never fails the run.
+    coverage: {
+      enabled: true,
+      provider: "v8",
+      reporter: ["text", "html"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/**/*.test.{ts,tsx}",
+        "src/test-setup.ts",
+        "src/lib/api-types.ts",
+      ],
+    },
   },
 });
