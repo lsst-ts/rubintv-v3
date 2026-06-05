@@ -21,6 +21,9 @@ test("channelData invalidates date payload and calendar", () => {
   });
   const keys = calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
   expect(keys).toContain(JSON.stringify(queryKeys.datePayload("local", "lsstcam", "2026-04-10")));
+  // The REST metadata query is a separate cache entry; it must be invalidated
+  // too or the single-channel view / table never pick up new seqs' rows.
+  expect(keys).toContain(JSON.stringify(queryKeys.metadata("local", "lsstcam", "2026-04-10")));
   expect(keys).toContain(JSON.stringify(queryKeys.calendar("local", "lsstcam")));
 });
 

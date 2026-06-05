@@ -36,6 +36,52 @@ test("channel deep link resolves to the channel view", async () => {
   expect(await screen.findByText(/witness_detector/)).toBeDefined();
 });
 
+test("channel /current route follows the newest exposure", async () => {
+  // Calendar's newest date is 2026-04-10; the monitor channel's highest seq in
+  // that date's payload is 252, so the live view should render that image.
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10", "2026-04-09"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        image_viewer_link:
+          "http://ccs.lsst.org/view?image=AT_O_{dayObs}_{seqNum:06}&raft=R00",
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [250, 251, 252] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel/monitor/current");
+  const img = await screen.findByRole("img", { name: /monitor 252/ });
+  expect(img.getAttribute("src")).toContain(
+    "/channels/monitor/2026-04-10/000252/image.png",
+  );
+  // Live badge present; no "jump to current" link in live mode.
+  expect(screen.getByText("● LIVE")).toBeDefined();
+  // Back arrow steps to the older seq (251); there is no newer arrow at the
+  // latest exposure, so it never links to the image on screen.
+  const back = screen.getByRole("link", { name: /← 251/ });
+  expect(back.getAttribute("href")).toContain("seq=251");
+  expect(screen.queryByRole("link", { name: /→/ })).toBeNull();
+  // The image viewer template fills {dayObs} (8-digit date) and {seqNum:06}.
+  const viewer = screen.getByRole("link", { name: "Open in image viewer" });
+  expect(viewer.getAttribute("href")).toBe(
+    "http://ccs.lsst.org/view?image=AT_O_20260410_000252&raft=R00",
+  );
+});
+
 test("mosaic suffix route wins over the channel catch-all", async () => {
   renderAt("/local/lsstcam/mosaic");
   expect(await screen.findByText("Mosaic / Movies")).toBeDefined();

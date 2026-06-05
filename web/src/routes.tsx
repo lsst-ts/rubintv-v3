@@ -31,6 +31,10 @@ export const routes: RouteObject[] = [
       { path: ":location/:camera/detectors", element: <Detectors /> },
       { path: ":location/:camera/admin", element: <Admin /> },
       { path: ":location/:camera/mosaic", element: <Mosaic /> },
+      // Live "current" view: follows the latest image as new exposures arrive,
+      // keeping the URL stable. Precedes the channel catch-all so "current" is
+      // read as the live suffix, not a seq/date deep link.
+      { path: ":location/:camera/:channel/current", element: <Channel live /> },
       { path: ":location/:camera/:channel", element: <Channel /> },
     ],
   },

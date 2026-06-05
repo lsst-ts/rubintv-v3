@@ -81,6 +81,14 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
         qc.invalidateQueries({
           queryKey: queryKeys.datePayload(location, camera, date),
         });
+        // A metadata.json update isn't reflected in the date payload — the
+        // REST metadata query is a separate cache entry (read by the table and
+        // the single-channel view), so invalidate it too or new seqs' rows
+        // never land. channelData can land slightly ahead of the metadata
+        // write, so refetch on it as well; the query dedupes.
+        qc.invalidateQueries({
+          queryKey: queryKeys.metadata(location, camera, date),
+        });
       }
       // A new date can extend the calendar.
       qc.invalidateQueries({ queryKey: queryKeys.calendar(location, camera) });

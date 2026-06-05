@@ -168,6 +168,14 @@ body {
   gap: 0.75rem;
   align-items: center;
 }
+.live-badge {
+  color: #e5484d;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.live-link {
+  font-weight: 600;
+}
 
 .live-view-media {
   display: flex;
