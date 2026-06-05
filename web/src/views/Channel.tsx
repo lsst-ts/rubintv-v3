@@ -176,21 +176,6 @@ export function Channel({ live = false }: { live?: boolean }) {
   const isVideo = isVideoFor(seq);
   const src = date && seq ? mediaFor(seq) : "";
 
-  // The image_viewer_link in config is a template with Python-style format
-  // placeholders, e.g. ".../view.html?image=AT_O_{dayObs}_{seqNum:06}&...".
-  // Fill {dayObs} (date as an 8-digit YYYYMMDD integer) and {seqNum} (the seq,
-  // honouring an optional :0N zero-pad spec). Done here so a moved seq updates
-  // the link in lock step with the displayed image.
-  const imageViewerHref = useMemo(() => {
-    const tmpl = cameraInfo?.image_viewer_link;
-    if (!tmpl || !date || !seq) return null;
-    const dayObs = date.replace(/-/g, "");
-    return tmpl.replace(/\{(dayObs|seqNum)(?::0(\d+))?\}/g, (_m, name, pad) => {
-      const value = name === "dayObs" ? dayObs : String(seq);
-      return pad ? value.padStart(Number(pad), "0") : value;
-    });
-  }, [cameraInfo?.image_viewer_link, date, seq]);
-
   const navTo = (s: number) =>
     `/${location}/${camera}/${channel}?seq=${s}&date=${date}`;
 
@@ -262,11 +247,6 @@ export function Channel({ live = false }: { live?: boolean }) {
             </div>
           ))}
         </dl>
-        {imageViewerHref && (
-          <a href={imageViewerHref} target="_blank" rel="noreferrer">
-            Open in image viewer
-          </a>
-        )}
       </aside>
     </section>
   );

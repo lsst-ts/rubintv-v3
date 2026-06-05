@@ -7,7 +7,10 @@ import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
+import { fillTemplate, isDevInstance } from "../lib/links";
 import { ShareLink } from "../components/ShareLink";
+import { CopyButton } from "../components/CopyButton";
+import { DownloadMetadata } from "../components/DownloadMetadata";
 import { AllSky } from "./AllSky";
 
 // The main camera view: date picker, per-seq-num table with channel columns
@@ -91,6 +94,22 @@ export function CameraTable() {
     () => cameraInfo?.channels.filter((c) => !c.per_day).map((c) => c.name) ?? [],
     [cameraInfo],
   );
+
+  // Per-row action links/buttons, driven by per-camera config. Each is shown
+  // only when its template is configured. {dev} and {siteLoc} are fixed for the
+  // running instance; {dayObs}/{seqNum}/{controller} vary per row and are
+  // filled inside the row map below.
+  const viewerTmpl = cameraInfo?.image_viewer_link ?? null;
+  const quicklookTmpl = cameraInfo?.quicklook_viewer_link ?? null;
+  const copyRowTmpl = cameraInfo?.copy_row_template ?? null;
+  const dev = isDevInstance();
+  // siteLocation keys the {siteLoc}→domain map; only summit/base resolve to a
+  // domain. The URL's location segment is that key.
+  const linkCtx = (controller?: unknown) => ({
+    siteLocation: location,
+    controller: typeof controller === "string" ? controller : undefined,
+    isDevInstance: dev,
+  });
   // Columns are the union of the configured columns (which carry order and
   // tooltip descriptions) and every key actually present in the metadata —
   // metadata.json routinely carries far more fields than the config names,
@@ -165,6 +184,11 @@ export function CameraTable() {
           </select>
         </label>
         <ShareLink date={date || undefined} />
+        <DownloadMetadata
+          metadata={metadata}
+          filename={`${camera}_${date}_metadata.json`}
+          disabled={date === "" || Object.keys(metadata).length === 0}
+        />
         {metaProgress && metaProgress.rows > 0 && (
           <span className="metadata-progress" role="status">
             loading metadata… {metaProgress.rows} rows
@@ -204,6 +228,9 @@ export function CameraTable() {
             {channelNames.map((c) => (
               <th key={c}>{c}</th>
             ))}
+            {viewerTmpl && <th>Viewer</th>}
+            {quicklookTmpl && <th>Quicklook</th>}
+            {copyRowTmpl && <th />}
             {visible.map((c) => (
               <th key={c}>{c}</th>
             ))}
@@ -231,6 +258,35 @@ export function CameraTable() {
                     </td>
                   );
                 })}
+                {viewerTmpl && (
+                  <td>
+                    <a
+                      href={fillTemplate(viewerTmpl, date, seq, linkCtx(meta.controller))}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Viewer
+                    </a>
+                  </td>
+                )}
+                {quicklookTmpl && (
+                  <td>
+                    <a
+                      href={fillTemplate(quicklookTmpl, date, seq, linkCtx(meta.controller))}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Quicklook
+                    </a>
+                  </td>
+                )}
+                {copyRowTmpl && (
+                  <td>
+                    <CopyButton
+                      text={fillTemplate(copyRowTmpl, date, seq, linkCtx(meta.controller))}
+                    />
+                  </td>
+                )}
                 {visible.map((col) => (
                   <td key={col}>{formatCell(meta[col])}</td>
                 ))}

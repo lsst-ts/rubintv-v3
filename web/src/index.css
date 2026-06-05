@@ -90,6 +90,21 @@ body {
   cursor: pointer;
 }
 
+.copy-row {
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.download-metadata {
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.download-metadata:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .card-grid {
   display: flex;
   flex-wrap: wrap;

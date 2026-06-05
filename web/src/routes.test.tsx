@@ -75,11 +75,88 @@ test("channel /current route follows the newest exposure", async () => {
   const back = screen.getByRole("link", { name: /← 251/ });
   expect(back.getAttribute("href")).toContain("seq=251");
   expect(screen.queryByRole("link", { name: /→/ })).toBeNull();
-  // The image viewer template fills {dayObs} (8-digit date) and {seqNum:06}.
-  const viewer = screen.getByRole("link", { name: "Open in image viewer" });
+  // The image viewer link no longer lives in the channel sidebar — it moved to
+  // the camera table as a per-row link (covered separately below).
+  expect(
+    screen.queryByRole("link", { name: "Open in image viewer" }),
+  ).toBeNull();
+});
+
+test("camera table shows per-row viewer, quicklook, and copy-row controls", async () => {
+  // A camera configured with all three per-row link templates, one date with a
+  // single seq carrying a "controller" metadata value (which feeds the
+  // {controller:default=O} placeholder).
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [{ name: "monitor", per_day: false }],
+        metadata_columns: {},
+        image_viewer_link:
+          "http://ccs.lsst.org/view?image=AT_{controller:default=O}_{dayObs}_{seqNum:06}",
+        quicklook_viewer_link:
+          "https://usdf-rsp.slac.stanford.edu/q/{dayObs}{seqNum:05}",
+        copy_row_template:
+          'dataId = {"day_obs": {dayObs}, "seq_num": {seqNum:06}}',
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "252": { controller: "C" } };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [252] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10");
+
+  // Viewer link fills the row's controller ("C"), the 8-digit date, and the
+  // zero-padded seq.
+  const viewer = await screen.findByRole("link", { name: "Viewer" });
   expect(viewer.getAttribute("href")).toBe(
-    "http://ccs.lsst.org/view?image=AT_O_20260410_000252&raft=R00",
+    "http://ccs.lsst.org/view?image=AT_C_20260410_000252",
   );
+  // Quicklook fills {seqNum:05}.
+  const quicklook = screen.getByRole("link", { name: "Quicklook" });
+  expect(quicklook.getAttribute("href")).toBe(
+    "https://usdf-rsp.slac.stanford.edu/q/2026041000252",
+  );
+  // Copy-row button is present (its filled text rides on the title attribute).
+  const copy = screen.getByRole("button", { name: "Copy row" });
+  expect(copy.getAttribute("title")).toBe(
+    'dataId = {"day_obs": 20260410, "seq_num": 000252}',
+  );
+
+  // Download-metadata button is enabled once metadata has loaded; clicking it
+  // builds a blob URL and triggers an anchor download.
+  const createObjectURL = vi.fn(() => "blob:meta");
+  const revokeObjectURL = vi.fn();
+  globalThis.URL.createObjectURL = createObjectURL;
+  globalThis.URL.revokeObjectURL = revokeObjectURL;
+  const clicks: string[] = [];
+  const realClick = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    clicks.push((this as HTMLAnchorElement).download);
+  };
+  try {
+    const download = screen.getByRole("button", { name: "Download metadata" });
+    expect((download as HTMLButtonElement).disabled).toBe(false);
+    download.click();
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(clicks).toEqual(["auxtel_2026-04-10_metadata.json"]);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:meta");
+  } finally {
+    HTMLAnchorElement.prototype.click = realClick;
+  }
 });
 
 test("mosaic suffix route wins over the channel catch-all", async () => {
