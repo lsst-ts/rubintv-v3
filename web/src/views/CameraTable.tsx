@@ -75,7 +75,7 @@ export function CameraTable() {
   // Metadata is fetched independently of the structured payload so the grid
   // (channels/seqs) renders immediately from cache without waiting on this
   // large, live-from-S3 download. It's the backstop for the WS stream.
-  const { data: restMeta } = useQuery<Metadata>({
+  const { data: restMeta, isSuccess: restMetaLoaded } = useQuery<Metadata>({
     queryKey: queryKeys.metadata(location, camera, date),
     queryFn: () => api.metadata(location, camera, date),
     enabled: date !== "",
@@ -187,7 +187,11 @@ export function CameraTable() {
         <DownloadMetadata
           metadata={metadata}
           filename={`${camera}_${date}_metadata.json`}
-          disabled={date === "" || Object.keys(metadata).length === 0}
+          // Enabled only once metadata is fully loaded: the authoritative REST
+          // payload has resolved AND no WS stream is still arriving (a non-null
+          // metaProgress means more chunks are in flight). Downloading mid-load
+          // would save a partial file.
+          disabled={date === "" || !restMetaLoaded || metaProgress != null}
         />
         {metaProgress && metaProgress.rows > 0 && (
           <span className="metadata-progress" role="status">
