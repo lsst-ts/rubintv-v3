@@ -502,9 +502,7 @@ export interface components {
             /** Exists */
             exists: boolean;
             /** Text */
-            text: {
-                [key: string]: unknown;
-            }[];
+            text: Record<string, never>[];
             /** Plots */
             plots: components["schemas"]["PlotOut"][];
         };
@@ -526,6 +524,10 @@ export interface components {
         StatusResponse: {
             /** Ready */
             ready: boolean;
+            /** Cache Enabled */
+            cache_enabled: boolean;
+            /** Warm Start */
+            warm_start: boolean;
             /** Historical Loading */
             historical_loading: boolean;
             /** Cameras */
@@ -544,10 +546,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -788,9 +786,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: {
-                            [key: string]: unknown;
-                        };
+                        [key: string]: Record<string, never>;
                     };
                 };
             };

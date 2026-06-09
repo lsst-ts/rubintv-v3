@@ -37,6 +37,13 @@ class AppState:
     controls: ControlStore
     ws: WsService
     ready: bool = field(default=False)
+    cache_enabled: bool = field(default=False)
+    """Whether a disk cache is configured. When false, every restart is a
+    full cold load from S3 (no warm start is possible)."""
+    warm_start: bool = field(default=False)
+    """Whether a cached snapshot was loaded at boot. When true, the calendar
+    was already populated at startup and the ongoing scan is a refresh; when
+    false, older dates only appear as the cold sweep discovers them."""
     historical_loading: Callable[[], bool] = field(default=lambda: True)
     """Callable returning whether the historical back-catalogue is still
     loading (the poll engine owns the flag; this reads it)."""

@@ -56,6 +56,19 @@ export function Status() {
       <h1>Scan status</h1>
       {isPending && <p className="skeleton">Loading status…</p>}
       {isError && <p role="alert">Could not load scan status.</p>}
+      {data && !data.cache_enabled && (
+        <p role="alert" className="scan-cache-warning">
+          ⚠ Disk cache disabled — every restart reloads all history from S3.
+          Set <code>cache_dir</code> to enable warm starts.
+        </p>
+      )}
+      {data && data.cache_enabled && (
+        <p role="note" className="scan-cache-mode">
+          {data.warm_start
+            ? "Warm start: calendar restored from cache; scans below are refreshing it against S3."
+            : "Cold start: no cached snapshot loaded; older dates appear as the sweep below completes."}
+        </p>
+      )}
       {data && (
         <p role="status">
           {remaining === 0

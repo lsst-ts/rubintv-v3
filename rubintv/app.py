@@ -73,11 +73,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Warm start: seed from disk cache if present (never trusted as truth —
     # the historical scan reconciles against S3).
     cache = DiskCache(settings.cache_dir)
+    warm_start = False
     if cache.enabled:
         snapshot = cache.load_all()
         store.load_snapshot(snapshot)
         loc_cams = len(snapshot)
         slices = sum(len(d) for d in snapshot.values())
+        # A warm start means the calendar is already populated from cache, so
+        # the ongoing scan is a refresh rather than a cold load. An enabled
+        # cache that loaded nothing (empty/first run) is still effectively a
+        # cold start, hence gating on slices rather than cache.enabled alone.
+        warm_start = slices > 0
         log.info(
             "cache.loaded",
             dir=str(settings.cache_dir),
@@ -99,6 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nightreport=NightReportFetcher(s3, buckets),
         controls=controls,
         ws=ws_service,
+        cache_enabled=cache.enabled,
+        warm_start=warm_start,
     )
     app.state.app_state = state
 

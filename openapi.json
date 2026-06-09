@@ -360,8 +360,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": true
+                    "type": "object"
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
                 }
@@ -1489,7 +1488,6 @@
           },
           "text": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -1554,6 +1552,14 @@
             "type": "boolean",
             "title": "Ready"
           },
+          "cache_enabled": {
+            "type": "boolean",
+            "title": "Cache Enabled"
+          },
+          "warm_start": {
+            "type": "boolean",
+            "title": "Warm Start"
+          },
           "historical_loading": {
             "type": "boolean",
             "title": "Historical Loading"
@@ -1569,6 +1575,8 @@
         "type": "object",
         "required": [
           "ready",
+          "cache_enabled",
+          "warm_start",
           "historical_loading",
           "cameras"
         ],
@@ -1610,13 +1618,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

@@ -10,6 +10,8 @@ function renderWith(
 ) {
   const payload: StatusResponse = {
     ready: true,
+    cache_enabled: true,
+    warm_start: false,
     historical_loading: false,
     cameras: [],
     ...status,
@@ -59,6 +61,20 @@ test("softens wording once the recent window is ready", async () => {
     { location: "loc", camera: "cam" },
   );
   expect(await screen.findByText(/Recent dates are ready/)).toBeDefined();
+});
+
+test("on a warm start, calls the scan a refresh rather than a cold load", async () => {
+  renderWith(
+    { historical_loading: true, warm_start: true, cameras: [cam({})] },
+    { location: "loc", camera: "cam" },
+  );
+  expect(await screen.findByText(/Refreshing historical data/)).toBeDefined();
+  expect(screen.queryByText(/older dates may be incomplete/)).toBeNull();
+});
+
+test("warm start refresh wording also applies site-wide (no camera)", async () => {
+  renderWith({ historical_loading: true, warm_start: true });
+  expect(await screen.findByText(/Refreshing historical data/)).toBeDefined();
 });
 
 test("clears once the current camera's full sweep completes", async () => {

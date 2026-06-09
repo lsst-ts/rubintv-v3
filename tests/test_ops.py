@@ -40,6 +40,37 @@ def test_status_endpoint_reports_loading() -> None:
             assert {"location", "camera", "recent_ready", "full_complete"} <= set(cam)
 
 
+def test_status_reports_cold_start_when_cache_disabled() -> None:
+    # No cache_dir: caching is off and there's nothing to warm-start from.
+    with run_app() as client:
+        body = client.get("/api/health/status").json()
+        assert body["cache_enabled"] is False
+        assert body["warm_start"] is False
+
+
+def test_status_reports_warm_start_from_cached_snapshot(tmp_path: Path) -> None:
+    # A populated cache directory: the v1 layout is {cache_dir}/v1/{loc}/{cam}/
+    # {date}.json, and the store warm-starts from it, flipping warm_start.
+    slice_dir = tmp_path / "v1" / "test" / "auxtel"
+    slice_dir.mkdir(parents=True)
+    (slice_dir / "2025-01-01.json").write_text(
+        '{"version": "v1", "channels": {}, "extensions": {}, '
+        '"per_day": {}, "night_report_keys": []}'
+    )
+    with run_app(cache_dir=tmp_path) as client:
+        body = client.get("/api/health/status").json()
+        assert body["cache_enabled"] is True
+        assert body["warm_start"] is True
+
+
+def test_status_reports_cold_start_with_empty_cache_dir(tmp_path: Path) -> None:
+    # Caching enabled but nothing cached yet (first run): still a cold start.
+    with run_app(cache_dir=tmp_path) as client:
+        body = client.get("/api/health/status").json()
+        assert body["cache_enabled"] is True
+        assert body["warm_start"] is False
+
+
 def test_correlation_header_echoed() -> None:
     with run_app() as client:
         resp = client.get("/api/health/live", headers={"X-Request-ID": "abc-123"})

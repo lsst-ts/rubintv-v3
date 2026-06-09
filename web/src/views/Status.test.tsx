@@ -5,11 +5,17 @@ import { createQueryClient } from "../lib/queryClient";
 import { Status } from "./Status";
 import type { StatusResponse } from "../lib/types";
 
-function renderWith(cameras: StatusResponse["cameras"]) {
+function renderWith(
+  cameras: StatusResponse["cameras"],
+  over: Partial<StatusResponse> = {},
+) {
   const payload: StatusResponse = {
     ready: true,
+    cache_enabled: true,
+    warm_start: false,
     historical_loading: cameras.some((c) => !c.full_complete),
     cameras,
+    ...over,
   };
   globalThis.fetch = (() =>
     Promise.resolve({
@@ -55,4 +61,22 @@ test("summarises how many cameras remain", async () => {
 test("reports all-done when every camera is complete", async () => {
   renderWith([cam({ full_complete: true, recent_ready: true })]);
   expect(await screen.findByText("All cameras fully loaded.")).toBeDefined();
+});
+
+test("warns when the disk cache is disabled", async () => {
+  renderWith([cam({})], { cache_enabled: false });
+  expect(await screen.findByText(/Disk cache disabled/)).toBeDefined();
+});
+
+test("notes a warm start when the cache populated the calendar", async () => {
+  renderWith([cam({ recent_ready: true })], {
+    cache_enabled: true,
+    warm_start: true,
+  });
+  expect(await screen.findByText(/Warm start:/)).toBeDefined();
+});
+
+test("notes a cold start when no snapshot was loaded", async () => {
+  renderWith([cam({})], { cache_enabled: true, warm_start: false });
+  expect(await screen.findByText(/Cold start:/)).toBeDefined();
 });

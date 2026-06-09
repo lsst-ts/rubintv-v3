@@ -39,6 +39,13 @@ class CameraStatus(BaseModel):
 
 class StatusResponse(BaseModel):
     ready: bool
+    cache_enabled: bool
+    """Whether a disk cache is configured. When false, every restart reloads
+    all history from S3 — the frontend surfaces this as a misconfiguration."""
+    warm_start: bool
+    """Whether a cached snapshot populated the calendar at boot. When true,
+    an in-progress scan is a refresh (older dates already showing); when
+    false it is a cold load (older dates appear only as the sweep finds them)."""
     historical_loading: bool
     """True while the back-catalogue is still being scanned; the frontend
     shows a non-blocking 'still loading' affordance rather than an error."""
@@ -77,6 +84,8 @@ def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse:
     ]
     return StatusResponse(
         ready=state.ready,
+        cache_enabled=state.cache_enabled,
+        warm_start=state.warm_start,
         historical_loading=state.historical_loading(),
         cameras=cameras,
     )

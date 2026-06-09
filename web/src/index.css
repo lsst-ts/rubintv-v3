@@ -85,6 +85,21 @@ body {
   color: #1a1a1a;
 }
 
+.scan-cache-warning {
+  background: #f2c037;
+  color: #1a1a1a;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+}
+.scan-cache-warning code {
+  font-family: ui-monospace, monospace;
+}
+.scan-cache-mode {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .share-link {
   font-size: 0.85rem;
   cursor: pointer;
