@@ -18,7 +18,7 @@ from rubintv.api import admin, data, health, nightreport, proxy
 from rubintv.config.loader import load_models
 from rubintv.config.settings import Settings, get_settings
 from rubintv.data.cache import DiskCache
-from rubintv.data.controls import ControlStore
+from rubintv.data.controls import ControlStore, DetectorStore
 from rubintv.data.metadata import MetadataCache
 from rubintv.data.nightreport import NightReportFetcher
 from rubintv.data.redis_inputs import RedisInputs
@@ -95,7 +95,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     metadata = MetadataCache(s3, buckets)
     controls = ControlStore()
-    ws_service = WsService(store, metadata)
+    detectors = DetectorStore()
+    ws_service = WsService(store, metadata, controls, detectors)
     state = AppState(
         settings=settings,
         models=models,
@@ -104,13 +105,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         metadata=metadata,
         nightreport=NightReportFetcher(s3, buckets),
         controls=controls,
+        detectors=detectors,
         ws=ws_service,
         cache_enabled=cache.enabled,
         warm_start=warm_start,
     )
     app.state.app_state = state
 
-    redis_inputs = RedisInputs(settings.redis_url, store.bus, controls)
+    redis_inputs = RedisInputs(
+        settings.redis_url,
+        store.bus,
+        controls,
+        detectors,
+        models.redis_detectors,
+    )
 
     async def write_cache() -> None:
         if not cache.enabled:
@@ -143,6 +151,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # loading flag plus the per-camera readiness map.
     state.historical_loading = lambda: engine.historical_loading
     state.camera_status = engine.camera_status
+
+    # Admin handles: the Redis manager (control writes / flush) and the
+    # flush-historical action that clears the disk + in-memory cache and kicks
+    # an immediate cold rescan.
+    state.redis = redis_inputs
+
+    async def flush_historical() -> int:
+        removed = cache.clear()
+        store.clear()
+        engine.trigger_rescan()
+        log.warning("admin.flush_historical", slices_removed=removed)
+        return removed
+
+    state.flush_historical = flush_historical
 
     engine.start()
     ws_service.start()

@@ -360,7 +360,8 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object"
+                    "type": "object",
+                    "additionalProperties": true
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
                 }
@@ -609,6 +610,419 @@
         }
       }
     },
+    "/api/admin/controls": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Site Controls",
+        "operationId": "get_site_controls_api_admin_controls_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlsOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/menus": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Admin Menus",
+        "operationId": "get_admin_menus_api_admin_menus_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMenusOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/detectors/config": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Detectors Config",
+        "operationId": "get_detectors_config_api_detectors_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectorsConfigOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/status": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Admin Status",
+        "operationId": "get_admin_status_api_admin_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatusOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/controls/set": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Set Site Control",
+        "description": "Write an arbitrary control key/value (also used by the menu boxes).",
+        "operationId": "set_site_control_api_admin_controls_set_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/witness-detector": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Set Witness Detector",
+        "description": "Write the witness-detector value to its configured control key.",
+        "operationId": "set_witness_detector_api_admin_witness_detector_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/reset-head-node": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reset Head Node",
+        "description": "Trigger a head-node reset by writing its sentinel control value.",
+        "operationId": "reset_head_node_api_admin_reset_head_node_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/detectors/{set_name}/restart": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Restart Workers",
+        "description": "Restart a cluster set's workers.\n\nResolves the set's status key from ``redis_detectors`` config, derives the\nreset key (``CLUSTER_STATUS_X`` -> ``RUBINTV_CONTROL_RESET_X``) and writes\nthe ``reset`` sentinel (matching the original app).",
+        "operationId": "restart_workers_api_detectors__set_name__restart_post",
+        "parameters": [
+          {
+            "name": "set_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Set Name"
+            }
+          },
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/flush-historical": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Flush Historical",
+        "description": "Clear the disk + in-memory historical cache and trigger a cold rescan.",
+        "operationId": "flush_historical_api_admin_flush_historical_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/flush-redis": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Flush Redis",
+        "description": "Danger zone: flush the entire Redis database.",
+        "operationId": "flush_redis_api_admin_flush_redis_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/locations/{location}/cameras/{camera}/channels/{channel}/{date}/{seq}/{filename}": {
       "get": {
         "tags": [
@@ -758,6 +1172,109 @@
   },
   "components": {
     "schemas": {
+      "AdminActionOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "AdminActionOut",
+        "description": "Generic result of an admin action."
+      },
+      "AdminMenuItemOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "AdminMenuItemOut"
+      },
+      "AdminMenuOut": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminMenuItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "key",
+          "items"
+        ],
+        "title": "AdminMenuOut"
+      },
+      "AdminMenusOut": {
+        "properties": {
+          "menus": {
+            "items": {
+              "$ref": "#/components/schemas/AdminMenuOut"
+            },
+            "type": "array",
+            "title": "Menus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "menus"
+        ],
+        "title": "AdminMenusOut"
+      },
+      "AdminStatusOut": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "redis_enabled": {
+            "type": "boolean",
+            "title": "Redis Enabled"
+          },
+          "cache_enabled": {
+            "type": "boolean",
+            "title": "Cache Enabled"
+          },
+          "witness_detector_key": {
+            "type": "string",
+            "title": "Witness Detector Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "redis_enabled",
+          "cache_enabled",
+          "witness_detector_key"
+        ],
+        "title": "AdminStatusOut",
+        "description": "Site-wide admin panel header info."
+      },
       "CalendarOut": {
         "properties": {
           "dates": {
@@ -1171,6 +1688,41 @@
         "title": "DatePayload",
         "description": "Everything needed to render a camera table for one date."
       },
+      "DetectorOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "DetectorOut",
+        "description": "One configured cluster-status stream (site-wide)."
+      },
+      "DetectorsConfigOut": {
+        "properties": {
+          "detectors": {
+            "items": {
+              "$ref": "#/components/schemas/DetectorOut"
+            },
+            "type": "array",
+            "title": "Detectors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detectors"
+        ],
+        "title": "DetectorsConfigOut"
+      },
       "EventOut": {
         "properties": {
           "key": {
@@ -1488,6 +2040,7 @@
           },
           "text": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -1618,6 +2171,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

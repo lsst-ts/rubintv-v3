@@ -44,6 +44,11 @@ export const queryKeys = {
   // load lifecycle; CameraTable merges the two at render time.
   metadataStream: (loc: string, cam: string, date: string) =>
     ["metadataStream", loc, cam, date] as const,
+  // Site-wide live state pushed over the WS. Both are written by
+  // applyLiveMessage via setQueryData (snapshot on subscribe, then deltas)
+  // and read by the Detectors / Admin views with an inert cache-only queryFn.
+  detectorStatus: () => ["detectorStatus"] as const,
+  controlReadback: () => ["controlReadback"] as const,
 };
 
 /** Progress of an in-flight metadata stream. The total isn't known until the
@@ -55,6 +60,25 @@ export interface MetadataProgress {
 /** Apply a live message by invalidating the affected cached queries. */
 export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
   const { type, location, camera, date } = msg;
+
+  // Site-wide topics (detectors, admin) carry no location/camera; their
+  // payload travels in `data`. Handle them before the per-camera guard and
+  // write straight into the cache slot the view reads.
+  if (type === "detectorStatus") {
+    qc.setQueryData(
+      queryKeys.detectorStatus(),
+      (msg.data?.detectors as unknown) ?? {},
+    );
+    return;
+  }
+  if (type === "controlReadback") {
+    qc.setQueryData(
+      queryKeys.controlReadback(),
+      (msg.data?.controls as unknown) ?? {},
+    );
+    return;
+  }
+
   if (!location || !camera) return;
 
   // Metadata streaming: merge each chunk straight into the date payload's

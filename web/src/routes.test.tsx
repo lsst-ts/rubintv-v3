@@ -14,7 +14,16 @@ beforeEach(() => {
     const url = String(input);
     const body = url.endsWith("/api/locations")
       ? []
-      : { dates: [], values: {}, camera_groups: [], channels: [], per_day: {}, metadata: {} };
+      : {
+          dates: [],
+          values: {},
+          camera_groups: [],
+          channels: [],
+          per_day: {},
+          metadata: {},
+          detectors: [],
+          menus: [],
+        };
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 });
@@ -167,6 +176,18 @@ test("mosaic suffix route wins over the channel catch-all", async () => {
 test("/status resolves to the scan-status view, not a location", async () => {
   renderAt("/status");
   expect(await screen.findByText("Scan status")).toBeDefined();
+});
+
+test("/detectors resolves to the cluster-status view, not a location", async () => {
+  renderAt("/detectors");
+  expect(
+    await screen.findByRole("heading", { name: "Cluster Status" }),
+  ).toBeDefined();
+});
+
+test("/admin resolves to the admin view, not a location", async () => {
+  renderAt("/admin");
+  expect(await screen.findByRole("heading", { name: "Admin" })).toBeDefined();
 });
 
 // Shared stub for the live_view (All Sky) tests: a camera reporting live_view

@@ -43,6 +43,7 @@ export function Layout() {
             </a>
           ))}
           <Link to="/status">status</Link>
+          <Link to="/admin">admin</Link>
           <ConnectionStatus />
         </nav>
       </header>

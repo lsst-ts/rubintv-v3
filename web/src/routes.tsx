@@ -21,15 +21,17 @@ export const routes: RouteObject[] = [
     element: <Layout />,
     children: [
       { index: true, element: <Home /> },
-      // Site-wide ops view; precedes :location so "status" isn't read as a
-      // location name.
+      // Site-wide views; these precede :location so their fixed path segments
+      // aren't read as location names. Cluster status and admin control
+      // readback are deployment-wide (their config lives at the top level,
+      // not under a location), so they are not camera sub-pages.
       { path: "status", element: <Status /> },
+      { path: "detectors", element: <Detectors /> },
+      { path: "admin", element: <Admin /> },
       { path: ":location", element: <Location /> },
       { path: ":location/:camera", element: <CameraTable /> },
       { path: ":location/:camera/night-report", element: <NightReport /> },
       { path: ":location/:camera/allsky", element: <AllSky /> },
-      { path: ":location/:camera/detectors", element: <Detectors /> },
-      { path: ":location/:camera/admin", element: <Admin /> },
       { path: ":location/:camera/mosaic", element: <Mosaic /> },
       // Live "current" view: follows the latest image as new exposures arrive,
       // keeping the URL stable. Precedes the channel catch-all so "current" is

@@ -19,6 +19,11 @@ export function Location() {
   return (
     <section>
       <h1>{data.title}</h1>
+      {data.has_cluster_status && (
+        <nav className="location-nav" aria-label="Location views">
+          <Link to="/detectors">Cluster status</Link>
+        </nav>
+      )}
       {data.camera_groups.map((group) => (
         <div key={group.label} className="camera-group">
           <h2>{group.label}</h2>

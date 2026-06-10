@@ -114,6 +114,9 @@ class PollEngine:
         self._current_day = get_current_day_obs()
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
+        # Set to interrupt the historical loop's 12h sleep and start a fresh
+        # sweep immediately (the admin 'flush historical cache' action).
+        self._rescan = asyncio.Event()
         self._ready_fired = False
         # Per-camera cold-start progress. Mutated only from the historical
         # loop (single task), read by the status endpoint — coarse booleans,
@@ -205,7 +208,13 @@ class PollEngine:
                 if self.historical_loading:
                     self.historical_loading = False
                     log.info("poll.historical.idle")
-            await self._sleep(12 * 60 * 60)  # 12h
+            # Sleep until the next 12h cycle, an explicit rescan trigger, or
+            # shutdown. A triggered rescan clears the flag and loops at once.
+            await self._sleep_or_rescan(12 * 60 * 60)
+            if self._rescan.is_set():
+                self._rescan.clear()
+                self.historical_loading = True
+                log.info("poll.historical.rescan")
 
     # -- scanning --------------------------------------------------------
 
@@ -365,3 +374,31 @@ class PollEngine:
             await asyncio.wait_for(self._stop.wait(), timeout=seconds)
         except TimeoutError:
             pass
+
+    async def _sleep_or_rescan(self, seconds: float) -> None:
+        """Like ``_sleep`` but also wakes on a rescan trigger."""
+
+        async def _wait_either() -> None:
+            stop = asyncio.ensure_future(self._stop.wait())
+            rescan = asyncio.ensure_future(self._rescan.wait())
+            try:
+                await asyncio.wait(
+                    {stop, rescan}, return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                stop.cancel()
+                rescan.cancel()
+
+        try:
+            await asyncio.wait_for(_wait_either(), timeout=seconds)
+        except TimeoutError:
+            pass
+
+    def trigger_rescan(self) -> None:
+        """Request an immediate historical rescan.
+
+        Wakes the historical loop out of its long sleep; it then re-runs the
+        recent-window and full-history sweeps. Used after the admin flushes
+        the cache, so the emptied store cold-rebuilds from S3 right away.
+        """
+        self._rescan.set()

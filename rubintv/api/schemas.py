@@ -137,3 +137,44 @@ class EventOut(BaseModel):
     seq_num: SeqNum
     filename: str
     ext: str
+
+
+class DetectorOut(BaseModel):
+    """One configured cluster-status stream (site-wide)."""
+
+    key: str
+    name: str
+
+
+class DetectorsConfigOut(BaseModel):
+    detectors: list[DetectorOut]
+
+
+class AdminMenuItemOut(BaseModel):
+    label: str
+
+
+class AdminMenuOut(BaseModel):
+    title: str
+    key: str
+    items: list[AdminMenuItemOut]
+
+
+class AdminMenusOut(BaseModel):
+    menus: list[AdminMenuOut]
+
+
+class AdminStatusOut(BaseModel):
+    """Site-wide admin panel header info."""
+
+    version: str
+    redis_enabled: bool
+    cache_enabled: bool
+    witness_detector_key: str
+
+
+class AdminActionOut(BaseModel):
+    """Generic result of an admin action."""
+
+    ok: bool
+    detail: str = ""

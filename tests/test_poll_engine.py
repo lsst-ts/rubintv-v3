@@ -7,6 +7,8 @@ full sweep and that per-camera flags flip in the right order.
 
 from __future__ import annotations
 
+import asyncio
+
 from rubintv.config.models import Camera, Location, Models
 from rubintv.data.events import ObjectEvent, ObjectKind
 from rubintv.data.store import EventStore
@@ -97,3 +99,19 @@ async def test_full_sweep_scans_bare_prefix() -> None:
         (loc, "cam") for loc, _ in poller.scanned
     }
     assert [p for _, p in poller.scanned] == ["cam/"]
+
+
+async def test_trigger_rescan_wakes_long_sleep() -> None:
+    engine, _ = _engine(window=1)
+    # A long sleep that would normally block; triggering a rescan must wake it
+    # near-immediately rather than waiting out the timeout.
+    engine.trigger_rescan()
+    await asyncio.wait_for(engine._sleep_or_rescan(3600), timeout=1.0)
+    assert engine._rescan.is_set()  # caller (the loop) clears it, not the sleep
+
+
+async def test_sleep_or_rescan_times_out_without_trigger() -> None:
+    engine, _ = _engine(window=1)
+    # Returns on timeout when neither stop nor rescan fires.
+    await asyncio.wait_for(engine._sleep_or_rescan(0.01), timeout=1.0)
+    assert not engine._rescan.is_set()

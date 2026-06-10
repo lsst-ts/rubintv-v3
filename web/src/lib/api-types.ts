@@ -221,6 +221,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/controls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Site Controls */
+        get: operations["get_site_controls_api_admin_controls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/menus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Menus */
+        get: operations["get_admin_menus_api_admin_menus_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/detectors/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Detectors Config */
+        get: operations["get_detectors_config_api_detectors_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Status */
+        get: operations["get_admin_status_api_admin_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/controls/set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Site Control
+         * @description Write an arbitrary control key/value (also used by the menu boxes).
+         */
+        post: operations["set_site_control_api_admin_controls_set_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/witness-detector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Witness Detector
+         * @description Write the witness-detector value to its configured control key.
+         */
+        post: operations["set_witness_detector_api_admin_witness_detector_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/reset-head-node": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Head Node
+         * @description Trigger a head-node reset by writing its sentinel control value.
+         */
+        post: operations["reset_head_node_api_admin_reset_head_node_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/detectors/{set_name}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart Workers
+         * @description Restart a cluster set's workers.
+         *
+         *     Resolves the set's status key from ``redis_detectors`` config, derives the
+         *     reset key (``CLUSTER_STATUS_X`` -> ``RUBINTV_CONTROL_RESET_X``) and writes
+         *     the ``reset`` sentinel (matching the original app).
+         */
+        post: operations["restart_workers_api_detectors__set_name__restart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/flush-historical": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flush Historical
+         * @description Clear the disk + in-memory historical cache and trigger a cold rescan.
+         */
+        post: operations["flush_historical_api_admin_flush_historical_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/flush-redis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flush Redis
+         * @description Danger zone: flush the entire Redis database.
+         */
+        post: operations["flush_redis_api_admin_flush_redis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations/{location}/cameras/{camera}/channels/{channel}/{date}/{seq}/{filename}": {
         parameters: {
             query?: never;
@@ -262,6 +454,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminActionOut
+         * @description Generic result of an admin action.
+         */
+        AdminActionOut: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+        };
+        /** AdminMenuItemOut */
+        AdminMenuItemOut: {
+            /** Label */
+            label: string;
+        };
+        /** AdminMenuOut */
+        AdminMenuOut: {
+            /** Title */
+            title: string;
+            /** Key */
+            key: string;
+            /** Items */
+            items: components["schemas"]["AdminMenuItemOut"][];
+        };
+        /** AdminMenusOut */
+        AdminMenusOut: {
+            /** Menus */
+            menus: components["schemas"]["AdminMenuOut"][];
+        };
+        /**
+         * AdminStatusOut
+         * @description Site-wide admin panel header info.
+         */
+        AdminStatusOut: {
+            /** Version */
+            version: string;
+            /** Redis Enabled */
+            redis_enabled: boolean;
+            /** Cache Enabled */
+            cache_enabled: boolean;
+            /** Witness Detector Key */
+            witness_detector_key: string;
+        };
         /** CalendarOut */
         CalendarOut: {
             /** Dates */
@@ -393,6 +631,21 @@ export interface components {
             /** Has Night Report */
             has_night_report: boolean;
         };
+        /**
+         * DetectorOut
+         * @description One configured cluster-status stream (site-wide).
+         */
+        DetectorOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+        };
+        /** DetectorsConfigOut */
+        DetectorsConfigOut: {
+            /** Detectors */
+            detectors: components["schemas"]["DetectorOut"][];
+        };
         /** EventOut */
         EventOut: {
             /** Key */
@@ -502,7 +755,9 @@ export interface components {
             /** Exists */
             exists: boolean;
             /** Text */
-            text: Record<string, never>[];
+            text: {
+                [key: string]: unknown;
+            }[];
             /** Plots */
             plots: components["schemas"]["PlotOut"][];
         };
@@ -546,6 +801,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -786,7 +1045,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: Record<string, never>;
+                        [key: string]: {
+                            [key: string]: unknown;
+                        };
                     };
                 };
             };
@@ -923,6 +1184,282 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ControlValue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_site_controls_api_admin_controls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlsOut"];
+                };
+            };
+        };
+    };
+    get_admin_menus_api_admin_menus_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMenusOut"];
+                };
+            };
+        };
+    };
+    get_detectors_config_api_detectors_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectorsConfigOut"];
+                };
+            };
+        };
+    };
+    get_admin_status_api_admin_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStatusOut"];
+                };
+            };
+        };
+    };
+    set_site_control_api_admin_controls_set_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_witness_detector_api_admin_witness_detector_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_head_node_api_admin_reset_head_node_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restart_workers_api_detectors__set_name__restart_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
+            path: {
+                set_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flush_historical_api_admin_flush_historical_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flush_redis_api_admin_flush_redis_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActionOut"];
                 };
             };
             /** @description Validation Error */

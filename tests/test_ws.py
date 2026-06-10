@@ -9,6 +9,7 @@ from moto import mock_aws
 
 from rubintv.app import create_app
 from rubintv.config.settings import Settings
+from rubintv.data.events import StoreChange
 from rubintv.ws.manager import Connection, ConnectionManager
 from rubintv.ws.protocol import ServerMessage, SubscribeRequest
 from tests.conftest import TEST_BUCKET
@@ -79,6 +80,43 @@ def test_ws_subscribe_gets_snapshot(ws_client) -> None:  # type: ignore[no-untyp
         msg = ws.receive_json()
         assert msg["type"] == "channelData"
         assert msg["camera"] == "lsstcam"
+
+
+def test_ws_detectors_snapshot_and_delta(ws_client) -> None:  # type: ignore[no-untyped-def]
+    client, _ = ws_client
+    state = client.app.state.app_state  # type: ignore[attr-defined]
+    # Seed a status so the subscribe snapshot is non-empty.
+    state.detectors.set("sfmSet0", {"workers": {"0": {"status": "busy"}}})
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe", "topic": "detectors", "location": ""})
+        snap = ws.receive_json()
+        assert snap["type"] == "detectorStatus"
+        assert snap["data"]["detectors"]["sfmSet0"] == {
+            "workers": {"0": {"status": "busy"}}
+        }
+
+        # A bus change fans out the current site-wide snapshot to subscribers.
+        state.detectors.set(
+            "sfmSet0",
+            {"workers": {"0": {"status": "free"}, "1": {"status": "busy"}}},
+        )
+        state.store.bus.publish(StoreChange("detectorStatus", "*", ""))
+        delta = ws.receive_json()
+        assert delta["type"] == "detectorStatus"
+        assert delta["data"]["detectors"]["sfmSet0"]["workers"]["1"] == {
+            "status": "busy"
+        }
+
+
+def test_ws_admin_snapshot(ws_client) -> None:  # type: ignore[no-untyped-def]
+    client, _ = ws_client
+    state = client.app.state.app_state  # type: ignore[attr-defined]
+    state.controls.set("*", "AOS_READBACK", "danish")
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
+        snap = ws.receive_json()
+        assert snap["type"] == "controlReadback"
+        assert snap["data"]["controls"] == {"AOS_READBACK": "danish"}
 
 
 def test_ws_bad_frame_gets_error(ws_client) -> None:  # type: ignore[no-untyped-def]

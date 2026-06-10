@@ -107,3 +107,20 @@ async def test_apply_publishes_coalesced_changes() -> None:
     assert received[0].type == "channelData"
     assert received[0].camera == "lsstcam"
     assert received[0].date == "2026-04-10"
+
+
+async def test_clear_empties_store_and_calendar() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/witness_detector/000001/a.png"),
+            created("auxtel/2026-04-09/monitor/000001/m.png"),
+        ]
+    )
+    assert store.calendar("local", "lsstcam") == ["2026-04-10"]
+
+    store.clear()
+    assert store.calendar("local", "lsstcam") == []
+    assert store.calendar("local", "auxtel") == []
+    assert store.date_index("local", "lsstcam", "2026-04-10") is None
+    assert store.snapshot() == {}

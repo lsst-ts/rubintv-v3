@@ -17,6 +17,7 @@ import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from rubintv.data.controls import ControlStore, DetectorStore
 from rubintv.data.events import StoreChange
 from rubintv.data.metadata import MetadataCache
 from rubintv.data.store import EventStore
@@ -34,15 +35,25 @@ _CHANGE_TO_TOPIC = {
     "nightReport": "nightReport",
     "dayChange": "camera",
     "calendar": "camera",
+    "detectorStatus": "detectors",
+    "controlReadback": "admin",
 }
 
 
 class WsService:
     """Owns the connection manager and the bus pump task."""
 
-    def __init__(self, store: EventStore, metadata: MetadataCache) -> None:
+    def __init__(
+        self,
+        store: EventStore,
+        metadata: MetadataCache,
+        controls: ControlStore,
+        detectors: DetectorStore,
+    ) -> None:
         self._store = store
         self._metadata = metadata
+        self._controls = controls
+        self._detectors = detectors
         self.manager = ConnectionManager()
         self._pump_task: asyncio.Task[None] | None = None
 
@@ -64,6 +75,15 @@ class WsService:
         topic_kind = _CHANGE_TO_TOPIC.get(change.type)
         if topic_kind is None:
             return
+        # Site-wide topics (detectors, admin) key off the kind alone — their
+        # changes carry an empty location/camera, matching the client's
+        # subscription key. Their payload travels with the message so a
+        # subscriber updates without a follow-up fetch.
+        if topic_kind in ("detectors", "admin"):
+            topic_key = "|".join([topic_kind, "", "", ""])
+            msg = ServerMessage(type=change.type, data=self._site_payload(change.type))
+            self.manager.publish_to_topic(topic_key, msg)
+            return
         topic_key = "|".join([topic_kind, change.location, change.camera or "", ""])
         msg = ServerMessage(
             type=change.type,
@@ -72,6 +92,12 @@ class WsService:
             date=change.date,
         )
         self.manager.publish_to_topic(topic_key, msg)
+
+    def _site_payload(self, change_type: str) -> dict[str, object]:
+        """The current site-wide snapshot for a detectors/admin message."""
+        if change_type == "detectorStatus":
+            return {"detectors": self._detectors.all()}
+        return {"controls": self._controls.all("*")}
 
     # -- per-connection handling ----------------------------------------
 
@@ -229,18 +255,47 @@ class WsService:
                 )
 
     def _send_snapshot(self, conn: Connection, req: SubscribeRequest) -> None:
-        """Push the current state for a freshly subscribed camera topic."""
-        if req.topic != "camera" or req.camera is None:
-            # Channel/detector/admin snapshots are added with their data
-            # sources; camera is the one the store can answer directly.
+        """Push the current state for a freshly subscribed topic.
+
+        Camera topics answer from the EventStore; the site-wide detectors and
+        admin topics answer from their Redis-fed stores so a freshly opened
+        tab is correct without waiting for the next change.
+        """
+        if req.topic == "detectors":
+            self._queue(
+                conn,
+                ServerMessage(
+                    type="detectorStatus",
+                    data={"detectors": self._detectors.all()},
+                ),
+            )
             return
-        snapshot = ServerMessage(
-            type="channelData",
-            location=req.location,
-            camera=req.camera,
-            data={"calendar": self._store.calendar(req.location, req.camera)},
+        if req.topic == "admin":
+            self._queue(
+                conn,
+                ServerMessage(
+                    type="controlReadback",
+                    data={"controls": self._controls.all("*")},
+                ),
+            )
+            return
+        if req.topic != "camera" or req.camera is None:
+            # Channel snapshots are added with their data sources; camera is
+            # the one the store can answer directly.
+            return
+        self._queue(
+            conn,
+            ServerMessage(
+                type="channelData",
+                location=req.location,
+                camera=req.camera,
+                data={"calendar": self._store.calendar(req.location, req.camera)},
+            ),
         )
+
+    @staticmethod
+    def _queue(conn: Connection, msg: ServerMessage) -> None:
         try:
-            conn.queue.put_nowait(snapshot)
+            conn.queue.put_nowait(msg)
         except asyncio.QueueFull:  # pragma: no cover - fresh queue
             pass

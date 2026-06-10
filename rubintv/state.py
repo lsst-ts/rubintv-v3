@@ -7,16 +7,17 @@ event bus here; Phase 1 wires config, the S3 pool, and the readiness flag.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from rubintv.config.models import Models
 
 if TYPE_CHECKING:
+    from rubintv.data.redis_inputs import RedisInputs
     from rubintv.data.tasks import CameraScanState
 from rubintv.config.settings import Settings
-from rubintv.data.controls import ControlStore
+from rubintv.data.controls import ControlStore, DetectorStore
 from rubintv.data.metadata import MetadataCache
 from rubintv.data.nightreport import NightReportFetcher
 from rubintv.data.store import EventStore
@@ -35,6 +36,7 @@ class AppState:
     metadata: MetadataCache
     nightreport: NightReportFetcher
     controls: ControlStore
+    detectors: DetectorStore
     ws: WsService
     ready: bool = field(default=False)
     cache_enabled: bool = field(default=False)
@@ -54,3 +56,11 @@ class AppState:
     ``(location, camera)`` (the poll engine owns it; this reads it)."""
     """Flips true once the first data poll completes. Drives the readiness
     probe so k8s doesn't route traffic to an empty store."""
+    redis: RedisInputs | None = field(default=None)
+    """The Redis input manager (set in the lifespan). Admin control writes and
+    the danger-zone flush go through it; ``None``/disabled when no Redis URL is
+    configured, so admin write endpoints report 503."""
+    flush_historical: Callable[[], Awaitable[int]] | None = field(default=None)
+    """Admin action: clear the disk + in-memory historical cache and trigger a
+    cold rescan. Returns the number of disk slices removed. Wired in the
+    lifespan where the cache/store/engine handles live."""

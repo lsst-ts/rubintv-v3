@@ -2,10 +2,14 @@
 // FastAPI in dev). Types come from the OpenAPI-generated schema.
 
 import type {
+  AdminActionOut,
+  AdminMenusOut,
+  AdminStatusOut,
   CalendarOut,
   CameraOut,
   ControlsOut,
   DatePayload,
+  DetectorsConfigOut,
   LocationOut,
   LocationSummary,
   Metadata,
@@ -29,6 +33,27 @@ async function getJson<T>(path: string): Promise<T> {
   });
   if (!resp.ok) {
     throw new ApiError(resp.status, `GET ${path} -> ${resp.status}`);
+  }
+  return (await resp.json()) as T;
+}
+
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    // Surface the server detail so admin actions can show why they failed
+    // (e.g. 503 "redis is not configured", 403 admin gate).
+    let detail = `${resp.status}`;
+    try {
+      const data = (await resp.json()) as { detail?: string };
+      if (data.detail) detail = data.detail;
+    } catch {
+      // non-JSON body; keep the status code
+    }
+    throw new ApiError(resp.status, `POST ${path} -> ${detail}`);
   }
   return (await resp.json()) as T;
 }
@@ -68,6 +93,33 @@ export const api = {
 
   controls: (loc: string) =>
     getJson<ControlsOut>(`/locations/${enc(loc)}/admin/controls`),
+
+  // Site-wide control readback + admin menus + detector streams. These are
+  // deployment-wide (their config is not nested under a location).
+  siteControls: () => getJson<ControlsOut>("/admin/controls"),
+
+  adminMenus: () => getJson<AdminMenusOut>("/admin/menus"),
+
+  detectorsConfig: () => getJson<DetectorsConfigOut>("/detectors/config"),
+
+  // Admin panel: header info + write actions. The control writes go to Redis
+  // (plain SET); the readback returns asynchronously over the admin WS topic.
+  adminStatus: () => getJson<AdminStatusOut>("/admin/status"),
+
+  setControl: (key: string, value: string) =>
+    postJson<AdminActionOut>("/admin/controls/set", { key, value }),
+
+  setWitnessDetector: (value: string) =>
+    postJson<AdminActionOut>("/admin/witness-detector", { key: "", value }),
+
+  resetHeadNode: () => postJson<AdminActionOut>("/admin/reset-head-node"),
+
+  flushHistorical: () => postJson<AdminActionOut>("/admin/flush-historical"),
+
+  flushRedis: () => postJson<AdminActionOut>("/admin/flush-redis"),
+
+  restartWorkers: (setName: string) =>
+    postJson<AdminActionOut>(`/detectors/${enc(setName)}/restart`),
 
   // Build a proxied media URL for a channel artifact.
   mediaUrl: (

@@ -63,6 +63,18 @@ class EventStore:
         """Return the full index, for persistence."""
         return {loc_cam: dict(dates) for loc_cam, dates in self._dates.items()}
 
+    def clear(self) -> None:
+        """Drop every indexed slice and calendar entry.
+
+        Used by the admin 'flush historical cache' action: after this the
+        store is empty and a triggered rescan cold-rebuilds it from S3. The
+        per-(loc, cam) locks are retained (they're cheap and may be held by an
+        in-flight apply); only the data is cleared. Callers that also want the
+        live UI to refresh should publish a calendar/dayChange afterwards.
+        """
+        self._dates.clear()
+        self._calendar.clear()
+
     # -- ingestion -------------------------------------------------------
 
     # Yield to the event loop every N events so a large poll batch (the

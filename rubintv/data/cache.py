@@ -52,6 +52,26 @@ class DiskCache:
             # PVC write failure mid-run must not crash the app.
             log.warning("cache.write.failed", path=str(path), error=str(exc))
 
+    def clear(self) -> int:
+        """Delete every cached slice. Returns the number of files removed.
+
+        Used by the admin 'flush historical cache' action so the next scan
+        cold-rebuilds from S3. No-op (returns 0) when caching is disabled or
+        the dir doesn't exist. Individual unlink failures are logged, not
+        fatal — a PVC hiccup must not crash the request.
+        """
+        if self._root is None or not self._root.exists():
+            return 0
+        removed = 0
+        for path in self._root.glob("*/*/*.json"):
+            try:
+                path.unlink()
+                removed += 1
+            except OSError as exc:
+                log.warning("cache.clear.failed", path=str(path), error=str(exc))
+        log.info("cache.cleared", files=removed)
+        return removed
+
     def load_all(self) -> dict[tuple[str, str], dict[str, DateIndex]]:
         """Load every cached slice. Bad files are skipped, not fatal."""
         result: dict[tuple[str, str], dict[str, DateIndex]] = {}

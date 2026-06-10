@@ -12,3 +12,20 @@ class StubWebSocket {
 
 // @ts-expect-error - assigning a stub over the DOM global for tests.
 globalThis.WebSocket = StubWebSocket;
+
+// jsdom implements neither ResizeObserver nor the canvas 2D context. The
+// Cluster Status view's canvas uses both; stub them so the component mounts
+// (the canvas drawing itself isn't asserted in tests — structure is).
+class StubResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver =
+  StubResizeObserver as unknown as typeof ResizeObserver;
+
+if (!HTMLCanvasElement.prototype.getContext) {
+  // Minimal stub: the canvas view bails out when getContext returns null.
+  HTMLCanvasElement.prototype.getContext = (() =>
+    null) as typeof HTMLCanvasElement.prototype.getContext;
+}

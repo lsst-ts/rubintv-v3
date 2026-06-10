@@ -53,3 +53,18 @@ def test_version_mismatch_skipped(tmp_path: Path) -> None:
     slice_path = next((tmp_path / "v1").glob("*/*/*.json"))
     slice_path.write_text('{"version": "v0", "channels": {}}')
     assert cache.load_all() == {}
+
+
+def test_clear_removes_all_slices(tmp_path: Path) -> None:
+    cache = DiskCache(tmp_path)
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    cache.write("local", "lsstcam", "2026-04-09", sample_index())
+    assert len(cache.load_all()[("local", "lsstcam")]) == 2
+
+    removed = cache.clear()
+    assert removed == 2
+    assert cache.load_all() == {}
+
+
+def test_clear_disabled_is_noop() -> None:
+    assert DiskCache(None).clear() == 0

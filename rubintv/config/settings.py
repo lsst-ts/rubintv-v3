@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     the full back-catalogue sweep, so recent history is viewable in seconds.
     ``0`` disables the recent-first phase (full sweep only)."""
 
+    witness_detector_key: str = "RUBINTV_CONTROL_WITNESS_DETECTOR"
+    """Redis control key the admin 'Witness Detector' box writes to."""
+
+    reset_head_node_key: str = "RUBINTV_CONTROL_RESET_HEAD_NODE"
+    """Redis control key the admin 'Reset Head Node' button writes to (the
+    value sent is the trigger sentinel ``reset_head_node_value``)."""
+
+    reset_head_node_value: str = "1"
+    """Value written to ``reset_head_node_key`` to trigger a head-node reset."""
+
     log_level: str = "INFO"
     json_logs: bool = False
     """Emit JSON logs (production). Off by default for local dev."""
