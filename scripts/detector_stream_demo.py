@@ -177,11 +177,14 @@ def write_all(r: redis.Redis, cluster: Cluster) -> None:
     }
     _xadd(pipe, "CLUSTER_STATUS_OTHER_QUEUES", other)
 
-    pipe.execute()
+    # redis-py leaves Pipeline.execute unannotated; the call itself is fine.
+    pipe.execute()  # type: ignore[no-untyped-call]
 
 
-def _xadd(pipe: object, key: str, data: dict) -> None:
-    pipe.xadd(  # type: ignore[attr-defined]
+def _xadd(
+    pipe: redis.client.Pipeline, key: str, data: dict[str, dict[str, str]]
+) -> None:
+    pipe.xadd(
         f"stream:{key}", {"data": json.dumps(data)}, maxlen=1000, approximate=True
     )
 

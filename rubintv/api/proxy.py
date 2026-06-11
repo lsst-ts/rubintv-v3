@@ -14,7 +14,7 @@ replaced. Range requests are passed through for video scrubbing.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
@@ -34,6 +34,13 @@ router = APIRouter()
 
 # Cache an hour, allow serving stale for a day while revalidating.
 _CACHE_CONTROL = "public, max-age=3600, stale-while-revalidate=86400"
+
+
+class ConditionalArgs(TypedDict, total=False):
+    """Pass-through conditional/range headers forwarded to ``get_object``."""
+
+    IfNoneMatch: str
+    Range: str
 
 
 @router.get(
@@ -69,7 +76,7 @@ def proxy_object(
     # can build the key directly from the URL's extension and GET it without a
     # LIST. The LIST is kept only as a fallback for any object that doesn't
     # follow the convention (legacy data, unexpected filename).
-    conditional: dict[str, str] = {}
+    conditional: ConditionalArgs = {}
     if if_none_match is not None:
         conditional["IfNoneMatch"] = if_none_match
     if range_header is not None:
@@ -130,7 +137,7 @@ def proxy_object(
 
 
 def _get_object(
-    client: S3Client, bucket: str, key: str, conditional: dict[str, str]
+    client: S3Client, bucket: str, key: str, conditional: ConditionalArgs
 ) -> GetObjectResult | Response | None:
     """Fetch an object, mapping S3 outcomes to the proxy's control flow.
 

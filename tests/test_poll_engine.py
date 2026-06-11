@@ -154,6 +154,26 @@ async def test_warm_metadata_error_does_not_break_scan() -> None:
     assert engine.camera_status()[("loc", "cam")].recent_ready is True
 
 
+async def test_rollover_publishes_day_change_and_rescans_old_day() -> None:
+    engine, poller = _engine(window=0)
+    engine._current_day = "2020-01-01"  # force a rollover on the next check
+    async with engine._store.bus.subscribe() as stream:
+        await engine._check_rollover()
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    # Cameras are told to reset their live views to the new day...
+    assert change.type == "dayChange"
+    assert change.date == get_current_day_obs()
+    assert engine._current_day == get_current_day_obs()
+    # ...and yesterday is rescanned for delayed per-day artifacts.
+    assert ("loc", "cam/2020-01-01/") in poller.scanned
+
+
+async def test_rollover_noop_when_day_unchanged() -> None:
+    engine, poller = _engine(window=0)
+    await engine._check_rollover()
+    assert poller.scanned == []
+
+
 async def test_scan_date_fills_store_on_demand() -> None:
     poller = FakePoller()
     store = EventStore()
@@ -175,7 +195,7 @@ async def test_scan_date_dedups_concurrent_requests() -> None:
         engine.scan_date("loc", "cam", "2026-01-05"),
         engine.scan_date("loc", "cam", "2026-01-05"),
     )
-    assert results == [1, 1]
+    assert list(results) == [1, 1]
     assert len(poller.scanned) == 1
     # The in-flight entry is cleaned up, so a later request scans afresh.
     assert engine._on_demand == {}

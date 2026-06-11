@@ -344,3 +344,214 @@ def test_proxy_404_when_seq_missing(seeded_client: TestClient) -> None:
         f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/999999/image.png"
     )
     assert resp.status_code == 404
+
+
+def test_proxy_etag_revalidation_304_on_fallback_path(
+    seeded_client: TestClient,
+) -> None:
+    # The seeded a.png is non-convention, so this exercises the listed-key GET:
+    # a matching If-None-Match comes back as 304 with no body.
+    url = (
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000001/image.png"
+    )
+    first = seeded_client.get(url)
+    etag = first.headers["ETag"]
+    assert etag
+    resp = seeded_client.get(url, headers={"If-None-Match": etag})
+    assert resp.status_code == 304
+    assert resp.content == b""
+
+
+def test_proxy_etag_revalidation_304_on_fast_path(
+    seeded_client: TestClient,
+) -> None:
+    # A convention-named object revalidates on the direct-key GET (no LIST).
+    s3 = boto3.client("s3", region_name="us-east-1")
+    conv_key = (
+        f"lsstcam/{DATE}/witness_detector/000004/"
+        f"lsstcam_witness_detector_{DATE}_000004.png"
+    )
+    s3.put_object(Bucket=TEST_BUCKET, Key=conv_key, Body=b"direct")
+    url = (
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000004/image.png"
+    )
+    etag = seeded_client.get(url).headers["ETag"]
+    resp = seeded_client.get(url, headers={"If-None-Match": etag})
+    assert resp.status_code == 304
+
+
+def test_proxy_range_request_returns_partial_content(
+    seeded_client: TestClient,
+) -> None:
+    s3 = boto3.client("s3", region_name="us-east-1")
+    conv_key = (
+        f"lsstcam/{DATE}/witness_detector/000005/"
+        f"lsstcam_witness_detector_{DATE}_000005.mp4"
+    )
+    s3.put_object(Bucket=TEST_BUCKET, Key=conv_key, Body=b"0123456789")
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000005/video.mp4",
+        headers={"Range": "bytes=0-3"},
+    )
+    assert resp.status_code == 206
+    assert resp.content == b"0123"
+    assert resp.headers["Content-Range"] == "bytes 0-3/10"
+
+
+def test_proxy_no_extension_resolves_by_listing(
+    seeded_client: TestClient,
+) -> None:
+    # Without an extension the convention fast path is skipped entirely; the
+    # object is found by listing and the download name takes the real key's
+    # extension.
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000001/download"
+    )
+    assert resp.status_code == 200
+    assert resp.content == b"x"
+    assert (
+        resp.headers["Content-Disposition"]
+        == f'inline; filename="lsstcam_witness_detector_{DATE}_000001.png"'
+    )
+
+
+def test_proxy_404_when_listed_key_vanishes(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The LIST finds a key but the GET misses (object deleted in between):
+    # that's a 404, not a crash.
+    import rubintv.api.proxy as proxy
+
+    monkeypatch.setattr(
+        proxy, "_resolve_key", lambda *_a, **_k: "lsstcam/gone/nothing.png"
+    )
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000001/download"
+    )
+    assert resp.status_code == 404
+
+
+def test_admin_gate_rejects_unlisted_user() -> None:
+    # Direct dependency check: the seeded test site uses the "*" wildcard, so
+    # the named-user branch is exercised against a hand-built location.
+    from fastapi import HTTPException
+
+    from rubintv.api.admin import require_admin
+    from rubintv.config.models import Location
+
+    loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
+    assert require_admin(location=loc, x_auth_user="alice") == "alice"
+    with pytest.raises(HTTPException) as excinfo:
+        require_admin(location=loc, x_auth_user="bob")
+    assert excinfo.value.status_code == 403
+
+
+def test_site_admin_gate_rejects_unlisted_user() -> None:
+    from types import SimpleNamespace
+    from typing import cast
+
+    from fastapi import HTTPException
+
+    from rubintv.api.admin import require_site_admin
+    from rubintv.config.models import Location
+    from rubintv.state import AppState
+
+    loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
+    state = cast(
+        "AppState", SimpleNamespace(models=SimpleNamespace(locations=[loc]))
+    )
+    assert require_site_admin(state=state, x_auth_user="alice") == "alice"
+    with pytest.raises(HTTPException) as excinfo:
+        require_site_admin(state=state, x_auth_user="bob")
+    assert excinfo.value.status_code == 403
+
+
+class _FakeAdminRedis:
+    """The two coroutines RedisInputs calls on a live connection."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+        self.flushed = False
+
+    async def set(self, key: str, value: str) -> None:
+        self.store[key] = value
+
+    async def flushdb(self) -> None:
+        self.flushed = True
+
+    async def aclose(self) -> None:  # called by RedisInputs.stop at shutdown
+        pass
+
+
+def test_admin_actions_write_through_redis(seeded_client: TestClient) -> None:
+    # Enable the (normally unconfigured) Redis with a fake connection, then
+    # drive the site-wide admin actions end to end.
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    fake = _FakeAdminRedis()
+    state.redis._redis = fake  # noqa: SLF001 - test injection
+    headers = {"X-Auth-User": "testadmin"}
+
+    resp = seeded_client.post(
+        "/api/admin/controls/set",
+        json={"key": "RUBINTV_CONTROL_AOS", "value": "danish"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert fake.store["RUBINTV_CONTROL_AOS"] == "danish"
+
+    resp = seeded_client.post(
+        "/api/admin/witness-detector",
+        json={"key": "", "value": "203"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert fake.store[state.settings.witness_detector_key] == "203"
+
+    resp = seeded_client.post("/api/admin/flush-redis", headers=headers)
+    assert resp.status_code == 200
+    assert fake.flushed is True
+
+
+def test_admin_action_503_when_redis_drops_mid_request(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from rubintv.data.redis_inputs import RedisUnavailable
+
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    state.redis._redis = _FakeAdminRedis()  # noqa: SLF001 - enables the gate
+
+    async def _gone(_key: str, _value: str) -> None:
+        raise RedisUnavailable("connection lost")
+
+    monkeypatch.setattr(state.redis, "set_value", _gone)
+    resp = seeded_client.post(
+        "/api/admin/controls/set",
+        json={"key": "K", "value": "V"},
+        headers={"X-Auth-User": "testadmin"},
+    )
+    assert resp.status_code == 503
+
+
+def test_proxy_502_on_upstream_error(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from botocore.exceptions import ClientError
+
+    # TestClient types .app as a bare ASGIApp; FastAPI's .state is real.
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    client = state.s3.client_for("test")
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
+
+    monkeypatch.setattr(client, "get_object", _boom)
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000001/image.png"
+    )
+    assert resp.status_code == 502

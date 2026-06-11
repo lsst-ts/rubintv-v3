@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import AsyncIterator
 
 import pytest
 
+from rubintv.config.models import RedisDetector
 from rubintv.data.bus import EventBus
 from rubintv.data.controls import ControlStore, DetectorStore
 from rubintv.data.redis_inputs import (
@@ -72,6 +75,18 @@ def test_apply_detector_entry_bad_json_is_ignored() -> None:
     assert store.all() == {}
 
 
+def test_apply_detector_entry_non_numeric_worker_count_is_dropped() -> None:
+    # A worker_count whose status isn't an int is dropped rather than crashing
+    # the reader; the workers it arrived with are still stored.
+    store = DetectorStore()
+    payload = {
+        "numWorkers": {"status": "lots", "type": "worker_count"},
+        "189": {"status": "busy", "type": "worker_status"},
+    }
+    apply_detector_entry(store, "sfmSet0", {"data": json.dumps(payload)})
+    assert store.all() == {"sfmSet0": {"workers": {"189": {"status": "busy"}}}}
+
+
 def _inputs() -> RedisInputs:
     return RedisInputs(None, EventBus(), ControlStore(), DetectorStore(), [])
 
@@ -114,3 +129,164 @@ async def test_set_value_and_flushdb_use_the_connection() -> None:
     await inputs.flushdb()
     assert fake.flushed is True
     assert fake.store == {}
+
+
+# --- start/stop lifecycle and the two reader loops, against a scripted fake ---
+
+
+class _FakePubSub:
+    """Yields scripted keyspace messages, then parks until cancelled."""
+
+    def __init__(self, messages: list[dict[str, str]]) -> None:
+        self.messages = messages
+        self.patterns: list[str] = []
+
+    async def psubscribe(self, pattern: str) -> None:
+        self.patterns.append(pattern)
+
+    async def listen(self) -> AsyncIterator[dict[str, str]]:
+        for message in self.messages:
+            yield message
+        await asyncio.Event().wait()  # park; the reader task is cancelled
+
+
+_StreamBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
+
+
+class _LoopFakeRedis:
+    """Connection fake for start(): ping/config_set/pubsub/get/xread/aclose."""
+
+    def __init__(
+        self,
+        *,
+        ping_ok: bool = True,
+        messages: list[dict[str, str]] | None = None,
+        stream_batches: list[_StreamBatch] | None = None,
+    ) -> None:
+        self.store: dict[str, str] = {}
+        self.pubsubs: list[_FakePubSub] = []
+        self.closed = False
+        self._ping_ok = ping_ok
+        self._messages = messages or []
+        self._batches = list(stream_batches or [])
+
+    async def ping(self) -> None:
+        if not self._ping_ok:
+            raise ConnectionError("unreachable")
+
+    async def config_set(self, key: str, value: str) -> None:
+        # Managed Redis refusing CONFIG SET must be non-fatal.
+        raise RuntimeError("CONFIG SET forbidden")
+
+    def pubsub(self) -> _FakePubSub:
+        ps = _FakePubSub(self._messages)
+        self.pubsubs.append(ps)
+        return ps
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def xread(
+        self, last_ids: dict[str, str], block: int = 0
+    ) -> _StreamBatch:
+        if self._batches:
+            return self._batches.pop(0)
+        await asyncio.Event().wait()  # no more entries; park until cancelled
+        return []
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def _patch_from_url(monkeypatch: pytest.MonkeyPatch, fake: _LoopFakeRedis) -> None:
+    monkeypatch.setattr(
+        "redis.asyncio.Redis.from_url",
+        classmethod(lambda cls, url, **kw: fake),
+    )
+
+
+async def test_start_without_url_stays_disabled() -> None:
+    inputs = _inputs()  # url=None
+    await inputs.start()
+    assert inputs.enabled is False
+    await inputs.stop()  # no tasks, no connection: still safe
+
+
+async def test_start_degrades_when_redis_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inputs = RedisInputs(
+        "redis://x", EventBus(), ControlStore(), DetectorStore(), []
+    )
+    _patch_from_url(monkeypatch, _LoopFakeRedis(ping_ok=False))
+    await inputs.start()
+    # Unreachable Redis disables the inputs but must not raise.
+    assert inputs.enabled is False
+    await inputs.stop()
+
+
+async def test_readback_loop_publishes_control_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = EventBus()
+    controls = ControlStore()
+    inputs = RedisInputs("redis://x", bus, controls, DetectorStore(), [])
+    fake = _LoopFakeRedis(
+        messages=[
+            # Subscription confirmations are skipped.
+            {"type": "psubscribe", "channel": "__keyspace@0__:*_READBACK"},
+            # A readback key with no value (deleted) is skipped.
+            {"type": "pmessage", "channel": "__keyspace@0__:GONE_READBACK"},
+            # A real change is fetched, stored, and published.
+            {"type": "pmessage", "channel": "__keyspace@0__:AOS_READBACK"},
+        ]
+    )
+    fake.store["AOS_READBACK"] = "danish"
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        assert inputs.enabled is True
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "controlReadback"
+    assert controls.all("*") == {"AOS_READBACK": "danish"}
+    assert fake.pubsubs[0].patterns == ["__keyspace@0__:*_READBACK"]
+
+    await inputs.stop()
+    assert fake.closed is True
+
+
+async def test_detector_loop_applies_stream_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [RedisDetector(key="CLUSTER_STATUS_SFM_SET_0", name="sfmSet0")],
+    )
+    entry = {
+        "data": json.dumps({"189": {"status": "busy", "type": "worker_status"}})
+    }
+    fake = _LoopFakeRedis(
+        stream_batches=[
+            [("stream:CLUSTER_STATUS_SFM_SET_0", [("1-1", entry)])],
+        ]
+    )
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        # The readback loop has no messages, so the first change is the
+        # detector snapshot; payloads are stored under the config *name*.
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "detectorStatus"
+    assert detectors.all() == {
+        "sfmSet0": {"workers": {"189": {"status": "busy"}}}
+    }
+
+    await inputs.stop()
+    assert fake.closed is True

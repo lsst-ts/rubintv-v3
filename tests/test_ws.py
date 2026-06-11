@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import boto3
 import pytest
 from fastapi.testclient import TestClient
@@ -55,6 +57,43 @@ def test_manager_unsubscribe_removes_topic_index() -> None:
     assert c1.queue.qsize() == 0
 
 
+def test_manager_disconnect_cleans_topic_index() -> None:
+    # Dropping a connection removes it from every topic set, and empty topic
+    # sets are deleted so the index doesn't accumulate dead keys.
+    mgr = ConnectionManager()
+    c1 = Connection(id="1", socket=None)  # type: ignore[arg-type]
+    mgr._connections["1"] = c1  # noqa: SLF001
+    mgr.subscribe(c1, "camera|test|lsstcam|")
+    mgr.subscribe(c1, "detectors|||")
+    assert mgr.connection_count == 1
+    mgr.disconnect(c1)
+    assert mgr.connection_count == 0
+    assert mgr._by_topic == {}  # noqa: SLF001
+
+
+def test_manager_publish_skips_stale_connection_ids() -> None:
+    # A topic set referencing an id with no live connection is skipped, not an
+    # error (disconnect raced with publish).
+    mgr = ConnectionManager()
+    mgr._by_topic["camera|test|lsstcam|"] = {"ghost"}  # noqa: SLF001
+    mgr.publish_to_topic("camera|test|lsstcam|", ServerMessage(type="channelData"))
+
+
+def test_manager_drops_message_for_slow_client() -> None:
+    # A full send queue means the client can't keep up: the message is dropped
+    # rather than blocking the publisher.
+    mgr = ConnectionManager()
+    c1 = Connection(
+        id="1",
+        socket=None,  # type: ignore[arg-type]
+        queue=asyncio.Queue(maxsize=1),
+    )
+    mgr.send_to(c1, ServerMessage(type="channelData"))
+    mgr.send_to(c1, ServerMessage(type="event"))  # dropped, no raise
+    assert c1.queue.qsize() == 1
+    assert c1.queue.get_nowait().type == "channelData"
+
+
 @pytest.fixture
 def ws_client(settings: Settings):  # type: ignore[no-untyped-def]
     with mock_aws():
@@ -84,7 +123,7 @@ def test_ws_subscribe_gets_snapshot(ws_client) -> None:  # type: ignore[no-untyp
 
 def test_ws_detectors_snapshot_and_delta(ws_client) -> None:  # type: ignore[no-untyped-def]
     client, _ = ws_client
-    state = client.app.state.app_state  # type: ignore[attr-defined]
+    state = client.app.state.app_state
     # Seed a status so the subscribe snapshot is non-empty.
     state.detectors.set("sfmSet0", {"workers": {"0": {"status": "busy"}}})
     with client.websocket_connect("/ws") as ws:
@@ -110,7 +149,7 @@ def test_ws_detectors_snapshot_and_delta(ws_client) -> None:  # type: ignore[no-
 
 def test_ws_admin_snapshot(ws_client) -> None:  # type: ignore[no-untyped-def]
     client, _ = ws_client
-    state = client.app.state.app_state  # type: ignore[attr-defined]
+    state = client.app.state.app_state
     state.controls.set("*", "AOS_READBACK", "danish")
     with client.websocket_connect("/ws") as ws:
         ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
@@ -154,7 +193,7 @@ def test_ws_streams_metadata_in_chunks(ws_client, monkeypatch) -> None:  # type:
         )
         # First frame is the camera snapshot (channelData); then metadata.
         assert ws.receive_json()["type"] == "channelData"
-        received: dict[str, dict] = {}
+        received: dict[str, dict[str, object]] = {}
         chunks = 0
         while True:
             msg = ws.receive_json()

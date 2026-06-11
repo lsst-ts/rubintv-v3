@@ -109,6 +109,96 @@ async def test_apply_publishes_coalesced_changes() -> None:
     assert received[0].date == "2026-04-10"
 
 
+async def test_non_conforming_keys_are_ignored() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("garbage.txt"),
+            created("lsstcam/not-a-date/c/000001/a.png"),
+        ]
+    )
+    assert store.snapshot() == {}
+    assert store.calendar("local", "lsstcam") == []
+
+
+async def test_apply_yields_during_large_batches() -> None:
+    # Batches beyond _YIELD_EVERY hit the cooperative sleep; everything still
+    # lands in the index.
+    store = EventStore()
+    await store.apply(
+        [
+            created(f"lsstcam/2026-04-10/c/{n:06d}/a.png")
+            for n in range(1, EventStore._YIELD_EVERY + 2)  # noqa: SLF001
+        ]
+    )
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert len(idx.channels["c"]) == EventStore._YIELD_EVERY + 1  # noqa: SLF001
+
+
+async def test_remove_per_day_artifact_prunes_date() -> None:
+    store = EventStore()
+    key = "auxtel/2026-04-10/movies/final/m.mp4"
+    await store.apply([created(key)])
+    await store.apply([removed(key)])
+    assert store.date_index("local", "auxtel", "2026-04-10") is None
+    assert store.calendar("local", "auxtel") == []
+
+
+async def test_remove_night_report_key() -> None:
+    store = EventStore()
+    key = "lsstcam/2026-04-10/night_report/summary_md.json"
+    await store.apply([created(key)])
+    assert store.has_night_report("local", "lsstcam", "2026-04-10")
+    await store.apply([removed(key)])
+    assert not store.has_night_report("local", "lsstcam", "2026-04-10")
+
+
+async def test_remove_for_unknown_date_is_a_noop() -> None:
+    # Removing objects (metadata, channel) from a date that was never indexed
+    # must not create empty structures or raise.
+    store = EventStore()
+    await store.apply(
+        [
+            removed("lsstcam/2026-04-10/metadata.json"),
+            removed("lsstcam/2026-04-10/c/000001/a.png"),
+        ]
+    )
+    assert store.snapshot() == {}
+
+
+async def test_remove_one_of_two_seqs_keeps_channel() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/c/000001/a.png"),
+            created("lsstcam/2026-04-10/c/000002/b.png"),
+        ]
+    )
+    await store.apply([removed("lsstcam/2026-04-10/c/000002/b.png")])
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels["c"] == {1}
+
+
+async def test_bus_drops_changes_for_slow_subscriber(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A subscriber whose queue is full loses the overflow (logged) instead of
+    # stalling the publisher; the queued change still arrives.
+    import rubintv.data.bus as bus_mod
+
+    monkeypatch.setattr(bus_mod, "_QUEUE_MAXSIZE", 1)
+    bus = EventBus()
+    async with bus.subscribe() as stream:
+        assert bus.subscriber_count == 1
+        bus.publish(StoreChange("channelData", "lsstcam", "2026-04-10"))
+        bus.publish(StoreChange("perDay", "lsstcam", "2026-04-10"))  # dropped
+        change = await stream.__anext__()
+        assert change.type == "channelData"
+    assert bus.subscriber_count == 0
+
+
 async def test_clear_empties_store_and_calendar() -> None:
     store = EventStore()
     await store.apply(

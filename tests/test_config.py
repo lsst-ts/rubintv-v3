@@ -43,6 +43,7 @@ def test_live_view_flag_on_allsky() -> None:
     assert allsky is not None
     assert allsky.live_view is True
     lsstcam = models.location("test").camera("lsstcam")  # type: ignore[union-attr]
+    assert lsstcam is not None
     assert lsstcam.live_view is False
 
 

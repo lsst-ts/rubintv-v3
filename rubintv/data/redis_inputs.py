@@ -169,7 +169,7 @@ class RedisInputs:
             from redis.asyncio import Redis
 
             self._redis = Redis.from_url(self._url, decode_responses=True)
-            await self._redis.ping()  # type: ignore[misc]
+            await self._redis.ping()
         except Exception as exc:  # noqa: BLE001 - degrade, don't crash
             log.warning("redis.unavailable", error=str(exc))
             self._redis = None
