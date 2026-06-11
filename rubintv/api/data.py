@@ -1,7 +1,9 @@
 """Core data endpoints — thin readers over the EventStore.
 
-Handlers format what the store already holds; no S3 access here (the proxy
-is separate). Path params are validated by the deps (unknown -> 404).
+Handlers format what the store already holds; the only S3 touch is the
+date-payload backfill, which asks the poll engine to scan a single missing
+date on demand (the proxy is separate). Path params are validated by the
+deps (unknown -> 404).
 """
 
 from __future__ import annotations
@@ -148,16 +150,24 @@ def get_calendar(
     "/locations/{location}/cameras/{camera}/dates/{date}",
     response_model=DatePayload,
 )
-def get_date_payload(
+async def get_date_payload(
     date: str = Depends(valid_date),
     location: Location = Depends(get_location),
     camera: Camera = Depends(get_camera),
     state: AppState = Depends(get_app_state),
 ) -> DatePayload:
-    # Structured-only: this reads the in-memory store (warm-start cached) and
-    # never touches S3, so the grid renders immediately. Metadata is fetched
-    # separately by the client (WS stream + /metadata/{date} backstop).
+    # Reads the in-memory store (warm-start cached), so the grid renders
+    # immediately. Metadata is fetched separately by the client (WS stream +
+    # /metadata/{date} backstop).
     idx = state.store.date_index(location.name, camera.name, date)
+    if idx is None and state.backfill_date is not None:
+        # A deep-linked date can be real but unindexed (cold start before the
+        # full sweep, or data landed since the last 12h refresh). One bounded
+        # on-demand scan of {camera}/{date}/ fills it — ~0.4-1s, deduped per
+        # date by the engine, best-effort (failures fall through to the empty
+        # payload below).
+        await state.backfill_date(location.name, camera.name, date)
+        idx = state.store.date_index(location.name, camera.name, date)
     if idx is None:
         # A date may still have metadata (fetched separately) with no
         # structured data; return an empty-but-valid payload rather than 404

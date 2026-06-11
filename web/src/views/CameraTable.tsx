@@ -36,6 +36,17 @@ export function CameraTable() {
   // Default to the most recent date with data.
   const date = params.get("date") ?? calendar?.dates[0] ?? "";
 
+  // The picker must always display the date actually being viewed. A
+  // deep-linked date the scanner hasn't indexed yet isn't in the calendar,
+  // and a <select> whose value matches no option silently displays the
+  // first one — making it look like the latest day is shown. Splice the
+  // resolved date in (newest-first order, matching the calendar).
+  const pickerDates = useMemo(() => {
+    const dates = calendar?.dates ?? [];
+    if (!date || dates.includes(date)) return dates;
+    return [...dates, date].sort().reverse();
+  }, [calendar, date]);
+
   // Live updates for this camera (drives table + calendar invalidation).
   // Passing the resolved date also asks the server to stream that date's
   // metadata as it loads, so cells fill progressively rather than after one
@@ -176,7 +187,7 @@ export function CameraTable() {
             value={date}
             onChange={(e) => setParams({ date: e.target.value })}
           >
-            {calendar?.dates.map((d) => (
+            {pickerDates.map((d) => (
               <option key={d} value={d}>
                 {d}
               </option>

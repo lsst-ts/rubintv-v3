@@ -50,10 +50,25 @@ class S3Poller:
         self._seen: dict[tuple[str, str], dict[str, str]] = {}
         # location -> bucket name, filled lazily from the client factory.
         self._buckets: dict[str, str] = {}
+        # Bumped by reset(); scans started before a reset must not write
+        # their listing back, or the post-reset rescan would diff against
+        # stale state and re-emit nothing into the freshly cleared store.
+        self._generation = 0
 
     def register_bucket(self, location: str, bucket: str) -> None:
         """Tell the poller which bucket backs a location."""
         self._buckets[location] = bucket
+
+    def reset(self) -> None:
+        """Forget all previous listings so the next scans re-emit everything.
+
+        Pairs with clearing the EventStore (the admin flush-historical
+        action): the diff state must be dropped with the data it described,
+        otherwise the triggered rescan sees no changes and the store stays
+        empty until keys actually change upstream.
+        """
+        self._generation += 1
+        self._seen.clear()
 
     def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
         """List ``prefix`` and return changes vs. the previous scan."""
@@ -61,10 +76,12 @@ class S3Poller:
         if bucket is None:
             raise KeyError(f"no bucket registered for location {location!r}")
 
+        generation = self._generation
         current = self._list(location, bucket, prefix)
         previous = self._seen.get((location, prefix), {})
         changes = _diff(location, previous, current)
-        self._seen[(location, prefix)] = current
+        if generation == self._generation:
+            self._seen[(location, prefix)] = current
         return changes
 
     def _list(self, location: str, bucket: str, prefix: str) -> dict[str, str]:

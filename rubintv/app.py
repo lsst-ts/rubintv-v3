@@ -160,11 +160,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async def flush_historical() -> int:
         removed = cache.clear()
         store.clear()
+        # Drop the poller's diff state with the store it described — without
+        # this the rescan diffs against the retained listings, emits nothing,
+        # and the store stays empty until a restart.
+        poller.reset()
         engine.trigger_rescan()
         log.warning("admin.flush_historical", slices_removed=removed)
         return removed
 
     state.flush_historical = flush_historical
+    state.backfill_date = engine.scan_date
 
     engine.start()
     ws_service.start()

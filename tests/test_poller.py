@@ -55,6 +55,45 @@ def test_unchanged_second_scan_reports_nothing(poller: PollerFixture) -> None:
     assert poller.poller.scan("local", "lsstcam/") == []
 
 
+def test_reset_re_emits_everything(poller: PollerFixture) -> None:
+    key = "lsstcam/2026-04-10/c/000001/a.png"
+    poller.put(key)  # type: ignore[operator]
+    poller.poller.scan("local", "lsstcam/")
+    # Settled: a repeat scan is silent. After reset (the flush-historical
+    # path), the same unchanged key must be re-emitted so the cleared store
+    # can be rebuilt.
+    assert poller.poller.scan("local", "lsstcam/") == []
+    poller.poller.reset()
+    changes = poller.poller.scan("local", "lsstcam/")
+    assert [c.key for c in changes] == [key]
+    assert changes[0].kind is ObjectKind.CREATED
+
+
+def test_scan_spanning_a_reset_does_not_rearm_stale_state(
+    poller: PollerFixture,
+) -> None:
+    key = "lsstcam/2026-04-10/c/000001/a.png"
+    poller.put(key)  # type: ignore[operator]
+    p = poller.poller
+    p.scan("local", "lsstcam/")
+    # Simulate a reset landing while a scan is in flight (between its listing
+    # and its state write-back) by resetting from inside the listing call.
+    original_list = p._list
+
+    def list_then_reset(location: str, bucket: str, prefix: str) -> dict[str, str]:
+        result = original_list(location, bucket, prefix)
+        p.reset()
+        return result
+
+    p._list = list_then_reset  # type: ignore[method-assign]
+    p.scan("local", "lsstcam/")
+    p._list = original_list  # type: ignore[method-assign]
+    # The spanning scan must not have written its listing back: the next
+    # scan still re-emits everything for the cleared store.
+    changes = p.scan("local", "lsstcam/")
+    assert [c.key for c in changes] == [key]
+
+
 def test_removed_object_reported(poller: PollerFixture) -> None:
     key = "lsstcam/2026-04-10/c/000001/a.png"
     poller.put(key)  # type: ignore[operator]

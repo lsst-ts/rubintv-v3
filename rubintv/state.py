@@ -64,3 +64,9 @@ class AppState:
     """Admin action: clear the disk + in-memory historical cache and trigger a
     cold rescan. Returns the number of disk slices removed. Wired in the
     lifespan where the cache/store/engine handles live."""
+    backfill_date: Callable[[str, str, str], Awaitable[int]] | None = field(
+        default=None
+    )
+    """On-demand scan of one (location, camera, date) prefix into the store,
+    for deep-linked dates the scanner hasn't indexed yet. Returns the number
+    of events applied. Wired in the lifespan to the poll engine."""

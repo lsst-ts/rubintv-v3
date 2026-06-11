@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from rubintv.config.models import Camera, Location, Models
+from rubintv.data.dayobs import get_current_day_obs
 from rubintv.data.events import ObjectEvent, ObjectKind
 from rubintv.data.store import EventStore
 from rubintv.data.tasks import PollEngine
@@ -99,6 +100,54 @@ async def test_full_sweep_scans_bare_prefix() -> None:
         (loc, "cam") for loc, _ in poller.scanned
     }
     assert [p for _, p in poller.scanned] == ["cam/"]
+
+
+async def test_scan_date_fills_store_on_demand() -> None:
+    poller = FakePoller()
+    store = EventStore()
+    engine = PollEngine(
+        _models(), store, poller, recent_window_days=0  # type: ignore[arg-type]
+    )
+    applied = await engine.scan_date("loc", "cam", "2026-01-05")
+    assert applied == 1
+    assert store.date_index("loc", "cam", "2026-01-05") is not None
+    assert [p for _, p in poller.scanned] == ["cam/2026-01-05/"]
+
+
+async def test_scan_date_dedups_concurrent_requests() -> None:
+    engine, poller = _engine(window=0)
+    # Two concurrent requests for the same missing date share one scan: the
+    # first registers the in-flight task synchronously (no await between the
+    # map check and set), so the second awaits it rather than re-listing.
+    results = await asyncio.gather(
+        engine.scan_date("loc", "cam", "2026-01-05"),
+        engine.scan_date("loc", "cam", "2026-01-05"),
+    )
+    assert results == [1, 1]
+    assert len(poller.scanned) == 1
+    # The in-flight entry is cleaned up, so a later request scans afresh.
+    assert engine._on_demand == {}
+
+
+async def test_scan_date_skips_current_day() -> None:
+    engine, poller = _engine(window=0)
+    # Today is owned by the 1s current-day loop; on-demand must not add a
+    # redundant listing for it.
+    assert await engine.scan_date("loc", "cam", get_current_day_obs()) == 0
+    assert poller.scanned == []
+
+
+async def test_scan_date_error_reports_zero_events() -> None:
+    class BoomPoller:
+        def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
+            raise RuntimeError("boom")
+
+    engine = PollEngine(
+        _models(), EventStore(), BoomPoller(), recent_window_days=0  # type: ignore[arg-type]
+    )
+    # Best-effort: an S3 failure degrades to "no events", never raises into
+    # the request handler.
+    assert await engine.scan_date("loc", "cam", "2026-01-05") == 0
 
 
 async def test_trigger_rescan_wakes_long_sleep() -> None:

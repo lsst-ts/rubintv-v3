@@ -180,9 +180,17 @@ def test_admin_flush_historical_succeeds(seeded_client: TestClient) -> None:
     )
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
-    # Detail reports the (zero, cache disabled) slices removed. The store-clear
-    # + rescan-trigger mechanics are unit-tested directly in test_store /
-    # test_poll_engine to avoid racing the background rescan here.
+
+    # The flush also resets the poller's diff state, so the triggered rescan
+    # re-emits the unchanged keys and the store rebuilds from S3. Without the
+    # reset the rescan diffs against retained listings and the calendar would
+    # stay empty until restart (the bug this guards against).
+    for _ in range(100):
+        cal = seeded_client.get("/api/locations/test/cameras/lsstcam/calendar").json()
+        if DATE in cal["dates"]:
+            break
+        time.sleep(0.05)
+    assert DATE in cal["dates"]
 
 
 def test_calendar(seeded_client: TestClient) -> None:
@@ -202,6 +210,39 @@ def test_date_payload(seeded_client: TestClient) -> None:
     # Metadata is no longer bundled here — it's fetched separately so the grid
     # never waits on the (slow, live-from-S3) metadata download.
     assert "metadata" not in body
+
+
+def test_date_payload_backfills_unindexed_date(seeded_client: TestClient) -> None:
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    # Wait out the startup sweep so the key seeded below can only reach the
+    # store via the on-demand backfill, not a racing background scan.
+    for _ in range(60):
+        if state.camera_status()[("test", "lsstcam")].full_complete:
+            break
+        time.sleep(0.05)
+    other = "2026-02-02"
+    boto3.client("s3", region_name="us-east-1").put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{other}/witness_detector/000001/a.png",
+        Body=b"x",
+    )
+    resp = seeded_client.get(f"/api/locations/test/cameras/lsstcam/dates/{other}")
+    assert resp.status_code == 200
+    assert resp.json()["channels"]["witness_detector"] == [1]
+    # The backfilled date is now indexed: it appears in the calendar and a
+    # second request is served straight from the store.
+    cal = seeded_client.get("/api/locations/test/cameras/lsstcam/calendar")
+    assert other in cal.json()["dates"]
+
+
+def test_date_payload_empty_for_truly_absent_date(seeded_client: TestClient) -> None:
+    # A date with no objects still returns the empty-but-valid payload (the
+    # backfill scan finds nothing), so the table can render metadata rows.
+    resp = seeded_client.get("/api/locations/test/cameras/lsstcam/dates/2026-03-03")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["channels"] == {}
+    assert body["has_night_report"] is False
 
 
 def test_metadata_endpoint(seeded_client: TestClient) -> None:

@@ -117,6 +117,9 @@ class PollEngine:
         # Set to interrupt the historical loop's 12h sleep and start a fresh
         # sweep immediately (the admin 'flush historical cache' action).
         self._rescan = asyncio.Event()
+        # In-flight on-demand date scans, keyed (location, camera, date), so
+        # concurrent requests for the same missing date share one S3 listing.
+        self._on_demand: dict[tuple[str, str, str], asyncio.Task[int]] = {}
         self._ready_fired = False
         # Per-camera cold-start progress. Mutated only from the historical
         # loop (single task), read by the status endpoint — coarse booleans,
@@ -333,6 +336,53 @@ class PollEngine:
             self._mark(location.name, camera.name, "recent_ready")
             self._mark(location.name, camera.name, "full_complete")
         return total
+
+    async def scan_date(self, location: str, camera: str, date: str) -> int:
+        """Scan one camera-date prefix on demand and apply it to the store.
+
+        Serves deep links to dates the store hasn't indexed yet (cold start
+        before the full sweep completes, or data that landed between 12h
+        refreshes). Cost is one prefix listing (~0.4-1s). Concurrent calls
+        for the same (location, camera, date) share a single scan via the
+        in-flight map. The current observing day is excluded: the 1s
+        current-day loop owns it, so an extra listing buys nothing.
+
+        Best-effort like the loops: an S3 failure is logged and reported as
+        zero events so callers degrade to an empty payload rather than 500.
+        """
+        if date == get_current_day_obs():
+            return 0
+        key = (location, camera, date)
+        task = self._on_demand.get(key)
+        if task is None:
+            task = asyncio.create_task(
+                self._scan_date_once(location, camera, date),
+                name=f"poll-on-demand-{camera}-{date}",
+            )
+            self._on_demand[key] = task
+            task.add_done_callback(lambda _t: self._on_demand.pop(key, None))
+        return await task
+
+    async def _scan_date_once(self, location: str, camera: str, date: str) -> int:
+        prefix = f"{camera}/{date}/"
+        try:
+            events = await asyncio.to_thread(self._poller.scan, location, prefix)
+            if events:
+                touched = await self._store.apply(events)
+                await self._persist_slices(touched)
+        except Exception:  # noqa: BLE001 - on-demand is best-effort
+            log.exception(
+                "poll.scan.error", scope="on-demand", location=location, prefix=prefix
+            )
+            return 0
+        log.info(
+            "poll.scan",
+            scope="on-demand",
+            location=location,
+            prefix=prefix,
+            events=len(events),
+        )
+        return len(events)
 
     def _mark(self, location: str, camera: str, flag: str) -> None:
         """Flip a per-camera scan-progress flag (idempotent)."""
