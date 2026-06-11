@@ -50,13 +50,17 @@ def _models() -> Models:
     )
 
 
-def _engine(window: int) -> tuple[PollEngine, FakePoller]:
+def _engine(
+    window: int,
+    metadata_warmer: object | None = None,
+) -> tuple[PollEngine, FakePoller]:
     poller = FakePoller()
     engine = PollEngine(
         _models(),
         EventStore(),
         poller,  # type: ignore[arg-type]  # duck-typed DataSource
         recent_window_days=window,
+        metadata_warmer=metadata_warmer,  # type: ignore[arg-type]
     )
     return engine, poller
 
@@ -100,6 +104,54 @@ async def test_full_sweep_scans_bare_prefix() -> None:
         (loc, "cam") for loc, _ in poller.scanned
     }
     assert [p for _, p in poller.scanned] == ["cam/"]
+
+
+async def test_recent_scan_warms_metadata_per_camera() -> None:
+    warmed: list[tuple[str, str]] = []
+
+    async def warm(location: str, camera: str) -> None:
+        warmed.append((location, camera))
+
+    engine, _ = _engine(window=3, metadata_warmer=warm)
+    await engine._scan_recent_window()
+    # Warmed once for the camera, after its recent scan finished.
+    assert warmed == [("loc", "cam")]
+
+
+async def test_full_sweep_warms_only_when_recent_disabled() -> None:
+    warmed: list[tuple[str, str]] = []
+
+    async def warm(location: str, camera: str) -> None:
+        warmed.append((location, camera))
+
+    # Window 0: the full sweep is the only phase, so it warms.
+    engine, _ = _engine(window=0, metadata_warmer=warm)
+    await engine._scan_all_history()
+    assert warmed == [("loc", "cam")]
+
+
+async def test_full_sweep_skips_warm_when_recent_enabled() -> None:
+    warmed: list[tuple[str, str]] = []
+
+    async def warm(location: str, camera: str) -> None:
+        warmed.append((location, camera))
+
+    # Window > 0: the recent phase owns warming; the full sweep must not
+    # re-warm the same dates.
+    engine, _ = _engine(window=3, metadata_warmer=warm)
+    await engine._scan_all_history()
+    assert warmed == []
+
+
+async def test_warm_metadata_error_does_not_break_scan() -> None:
+    async def warm(location: str, camera: str) -> None:
+        raise RuntimeError("boom")
+
+    engine, poller = _engine(window=3, metadata_warmer=warm)
+    # A warming failure is swallowed; the recent scan still completes and
+    # flips the readiness flag.
+    await engine._scan_recent_window()
+    assert engine.camera_status()[("loc", "cam")].recent_ready is True
 
 
 async def test_scan_date_fills_store_on_demand() -> None:

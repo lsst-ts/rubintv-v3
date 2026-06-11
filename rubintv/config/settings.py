@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     the full back-catalogue sweep, so recent history is viewable in seconds.
     ``0`` disables the recent-first phase (full sweep only)."""
 
+    metadata_preload_days: int = 3
+    """On cold start, pre-fetch metadata.json for this many of the most recent
+    dates per camera into the in-memory LRU, so the first table view of a
+    recent date is a warm hit instead of a cold S3 stream. Bounded by the
+    cache's own LRU size and by the dates actually present. ``0`` disables
+    preloading (metadata stays purely on-demand)."""
+
     witness_detector_key: str = "RUBINTV_CONTROL_WITNESS_DETECTOR"
     """Redis control key the admin 'Witness Detector' box writes to."""
 

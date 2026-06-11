@@ -102,6 +102,7 @@ class PollEngine:
         cache_slice_writer: (
             Callable[[set[tuple[str, str, str]]], Awaitable[None]] | None
         ) = None,
+        metadata_warmer: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> None:
         self._models = models
         self._store = store
@@ -111,6 +112,7 @@ class PollEngine:
         self._on_ready = on_ready
         self._cache_writer = cache_writer
         self._cache_slice_writer = cache_slice_writer
+        self._metadata_warmer = metadata_warmer
         self._current_day = get_current_day_obs()
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
@@ -296,6 +298,7 @@ class PollEngine:
                     touched = await self._store.apply(events)
                     await self._persist_slices(touched)
             self._mark(location.name, camera.name, "recent_ready")
+            await self._warm_metadata(location.name, camera.name)
         return total
 
     async def _scan_all_history(self) -> int:
@@ -335,6 +338,10 @@ class PollEngine:
             # recent data present, so mark both as it finishes each camera.
             self._mark(location.name, camera.name, "recent_ready")
             self._mark(location.name, camera.name, "full_complete")
+            # Only warm here when the recent phase is disabled; otherwise the
+            # recent scan already warmed these dates and re-warming is redundant.
+            if self._recent_window_days <= 0:
+                await self._warm_metadata(location.name, camera.name)
         return total
 
     async def scan_date(self, location: str, camera: str, date: str) -> int:
@@ -396,6 +403,22 @@ class PollEngine:
         if self._cache_slice_writer is None or not touched:
             return
         await self._cache_slice_writer(touched)
+
+    async def _warm_metadata(self, location: str, camera: str) -> None:
+        """Pre-fetch recent metadata for a camera once its recent scan is done.
+
+        Best-effort: a warming failure must not interrupt the scan loop (the
+        metadata is still fetchable on demand), so errors are logged and
+        swallowed. The warmer itself decides how many recent dates to load.
+        """
+        if self._metadata_warmer is None:
+            return
+        try:
+            await self._metadata_warmer(location, camera)
+        except Exception:  # noqa: BLE001 - warming is best-effort
+            log.exception(
+                "poll.metadata.warm.error", location=location, camera=camera
+            )
 
     async def _check_rollover(self) -> None:
         now_day = get_current_day_obs()

@@ -137,6 +137,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if index is not None:
                 cache.write(location, camera, date, index)
 
+    async def warm_metadata(location: str, camera: str) -> None:
+        # Pre-fetch the most recent dates' metadata into the LRU after the
+        # recent scan, so the first table view of a recent date is a warm hit.
+        # Capped by the configured window and by the dates actually present;
+        # get_with_etag populates the cache as a side effect.
+        n = settings.metadata_preload_days
+        if n <= 0:
+            return
+        dates = store.calendar(location, camera)[:n]
+        for date in dates:
+            await metadata.get_with_etag(location, camera, date)
+        if dates:
+            log.info(
+                "metadata.preloaded",
+                location=location,
+                camera=camera,
+                dates=len(dates),
+            )
+
     engine = PollEngine(
         models,
         store,
@@ -146,6 +165,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         on_ready=lambda: setattr(state, "ready", True),
         cache_writer=write_cache,
         cache_slice_writer=write_slices,
+        metadata_warmer=warm_metadata,
     )
     # Expose the engine's scan-progress to the status endpoint: the global
     # loading flag plus the per-camera readiness map.
