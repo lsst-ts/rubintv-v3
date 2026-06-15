@@ -4,6 +4,7 @@ import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import { usePageTitle } from "../lib/usePageTitle";
 import { ConfirmButton } from "../components/ConfirmButton";
 import type { AdminActionOut, AdminMenuOut, ControlsOut } from "../lib/types";
 
@@ -16,6 +17,7 @@ import type { AdminActionOut, AdminMenuOut, ControlsOut } from "../lib/types";
 // Every action reports its outcome in a shared status line so a 503 ("redis not
 // configured") or a 403 (admin gate) is visible rather than silent.
 export function Admin() {
+  usePageTitle("Admin");
   const qc = useQueryClient();
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(
     null,

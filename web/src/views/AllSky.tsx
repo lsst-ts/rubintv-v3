@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import { usePageTitle } from "../lib/usePageTitle";
 
 // Live view (live_view cameras, e.g. All Sky): a single panel showing the most
 // recent movie and (on the current date) the latest still, rather than a
@@ -42,6 +43,7 @@ export function AllSky() {
   const date = params.get("date") ?? calendar?.dates[0] ?? "";
   // The newest date with data is the live one; everything else is historical.
   const isCurrent = date !== "" && date === calendar?.dates[0];
+  usePageTitle(cameraInfo?.title ?? camera, date);
 
   // Subscribe with the resolved date so channelData updates for today land live.
   useLiveTopic(date ? { topic: "camera", location, camera, date } : null);

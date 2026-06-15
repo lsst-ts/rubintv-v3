@@ -4,11 +4,13 @@ import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import { usePageTitle } from "../lib/usePageTitle";
 
 // Grid of per-day media with metadata. Reuses the date payload's per_day map.
 export function Mosaic() {
   const { location = "", camera = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  usePageTitle("Mosaic / Movies", camera);
 
   useLiveTopic({ topic: "camera", location, camera });
 

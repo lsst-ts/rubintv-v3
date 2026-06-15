@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
@@ -271,4 +271,27 @@ test("home renders", async () => {
   expect(
     await screen.findByRole("heading", { name: "RubinTV" }),
   ).toBeDefined();
+});
+
+test("home sets the browser tab title to the app name", async () => {
+  renderAt("/");
+  await waitFor(() => expect(document.title).toBe("RubinTV"));
+});
+
+test("static pages set a reflective tab title", async () => {
+  renderAt("/status");
+  await waitFor(() => expect(document.title).toBe("Scan status · RubinTV"));
+
+  renderAt("/admin");
+  await waitFor(() => expect(document.title).toBe("Admin · RubinTV"));
+});
+
+test("the camera table sets a tab title from the camera and date", async () => {
+  // Reuse the All Sky stub's sibling: a plain camera with a title and a date in
+  // the URL. The default stub returns empty collections, so the camera config
+  // (and thus its title) isn't available; assert the URL-param fallback + date.
+  renderAt("/local/lsstcam?date=2026-04-10");
+  await waitFor(() =>
+    expect(document.title).toBe("lsstcam · 2026-04-10 · RubinTV"),
+  );
 });

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
+import { usePageTitle } from "../lib/usePageTitle";
 
 // Camera groups with cards and online/offline indicators.
 export function Location() {
@@ -12,6 +13,7 @@ export function Location() {
     queryFn: () => api.location(location),
     staleTime: STALE.config,
   });
+  usePageTitle(data?.title ?? location);
 
   if (isPending) return <p className="skeleton">Loading…</p>;
   if (isError || !data) return <p role="alert">Could not load location.</p>;

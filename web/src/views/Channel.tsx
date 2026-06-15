@@ -6,6 +6,7 @@ import { queryKeys } from "../lib/liveQuery";
 import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import { usePageTitle } from "../lib/usePageTitle";
 
 // Single-channel image/video view with prev/next seq navigation and a
 // metadata sidebar. Subscribes to the camera topic for live updates.
@@ -171,6 +172,11 @@ export function Channel({ live = false }: { live?: boolean }) {
   // is no next anyway — so the link only ever appears after a manual step back.
   const hasNewer = idx >= 0 && idx < seqs.length - 1;
   const catchingUp = live && seq !== targetSeq;
+
+  usePageTitle(
+    `${cameraInfo?.title ?? camera} / ${channel}`,
+    live ? "LIVE" : seq ? `#${seq}` : undefined,
+  );
   const next = hasNewer && !catchingUp ? seqs[idx + 1] : null;
 
   const isVideo = isVideoFor(seq);

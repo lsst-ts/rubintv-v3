@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
+import { usePageTitle } from "../lib/usePageTitle";
 
 // Location grid. Config data is static (staleTime Infinity).
 export function Home() {
+  usePageTitle();
   const { data, isPending, isError } = useQuery({
     queryKey: queryKeys.locations(),
     queryFn: api.locations,

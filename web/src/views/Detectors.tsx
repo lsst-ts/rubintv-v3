@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { useLiveTopic } from "../lib/LiveContext";
+import { usePageTitle } from "../lib/usePageTitle";
 import { ConfirmButton } from "../components/ConfirmButton";
 import {
   createPlaceholders,
@@ -46,6 +47,7 @@ const SETS = {
 } as const;
 
 export function Detectors() {
+  usePageTitle("Cluster Status");
   const qc = useQueryClient();
   // Site-wide subscription (empty location keys the detectors||| topic).
   useLiveTopic({ topic: "detectors", location: "" });

@@ -8,6 +8,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
 import { fillTemplate, isDevInstance } from "../lib/links";
+import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
 import { CopyButton } from "../components/CopyButton";
 import { DownloadMetadata } from "../components/DownloadMetadata";
@@ -35,6 +36,13 @@ export function CameraTable() {
 
   // Default to the most recent date with data.
   const date = params.get("date") ?? calendar?.dates[0] ?? "";
+
+  // Live-view cameras delegate to <AllSky> below, which sets its own title;
+  // skip ours so we don't briefly flash a table title before that mounts.
+  usePageTitle(
+    !cameraInfo?.live_view && (cameraInfo?.title ?? camera),
+    !cameraInfo?.live_view && date,
+  );
 
   // The picker must always display the date actually being viewed. A
   // deep-linked date the scanner hasn't indexed yet isn't in the calendar,

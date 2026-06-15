@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { usePageTitle } from "../lib/usePageTitle";
 import type { CameraStatus } from "../lib/types";
 
 // Site-wide operational view of historical-scan progress. Collection is
@@ -36,6 +37,7 @@ function byLocation(
 }
 
 export function Status() {
+  usePageTitle("Scan status");
   const { data, isPending, isError } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
