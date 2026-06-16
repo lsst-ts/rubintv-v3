@@ -244,6 +244,15 @@ body {
   max-width: 20rem;
 }
 
+/* Multiline night-report text is log/report output: it carries its own
+   newlines and space-padded column alignment. Preserve the whitespace and
+   use a monospace font so the columns line up, while still wrapping long
+   lines. */
+.nr-multiline {
+  white-space: pre-wrap;
+  font-family: monospace;
+}
+
 @media (max-width: 700px) {
   .channel-view {
     grid-template-columns: 1fr;

@@ -13,7 +13,7 @@ function TextItem({ item }: { item: NightReportText }) {
   return (
     <article className="nr-text">
       <h3>{item.title}</h3>
-      {item.type === "multiline" && <p>{item.content}</p>}
+      {item.type === "multiline" && <p className="nr-multiline">{item.content}</p>}
       {item.type === "keyvalues" && (
         <dl className="nr-keyvalues">
           {Object.entries(item.content).map(([k, v]) => (
