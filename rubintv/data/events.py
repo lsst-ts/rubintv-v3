@@ -72,6 +72,7 @@ ChangeType = Literal[
     "dayChange",  # the current day_obs rolled over
     "detectorStatus",  # cluster-worker status changed (site-wide, from Redis)
     "controlReadback",  # admin control readback value changed (site-wide)
+    "serviceStatus",  # an RA service's liveness changed (site-wide, heartbeats)
 ]
 
 

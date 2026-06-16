@@ -18,11 +18,13 @@ if TYPE_CHECKING:
     from rubintv.data.tasks import CameraScanState
 from rubintv.config.settings import Settings
 from rubintv.data.controls import ControlStore, DetectorStore
+from rubintv.data.heartbeats import HeartbeatStore
 from rubintv.data.metadata import MetadataCache
 from rubintv.data.nightreport import NightReportFetcher
 from rubintv.data.store import EventStore
 from rubintv.s3.client import S3ClientPool
 from rubintv.ws.handler import WsService
+from rubintv.ws.internal import HeartbeatService
 
 
 @dataclass
@@ -37,7 +39,9 @@ class AppState:
     nightreport: NightReportFetcher
     controls: ControlStore
     detectors: DetectorStore
+    heartbeats: HeartbeatStore
     ws: WsService
+    heartbeat_svc: HeartbeatService
     ready: bool = field(default=False)
     cache_enabled: bool = field(default=False)
     """Whether a disk cache is configured. When false, every restart is a

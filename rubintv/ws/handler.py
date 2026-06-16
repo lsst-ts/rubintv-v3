@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from rubintv.data.controls import ControlStore, DetectorStore
 from rubintv.data.events import StoreChange
+from rubintv.data.heartbeats import HeartbeatStore
 from rubintv.data.metadata import MetadataCache
 from rubintv.data.store import EventStore
 from rubintv.logging import get_logger
@@ -37,6 +38,7 @@ _CHANGE_TO_TOPIC = {
     "calendar": "camera",
     "detectorStatus": "detectors",
     "controlReadback": "admin",
+    "serviceStatus": "services",
 }
 
 
@@ -49,11 +51,13 @@ class WsService:
         metadata: MetadataCache,
         controls: ControlStore,
         detectors: DetectorStore,
+        heartbeats: HeartbeatStore,
     ) -> None:
         self._store = store
         self._metadata = metadata
         self._controls = controls
         self._detectors = detectors
+        self._heartbeats = heartbeats
         self.manager = ConnectionManager()
         self._pump_task: asyncio.Task[None] | None = None
 
@@ -79,7 +83,7 @@ class WsService:
         # changes carry an empty location/camera, matching the client's
         # subscription key. Their payload travels with the message so a
         # subscriber updates without a follow-up fetch.
-        if topic_kind in ("detectors", "admin"):
+        if topic_kind in ("detectors", "admin", "services"):
             topic_key = "|".join([topic_kind, "", "", ""])
             msg = ServerMessage(type=change.type, data=self._site_payload(change.type))
             self.manager.publish_to_topic(topic_key, msg)
@@ -97,6 +101,8 @@ class WsService:
         """The current site-wide snapshot for a detectors/admin message."""
         if change_type == "detectorStatus":
             return {"detectors": self._detectors.all()}
+        if change_type == "serviceStatus":
+            return {"services": self._heartbeats.all()}
         return {"controls": self._controls.all("*")}
 
     # -- per-connection handling ----------------------------------------
@@ -276,6 +282,15 @@ class WsService:
                 ServerMessage(
                     type="controlReadback",
                     data={"controls": self._controls.all("*")},
+                ),
+            )
+            return
+        if req.topic == "services":
+            self._queue(
+                conn,
+                ServerMessage(
+                    type="serviceStatus",
+                    data={"services": self._heartbeats.all()},
                 ),
             )
             return
