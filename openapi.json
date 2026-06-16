@@ -360,8 +360,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": true
+                    "type": "object"
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
                 }
@@ -1047,6 +1046,114 @@
             "schema": {
               "type": "string",
               "title": "Seq"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}": {
+      "get": {
+        "tags": [
+          "proxy"
+        ],
+        "summary": "Proxy Night Report Plot",
+        "operationId": "proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Group"
             }
           },
           {
@@ -1861,6 +1968,100 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "KeyValuesText": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "keyvalues",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Content"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "content"
+        ],
+        "title": "KeyValuesText"
+      },
+      "LinkItem": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "url"
+        ],
+        "title": "LinkItem"
+      },
+      "LinksText": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "links",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/LinkItem"
+            },
+            "type": "array",
+            "title": "Content"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "content"
+        ],
+        "title": "LinksText"
+      },
       "LiveResponse": {
         "properties": {
           "status": {
@@ -2028,6 +2229,41 @@
         ],
         "title": "MosaicViewEntryOut"
       },
+      "MultilineText": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "multiline",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "content"
+        ],
+        "title": "MultilineText"
+      },
       "NightReportOut": {
         "properties": {
           "date": {
@@ -2040,8 +2276,25 @@
           },
           "text": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/MultilineText"
+                },
+                {
+                  "$ref": "#/components/schemas/KeyValuesText"
+                },
+                {
+                  "$ref": "#/components/schemas/LinksText"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "keyvalues": "#/components/schemas/KeyValuesText",
+                  "links": "#/components/schemas/LinksText",
+                  "multiline": "#/components/schemas/MultilineText"
+                }
+              }
             },
             "type": "array",
             "title": "Text"
@@ -2171,13 +2424,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

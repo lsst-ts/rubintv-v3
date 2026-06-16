@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from rubintv.api.deps import get_app_state, get_camera, get_location, valid_date
 from rubintv.config.models import Camera, Location
+from rubintv.data.nrtext import NightReportTextItem
 from rubintv.state import AppState
 
 router = APIRouter()
@@ -28,7 +29,7 @@ class PlotOut(BaseModel):
 class NightReportOut(BaseModel):
     date: str
     exists: bool
-    text: list[dict[str, object]]
+    text: list[NightReportTextItem]
     plots: list[PlotOut]
 
 
@@ -43,6 +44,17 @@ async def get_night_report(
     state: AppState = Depends(get_app_state),
 ) -> NightReportOut:
     idx = state.store.date_index(location.name, camera.name, date)
+    if (idx is None or not idx.night_report_keys) and state.backfill_date is not None:
+        # A deep-linked historical date may have no indexed night-report keys:
+        # either no index at all (cold start before the full sweep reaches it)
+        # or an index with structured data but no report yet (the report landed
+        # after the last sweep). One bounded on-demand scan of {camera}/{date}/
+        # fills the night-report keys (~0.4-1s, one listing). The poller diffs
+        # against its last listing, so a re-request for a date that genuinely
+        # has no report still lists once but applies nothing. Concurrent
+        # requests share the scan. Best-effort: failures fall through to empty.
+        await state.backfill_date(location.name, camera.name, date)
+        idx = state.store.date_index(location.name, camera.name, date)
     keys = set(idx.night_report_keys) if idx else set()
     if not keys:
         return NightReportOut(date=date, exists=False, text=[], plots=[])

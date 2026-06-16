@@ -29,6 +29,7 @@ def seeded_client(settings: Settings) -> Iterator[TestClient]:
             f"lsstcam/{DATE}/witness_detector/000002/b.jpg",
             f"lsstcam/{DATE}/day_movie/final/m.mp4",
             f"lsstcam/{DATE}/night_report/summary_md.json",
+            f"lsstcam/{DATE}/night_report/Coverage/elana_coverage.png",
         ]:
             s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=b"x")
         s3.put_object(
@@ -40,7 +41,19 @@ def seeded_client(settings: Settings) -> Iterator[TestClient]:
             Bucket=TEST_BUCKET,
             Key=f"lsstcam/{DATE}/night_report/summary_md.json",
             Body=json.dumps(
-                [{"type": "multiline", "key": "s", "title": "S", "content": "hi"}]
+                [
+                    {"type": "multiline", "key": "s", "title": "S", "content": "hi"},
+                    {
+                        "type": "keyvalues",
+                        "title": "Conditions",
+                        "content": {"seeing": "0.8"},
+                    },
+                    {
+                        "type": "links",
+                        "title": "Refs",
+                        "content": [{"text": "Logbook", "url": "https://x/log"}],
+                    },
+                ]
             ).encode(),
         )
         app = create_app(settings)
@@ -262,7 +275,73 @@ def test_night_report(seeded_client: TestClient) -> None:
     )
     body = resp.json()
     assert body["exists"] is True
-    assert body["text"][0]["content"] == "hi"
+    by_type = {item["type"]: item for item in body["text"]}
+    assert by_type["multiline"]["content"] == "hi"
+    assert by_type["keyvalues"]["content"] == {"seeing": "0.8"}
+    assert by_type["links"]["content"] == [{"text": "Logbook", "url": "https://x/log"}]
+    plot = next(p for p in body["plots"] if p["filename"] == "elana_coverage.png")
+    assert plot["group"] == "Coverage"
+
+
+def test_night_report_backfills_unindexed_date(seeded_client: TestClient) -> None:
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    # Wait out the startup sweep so the report seeded below can only reach the
+    # store via the on-demand backfill, not a racing background scan.
+    for _ in range(60):
+        if state.camera_status()[("test", "lsstcam")].full_complete:
+            break
+        time.sleep(0.05)
+    # A deep-linked historical date, with an old-format (object) report, that
+    # the sweep never indexed. The night-report handler must backfill it.
+    other = "2025-08-23"
+    boto3.client("s3", region_name="us-east-1").put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{other}/night_report/auxtel_night_report_{other}_md.json",
+        Body=json.dumps({"text_010": "started at seqNum 94"}).encode(),
+    )
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/night-report/{other}"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["exists"] is True
+    # Old object format converted to a multiline item keyed by the map key.
+    assert body["text"][0]["type"] == "multiline"
+    assert body["text"][0]["title"] == "text_010"
+    assert body["text"][0]["content"] == "started at seqNum 94"
+
+
+def test_night_report_absent_after_backfill(seeded_client: TestClient) -> None:
+    # A date with no report stays exists=False after the (empty) backfill scan.
+    resp = seeded_client.get(
+        "/api/locations/test/cameras/lsstcam/night-report/2025-09-09"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["exists"] is False
+
+
+def test_night_report_plot_streams_object(seeded_client: TestClient) -> None:
+    # The plot key is fully known, so the dedicated route GETs it directly
+    # (no prefix listing) and streams it back.
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}"
+        "/plot/Coverage/elana_coverage.png"
+    )
+    assert resp.status_code == 200
+    assert resp.content == b"x"
+    assert "Cache-Control" in resp.headers
+    assert (
+        resp.headers["Content-Disposition"]
+        == 'inline; filename="elana_coverage.png"'
+    )
+
+
+def test_night_report_plot_404_when_missing(seeded_client: TestClient) -> None:
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}"
+        "/plot/Coverage/nope.png"
+    )
+    assert resp.status_code == 404
 
 
 def test_event_by_key(seeded_client: TestClient) -> None:

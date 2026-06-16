@@ -16,6 +16,7 @@ export type ExtInfoOut = Schemas["ExtInfoOut"];
 export type CalendarOut = Schemas["CalendarOut"];
 export type EventOut = Schemas["EventOut"];
 export type NightReportOut = Schemas["NightReportOut"];
+export type NightReportText = NightReportOut["text"][number];
 export type ControlsOut = Schemas["ControlsOut"];
 export type DetectorsConfigOut = Schemas["DetectorsConfigOut"];
 export type DetectorOut = Schemas["DetectorOut"];

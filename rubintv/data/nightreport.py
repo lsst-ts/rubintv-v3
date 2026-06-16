@@ -15,6 +15,7 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from rubintv.data.nrtext import NightReportTextItem, parse_text_items
 from rubintv.data.parser import parse_night_report
 
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ class NightReportPlot:
 class NightReport:
     """Assembled content: structured text items and grouped plots."""
 
-    text: list[dict[str, object]] = field(default_factory=list)
+    text: list[NightReportTextItem] = field(default_factory=list)
     plots: list[NightReportPlot] = field(default_factory=list)
 
 
@@ -54,9 +55,10 @@ class NightReportFetcher:
                 continue
             if ref.is_text:
                 obj = client.get_object(Bucket=bucket, Key=key)
-                items = json.loads(obj["Body"].read())
-                if isinstance(items, list):
-                    report.text.extend(items)
+                raw = json.loads(obj["Body"].read())
+                report.text.extend(
+                    parse_text_items(raw, day_obs=ref.day_obs, source=key)
+                )
             else:
                 report.plots.append(
                     NightReportPlot(

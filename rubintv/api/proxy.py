@@ -114,7 +114,52 @@ def proxy_object(
     assert key is not None
     out_ext = ext if ext is not None else key.rsplit(".", 1)[-1]
     download_name = f"{camera.name}_{channel}_{date}_{seq}.{out_ext}"
+    return _stream_object(obj, download_name, range_header is not None)
 
+
+@router.get(
+    "/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}"
+)
+def proxy_night_report_plot(
+    group: str,
+    filename: str,
+    date: str = Depends(valid_date),
+    location: Location = Depends(get_location),
+    camera: Camera = Depends(get_camera),
+    state: AppState = Depends(get_app_state),
+    if_none_match: str | None = Header(default=None),
+    range_header: str | None = Header(default=None, alias="Range"),
+) -> Response:
+    # Night-report plot keys are fully known (no resolution by listing): the
+    # key shape is {camera}/{date}/night_report/{group}/{filename} (parser §3).
+    # We GET that exact key directly.
+    key = f"{camera.name}/{date}/night_report/{group}/{filename}"
+    client: S3Client = state.s3.client_for(location.name)
+    bucket = location.bucket
+
+    conditional: ConditionalArgs = {}
+    if if_none_match is not None:
+        conditional["IfNoneMatch"] = if_none_match
+    if range_header is not None:
+        conditional["Range"] = range_header
+
+    result = _get_object(client, bucket, key, conditional)
+    if isinstance(result, Response):
+        return result  # 304 Not Modified
+    if result is None:
+        log.info("proxy.nr_plot.miss", location=location.name, key=key)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no object: {key}")
+    return _stream_object(result, filename, range_header is not None)
+
+
+def _stream_object(
+    obj: GetObjectResult, download_name: str, is_range: bool
+) -> StreamingResponse:
+    """Stream a fetched S3 object to the browser with caching headers.
+
+    ``download_name`` is offered via ``Content-Disposition`` so saved files
+    have a meaningful name; ``is_range`` selects 206 vs 200.
+    """
     headers = {
         "Cache-Control": _CACHE_CONTROL,
         "ETag": obj.get("ETag", ""),
@@ -124,9 +169,7 @@ def proxy_object(
     if "ContentRange" in obj:
         headers["Content-Range"] = obj["ContentRange"]
     status_code = (
-        status.HTTP_206_PARTIAL_CONTENT
-        if range_header is not None
-        else status.HTTP_200_OK
+        status.HTTP_206_PARTIAL_CONTENT if is_range else status.HTTP_200_OK
     )
     return StreamingResponse(
         obj["Body"].iter_chunks(),

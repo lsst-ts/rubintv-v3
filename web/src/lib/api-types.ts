@@ -430,6 +430,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Proxy Night Report Plot */
+        get: operations["proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/subapps": {
         parameters: {
             query?: never;
@@ -690,6 +707,43 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** KeyValuesText */
+        KeyValuesText: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "keyvalues";
+            /** Title */
+            title: string;
+            /** Content */
+            content: {
+                [key: string]: string;
+            };
+            /** Key */
+            key?: string | null;
+        };
+        /** LinkItem */
+        LinkItem: {
+            /** Text */
+            text: string;
+            /** Url */
+            url: string;
+        };
+        /** LinksText */
+        LinksText: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "links";
+            /** Title */
+            title: string;
+            /** Content */
+            content: components["schemas"]["LinkItem"][];
+            /** Key */
+            key?: string | null;
+        };
         /** LiveResponse */
         LiveResponse: {
             /** Status */
@@ -748,6 +802,20 @@ export interface components {
             /** Meta Columns */
             meta_columns: string[];
         };
+        /** MultilineText */
+        MultilineText: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "multiline";
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /** Key */
+            key?: string | null;
+        };
         /** NightReportOut */
         NightReportOut: {
             /** Date */
@@ -755,9 +823,7 @@ export interface components {
             /** Exists */
             exists: boolean;
             /** Text */
-            text: {
-                [key: string]: unknown;
-            }[];
+            text: (components["schemas"]["MultilineText"] | components["schemas"]["KeyValuesText"] | components["schemas"]["LinksText"])[];
             /** Plots */
             plots: components["schemas"]["PlotOut"][];
         };
@@ -801,10 +867,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -1045,9 +1107,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: {
-                            [key: string]: unknown;
-                        };
+                        [key: string]: Record<string, never>;
                     };
                 };
             };
@@ -1483,6 +1543,44 @@ export interface operations {
             path: {
                 channel: string;
                 seq: string;
+                filename: string;
+                date: string;
+                location: string;
+                camera: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+                Range?: string | null;
+            };
+            path: {
+                group: string;
                 filename: string;
                 date: string;
                 location: string;

@@ -133,6 +133,19 @@ export const api = {
     `/api/locations/${enc(loc)}/cameras/${enc(cam)}/channels/${enc(channel)}/` +
     `${enc(date)}/${enc(seq)}/${enc(filename)}`,
 
+  // Build a proxied URL for a night-report plot. The plot key is fully known
+  // ({camera}/{date}/night_report/{group}/{filename}), so the dedicated route
+  // GETs it directly rather than resolving by prefix listing.
+  nightReportPlotUrl: (
+    loc: string,
+    cam: string,
+    date: string,
+    group: string,
+    filename: string,
+  ) =>
+    `/api/locations/${enc(loc)}/cameras/${enc(cam)}/night-report/` +
+    `${enc(date)}/plot/${enc(group)}/${enc(filename)}`,
+
   // Build a proxied media URL from a raw per-day S3 key. Per-day keys follow
   // `{camera}/{date}/{channel}/{seq}/{filename}.{ext}` (the seq segment is a
   // word sentinel like "final"). The proxy route resolves the actual object by

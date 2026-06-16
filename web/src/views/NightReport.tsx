@@ -1,10 +1,43 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
+import type { NightReportText } from "../lib/types";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+
+// One text section. The item is a discriminated union on `type`; each kind
+// renders its content differently (paragraph / key-values / link list).
+function TextItem({ item }: { item: NightReportText }) {
+  return (
+    <article className="nr-text">
+      <h3>{item.title}</h3>
+      {item.type === "multiline" && <p>{item.content}</p>}
+      {item.type === "keyvalues" && (
+        <dl className="nr-keyvalues">
+          {Object.entries(item.content).map(([k, v]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {item.type === "links" && (
+        <ul className="nr-links">
+          {item.content.map((link) => (
+            <li key={link.url}>
+              <a href={link.url} target="_blank" rel="noreferrer">
+                {link.text}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
 
 // Nightly summary: text sections + grouped plot gallery. The UI label is
 // deliberately neutral ("Nightly Summary"); the route/API keep night-report.
@@ -39,10 +72,7 @@ export function NightReport() {
     <section>
       <h1>Nightly Summary — {date}</h1>
       {data.text.map((item, i) => (
-        <article key={i} className="nr-text">
-          <h3>{String((item as Record<string, unknown>).title ?? "")}</h3>
-          <p>{String((item as Record<string, unknown>).content ?? "")}</p>
-        </article>
+        <TextItem key={i} item={item} />
       ))}
       {[...groups.entries()].map(([group, plots]) => (
         <div key={group} className="nr-group">
