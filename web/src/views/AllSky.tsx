@@ -119,41 +119,49 @@ export function AllSky() {
   }, [cameraInfo, payload, videoChannels, isCurrent, location, camera, date]);
 
   return (
-    <section className="live-view">
-      <header className="table-header">
-        <h1>{cameraInfo?.title ?? camera}</h1>
-        <label>
-          Date{" "}
-          <select
-            value={date}
-            onChange={(e) => setParams({ date: e.target.value })}
-          >
-            {calendar?.dates.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
-      </header>
+    <section className="live-view allsky-wrap">
+      {/* Toolbar: historical-date picker + live/historical indicator. */}
+      <div className="allsky-toolbar">
+        <span className="amovie-label">All-sky feed</span>
+        <select
+          className="date-field"
+          value={date}
+          aria-label="Date"
+          onChange={(e) => setParams({ date: e.target.value })}
+        >
+          {calendar?.dates.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+        <span style={{ flex: 1 }} />
+        {isCurrent ? (
+          <span className="tag live">live</span>
+        ) : (
+          <span className="tag">historical · {date}</span>
+        )}
+      </div>
 
-      <div className="live-view-media">
+      <div className="allsky-stage live-view-media">
         {tiles.length === 0 && date !== "" && (
           <p className="skeleton">No imagery yet for {date}.</p>
         )}
         {tiles.map((t) => (
-          <figure key={t.channel} className="live-view-item">
-            <figcaption>
-              {t.title}{" "}
-              <span className="live-view-seq">
+          <figure key={t.channel} className="allsky-col live-view-item">
+            <figcaption className="allsky-mediahead">
+              <span className="amh-title">{t.title}</span>
+              <span className="amh-meta live-view-seq">
                 {typeof t.seq === "number" ? `#${t.seq}` : t.seq}
               </span>
             </figcaption>
-            {t.isVideo ? (
-              <video src={t.src} controls />
-            ) : (
-              <img src={t.src} alt={`${t.title} ${t.seq}`} />
-            )}
+            <div className="allsky-frame">
+              {t.isVideo ? (
+                <video src={t.src} controls />
+              ) : (
+                <img src={t.src} alt={`${t.title} ${t.seq}`} />
+              )}
+            </div>
           </figure>
         ))}
       </div>

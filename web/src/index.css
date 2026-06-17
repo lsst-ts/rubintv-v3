@@ -809,32 +809,61 @@ h1, h2 {
 }
 .live-link:hover { text-decoration: underline; }
 
-.live-view-media {
+/* ── All Sky feed ──────────────────────────────────────────────────────── */
+.allsky-wrap {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 1rem;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
-.live-view-item {
-  flex: 1 1 24rem;
-  min-width: 0;
+.allsky-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.allsky-toolbar .amovie-label {
+  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+}
+.allsky-toolbar .date-field {
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-mid); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+}
+
+/* The media stage: two columns (still + movie), each a framed media tile. */
+.allsky-stage {
+  flex: 1; min-height: 0;
+  display: flex; flex-wrap: wrap; gap: 22px;
+  align-items: flex-start;
+  padding: 18px 0 22px;
+  overflow: auto;
+}
+.allsky-col {
+  flex: 1 1 24rem; min-width: 0; max-width: 540px;
+  display: flex; flex-direction: column; gap: 8px;
   margin: 0;
 }
-.live-view-item figcaption {
-  margin-bottom: 0.5rem;
-  font-weight: 600;
+.allsky-mediahead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 0 2px;
 }
-.live-view-seq {
-  font-weight: 400;
-  opacity: 0.6;
+.amh-title { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.amh-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
+.live-view-seq { font-weight: 400; }
+.allsky-frame {
+  border: 1.5px solid var(--stroke); border-radius: 8px;
+  background: var(--paper-2); padding: 10px;
+  box-shadow: var(--shadow-card);
 }
-.live-view-item img,
-.live-view-item video {
+.allsky-frame img,
+.allsky-frame video {
   width: 100%;
   height: auto;
-  background: var(--paper-2);
-  border: 1px solid var(--line-mid);
-  border-radius: 0.4rem;
+  display: block;
+  background: var(--paper-3);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
 }
 
 .plot-gallery {
