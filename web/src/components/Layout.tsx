@@ -108,6 +108,9 @@ export function Layout() {
                   {location && <span className="site">{location}</span>}
                 </div>
               )}
+              {/* Historical-scan notice: a compact inline pill above the live
+                  indicator, not a full-width banner. */}
+              <LoadingBanner location={location} camera={camera} />
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <nav className="subapp-nav" aria-label="Sub-apps">
                   {subapps.map((path) => (
@@ -145,8 +148,6 @@ export function Layout() {
             </div>
           )}
         </header>
-
-        <LoadingBanner location={location} camera={camera} />
 
         <main className="app-content">
           <Outlet />

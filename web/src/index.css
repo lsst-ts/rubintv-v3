@@ -344,15 +344,21 @@ h1, h2 {
 
 .skeleton { color: var(--ink-soft); }
 
-/* ── Loading banner ────────────────────────────────────────────────────── */
+/* ── Loading banner ────────────────────────────────────────────────────────
+   A compact inline pill (sits in the topbar above the live indicator), not a
+   full-width strip. */
 .loading-banner {
+  align-self: flex-end;
+  max-width: 22rem;
   background: var(--accent-soft);
   color: var(--ink);
   font-family: var(--hand);
-  font-size: 0.85rem;
-  padding: 0.4rem 1rem;
-  text-align: center;
-  border-bottom: 1px solid var(--line-soft);
+  font-size: 0.78rem;
+  line-height: 1.25;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  text-align: right;
 }
 
 .metadata-progress {
