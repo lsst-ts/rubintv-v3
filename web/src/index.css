@@ -444,25 +444,218 @@ h1, h2 {
   align-items: baseline;
 }
 
+/* ── Camera table ──────────────────────────────────────────────────────── */
+.cam-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ── Camera table toolbar ──────────────────────────────────────────────── */
+.cam-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.cam-toolbar .tb-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  font-family: var(--hand); font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: none;
+}
+.cam-toolbar .tb-btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.cam-toolbar .tb-btn:disabled { opacity: 0.5; cursor: default; }
+.cam-toolbar .tb-grow { flex: 1; }
+.cam-toolbar .date-field {
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-mid); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+}
+
+/* Density segmented control. */
+.density-seg {
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2);
+}
+.density-seg button {
+  border: none; background: transparent;
+  font-family: var(--hand); font-size: 12px;
+  color: var(--ink-soft);
+  padding: 4px 10px; border-radius: 6px;
+  cursor: pointer;
+}
+.density-seg button.active {
+  background: var(--paper); color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+[data-theme="dark"] .density-seg button.active { background: var(--paper-3); }
+
+/* Column-picker popover. */
+.cols-cluster { position: relative; display: inline-flex; }
+.cols-pop {
+  position: absolute;
+  top: calc(100% + 6px); right: 0;
+  width: min(420px, 80vw);
+  max-height: 60vh; overflow-y: auto;
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  padding: 8px;
+}
+.cols-pop .cols-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 10px;
+}
+.cols-pop label {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--hand); font-size: 13px;
+  padding: 4px; border-radius: 3px;
+  cursor: pointer;
+}
+.cols-pop label:hover { background: var(--paper-3); }
+.cols-pop input { accent-color: var(--accent); }
+
+/* Per-day artifacts strip. */
+.per-day {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 4px 0 12px;
+}
+.per-day-item {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border: 1px solid var(--line-mid); border-radius: 4px;
+  padding: 3px 8px;
+}
+
 /* ── Data table ────────────────────────────────────────────────────────── */
+.table-wrap {
+  flex: 1;
+  overflow: auto;
+  background: var(--paper);
+  position: relative;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+}
 .data-table {
   border-collapse: collapse;
-  width: 100%;
   font-family: var(--mono);
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+  /* Density: --row-pad set on the table; font-size inherited per-density. */
 }
 .data-table th,
 .data-table td {
-  border: 1px solid var(--line-soft);
-  padding: 0.25rem 0.5rem;
-  text-align: left;
-  font-size: 11px;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  padding: var(--row-pad, 6px 8px);
+  font-size: inherit;
+  vertical-align: middle;
+  background-clip: padding-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.data-table.dens-compact { font-size: 10px; }
+.data-table.dens-regular { font-size: 11px; }
+.data-table.dens-comfy { font-size: 12px; }
 .data-table thead th {
+  position: sticky; top: 0; z-index: 5;
   background: var(--paper-2);
+  border-right: none;
   border-bottom: 1.5px solid var(--stroke);
   font-family: var(--hand);
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink);
+  text-align: left;
+  user-select: none;
+}
+/* Sticky seq column. */
+.data-table th.seq,
+.data-table td.seq {
+  position: sticky; left: 0; z-index: 4;
+  background: var(--paper-2);
+  border-right: 1.5px solid var(--stroke);
+}
+.data-table thead th.seq { z-index: 6; }
+
+/* Channel chip cell. */
+.cell-chip {
+  width: 26px; height: 26px;
+  border: 1px solid var(--stroke);
+  border-radius: 2px;
+  display: block;
+  margin: 0 auto;
+  text-decoration: none;
+}
+.cell-chip.empty {
+  border-style: dashed; border-color: var(--line-mid);
+  background: transparent !important;
+}
+
+/* Per-row action links. */
+.data-table td a { color: var(--accent); text-decoration: none; }
+.data-table td a:hover { text-decoration: underline; }
+
+/* Newest-row highlight (top row). */
+.data-table tr.newest td { background: var(--accent-soft); }
+.data-table tr.newest td.seq {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* ── Angled header overlay ─────────────────────────────────────────────── */
+.hs-angled thead th {
+  height: var(--header-h, 150px);
+  vertical-align: bottom;
+  padding: 0;
+}
+.hs-angled thead th:not(.seq) .label { display: none; }
+.hs-angled thead th.seq {
+  padding: 6px 8px;
+  z-index: 8;
+}
+.hs-angled thead th.seq .label {
+  font-family: var(--hand); font-size: 11px; font-weight: 600;
+}
+.header-overlay {
+  position: sticky; top: 0;
+  height: var(--header-h, 150px);
+  margin-bottom: calc(var(--header-h, 150px) * -1);
+  pointer-events: none;
+  z-index: 7;
+}
+.header-overlay-bg {
+  position: absolute; inset: 0;
+  background: var(--paper-2);
+  border-bottom: 1.5px solid var(--stroke);
+  pointer-events: none;
+}
+.header-overlay .hdr-label {
+  position: absolute;
+  bottom: 6px;
+  transform: rotate(-45deg);
+  transform-origin: left bottom;
+  white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  max-width: calc(var(--header-h, 150px) * 1.4142);
+  font-family: var(--hand); font-size: 11px; font-weight: 600;
+  line-height: 1; color: var(--ink);
+  padding: 2px 6px 2px 4px;
+  pointer-events: auto; cursor: help;
 }
 
 /* Channel cadence tag (live / day) — shared by the browser cards and the

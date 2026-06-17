@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -7,12 +7,37 @@ import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
+import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { fillTemplate, isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
 import { CopyButton } from "../components/CopyButton";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { AllSky } from "./AllSky";
+
+type Density = "compact" | "regular" | "comfy";
+const ROW_PAD: Record<Density, string> = {
+  compact: "3px 8px",
+  regular: "6px 8px",
+  comfy: "10px 10px",
+};
+
+// Truncate float-like metadata to 2dp for display, keeping the full value for a
+// hover tooltip. Non-numeric values pass through. Mirrors the design's cell
+// formatting.
+function formatCell(value: unknown): { display: string; title?: string } {
+  if (value === null || value === undefined || value === "")
+    return { display: "—" };
+  const s = String(value);
+  if (typeof value === "number" || /^-?\d*\.\d+$/.test(s)) {
+    const n = Number(value);
+    if (!Number.isNaN(n)) {
+      const trunc = (Math.trunc(n * 100) / 100).toFixed(2);
+      return trunc === s ? { display: s } : { display: trunc, title: s };
+    }
+  }
+  return { display: s };
+}
 
 // The main camera view: date picker, per-seq-num table with channel columns
 // and metadata columns, per-day artifacts, night-report link. Subscribes to
@@ -109,10 +134,40 @@ export function CameraTable() {
     [streamedMeta, restMeta],
   );
 
-  const channelNames = useMemo(
-    () => cameraInfo?.channels.filter((c) => !c.per_day).map((c) => c.name) ?? [],
+  const liveChannels = useMemo(
+    () => cameraInfo?.channels.filter((c) => !c.per_day) ?? [],
     [cameraInfo],
   );
+  const channelNames = useMemo(
+    () => liveChannels.map((c) => c.name),
+    [liveChannels],
+  );
+  const channelColour = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of liveChannels) m[c.name] = c.colour ?? "var(--accent)";
+    return m;
+  }, [liveChannels]);
+
+  // Row density (compact / regular / comfy), persisted per browser.
+  const [density, setDensity] = useState<Density>(() => {
+    try {
+      const d = localStorage.getItem("rubintv.density");
+      if (d === "compact" || d === "regular" || d === "comfy") return d;
+    } catch {
+      // ignore
+    }
+    return "regular";
+  });
+  const pickDensity = (d: Density) => {
+    try {
+      localStorage.setItem("rubintv.density", d);
+    } catch {
+      // ignore
+    }
+    setDensity(d);
+  };
+
+  const [colsOpen, setColsOpen] = useState(false);
 
   // Per-row action links/buttons, driven by per-camera config. Each is shown
   // only when its template is configured. {dev} and {siteLoc} are fixed for the
@@ -170,6 +225,27 @@ export function CameraTable() {
     return [...s].sort((a, b) => b - a);
   }, [payload, metadata]);
 
+  // The full ordered column model: sticky seq, channel chips, per-row action
+  // columns (only those configured), then the visible metadata columns. The
+  // angled-header overlay draws a label per non-seq column.
+  const columns = useMemo(() => {
+    const cols: { key: string; label: string }[] = [
+      { key: "seq", label: "Seq.No" },
+      ...channelNames.map((c) => ({ key: `ch:${c}`, label: c })),
+    ];
+    if (viewerTmpl) cols.push({ key: "viewer", label: "Viewer" });
+    if (quicklookTmpl) cols.push({ key: "quicklook", label: "Quicklook" });
+    if (copyRowTmpl) cols.push({ key: "copy", label: "Copy row" });
+    for (const c of visible) cols.push({ key: `meta:${c}`, label: c });
+    return cols;
+  }, [channelNames, viewerTmpl, quicklookTmpl, copyRowTmpl, visible]);
+
+  // Angled header labels are drawn in a measured overlay layer.
+  const { wrapRef, headRef, positions, tableWidth } = useAngledHeaders(true, [
+    columns,
+    density,
+  ]);
+
   // Live-view cameras (e.g. All Sky) show a single latest-image/latest-movie
   // panel instead of a per-seq-num table. Delegate once the config has loaded.
   // Placed after all hooks above so the rules-of-hooks order is unconditional.
@@ -178,30 +254,21 @@ export function CameraTable() {
   }
 
   return (
-    <section>
-      <header className="table-header">
-        <h1>{cameraInfo?.title ?? camera}</h1>
-        {payload?.has_night_report && (
-          <Link to={`/${location}/${camera}/night-report?date=${date}`}>
-            View nightly summary
-          </Link>
-        )}
-      </header>
-
-      <div className="controls">
-        <label>
-          Date{" "}
-          <select
-            value={date}
-            onChange={(e) => setParams({ date: e.target.value })}
-          >
-            {pickerDates.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
+    <section className="cam-table">
+      {/* Toolbar: date stepper, share/download, density, columns, night report. */}
+      <div className="cam-toolbar">
+        <select
+          className="date-field"
+          value={date}
+          aria-label="Date"
+          onChange={(e) => setParams({ date: e.target.value })}
+        >
+          {pickerDates.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
         <ShareLink date={date || undefined} />
         <DownloadMetadata
           metadata={metadata}
@@ -217,19 +284,58 @@ export function CameraTable() {
             loading metadata… {metaProgress.rows} rows
           </span>
         )}
-        <details className="column-picker">
-          <summary>Columns ({visible.length}/{metaColumns.length})</summary>
-          {metaColumns.map((col) => (
-            <label key={col}>
-              <input
-                type="checkbox"
-                checked={!hidden.has(col)}
-                onChange={() => toggle(col)}
-              />
-              {col}
-            </label>
+
+        <span className="tb-grow" />
+
+        <div className="density-seg" role="group" aria-label="Row density">
+          {(["compact", "regular", "comfy"] as Density[]).map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={density === d ? "active" : ""}
+              aria-pressed={density === d}
+              onClick={() => pickDensity(d)}
+            >
+              {d}
+            </button>
           ))}
-        </details>
+        </div>
+
+        <div className="cols-cluster">
+          <button
+            type="button"
+            className="tb-btn"
+            aria-expanded={colsOpen}
+            onClick={() => setColsOpen((o) => !o)}
+          >
+            Columns ({visible.length}/{metaColumns.length})
+          </button>
+          {colsOpen && (
+            <div className="cols-pop">
+              <div className="cols-grid">
+                {metaColumns.map((col) => (
+                  <label key={col}>
+                    <input
+                      type="checkbox"
+                      checked={!hidden.has(col)}
+                      onChange={() => toggle(col)}
+                    />
+                    {col}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {payload?.has_night_report && (
+          <Link
+            className="tb-btn"
+            to={`/${location}/${camera}/night-report?date=${date}`}
+          >
+            Night report
+          </Link>
+        )}
       </div>
 
       {isPending && date !== "" && <p className="skeleton">Loading…</p>}
@@ -244,86 +350,149 @@ export function CameraTable() {
         </div>
       )}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Seq</th>
-            {channelNames.map((c) => (
-              <th key={c}>{c}</th>
-            ))}
-            {viewerTmpl && <th>Viewer</th>}
-            {quicklookTmpl && <th>Quicklook</th>}
-            {copyRowTmpl && <th />}
-            {visible.map((c) => (
-              <th key={c}>{c}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {seqNums.map((seq) => {
-            const meta = metadata[String(seq)] ?? {};
+      <div className="table-wrap" ref={wrapRef}>
+        {/* Angled header labels, positioned over each measured column. */}
+        <div className="header-overlay" style={{ width: tableWidth || undefined }}>
+          <div className="header-overlay-bg" />
+          {columns.map((c, i) => {
+            const pos = positions[i];
+            if (!pos || c.key === "seq") return null; // seq label lives in its <th>
             return (
-              <tr key={seq}>
-                <td>{seq}</td>
-                {channelNames.map((chan) => {
-                  const present = (payload?.channels[chan] ?? []).includes(seq);
-                  return (
-                    <td key={chan}>
-                      {present ? (
-                        <Link
-                          to={`/${location}/${camera}/${chan}?seq=${seq}&date=${date}`}
-                        >
-                          ●
-                        </Link>
-                      ) : (
-                        ""
-                      )}
-                    </td>
-                  );
-                })}
-                {viewerTmpl && (
-                  <td>
-                    <a
-                      href={fillTemplate(viewerTmpl, date, seq, linkCtx(meta.controller))}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Viewer
-                    </a>
-                  </td>
-                )}
-                {quicklookTmpl && (
-                  <td>
-                    <a
-                      href={fillTemplate(quicklookTmpl, date, seq, linkCtx(meta.controller))}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Quicklook
-                    </a>
-                  </td>
-                )}
-                {copyRowTmpl && (
-                  <td>
-                    <CopyButton
-                      text={fillTemplate(copyRowTmpl, date, seq, linkCtx(meta.controller))}
-                    />
-                  </td>
-                )}
-                {visible.map((col) => (
-                  <td key={col}>{formatCell(meta[col])}</td>
-                ))}
-              </tr>
+              <div
+                key={c.key}
+                className="hdr-label"
+                title={c.label}
+                style={{ left: pos.left + 4 }}
+              >
+                {c.label}
+              </div>
             );
           })}
-        </tbody>
-      </table>
+        </div>
+
+        <table
+          className={`data-table hs-angled dens-${density}`}
+          style={{ ["--row-pad" as string]: ROW_PAD[density] }}
+        >
+          <thead ref={headRef}>
+            <tr>
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  className={c.key === "seq" ? "seq" : undefined}
+                  title={c.key !== "seq" ? c.label : undefined}
+                >
+                  <span className="label">{c.label}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {seqNums.map((seq, rowIdx) => {
+              const meta = metadata[String(seq)] ?? {};
+              return (
+                <tr key={seq} className={rowIdx === 0 ? "newest" : undefined}>
+                  {columns.map((c) => {
+                    if (c.key === "seq") {
+                      return (
+                        <td key="seq" className="seq">
+                          {seq}
+                        </td>
+                      );
+                    }
+                    if (c.key.startsWith("ch:")) {
+                      const chan = c.key.slice(3);
+                      const present = (payload?.channels[chan] ?? []).includes(
+                        seq,
+                      );
+                      return (
+                        <td key={c.key}>
+                          {present ? (
+                            <Link
+                              className="cell-chip"
+                              style={{ background: channelColour[chan] }}
+                              to={`/${location}/${camera}/${chan}?seq=${seq}&date=${date}`}
+                              aria-label={`${chan} ${seq}`}
+                            />
+                          ) : (
+                            <span className="cell-chip empty" />
+                          )}
+                        </td>
+                      );
+                    }
+                    if (c.key === "viewer") {
+                      return (
+                        <td key="viewer">
+                          <a
+                            href={fillTemplate(
+                              viewerTmpl!,
+                              date,
+                              seq,
+                              linkCtx(meta.controller),
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Viewer
+                          </a>
+                        </td>
+                      );
+                    }
+                    if (c.key === "quicklook") {
+                      return (
+                        <td key="quicklook">
+                          <a
+                            href={fillTemplate(
+                              quicklookTmpl!,
+                              date,
+                              seq,
+                              linkCtx(meta.controller),
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Quicklook
+                          </a>
+                        </td>
+                      );
+                    }
+                    if (c.key === "copy") {
+                      return (
+                        <td key="copy">
+                          <CopyButton
+                            text={fillTemplate(
+                              copyRowTmpl!,
+                              date,
+                              seq,
+                              linkCtx(meta.controller),
+                            )}
+                          />
+                        </td>
+                      );
+                    }
+                    // Metadata cell.
+                    const col = c.key.slice(5);
+                    const { display, title } = formatCell(meta[col]);
+                    return (
+                      <td
+                        key={c.key}
+                        title={title}
+                        style={{
+                          color:
+                            display === "—" ? "var(--ink-soft)" : "var(--ink)",
+                          cursor: title ? "help" : undefined,
+                        }}
+                      >
+                        {display}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
-}
-
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") return String(value);
-  return String(value);
 }
