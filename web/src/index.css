@@ -880,7 +880,14 @@ h1, h2 {
 .status-guest { background: #b8d4e0; }
 .status-missing { background: #d8d8d4; }
 
-.legend { margin: 0.75rem 0 1rem; }
+.legend {
+  margin: 0.75rem 0 1rem;
+  display: inline-block;
+  background: var(--paper-2);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
 .legend-items {
   display: flex;
   flex-wrap: wrap;
@@ -890,40 +897,75 @@ h1, h2 {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.85rem;
+  font-family: var(--hand);
+  font-size: 0.8rem;
 }
 .legend-color {
-  width: 1rem;
-  height: 1rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 1px solid var(--stroke);
   border-radius: 2px;
 }
+
+/* Plain data tables outside a .table-wrap (Status / Other Queues) use natural
+   layout rather than the camera table's fixed/max-content sizing. */
+:not(.table-wrap) > .data-table {
+  table-layout: auto;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  overflow: hidden;
+}
+:not(.table-wrap) > .data-table th,
+:not(.table-wrap) > .data-table td {
+  white-space: normal;
+}
+:not(.table-wrap) > .data-table thead th { position: static; }
 
 /* Section rows. */
 .main-detectors,
 .aos-detectors {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.5rem;
+  gap: 1rem;
   align-items: flex-start;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
-.detector-title {
-  font-size: 1.1rem;
-  margin: 0 0 0.5rem;
-  font-weight: 400;
+
+/* Each worker set is a framed card (design's .wf box). */
+.detector-section,
+.step1b-section,
+.spareworkers-section,
+.other-queues {
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: var(--shadow-card);
+}
+.detector-title,
+.spareworkers-section h3,
+.other-queues h3 {
+  font-family: var(--display);
+  font-size: 0.95rem;
+  margin: 0 0 0.6rem;
+  font-weight: 600;
 }
 .detector-section-large {
   flex: 1 1 24rem;
   max-width: 32rem;
 }
 .detector-section-small { flex: 0 1 14rem; }
-.step1b-section { flex: 0 1 8rem; }
+.step1b-section { flex: 0 1 9rem; }
 
 /* Canvas keeps a square aspect; the polygons are drawn to fit. */
 .detector-canvas {
   position: relative;
   width: 100%;
   border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  background: var(--paper);
   aspect-ratio: 1 / 1;
 }
 .detector-canvas canvas {
@@ -939,6 +981,8 @@ h1, h2 {
   grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  background: var(--paper);
   padding: 6px;
   min-height: 6rem;
 }
@@ -946,35 +990,30 @@ h1, h2 {
 .detector-cell {
   aspect-ratio: 1 / 1;
   border: 1px solid var(--line-mid);
+  border-radius: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .detector-cell.status-missing { background: #c8ccd4; }
 .queue-length {
-  color: #fff;
+  color: #1a1a1a;
   font-weight: 700;
   font-size: 0.8rem;
 }
 
-.spareworkers-section h3,
-.other-queues h3 {
-  font-weight: 400;
-  margin: 0 0 0.5rem;
-}
-.spareworkers-section {
-  margin-bottom: 1.5rem;
-  max-width: 12rem;
-}
+.spareworkers-row { margin-bottom: 1rem; }
+.spareworkers-section { max-width: 12rem; }
 
 /* Per-section Restart Workers button uses the danger ConfirmButton styling. */
 .detector-section .danger,
 .step1b-section .danger,
 .spareworkers-section .danger {
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
   font-size: 0.8rem;
 }
 .other-queues { max-width: 30rem; }
+.other-queues .data-table { margin-top: 0; }
 
 /* ── Admin panel ───────────────────────────────────────────────────────── */
 .admin-header {
