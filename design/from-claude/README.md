@@ -6,12 +6,29 @@ pulled down on 2026-06-16 to port into the real `web/` app component by componen
 These are reference artifacts — **not** wired into the app. The port target is
 `web/src/` on the `design-port` branch.
 
-## Two distinct design languages
+## Design language hierarchy (THREE iterations — most recent wins)
 
-The project contains two aesthetics. **The hi-fi navy design is the one to port** —
-it matches the channels-tab reference screenshot the user has been refining.
+The project evolved through three aesthetics. **`Camera Table - Sidebar v2.html` is
+the canonical, most-evolved design** and its inline `:root` (line ~1721) is the real
+token set to port. Its own header comment says it *"supersedes the wireframe tokens."*
 
-### 1. Hi-fi "Summit" design (navy + IBM Plex Serif) — PRIMARY
+### 0. v2 camera-table — CANONICAL (light: white + charcoal + teal, Space Grotesk)
+- `Camera Table - Sidebar v2.html` (~170KB, all inline) — the full production-grade app:
+  collapsible sidebar shell, breadcrumbs, home/location landing pages, channel-within-table
+  view, exposure data table (sticky seq col, 5 header styles: angled/vertical/stacked/wrap/
+  ellipsis), date picker (classic / two-month / nights variants), column picker, filter
+  system + chips, foldout object cells, all-sky feed view.
+- **Tokens (port these):** `--paper #ffffff`, `--paper-2 #f5f8f9`, `--paper-3 #ebeff1`,
+  `--ink #23282d`, `--ink-2 #4b525a`, `--ink-soft #828b93`, `--line-soft #e3e8ea`,
+  `--line-mid #ccd3d7`, `--stroke #23282d`, `--accent #0a8d93` (teal links/focus),
+  `--accent-bright #00bbc6` (cyan live/dots), `--accent-soft #ddf1f2`, `--accent-line #8ad6da`,
+  `--warn #d97a2f`, `--good #1f9d63`, `--hand 'IBM Plex Sans'`,
+  `--display 'Space Grotesk'`, `--mono 'IBM Plex Mono'`, `--sans 'IBM Plex Sans'`,
+  plus `--shadow-card` / `--shadow-pop`.
+- The base `styles.css` (`.btn`/`.tag`/`.chip`/`.s-*` etc.) is still used, but this page's
+  inline `<style>` overrides its `:root` and restyles `.btn`/`.tag` for the light theme.
+
+### 1. Hi-fi "Summit" design (navy + IBM Plex Serif) — superseded, channels only
 - `channels-styles.css` — the design system: dark navy (`--bg #0F1424`), cream text,
   warm "sun" accent (`--sun #E6B065`), IBM Plex Serif/Sans/Mono. Component classes:
   `.ch-topbar`, `.ch-brand` (sun logo + memorial), `.ch-hero`, `.ch-tabs`, `.placeholder`,

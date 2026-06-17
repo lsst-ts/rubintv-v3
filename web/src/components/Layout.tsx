@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useParams } from "react-router-dom";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { LoadingBanner } from "./LoadingBanner";
+import { ThemeToggle } from "./ThemeToggle";
 import { STALE } from "../lib/queryClient";
 
 // Mounted sub-apps (DDV, exp_checker) are reported by the backend; render
@@ -44,6 +45,7 @@ export function Layout() {
           ))}
           <Link to="/status">status</Link>
           <Link to="/admin">admin</Link>
+          <ThemeToggle />
           <ConnectionStatus />
         </nav>
       </header>

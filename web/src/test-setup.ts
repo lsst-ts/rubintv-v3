@@ -29,3 +29,20 @@ if (!HTMLCanvasElement.prototype.getContext) {
   HTMLCanvasElement.prototype.getContext = (() =>
     null) as typeof HTMLCanvasElement.prototype.getContext;
 }
+
+// jsdom has no matchMedia; the theme toggle queries prefers-color-scheme.
+// Stub it as "light, no preference" with no-op listeners.
+if (typeof window.matchMedia !== "function") {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent() {
+      return false;
+    },
+  })) as typeof window.matchMedia;
+}

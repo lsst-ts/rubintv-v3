@@ -7,6 +7,20 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Resolve the saved theme before React mounts so there's no light/dark
+         flash on load. Mirrors useTheme() in src/lib/useTheme.ts. -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem("rubintv-theme") || "system";
+          var sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.setAttribute(
+            "data-theme",
+            m === "system" ? (sysDark ? "dark" : "light") : m,
+          );
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
