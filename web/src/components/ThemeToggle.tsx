@@ -46,10 +46,16 @@ const OPTIONS: Array<[ThemeMode, string, () => ReactElement]> = [
   ["dark", "Dark", MoonIcon],
 ];
 
-export function ThemeToggle() {
+// `vertical` stacks the segments — used in the collapsed-sidebar left gutter
+// (see design/from-claude/Camera Table - Sidebar v2.html .theme-seg.vertical).
+export function ThemeToggle({ vertical = false }: { vertical?: boolean }) {
   const [mode, setMode] = useTheme();
   return (
-    <div className="theme-seg" role="group" aria-label="Color theme">
+    <div
+      className={"theme-seg" + (vertical ? " vertical" : "")}
+      role="group"
+      aria-label="Color theme"
+    >
       {OPTIONS.map(([val, label, Icon]) => (
         <button
           key={val}

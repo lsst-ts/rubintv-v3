@@ -28,6 +28,7 @@
     overflow: hidden auto;
     position: relative;
     min-width: 0;
+    display: flex; flex-direction: column;
   }
   .shell.collapsed .sidebar { border-right: none; padding: 0; }
   .sidebar-head {
@@ -47,32 +48,53 @@
   }
   .icon-btn:hover { background: var(--paper-3); }
 
+  /* Sidebar footer — pinned to the bottom; home for the global theme toggle */
+  .sidebar-foot {
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid var(--line-soft);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .sidebar-foot .foot-label {
+    font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
   /* Small reopen tab — just the chevron, no brand text. Lives in the
      space the sidebar vacated. */
   /* Reopen tab — anchored to the bottom-left of the topbar so it meets the
      header bottom border. */
   .topbar { position: relative; }
   .sidebar-reopen {
-    position: absolute;
-    bottom: 6px; left: 14px;
     width: 28px; height: 28px;
     display: inline-flex; align-items: center; justify-content: center;
     border: 1.25px solid var(--stroke); border-radius: 4px;
     background: var(--paper-2);
-    cursor: pointer; z-index: 10;
+    cursor: pointer;
     font-family: var(--mono); font-size: 14px; line-height: 1;
   }
   .sidebar-reopen:hover { background: var(--paper-3); }
 
-  /* Brand block in the topbar right column — sits ABOVE the status pill,
-     visible only when the sidebar is collapsed. */
-  .topbar-brand {
-    display: flex; flex-direction: column; align-items: flex-end;
-    gap: 1px; line-height: 1;
-    margin-bottom: 4px;
+  /* Collapsed-sidebar left gutter — reopen button + vertical appearance picker,
+     top-anchored so they fill the space the sidebar vacated. */
+  .topbar-leftgutter {
+    position: absolute; top: 13px; left: 10px; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
   }
-  .topbar-brand .brand { font-family: var(--hand); font-weight: 700; font-size: 14px; }
-  .topbar-brand .site  { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
+
+  /* Brand block in the topbar right column — one compact line, visible only
+     when the sidebar is collapsed. */
+  .topbar-brand {
+    display: flex; flex-direction: row; align-items: center;
+    gap: 7px; line-height: 1;
+    margin-bottom: 0;
+  }
+  .topbar-brand .brand-mark { height: 13px; margin-bottom: 0; }
+  .topbar-brand .brand { font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+  .topbar-brand .site  {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+    padding-left: 7px; border-left: 1px solid var(--line-mid);
+  }
   .sidebar h1 { font-family: var(--hand); font-weight: 700; font-size: 22px; margin: 0; }
   .sidebar .site { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
   .sidebar .group-h {
@@ -286,13 +308,13 @@
   /* Main */
   .main { overflow: hidden; display: flex; flex-direction: column; position: relative; }
   .topbar {
-    padding: 14px 22px 14px;
+    padding: 12px 22px 0;
     border-bottom: 1.5px solid var(--stroke);
     background: var(--paper);
   }
   /* When sidebar is closed, leave just enough left-padding for the reopen
      button; the page title fills the freed space. */
-  .shell.collapsed .topbar { padding-left: 54px; }
+  .shell.collapsed .topbar { padding-left: 56px; min-height: 116px; }
   .crumb { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
   .title-row {
     display: flex; align-items: baseline; gap: 14px; margin-top: 4px;
@@ -342,7 +364,7 @@
   }
 
   .tabs {
-    display: flex; gap: 4px; margin-top: 16px;
+    display: flex; gap: 4px; margin-top: 12px;
     border-bottom: 1px solid var(--line-mid);
   }
   .tab {
@@ -1903,6 +1925,9 @@
   .theme-seg-btn.active { color: var(--accent); background: var(--paper); box-shadow: var(--shadow-card); }
   [data-theme="dark"] .theme-seg-btn.active { background: var(--paper-3); }
   .theme-seg-btn svg { width: 14px; height: 14px; display: block; }
+  /* Vertical stack — used in the collapsed-sidebar topbar's left gutter */
+  .theme-seg.vertical { flex-direction: column; gap: 3px; }
+  .topbar-appearance { position: absolute; top: 12px; left: 10px; z-index: 10; }
 
 
   /* ---- Rubin Observatory logo lockups ---- */
@@ -2325,7 +2350,7 @@ const ChevronDownIcon = () => (
   </svg>
 );
 
-function ThemeToggle() {
+function ThemeToggle({ vertical }) {
   const [mode, setMode] = useState(() => {
     try { return localStorage.getItem('rubintv-theme') || 'system'; } catch (e) { return 'system'; }
   });
@@ -2344,7 +2369,7 @@ function ThemeToggle() {
   }, [mode]);
   const opts = [['light', 'Light', SunIcon], ['system', 'System', AutoIcon], ['dark', 'Dark', MoonIcon]];
   return (
-    <div className="theme-seg" role="group" aria-label="Color theme">
+    <div className={'theme-seg' + (vertical ? ' vertical' : '')} role="group" aria-label="Color theme">
       {opts.map(([val, label, Icon]) => (
         <button key={val}
           className={'theme-seg-btn' + (mode === val ? ' active' : '')}
@@ -2821,6 +2846,11 @@ function Sidebar({ groups, activeCam, onPickCam, activeSystem, onPickSystem, act
             <span>{l.id}</span>
           </div>
         )}
+      </div>
+
+      <div className="sidebar-foot">
+        <span className="foot-label">Appearance</span>
+        <ThemeToggle />
       </div>
     </div>);
 
@@ -4201,7 +4231,10 @@ function App() {
         {showCamera ? <>
         <div className="topbar">
           {!sidebarOpen &&
-            <button className="sidebar-reopen" onClick={() => setSidebarOpen(true)} title="Show sidebar" aria-label="Show sidebar" data-comment-anchor="d90a460e45-button-313-9">»</button>
+            <div className="topbar-leftgutter">
+              <button className="sidebar-reopen" onClick={() => setSidebarOpen(true)} title="Show sidebar" aria-label="Show sidebar" data-comment-anchor="d90a460e45-button-313-9">»</button>
+              <ThemeToggle vertical />
+            </div>
             }
           <Crumb segments={[
             { label: 'home', onClick: goHome },
@@ -4214,11 +4247,10 @@ function App() {
               {!sidebarOpen &&
                 <div className="topbar-brand">
                   <img className="brand-mark" src="assets/rubin-mark.png" alt="Vera C. Rubin Observatory" />
-                  <span className="brand" style={{ fontSize: "24px" }}>RubinTV</span>
+                  <span className="brand">RubinTV</span>
                   <span className="site">{activeLocation}</span>
                 </div>
                 }
-              <ThemeToggle />
               <LiveStatusPill />
             </div>
           </div>
@@ -4267,7 +4299,10 @@ function App() {
         </> : <>
         <div className="topbar">
           {!sidebarOpen &&
-            <button className="sidebar-reopen" onClick={() => setSidebarOpen(true)} title="Show sidebar" aria-label="Show sidebar">»</button>
+            <div className="topbar-leftgutter">
+              <button className="sidebar-reopen" onClick={() => setSidebarOpen(true)} title="Show sidebar" aria-label="Show sidebar">»</button>
+              <ThemeToggle vertical />
+            </div>
             }
           <Crumb segments={[
             { label: 'home', onClick: goHome },
@@ -4285,7 +4320,6 @@ function App() {
                   <span className="site">{activeLocation}</span>
                 </div>
                 }
-              <ThemeToggle />
           <span className="tag live"><span className="hand">live</span></span>
             </div>
           </div>

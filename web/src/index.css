@@ -600,3 +600,6 @@ button.danger,
 .theme-seg-btn.active { color: var(--accent); background: var(--paper); box-shadow: var(--shadow-card); }
 [data-theme="dark"] .theme-seg-btn.active { background: var(--paper-3); }
 .theme-seg-btn svg { width: 14px; height: 14px; display: block; }
+
+/* Vertical stack — used in the collapsed-sidebar left gutter. */
+.theme-seg.vertical { flex-direction: column; gap: 3px; }

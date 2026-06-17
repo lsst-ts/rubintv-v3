@@ -1,10 +1,19 @@
 # Design hand-off from Claude Design
 
 Source: claude.ai/design project **RubinTV** (`019ddecb-615e-7693-985e-b0aae8f8ffae`),
-pulled down on 2026-06-16 to port into the real `web/` app component by component.
+pulled down to port into the real `web/` app component by component.
 
 These are reference artifacts — **not** wired into the app. The port target is
 `web/src/` on the `design-port` branch.
+
+**Refresh 2026-06-17:** re-pulled because the design changed. Only the v2 page
+changed; tokens identical. Theme toggle moved out of the top-bar into (a) a pinned
+sidebar footer (`.sidebar-foot`, "Appearance" label) when the sidebar is open, and
+(b) a **vertical** variant (`.theme-seg.vertical`) in the collapsed-sidebar left
+gutter (`.topbar-leftgutter`) under the reopen button. Collapsed brand block is now a
+single inline row (logo mark + "RubinTV"). ThemeToggle gained a `vertical` prop. New
+ref screenshots: `01-collapsed-camera.png`, `02-collapsed-camera.png`. The ported
+ThemeToggle component is correct as-is; this placement lands in the Step-2 shell.
 
 ## Design language hierarchy (THREE iterations — most recent wins)
 
