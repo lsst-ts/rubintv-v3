@@ -32,7 +32,7 @@ export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
     tabs.push({
       id: "channels",
       label: "Channels",
-      suffix: "", // channels open from within the table view (per-seq links)
+      suffix: "channels",
       count: channelCount,
     });
   }
@@ -80,6 +80,7 @@ export function useShellNav(): ShellNav {
   // Active tab from the trailing path segment (night-report / allsky / mosaic),
   // defaulting to the Table view.
   const activeTab = useMemo(() => {
+    if (pathname.endsWith("/channels")) return "channels";
     if (pathname.endsWith("/night-report")) return "night-report";
     if (pathname.endsWith("/allsky")) return "allsky";
     if (pathname.endsWith("/mosaic")) return "mosaic";

@@ -4,6 +4,7 @@ import { Home } from "./views/Home";
 import { Location } from "./views/Location";
 import { CameraTable } from "./views/CameraTable";
 import { Channel } from "./views/Channel";
+import { ChannelBrowser } from "./views/ChannelBrowser";
 import { NightReport } from "./views/NightReport";
 import { AllSky } from "./views/AllSky";
 import { Detectors } from "./views/Detectors";
@@ -30,6 +31,9 @@ export const routes: RouteObject[] = [
       { path: "admin", element: <Admin /> },
       { path: ":location", element: <Location /> },
       { path: ":location/:camera", element: <CameraTable /> },
+      // The Channels tab: a browser of the camera's channels. Precedes the
+      // channel catch-all so "channels" isn't read as a channel name.
+      { path: ":location/:camera/channels", element: <ChannelBrowser /> },
       { path: ":location/:camera/night-report", element: <NightReport /> },
       { path: ":location/:camera/allsky", element: <AllSky /> },
       { path: ":location/:camera/mosaic", element: <Mosaic /> },

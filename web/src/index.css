@@ -149,7 +149,10 @@ h1, h2 {
 .sidebar .brand-mark {
   width: 28px; height: 16px;
   display: block; margin-bottom: 4px;
-  background: url("/api/static/rubin-mark.png") left center / contain no-repeat;
+  /* background-image is set inline in Sidebar.tsx (runtime API URL). */
+  background-position: left center;
+  background-size: contain;
+  background-repeat: no-repeat;
 }
 .sidebar .site { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
 .sidebar .group-h {
@@ -456,6 +459,135 @@ h1, h2 {
   color: var(--ink);
 }
 
+/* ── Channels browser (grouped list + viewer pane) ─────────────────────── */
+.chv-root {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 288px 1fr;
+  background: var(--paper);
+}
+.chv-list {
+  border-right: 1.5px solid var(--stroke);
+  background: var(--paper-2);
+  overflow-y: auto;
+  padding: 16px 0 24px;
+  min-width: 0;
+}
+.chv-list-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0 16px 12px;
+}
+.chv-list-head .ttl { font-family: var(--display); font-weight: 700; font-size: 19px; }
+.chv-list-head .ct {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+  letter-spacing: 0.5px;
+}
+.chv-group { margin-bottom: 12px; }
+.chv-group-h {
+  padding: 6px 16px 4px;
+  font-family: var(--hand); font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.chv-item {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  cursor: pointer;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+}
+.chv-item:hover { background: var(--paper-3); }
+.chv-item.active {
+  background: var(--paper);
+  border-left-color: var(--accent);
+}
+.chv-item .sw {
+  width: 12px; height: 12px;
+  border: 1.25px solid var(--stroke);
+  border-radius: 2px;
+}
+.chv-item .nm-wrap { min-width: 0; }
+.chv-item .nm {
+  font-family: var(--hand); font-size: 14.5px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chv-item.active .nm { font-weight: 700; }
+.chv-item .mt {
+  font-family: var(--mono); font-size: 9.5px; color: var(--ink-soft);
+  margin-top: 1px;
+}
+.chv-tag {
+  font-size: 9px;
+  padding: 1px 7px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.chv-tag.live::before { width: 5px; height: 5px; }
+
+.chv-viewer {
+  overflow-y: auto;
+  padding: 22px 26px 30px;
+  min-width: 0;
+}
+.chv-vhead {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px;
+}
+.chv-vhead .sw {
+  width: 16px; height: 16px;
+  border: 1.5px solid var(--stroke);
+  border-radius: 3px;
+}
+.chv-vhead h3 {
+  font-family: var(--display); font-weight: 700; font-size: 30px;
+  margin: 0; line-height: 1;
+}
+.chv-vhead .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+.chv-frame {
+  height: 380px;
+  border-radius: 5px;
+  border-width: 1.5px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.chv-cols {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 26px;
+  margin-top: 18px;
+}
+.chv-section-h {
+  font-family: var(--hand); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.chv-desc {
+  font-family: var(--sans); font-size: 14px; line-height: 1.55;
+  color: var(--ink-2); text-wrap: pretty;
+}
+.chv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chv-actions .btn { font-size: 13px; padding: 5px 10px; text-decoration: none; }
+.chv-meta-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-family: var(--mono); font-size: 11.5px;
+}
+.chv-meta-grid .k { color: var(--ink-soft); }
+.chv-meta-grid .v { color: var(--ink); }
+
 /* ── Channel view ──────────────────────────────────────────────────────── */
 .channel-view {
   display: grid;
@@ -463,22 +595,37 @@ h1, h2 {
   grid-template-areas: "header header" "media sidebar";
   gap: 1rem;
 }
-.channel-view .table-header { grid-area: header; }
+.channel-view .table-header,
+.channel-view .channel-head { grid-area: header; margin-bottom: 0; }
 .media { grid-area: media; }
 .media img,
-.media video { max-width: 100%; }
+.media video {
+  max-width: 100%;
+  border: 1.5px solid var(--line-mid);
+  border-radius: 5px;
+}
 .metadata-sidebar { grid-area: sidebar; }
 .seq-nav {
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
 }
-.live-badge {
-  color: var(--warn);
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.seq-nav a {
+  color: var(--accent);
+  text-decoration: none;
 }
-.live-link { font-weight: 600; }
+.seq-nav a:hover { text-decoration: underline; }
+.seq-current { font-weight: 700; color: var(--ink); }
+.live-badge { letter-spacing: 0.04em; }
+.live-link {
+  font-weight: 600;
+  font-family: var(--hand);
+  color: var(--accent);
+  text-decoration: none;
+}
+.live-link:hover { text-decoration: underline; }
 
 .live-view-media {
   display: flex;

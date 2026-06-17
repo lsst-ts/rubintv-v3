@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -210,26 +210,42 @@ export function Channel({ live = false }: { live?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prev, next, isVideo]);
 
+  const channelInfo = cameraInfo?.channels?.find((c) => c.name === channel);
+  const metaEntries = Object.entries(metadata?.[String(seq)] ?? {});
+
   return (
     <section className="channel-view">
-      <header className="table-header">
-        <h1>
+      {/* Head: channel swatch + title, live/seq status, prev/next nav. */}
+      <header className="chv-vhead channel-head">
+        <span
+          className="sw"
+          style={{ background: channelInfo?.colour ?? "var(--line-mid)" }}
+        />
+        <h3>
           {cameraInfo?.title ?? camera} / {channel}
-        </h1>
-        <nav className="seq-nav">
-          {prev !== null ? <Link to={navTo(prev)}>← {prev}</Link> : <span>←</span>}
-          <span className="seq-current">{seq}</span>
-          {next !== null ? <Link to={navTo(next)}>{next} →</Link> : <span>→</span>}
-        </nav>
+        </h3>
         {live ? (
-          <span className="live-badge" role="status">
+          <span className="tag live live-badge" role="status">
             ● LIVE
           </span>
         ) : (
-          <Link className="live-link" to={`/${location}/${camera}/${channel}/current`}>
+          <Link
+            className="live-link"
+            to={`/${location}/${camera}/${channel}/current`}
+          >
             Jump to current
           </Link>
         )}
+        <span style={{ flex: 1 }} />
+        <nav className="seq-nav">
+          {prev !== null ? (
+            <Link to={navTo(prev)}>← {prev}</Link>
+          ) : (
+            <span>←</span>
+          )}
+          <span className="seq-current">{seq}</span>
+          {next !== null ? <Link to={navTo(next)}>{next} →</Link> : <span>→</span>}
+        </nav>
       </header>
 
       <div className="media">
@@ -244,15 +260,19 @@ export function Channel({ live = false }: { live?: boolean }) {
       </div>
 
       <aside className="metadata-sidebar">
-        <h2>Metadata</h2>
-        <dl>
-          {Object.entries(metadata?.[String(seq)] ?? {}).map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd>{String(v)}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className="chv-section-h">Exposure metadata</div>
+        {metaEntries.length === 0 ? (
+          <p className="skeleton">No metadata for this exposure.</p>
+        ) : (
+          <div className="chv-meta-grid">
+            {metaEntries.map(([k, v]) => (
+              <Fragment key={k}>
+                <div className="k">{k}</div>
+                <div className="v">{String(v)}</div>
+              </Fragment>
+            ))}
+          </div>
+        )}
       </aside>
     </section>
   );

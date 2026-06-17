@@ -45,6 +45,42 @@ test("channel deep link resolves to the channel view", async () => {
   expect(await screen.findByText(/witness_detector/)).toBeDefined();
 });
 
+test("channels route renders the channel browser, grouped by cadence", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [
+          { name: "monitor", title: "Monitor", label: "raw", per_day: false },
+          {
+            name: "day_movie",
+            title: "Day Movie",
+            label: "stitched",
+            per_day: true,
+          },
+        ],
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/lsstcam/channels");
+  // Group headers reflect the cadence split, and both channels are listed
+  // (Monitor appears twice: in the list and in the default-selected viewer).
+  expect(await screen.findByText("Per exposure")).toBeDefined();
+  expect(screen.getByText("Per night")).toBeDefined();
+  expect(screen.getAllByText("Monitor").length).toBeGreaterThan(0);
+  expect(screen.getByText("Day Movie")).toBeDefined();
+  // The viewer pane links the selected channel to its live view.
+  const open = screen.getByRole("link", { name: /open full-page live view/i });
+  expect(open.getAttribute("href")).toContain(
+    "/local/lsstcam/monitor/current",
+  );
+});
+
 test("channel /current route follows the newest exposure", async () => {
   // Calendar's newest date is 2026-04-10; the monitor channel's highest seq in
   // that date's payload is 252, so the live view should render that image.
