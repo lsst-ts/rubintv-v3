@@ -459,73 +459,8 @@ h1, h2 {
   color: var(--ink);
 }
 
-/* ── Channels browser (grouped list + viewer pane) ─────────────────────── */
-.chv-root {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 288px 1fr;
-  background: var(--paper);
-}
-.chv-list {
-  border-right: 1.5px solid var(--stroke);
-  background: var(--paper-2);
-  overflow-y: auto;
-  padding: 16px 0 24px;
-  min-width: 0;
-}
-.chv-list-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  padding: 0 16px 12px;
-}
-.chv-list-head .ttl { font-family: var(--display); font-weight: 700; font-size: 19px; }
-.chv-list-head .ct {
-  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
-  letter-spacing: 0.5px;
-}
-.chv-group { margin-bottom: 12px; }
-.chv-group-h {
-  padding: 6px 16px 4px;
-  font-family: var(--hand); font-size: 11px;
-  color: var(--ink-soft);
-  text-transform: uppercase; letter-spacing: 0.6px;
-}
-.chv-item {
-  display: grid;
-  grid-template-columns: 12px 1fr auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 16px;
-  cursor: pointer;
-  border: none;
-  border-left: 3px solid transparent;
-  background: transparent;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  text-decoration: none;
-}
-.chv-item:hover { background: var(--paper-3); }
-.chv-item.active {
-  background: var(--paper);
-  border-left-color: var(--accent);
-}
-.chv-item .sw {
-  width: 12px; height: 12px;
-  border: 1.25px solid var(--stroke);
-  border-radius: 2px;
-}
-.chv-item .nm-wrap { min-width: 0; }
-.chv-item .nm {
-  font-family: var(--hand); font-size: 14.5px; color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.chv-item.active .nm { font-weight: 700; }
-.chv-item .mt {
-  font-family: var(--mono); font-size: 9.5px; color: var(--ink-soft);
-  margin-top: 1px;
-}
+/* Channel cadence tag (live / day) — shared by the browser cards and the
+   single-exposure viewer head. */
 .chv-tag {
   font-size: 9px;
   padding: 1px 7px;
@@ -533,11 +468,7 @@ h1, h2 {
 }
 .chv-tag.live::before { width: 5px; height: 5px; }
 
-.chv-viewer {
-  overflow-y: auto;
-  padding: 22px 26px 30px;
-  min-width: 0;
-}
+/* Channel head — swatch + title + tag, used by the single-exposure viewer. */
 .chv-vhead {
   display: flex; align-items: center; gap: 12px;
   margin-bottom: 14px;
@@ -546,25 +477,14 @@ h1, h2 {
   width: 16px; height: 16px;
   border: 1.5px solid var(--stroke);
   border-radius: 3px;
+  flex-shrink: 0;
 }
 .chv-vhead h3 {
-  font-family: var(--display); font-weight: 700; font-size: 30px;
+  font-family: var(--display); font-weight: 700; font-size: 26px;
   margin: 0; line-height: 1;
 }
-.chv-vhead .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
-.chv-frame {
-  height: 380px;
-  border-radius: 5px;
-  border-width: 1.5px;
-  color: var(--ink-soft);
-  text-decoration: none;
-}
-.chv-cols {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 26px;
-  margin-top: 18px;
-}
+
+/* Exposure-metadata grid — reused by the single-exposure viewer sidebar. */
 .chv-section-h {
   font-family: var(--hand); font-size: 11px;
   text-transform: uppercase; letter-spacing: 0.6px;
@@ -573,12 +493,6 @@ h1, h2 {
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line-soft);
 }
-.chv-desc {
-  font-family: var(--sans); font-size: 14px; line-height: 1.55;
-  color: var(--ink-2); text-wrap: pretty;
-}
-.chv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.chv-actions .btn { font-size: 13px; padding: 5px 10px; text-decoration: none; }
 .chv-meta-grid {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -587,6 +501,75 @@ h1, h2 {
 }
 .chv-meta-grid .k { color: var(--ink-soft); }
 .chv-meta-grid .v { color: var(--ink); }
+
+/* ── Channels browser (latest-frame card grid) ─────────────────────────── */
+.chc-root { padding: 4px 0 24px; }
+.chc-group { margin-bottom: 28px; }
+.chc-group-head {
+  display: flex; align-items: baseline; gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.chc-group-head h2 {
+  font-family: var(--display); font-weight: 600; font-size: 20px; margin: 0;
+}
+.chc-count {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.chc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.chc-card {
+  display: flex; flex-direction: column;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 8px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow-card);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.chc-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.chc-frame {
+  aspect-ratio: 4 / 3;
+  background: var(--paper-3);
+  border-bottom: 1px solid var(--line-mid);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.chc-frame img,
+.chc-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chc-empty {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.chc-body {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 4px;
+}
+.chc-body .sw {
+  width: 10px; height: 10px;
+  border: 1.25px solid var(--stroke); border-radius: 2px;
+  flex-shrink: 0;
+}
+.chc-title {
+  font-family: var(--display); font-weight: 600; font-size: 15px;
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chc-foot {
+  display: flex; gap: 8px; align-items: center;
+  padding: 0 12px 12px;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.chc-seq { color: var(--ink); font-weight: 600; }
 
 /* ── Channel view ──────────────────────────────────────────────────────── */
 .channel-view {

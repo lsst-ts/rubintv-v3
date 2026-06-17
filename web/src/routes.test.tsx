@@ -68,17 +68,12 @@ test("channels route renders the channel browser, grouped by cadence", async () 
   }) as unknown as typeof fetch;
 
   renderAt("/local/lsstcam/channels");
-  // Group headers reflect the cadence split, and both channels are listed
-  // (Monitor appears twice: in the list and in the default-selected viewer).
-  expect(await screen.findByText("Per exposure")).toBeDefined();
+  // Cadence groups, one card per channel, each linking to its live viewer.
+  expect(await screen.findByText("Image channels")).toBeDefined();
   expect(screen.getByText("Per night")).toBeDefined();
-  expect(screen.getAllByText("Monitor").length).toBeGreaterThan(0);
-  expect(screen.getByText("Day Movie")).toBeDefined();
-  // The viewer pane links the selected channel to its live view.
-  const open = screen.getByRole("link", { name: /open full-page live view/i });
-  expect(open.getAttribute("href")).toContain(
-    "/local/lsstcam/monitor/current",
-  );
+  const monitor = screen.getByRole("link", { name: /Monitor/ });
+  expect(monitor.getAttribute("href")).toBe("/local/lsstcam/monitor/current");
+  expect(screen.getByRole("link", { name: /Day Movie/ })).toBeDefined();
 });
 
 test("channel /current route follows the newest exposure", async () => {
