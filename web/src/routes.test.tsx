@@ -356,3 +356,11 @@ test("the camera table sets a tab title from the camera and date", async () => {
     expect(document.title).toBe("lsstcam · 2026-04-10 · RubinTV"),
   );
 });
+
+test("camera table shows an empty-state notice, not the table, when a date has no data", async () => {
+  // The default stub resolves the date payload with empty channels/metadata,
+  // so there are no rows: show the tidy notice instead of a bare angled header.
+  const { container } = renderAt("/local/lsstcam?date=2026-04-10");
+  expect(await screen.findByText(/No data for 2026-04-10/)).toBeDefined();
+  expect(container.querySelector("table.data-table")).toBeNull();
+});

@@ -350,7 +350,15 @@ export function CameraTable() {
         </div>
       )}
 
-      <div className="table-wrap" ref={wrapRef}>
+      {/* Empty states: no date available for this camera at all, or the
+          resolved date finished loading with no rows. Either way, skip the
+          (tall, angled-header) table and show a tidy notice instead. */}
+      {date === "" && !isPending ? (
+        <div className="table-empty">No dates with data for this camera yet.</div>
+      ) : !isPending && date !== "" && seqNums.length === 0 ? (
+        <div className="table-empty">No data for {date}.</div>
+      ) : (
+        <div className="table-wrap" ref={wrapRef}>
         {/* Angled header labels, positioned over each measured column. */}
         <div className="header-overlay" style={{ width: tableWidth || undefined }}>
           <div className="header-overlay-bg" />
@@ -492,7 +500,8 @@ export function CameraTable() {
             })}
           </tbody>
         </table>
-      </div>
+        </div>
+      )}
     </section>
   );
 }

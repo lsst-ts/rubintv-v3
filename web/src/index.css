@@ -452,6 +452,20 @@ h1, h2 {
   height: 100%;
 }
 
+/* Empty state — shown instead of the (tall, angled-header) table when a date
+   has no rows, or the camera has no dated data yet. */
+.table-empty {
+  margin: 1rem 0;
+  padding: 2.5rem 1.5rem;
+  border: 1.5px dashed var(--line-mid);
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-family: var(--hand);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
 /* ── Camera table toolbar ──────────────────────────────────────────────── */
 .cam-toolbar {
   display: flex; align-items: center; gap: 8px;
