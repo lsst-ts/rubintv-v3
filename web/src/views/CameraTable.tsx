@@ -12,7 +12,8 @@ import { isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
 import { DownloadMetadata } from "../components/DownloadMetadata";
-import { CalendarIcon, ColumnsIcon, ChevronDownIcon } from "../components/Icons";
+import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
+import { DatePicker } from "../components/DatePicker";
 import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
 
@@ -257,21 +258,11 @@ export function CameraTable() {
     <section className="cam-table">
       {/* Toolbar: date stepper, share/download, density, columns, night report. */}
       <div className="cam-toolbar">
-        <span className="date-cluster">
-          <CalendarIcon />
-          <select
-            className="date-field"
-            value={date}
-            aria-label="Date"
-            onChange={(e) => setParams({ date: e.target.value })}
-          >
-            {pickerDates.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </span>
+        <DatePicker
+          dates={pickerDates}
+          value={date}
+          onChange={(d) => setParams({ date: d })}
+        />
         <ShareLink date={date || undefined} />
         <DownloadMetadata
           metadata={metadata}

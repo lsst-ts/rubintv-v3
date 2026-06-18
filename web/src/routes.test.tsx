@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
@@ -256,6 +262,50 @@ test("column picker defaults to configured columns and reset restores them", asy
   fireEvent.click(screen.getByText("reset"));
   await waitFor(() =>
     expect(screen.getByRole("button", { name: /Columns 1\/2/ })).toBeDefined(),
+  );
+});
+
+test("date picker opens a two-month calendar and selecting a data day sets ?date", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10", "2026-04-08"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const router = createMemoryRouter(routes, {
+    initialEntries: ["/local/auxtel?date=2026-04-10"],
+  });
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider router={router} />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+
+  // Open the picker via its trigger (shows the current date).
+  const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
+  fireEvent.click(trigger);
+  expect(await screen.findByRole("dialog", { name: /Choose date/ })).toBeDefined();
+
+  // April is shown; day 8 has data (clickable), day 9 does not.
+  const dialog = screen.getByRole("dialog");
+  const day8 = within(dialog).getAllByText("8")[0];
+  expect(day8.closest(".dp-day")?.className).toContain("has-data");
+  const day9 = within(dialog).getAllByText("9")[0];
+  expect(day9.closest(".dp-day")?.className).toContain("disabled");
+
+  // Selecting day 8 navigates to that date and closes the picker.
+  fireEvent.click(day8.closest(".dp-day")!);
+  await waitFor(() =>
+    expect(router.state.location.search).toContain("date=2026-04-08"),
   );
 });
 

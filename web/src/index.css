@@ -512,20 +512,117 @@ h1, h2 {
 }
 .cam-toolbar .tb-btn .ui-icon.chevron { margin-left: 1px; }
 
-/* Date field: calendar icon + the date select, framed as one control. */
-.cam-toolbar .date-cluster {
+/* Date picker: a trigger button + a two-month calendar popover. */
+.date-cluster { position: relative; display: inline-flex; }
+.date-trigger {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 0 8px;
+  padding: 6px 10px;
   border: 1px solid var(--line-mid); border-radius: 6px;
-  background: var(--paper); color: var(--ink-soft);
-}
-.cam-toolbar .date-cluster:focus-within { border-color: var(--ink-soft); }
-.cam-toolbar .date-field {
+  background: var(--paper-2); color: var(--ink);
   font-family: var(--mono); font-size: 12px;
-  padding: 5px 0;
-  border: none; outline: none;
-  background: transparent; color: var(--ink);
+  cursor: pointer;
 }
+.date-trigger:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.date-trigger .ui-icon { color: var(--ink-soft); }
+
+.date-pop {
+  position: absolute;
+  top: calc(100% + 6px); left: 0;
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 30;
+  font-family: var(--hand);
+  display: flex;
+  overflow: hidden;
+}
+.date-pop.v-two-months { width: 580px; max-width: calc(100vw - 24px); }
+
+.dp-two { display: flex; flex-direction: column; width: 100%; }
+.dp-two-grids { display: grid; grid-template-columns: 1fr 1fr; }
+.dp-two-grids .dp-month { padding: 10px 12px 6px; }
+.dp-two-grids .dp-month + .dp-month { border-left: 1px solid var(--line-soft); }
+
+.dp-month { flex: 1; padding: 10px 12px 12px; }
+.dp-mhead {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dp-mhead .month { font-family: var(--hand); font-weight: 700; font-size: 14px; }
+.dp-mhead .yr {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  margin-left: 4px;
+}
+.dp-mhead .arrs { display: inline-flex; gap: 4px; }
+.dp-mhead .arr {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper);
+  font-family: var(--mono); font-size: 11px; color: var(--ink); cursor: pointer;
+}
+.dp-mhead .arr:hover { background: var(--paper-3); }
+
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.dp-grid .dow {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-align: center; padding: 4px 0 5px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.dp-day {
+  height: 38px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  border: 1.25px solid transparent; border-radius: 3px;
+  cursor: pointer; position: relative;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 0;
+}
+.dp-day .num { font-size: 11px; line-height: 1; }
+.dp-day .ct {
+  font-size: 9px; line-height: 1; color: var(--ink-soft);
+  font-weight: 500; letter-spacing: 0.2px;
+}
+.dp-day:hover { background: var(--paper-3); }
+/* A data day carries a small accent dot beneath the number. */
+.dp-day.has-data::after {
+  content: ""; position: absolute; bottom: 4px;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--accent);
+}
+.dp-day.out { color: var(--line-soft); cursor: default; }
+.dp-day.out:hover { background: transparent; }
+.dp-day.today { border-color: var(--ink); font-weight: 700; }
+.dp-day.selected {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+.dp-day.selected.has-data::after { background: var(--paper); }
+.dp-day.disabled { color: var(--line-soft); cursor: not-allowed; }
+.dp-day.disabled:hover { background: transparent; }
+
+.dp-two-foot {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--line-soft);
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  background: var(--paper-2);
+}
+.dp-two-foot .input {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 12px;
+  padding: 4px 8px;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+}
+.dp-two-foot .today-link {
+  cursor: pointer;
+  font-family: var(--hand); font-size: 12px;
+  color: var(--accent);
+  border-bottom: 1px dashed var(--accent);
+}
+.dp-two-foot .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
 
 /* Density segmented control. */
 .density-seg {
