@@ -526,6 +526,7 @@ h1, h2 {
   z-index: 20;
   padding: 8px;
 }
+.cols-pop[hidden] { display: none; }
 .cols-pop .cols-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

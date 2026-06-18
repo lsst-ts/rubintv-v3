@@ -314,22 +314,23 @@ export function CameraTable() {
           >
             Columns ({visible.length}/{metaColumns.length})
           </button>
-          {colsOpen && (
-            <div className="cols-pop">
-              <div className="cols-grid">
-                {metaColumns.map((col) => (
-                  <label key={col}>
-                    <input
-                      type="checkbox"
-                      checked={!hidden.has(col)}
-                      onChange={() => toggle(col)}
-                    />
-                    {col}
-                  </label>
-                ))}
-              </div>
+          {/* Kept mounted and toggled with `hidden` rather than conditionally
+              rendered: building the ~150 column rows on click cost ~300ms of
+              jank. They mount once with the table; opening only flips display. */}
+          <div className="cols-pop" hidden={!colsOpen}>
+            <div className="cols-grid">
+              {metaColumns.map((col) => (
+                <label key={col}>
+                  <input
+                    type="checkbox"
+                    checked={!hidden.has(col)}
+                    onChange={() => toggle(col)}
+                  />
+                  {col}
+                </label>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
         {payload?.has_night_report && (
