@@ -204,6 +204,61 @@ test("mosaic suffix route wins over the channel catch-all", async () => {
   expect(await screen.findByText("Mosaic / Movies")).toBeDefined();
 });
 
+test("column picker defaults to configured columns and reset restores them", async () => {
+  // One configured column (Exposure) + one data-only column (sky_mean) seen in
+  // the metadata. Default shows only the configured one; the picker head's
+  // count, search, and reset reflect that.
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: { Exposure: "Exposure time" },
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "1": { Exposure: "30", sky_mean: "9000" } };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10");
+
+  // Default: 1 of 2 shown (only the configured Exposure column).
+  const toggle = await screen.findByRole("button", { name: /Columns \(1\/2\)/ });
+  fireEvent.click(toggle);
+  expect(screen.getByText("of 2 shown")).toBeDefined();
+
+  // The search box filters the picker rows: "sky" matches the data-only column.
+  const search = screen.getByLabelText("Search columns");
+  fireEvent.change(search, { target: { value: "sky" } });
+  expect(screen.getByText("sky_mean")).toBeDefined();
+  // A non-matching query empties the list.
+  fireEvent.change(search, { target: { value: "zzz" } });
+  expect(screen.getByText(/no columns match/)).toBeDefined();
+  fireEvent.change(search, { target: { value: "" } });
+
+  // "all" shows both; "reset" returns to the configured default (1/2).
+  fireEvent.click(screen.getByText("none"));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /Columns \(0\/2\)/ })).toBeDefined(),
+  );
+  fireEvent.click(screen.getByText("all"));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /Columns \(2\/2\)/ })).toBeDefined(),
+  );
+  fireEvent.click(screen.getByText("reset"));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /Columns \(1\/2\)/ })).toBeDefined(),
+  );
+});
+
 test("column picker dismisses on Escape and on an outside click", async () => {
   // A camera + date whose metadata carries a column, so the picker has content.
   globalThis.fetch = ((input: RequestInfo | URL) => {

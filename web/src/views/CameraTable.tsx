@@ -144,6 +144,7 @@ export function CameraTable() {
   };
 
   const [colsOpen, setColsOpen] = useState(false);
+  const [colsQuery, setColsQuery] = useState("");
   // Dismiss the column picker on an outside click or Escape.
   const colsRef = useRef<HTMLDivElement | null>(null);
   useDismiss(colsOpen, colsRef, () => setColsOpen(false));
@@ -174,6 +175,14 @@ export function CameraTable() {
   // config order); data-only keys follow, sorted case-insensitively. Keys
   // beginning with "_" (per-cell indicators) or "@" (empty-channel
   // replacement strings) are not columns — they decorate other cells.
+  // The configured columns (metadata_columns) are the default-visible set.
+  const defaultColumns = useMemo(
+    () =>
+      Object.keys(cameraInfo?.metadata_columns ?? {}).filter(
+        (name) => name[0] !== "_" && name[0] !== "@",
+      ),
+    [cameraInfo],
+  );
   const metaColumns = useMemo(() => {
     const configured = Object.keys(cameraInfo?.metadata_columns ?? {});
     const seen = new Set(configured);
@@ -191,7 +200,20 @@ export function CameraTable() {
       (name) => name[0] !== "_" && name[0] !== "@",
     );
   }, [cameraInfo, metadata]);
-  const { visible, hidden, toggle } = useColumnPrefs(location, camera, metaColumns);
+  const { visible, hidden, toggle, showAll, hideAll, reset } = useColumnPrefs(
+    location,
+    camera,
+    metaColumns,
+    defaultColumns,
+  );
+
+  // Picker rows filtered by the search box (substring, case-insensitive).
+  const colsMatches = useMemo(() => {
+    const q = colsQuery.trim().toLowerCase();
+    return q
+      ? metaColumns.filter((c) => c.toLowerCase().includes(q))
+      : metaColumns;
+  }, [colsQuery, metaColumns]);
 
   // Union of seq_nums across channels and metadata, descending (newest
   // first). Including metadata keys means streamed rows appear immediately,
@@ -291,17 +313,51 @@ export function CameraTable() {
               rendered: building the ~150 column rows on click cost ~300ms of
               jank. They mount once with the table; opening only flips display. */}
           <div className="cols-pop" hidden={!colsOpen}>
-            <div className="cols-grid">
-              {metaColumns.map((col) => (
-                <label key={col}>
-                  <input
-                    type="checkbox"
-                    checked={!hidden.has(col)}
-                    onChange={() => toggle(col)}
-                  />
-                  {col}
-                </label>
-              ))}
+            <div className="picker-head">
+              <span className="title">Metadata columns</span>
+              <span className="count">
+                <b>{visible.length}</b> of {metaColumns.length} shown
+              </span>
+              <input
+                className="search"
+                type="text"
+                placeholder="search columns…"
+                value={colsQuery}
+                onChange={(e) => setColsQuery(e.target.value)}
+                aria-label="Search columns"
+              />
+              <div className="bulk">
+                <button type="button" onClick={showAll} title="Show all metadata columns">
+                  all
+                </button>
+                <button type="button" onClick={hideAll} title="Hide all metadata columns">
+                  none
+                </button>
+                <button type="button" onClick={reset} title="Restore default columns">
+                  reset
+                </button>
+              </div>
+            </div>
+            <div className="picker-body">
+              {colsMatches.length === 0 ? (
+                <div className="picker-empty">no columns match “{colsQuery}”</div>
+              ) : (
+                <div className="cols-grid">
+                  {colsMatches.map((col) => (
+                    <label
+                      key={col}
+                      className={hidden.has(col) ? "picker-item dim" : "picker-item"}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!hidden.has(col)}
+                        onChange={() => toggle(col)}
+                      />
+                      <span className="label-text">{col}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
