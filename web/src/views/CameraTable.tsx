@@ -12,6 +12,7 @@ import { isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
 import { DownloadMetadata } from "../components/DownloadMetadata";
+import { CalendarIcon, ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
 
@@ -256,18 +257,21 @@ export function CameraTable() {
     <section className="cam-table">
       {/* Toolbar: date stepper, share/download, density, columns, night report. */}
       <div className="cam-toolbar">
-        <select
-          className="date-field"
-          value={date}
-          aria-label="Date"
-          onChange={(e) => setParams({ date: e.target.value })}
-        >
-          {pickerDates.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+        <span className="date-cluster">
+          <CalendarIcon />
+          <select
+            className="date-field"
+            value={date}
+            aria-label="Date"
+            onChange={(e) => setParams({ date: e.target.value })}
+          >
+            {pickerDates.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </span>
         <ShareLink date={date || undefined} />
         <DownloadMetadata
           metadata={metadata}
@@ -307,7 +311,12 @@ export function CameraTable() {
             aria-expanded={colsOpen}
             onClick={() => setColsOpen((o) => !o)}
           >
-            Columns ({visible.length}/{metaColumns.length})
+            <ColumnsIcon />
+            <span>Columns</span>
+            <span className="frac">
+              {visible.length}/{metaColumns.length}
+            </span>
+            <ChevronDownIcon />
           </button>
           {/* Kept mounted and toggled with `hidden` rather than conditionally
               rendered: building the ~150 column rows on click cost ~300ms of

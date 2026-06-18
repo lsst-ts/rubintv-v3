@@ -1,4 +1,5 @@
 import type { Metadata } from "../lib/types";
+import { DownloadIcon } from "./Icons";
 
 // Download the currently-loaded day's metadata as a JSON file. Operates on the
 // metadata already in memory (the merged streamed + REST payload the table
@@ -33,6 +34,7 @@ export function DownloadMetadata({
       onClick={onClick}
       disabled={disabled}
     >
+      <DownloadIcon />
       Download metadata
     </button>
   );

@@ -394,15 +394,32 @@ h1, h2 {
 }
 
 /* ── Small action buttons (share / copy / download) ────────────────────── */
+/* Toolbar action buttons (share link, download metadata) — framed like
+   .tb-btn, with a leading icon. */
 .share-link,
-.copy-row,
 .download-metadata {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
   font-family: var(--hand);
-  font-size: 0.85rem;
+  font-size: 13px;
+  color: var(--ink);
   cursor: pointer;
 }
-.copy-row { font-size: 0.8rem; white-space: nowrap; }
+.share-link:hover,
+.download-metadata:hover { background: var(--paper-3); border-color: var(--ink-soft); }
 .download-metadata:disabled { cursor: default; opacity: 0.5; }
+.download-metadata:disabled:hover { background: var(--paper); border-color: var(--line-mid); }
+
+/* Per-row copy button stays a quiet inline control. */
+.copy-row {
+  font-family: var(--hand);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
 
 /* ── Camera card grid (location landing) ───────────────────────────────── */
 .card-grid {
@@ -466,6 +483,10 @@ h1, h2 {
   text-align: center;
 }
 
+/* Outline UI icons (feather-style). */
+.ui-icon { width: 15px; height: 15px; display: block; flex-shrink: 0; }
+.ui-icon.chevron { width: 12px; height: 12px; opacity: 0.65; }
+
 /* ── Camera table toolbar ──────────────────────────────────────────────── */
 .cam-toolbar {
   display: flex; align-items: center; gap: 8px;
@@ -486,11 +507,24 @@ h1, h2 {
 .cam-toolbar .tb-btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
 .cam-toolbar .tb-btn:disabled { opacity: 0.5; cursor: default; }
 .cam-toolbar .tb-grow { flex: 1; }
+.cam-toolbar .tb-btn .frac {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+}
+.cam-toolbar .tb-btn .ui-icon.chevron { margin-left: 1px; }
+
+/* Date field: calendar icon + the date select, framed as one control. */
+.cam-toolbar .date-cluster {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line-mid); border-radius: 6px;
+  background: var(--paper); color: var(--ink-soft);
+}
+.cam-toolbar .date-cluster:focus-within { border-color: var(--ink-soft); }
 .cam-toolbar .date-field {
   font-family: var(--mono); font-size: 12px;
-  padding: 5px 8px;
-  border: 1px solid var(--line-mid); border-radius: 6px;
-  background: var(--paper); color: var(--ink);
+  padding: 5px 0;
+  border: none; outline: none;
+  background: transparent; color: var(--ink);
 }
 
 /* Density segmented control. */

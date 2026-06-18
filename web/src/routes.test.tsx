@@ -231,7 +231,7 @@ test("column picker defaults to configured columns and reset restores them", asy
   renderAt("/local/auxtel?date=2026-04-10");
 
   // Default: 1 of 2 shown (only the configured Exposure column).
-  const toggle = await screen.findByRole("button", { name: /Columns \(1\/2\)/ });
+  const toggle = await screen.findByRole("button", { name: /Columns 1\/2/ });
   fireEvent.click(toggle);
   expect(screen.getByText("of 2 shown")).toBeDefined();
 
@@ -247,15 +247,15 @@ test("column picker defaults to configured columns and reset restores them", asy
   // "all" shows both; "reset" returns to the configured default (1/2).
   fireEvent.click(screen.getByText("none"));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /Columns \(0\/2\)/ })).toBeDefined(),
+    expect(screen.getByRole("button", { name: /Columns 0\/2/ })).toBeDefined(),
   );
   fireEvent.click(screen.getByText("all"));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /Columns \(2\/2\)/ })).toBeDefined(),
+    expect(screen.getByRole("button", { name: /Columns 2\/2/ })).toBeDefined(),
   );
   fireEvent.click(screen.getByText("reset"));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /Columns \(1\/2\)/ })).toBeDefined(),
+    expect(screen.getByRole("button", { name: /Columns 1\/2/ })).toBeDefined(),
   );
 });
 
@@ -277,7 +277,7 @@ test("column picker dismisses on Escape and on an outside click", async () => {
   }) as unknown as typeof fetch;
 
   renderAt("/local/auxtel?date=2026-04-10");
-  const toggle = await screen.findByRole("button", { name: /Columns \(/ });
+  const toggle = await screen.findByRole("button", { name: /Columns/ });
 
   // Escape closes it.
   fireEvent.click(toggle);

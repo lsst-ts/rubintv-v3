@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ShareIcon } from "./Icons";
 
 // Copy a shareable link to the current view. The URL fully describes the
 // view (path = location/camera, query = date), so pasting it elsewhere
@@ -25,6 +26,7 @@ export function ShareLink({ date }: { date?: string }) {
 
   return (
     <button type="button" className="share-link" onClick={onClick}>
+      <ShareIcon />
       {copied ? "Copied!" : "Copy link"}
     </button>
   );

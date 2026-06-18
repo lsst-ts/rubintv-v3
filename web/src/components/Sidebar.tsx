@@ -35,7 +35,7 @@ export function Sidebar({ nav, onClose }: Props) {
             role="img"
             aria-label="Vera C. Rubin Observatory"
             style={{
-              backgroundImage: 'url("/api/static/rubin-mark.png")',
+              backgroundImage: 'url("/rubin-mark.png")',
             }}
           />
           <div className="brand-title">RubinTV</div>
