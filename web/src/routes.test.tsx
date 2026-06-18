@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
@@ -202,6 +202,43 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
 test("mosaic suffix route wins over the channel catch-all", async () => {
   renderAt("/local/lsstcam/mosaic");
   expect(await screen.findByText("Mosaic / Movies")).toBeDefined();
+});
+
+test("column picker dismisses on Escape and on an outside click", async () => {
+  // A camera + date whose metadata carries a column, so the picker has content.
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "1": { exposure_time: "30" } };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10");
+  const toggle = await screen.findByRole("button", { name: /Columns \(/ });
+
+  // Escape closes it.
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() =>
+    expect(toggle.getAttribute("aria-expanded")).toBe("false"),
+  );
+
+  // An outside pointerdown closes it.
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.pointerDown(document.body);
+  await waitFor(() =>
+    expect(toggle.getAttribute("aria-expanded")).toBe("false"),
+  );
 });
 
 test("night report renders folder tabs (text items + plot groups)", async () => {

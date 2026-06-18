@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -8,6 +8,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
 import { useAngledHeaders } from "../lib/useAngledHeaders";
+import { useDismiss } from "../lib/useDismiss";
 import { fillTemplate, isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
@@ -168,6 +169,9 @@ export function CameraTable() {
   };
 
   const [colsOpen, setColsOpen] = useState(false);
+  // Dismiss the column picker on an outside click or Escape.
+  const colsRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(colsOpen, colsRef, () => setColsOpen(false));
 
   // Per-row action links/buttons, driven by per-camera config. Each is shown
   // only when its template is configured. {dev} and {siteLoc} are fixed for the
@@ -301,7 +305,7 @@ export function CameraTable() {
           ))}
         </div>
 
-        <div className="cols-cluster">
+        <div className="cols-cluster" ref={colsRef}>
           <button
             type="button"
             className="tb-btn"
