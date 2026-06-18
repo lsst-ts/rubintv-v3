@@ -204,6 +204,36 @@ test("mosaic suffix route wins over the channel catch-all", async () => {
   expect(await screen.findByText("Mosaic / Movies")).toBeDefined();
 });
 
+test("night report renders folder tabs (text items + plot groups)", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/night-report\//.test(url)) {
+      body = {
+        date: "2026-04-10",
+        exists: true,
+        text: [
+          { type: "keyvalues", title: "Summary", content: { dome: "open" } },
+        ],
+        plots: [
+          { key: "k1", group: "Seeing", filename: "seeing_vs_time.png" },
+          { key: "k2", group: "Seeing", filename: "psf_fwhm.png" },
+          { key: "k3", group: "Photometry", filename: "zeropoint.png" },
+        ],
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/lsstcam/night-report?date=2026-04-10");
+  // One tab per text item, one per plot group.
+  expect(await screen.findByRole("tab", { name: /Summary/ })).toBeDefined();
+  expect(screen.getByRole("tab", { name: /Seeing/ })).toBeDefined();
+  expect(screen.getByRole("tab", { name: /Photometry/ })).toBeDefined();
+  // The first (Summary) tab's key/value content shows by default.
+  expect(screen.getByText("dome")).toBeDefined();
+});
+
 test("/status resolves to the scan-status view, not a location", async () => {
   renderAt("/status");
   expect(await screen.findByText("Scan status")).toBeDefined();

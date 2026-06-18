@@ -1,47 +1,124 @@
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import type { NightReportText } from "../lib/types";
+import type { NightReportOut, NightReportText } from "../lib/types";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 
-// One text section. The item is a discriminated union on `type`; each kind
-// renders its content differently (paragraph / key-values / link list).
-function TextItem({ item }: { item: NightReportText }) {
+// The API doesn't re-export PlotOut by name; derive it from the report shape.
+type Plot = NightReportOut["plots"][number];
+
+// Slugify a title into a stable tab id (mirrors the real sanitiseString).
+function slug(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+// One text section's body. Discriminated on `type` (paragraph / key-values /
+// link list).
+function TextPanel({ item }: { item: NightReportText }) {
+  if (item.type === "multiline") {
+    return <pre className="nr-log">{item.content}</pre>;
+  }
+  if (item.type === "keyvalues") {
+    return (
+      <div className="nr-kv">
+        {Object.entries(item.content).map(([k, v]) => (
+          <Fragment key={k}>
+            <div className="k">{k}</div>
+            <div className="v">{v}</div>
+          </Fragment>
+        ))}
+      </div>
+    );
+  }
   return (
-    <article className="nr-text">
-      <h3>{item.title}</h3>
-      {item.type === "multiline" && <p className="nr-multiline">{item.content}</p>}
-      {item.type === "keyvalues" && (
-        <dl className="nr-keyvalues">
-          {Object.entries(item.content).map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {item.type === "links" && (
-        <ul className="nr-links">
-          {item.content.map((link) => (
-            <li key={link.url}>
-              <a href={link.url} target="_blank" rel="noreferrer">
-                {link.text}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </article>
+    <div className="nr-links">
+      {item.content.map((link) => (
+        <a
+          key={link.url}
+          className="nr-link"
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <span className="lk">{link.text}</span>
+          <span className="ld">{link.url}</span>
+          <span className="arr">↗</span>
+        </a>
+      ))}
+    </div>
   );
 }
 
-// Nightly summary: text sections + grouped plot gallery. The UI label is
-// deliberately neutral ("Nightly Summary"); the route/API keep night-report.
-// Live during the night via the nightReport topic.
+function PlotPanel({
+  plots,
+  location,
+  camera,
+  date,
+}: {
+  plots: Plot[];
+  location: string;
+  camera: string;
+  date: string;
+}) {
+  return (
+    <div className="nr-plot-grid">
+      {plots.map((p) => (
+        <figure className="nr-plot" key={p.key}>
+          <img
+            src={api.nightReportPlotUrl(location, camera, date, p.group, p.filename)}
+            alt={p.filename}
+            loading="lazy"
+          />
+          <figcaption>{p.filename}</figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+interface Tab {
+  id: string;
+  label: string;
+  type: "text" | "plot";
+  text?: NightReportText;
+  plots?: Plot[];
+}
+
+// Build the folder-tab model from the report: one tab per text item (in order),
+// then one per plot group.
+function buildTabs(data: NightReportOut): Tab[] {
+  const tabs: Tab[] = data.text.map((item) => ({
+    id: slug(item.title),
+    label: item.title,
+    type: "text",
+    text: item,
+  }));
+  const order: string[] = [];
+  const byGroup = new Map<string, Plot[]>();
+  for (const p of data.plots) {
+    if (!byGroup.has(p.group)) {
+      byGroup.set(p.group, []);
+      order.push(p.group);
+    }
+    byGroup.get(p.group)!.push(p);
+  }
+  for (const g of order) {
+    tabs.push({ id: slug(g), label: g, type: "plot", plots: byGroup.get(g) });
+  }
+  return tabs;
+}
+
+// Nightly summary: folder-tabbed text sections + grouped plot panels (ported
+// from the design's NightReportView). The UI label is deliberately neutral
+// ("Nightly Summary"); the route/API keep night-report. Live during the night
+// via the nightReport topic.
 export function NightReport() {
   const { location = "", camera = "" } = useParams();
   const [params] = useSearchParams();
@@ -58,45 +135,83 @@ export function NightReport() {
     staleTime: STALE.nightReport,
   });
 
+  const tabs = useMemo(() => (data?.exists ? buildTabs(data) : []), [data]);
+  const [selected, setSelected] = useState<string | null>(null);
+
+  // Default to the first tab once the report loads / changes; keep the current
+  // selection if it still exists after a live refresh.
+  useEffect(() => {
+    if (tabs.length === 0) {
+      setSelected(null);
+    } else if (!tabs.some((t) => t.id === selected)) {
+      setSelected(tabs[0].id);
+    }
+  }, [tabs, selected]);
+
   if (isPending && date) return <p className="skeleton">Loading…</p>;
   if (!data?.exists) return <p>No summary for this date.</p>;
 
-  const groups = new Map<string, typeof data.plots>();
-  for (const plot of data.plots) {
-    const list = groups.get(plot.group) ?? [];
-    list.push(plot);
-    groups.set(plot.group, list);
-  }
+  const current = tabs.find((t) => t.id === selected) ?? tabs[0];
 
   return (
-    <section>
-      <h1>Nightly Summary — {date}</h1>
-      {data.text.map((item, i) => (
-        <TextItem key={i} item={item} />
-      ))}
-      {[...groups.entries()].map(([group, plots]) => (
-        <div key={group} className="nr-group">
-          <h2>{group}</h2>
-          <div className="plot-gallery">
-            {plots.map((p) => (
-              <figure key={p.key}>
-                <img
-                  src={api.nightReportPlotUrl(
-                    location,
-                    camera,
-                    date,
-                    p.group,
-                    p.filename,
-                  )}
-                  alt={p.filename}
-                  loading="lazy"
-                />
-                <figcaption>{p.filename}</figcaption>
-              </figure>
-            ))}
-          </div>
+    <div className="nr-root">
+      <div className="nr-head">
+        <h1>Nightly Summary</h1>
+        <span className="meta">{date}</span>
+      </div>
+
+      <div className="nr-tabwrap">
+        <div className="nr-subtabs" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={tab.id === current.id}
+              className={`nr-subtab ${tab.id === current.id ? "active" : ""}`}
+              onClick={() => setSelected(tab.id)}
+            >
+              <span>{tab.label}</span>
+              {tab.type === "plot" ? (
+                <span className="pct">{tab.plots?.length}</span>
+              ) : (
+                <span className="kind">
+                  {tab.text?.type === "keyvalues"
+                    ? "key/val"
+                    : tab.text?.type === "multiline"
+                      ? "text"
+                      : "links"}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
-      ))}
-    </section>
+      </div>
+
+      <div className="nr-panel" role="tabpanel">
+        {current.type === "plot" ? (
+          <PlotPanel
+            plots={current.plots ?? []}
+            location={location}
+            camera={camera}
+            date={date}
+          />
+        ) : (
+          <div className="nr-text">
+            <div className="lead">
+              <span>{current.label}</span>
+              <span className="pill">
+                {current.text?.type === "keyvalues"
+                  ? "KEY / VALUE"
+                  : current.text?.type === "multiline"
+                    ? "MULTILINE"
+                    : "LINKS"}
+              </span>
+            </div>
+            {current.text && <TextPanel item={current.text} />}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
