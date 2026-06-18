@@ -616,9 +616,10 @@ h1, h2 {
   border-collapse: collapse;
   font-family: var(--mono);
   table-layout: fixed;
+  /* Exactly the sum of the colgroup widths — NOT min-width:100%, which would
+     make a narrow table fill the wrapper and stretch the fixed columns to
+     absorb the surplus. The wrapper scrolls when the table overflows. */
   width: max-content;
-  min-width: 100%;
-  /* Density: --row-pad set on the table; font-size inherited per-density. */
 }
 .data-table th,
 .data-table td {
