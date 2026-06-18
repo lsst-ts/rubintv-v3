@@ -15,6 +15,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from rubintv.data.events import ObjectEvent, ObjectKind
+from rubintv.data.parser import (
+    parse_channel_event,
+    parse_metadata,
+    parse_night_report,
+)
 from rubintv.logging import get_logger
 
 if TYPE_CHECKING:
@@ -84,6 +89,18 @@ class S3Poller:
             self._seen[(location, prefix)] = current
         return changes
 
+    def observed_dates(self, location: str, prefix: str) -> set[str]:
+        """Dates present in the most recent listing of ``prefix``.
+
+        Derived from the keys captured by the last ``scan`` of this prefix,
+        so callers can treat a full ``{camera}/`` sweep as authoritative for
+        which dates exist in the bucket (and prune the rest). Keys that don't
+        parse to a day_obs are ignored, matching the store's ingestion. An
+        unscanned prefix yields the empty set.
+        """
+        seen = self._seen.get((location, prefix), {})
+        return {date for key in seen if (date := _date_of(key)) is not None}
+
     def _list(self, location: str, bucket: str, prefix: str) -> dict[str, str]:
         client: S3Client = self._client_for(location)
         paginator = client.get_paginator("list_objects_v2")
@@ -92,6 +109,17 @@ class S3Poller:
             for obj in page.get("Contents", []):
                 result[obj["Key"]] = obj.get("ETag", "")
         return result
+
+
+def _date_of(key: str) -> str | None:
+    """Extract the day_obs from any conforming key, without full parsing."""
+    if (ev := parse_channel_event(key)) is not None:
+        return ev.day_obs
+    if (nr := parse_night_report(key)) is not None:
+        return nr.day_obs
+    if (md := parse_metadata(key)) is not None:
+        return md.day_obs
+    return None
 
 
 def _diff(

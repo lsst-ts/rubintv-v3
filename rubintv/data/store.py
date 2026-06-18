@@ -183,6 +183,33 @@ class EventStore:
             del dates[date]
             self._calendar[loc_cam].discard(date)
 
+    async def prune_dates(
+        self, loc_cam: LocCam, observed: set[str]
+    ) -> set[str]:
+        """Drop indexed dates for a camera that a full sweep didn't observe.
+
+        A full ``{camera}/`` listing is authoritative for which dates exist:
+        any date in the store but absent from ``observed`` is stale (e.g. a
+        warm-start cache slice whose source keys were deleted from the bucket
+        while the process was down — the poller's diff can't emit REMOVED for
+        keys it never saw, so deletions would otherwise survive forever).
+
+        Publishes a ``calendar`` change per dropped date so listeners refresh,
+        and returns the dropped dates so the caller can evict their cache
+        slices. Takes the per-(loc, cam) lock, like ``apply``.
+        """
+        async with self._locks[loc_cam]:
+            dates = self._dates.get(loc_cam)
+            if not dates:
+                return set()
+            stale = set(dates) - observed
+            for date in stale:
+                del dates[date]
+                self._calendar[loc_cam].discard(date)
+        for date in stale:
+            self._bus.publish(StoreChange("calendar", loc_cam[0], loc_cam[1], date))
+        return stale
+
     def _date_index(self, loc_cam: LocCam, date: str) -> DateIndex:
         dates = self._dates[loc_cam]
         if date not in dates:

@@ -52,6 +52,18 @@ class DiskCache:
             # PVC write failure mid-run must not crash the app.
             log.warning("cache.write.failed", path=str(path), error=str(exc))
 
+    def delete(self, location: str, camera: str, date: str) -> None:
+        """Remove one cached slice (e.g. a date pruned as stale). No-op if
+        caching is disabled or the file is already gone; failures are logged,
+        not fatal — a PVC hiccup must not crash the scan loop."""
+        if self._root is None:
+            return
+        path = self._path(location, camera, date)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("cache.delete.failed", path=str(path), error=str(exc))
+
     def clear(self) -> int:
         """Delete every cached slice. Returns the number of files removed.
 

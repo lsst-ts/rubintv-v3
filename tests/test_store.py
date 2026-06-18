@@ -87,6 +87,39 @@ async def test_apply_returns_touched_slices() -> None:
     }
 
 
+async def test_prune_dates_drops_unobserved_and_keeps_observed() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("auxtel/1970-01-01/monitor/000001/a.png"),  # stale
+            created("auxtel/2026-04-10/monitor/000001/b.png"),  # real
+        ]
+    )
+    # A full sweep observed only the real date; the epoch slice is stale.
+    pruned = await store.prune_dates(("local", "auxtel"), {"2026-04-10"})
+    assert pruned == {"1970-01-01"}
+    assert store.calendar("local", "auxtel") == ["2026-04-10"]
+    assert store.date_index("local", "auxtel", "1970-01-01") is None
+
+
+async def test_prune_dates_publishes_calendar_change_per_dropped_date() -> None:
+    bus = EventBus()
+    store = EventStore(bus)
+    received: list[StoreChange] = []
+    async with bus.subscribe() as stream:
+        await store.apply([created("auxtel/1970-01-01/monitor/000001/a.png")])
+        await store.prune_dates(("local", "auxtel"), set())
+        # Drain the apply's channelData, then the prune's calendar change.
+        received.append(await stream.__anext__())
+        received.append(await stream.__anext__())
+    assert StoreChange("calendar", "local", "auxtel", "1970-01-01") in received
+
+
+async def test_prune_dates_noop_for_unknown_camera() -> None:
+    store = EventStore()
+    assert await store.prune_dates(("local", "nope"), {"2026-04-10"}) == set()
+
+
 @pytest.mark.asyncio
 async def test_apply_publishes_coalesced_changes() -> None:
     bus = EventBus()

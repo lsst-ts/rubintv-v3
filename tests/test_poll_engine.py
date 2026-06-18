@@ -18,10 +18,13 @@ from rubintv.data.tasks import PollEngine
 
 class FakePoller:
     """Records scanned prefixes; emits one CREATED event per scan so the
-    store registers a touched slice."""
+    store registers a touched slice. Tracks the keys it emitted per prefix so
+    ``observed_dates`` mirrors the real poller (the full sweep is then
+    authoritative for which dates exist)."""
 
     def __init__(self) -> None:
         self.scanned: list[tuple[str, str]] = []
+        self._seen: dict[tuple[str, str], set[str]] = {}
 
     def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
         self.scanned.append((location, prefix))
@@ -30,11 +33,15 @@ class FakePoller:
         # when present, else a fixed historical date.
         date = prefix.split("/")[1] if prefix.count("/") >= 2 else "2026-01-01"
         key = f"{prefix.split('/')[0]}/{date}/c/000001/a.png"
+        self._seen[(location, prefix)] = {date}
         return [
             ObjectEvent(
                 kind=ObjectKind.CREATED, location=location, key=key, etag="e"
             )
         ]
+
+    def observed_dates(self, location: str, prefix: str) -> set[str]:
+        return set(self._seen.get((location, prefix), set()))
 
 
 def _models() -> Models:
@@ -95,6 +102,47 @@ async def test_window_zero_skips_recent_phase() -> None:
     await engine._scan_recent_window()
     assert poller.scanned == []
     assert engine.camera_status()[("loc", "cam")].recent_ready is True
+
+
+async def test_full_sweep_prunes_stale_warm_start_date() -> None:
+    # Simulate a warm start: a stale date (e.g. epoch) seeded from the disk
+    # cache whose source keys are no longer in the bucket. The full sweep
+    # observes only the live date, so the stale one must be pruned and its
+    # cache slice evicted (else it reseeds the calendar next start).
+    poller = FakePoller()
+    store = EventStore()
+    await store.apply(
+        [ObjectEvent(ObjectKind.CREATED, "loc", "cam/1970-01-01/c/000001/x.png", "e")]
+    )
+    evicted: list[set[tuple[str, str, str]]] = []
+
+    async def delete_slices(pruned: set[tuple[str, str, str]]) -> None:
+        evicted.append(pruned)
+
+    engine = PollEngine(
+        _models(),
+        store,
+        poller,  # type: ignore[arg-type]
+        recent_window_days=0,
+        cache_slice_deleter=delete_slices,
+    )
+    assert "1970-01-01" in store.calendar("loc", "cam")
+    await engine._scan_all_history()
+    # The sweep's bare cam/ listing observed 2026-01-01 only; the epoch slice
+    # is gone from the calendar and its cache file was evicted.
+    assert store.calendar("loc", "cam") == ["2026-01-01"]
+    assert evicted == [{("loc", "cam", "1970-01-01")}]
+
+
+async def test_full_sweep_keeps_observed_dates() -> None:
+    # A live date the sweep observes must survive pruning (no spurious drop).
+    poller = FakePoller()
+    store = EventStore()
+    engine = PollEngine(
+        _models(), store, poller, recent_window_days=0  # type: ignore[arg-type]
+    )
+    await engine._scan_all_history()
+    assert store.calendar("loc", "cam") == ["2026-01-01"]
 
 
 async def test_full_sweep_scans_bare_prefix() -> None:

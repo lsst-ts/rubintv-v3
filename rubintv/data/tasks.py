@@ -102,6 +102,9 @@ class PollEngine:
         cache_slice_writer: (
             Callable[[set[tuple[str, str, str]]], Awaitable[None]] | None
         ) = None,
+        cache_slice_deleter: (
+            Callable[[set[tuple[str, str, str]]], Awaitable[None]] | None
+        ) = None,
         metadata_warmer: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> None:
         self._models = models
@@ -112,6 +115,7 @@ class PollEngine:
         self._on_ready = on_ready
         self._cache_writer = cache_writer
         self._cache_slice_writer = cache_slice_writer
+        self._cache_slice_deleter = cache_slice_deleter
         self._metadata_warmer = metadata_warmer
         self._current_day = get_current_day_obs()
         self._tasks: list[asyncio.Task[None]] = []
@@ -334,6 +338,15 @@ class PollEngine:
             if events:
                 touched = await self._store.apply(events)
                 await self._persist_slices(touched)
+            # The full {camera}/ listing is authoritative for which dates
+            # exist: prune any indexed date it didn't observe (stale warm-start
+            # cache slices whose keys were deleted while we were down — the
+            # poller diff can't emit REMOVED for keys it never saw).
+            observed = self._poller.observed_dates(location.name, prefix)
+            pruned = await self._store.prune_dates(
+                (location.name, camera.name), observed
+            )
+            await self._evict_slices(location.name, camera.name, pruned)
             # Recent may not have run (window=0); the full sweep also makes
             # recent data present, so mark both as it finishes each camera.
             self._mark(location.name, camera.name, "recent_ready")
@@ -403,6 +416,17 @@ class PollEngine:
         if self._cache_slice_writer is None or not touched:
             return
         await self._cache_slice_writer(touched)
+
+    async def _evict_slices(
+        self, location: str, camera: str, dates: set[str]
+    ) -> None:
+        """Delete cache slices for dates pruned as stale, so they don't seed
+        the calendar again on the next warm start."""
+        if self._cache_slice_deleter is None or not dates:
+            return
+        await self._cache_slice_deleter(
+            {(location, camera, date) for date in dates}
+        )
 
     async def _warm_metadata(self, location: str, camera: str) -> None:
         """Pre-fetch recent metadata for a camera once its recent scan is done.

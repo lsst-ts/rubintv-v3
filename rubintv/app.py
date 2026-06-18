@@ -143,6 +143,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if index is not None:
                 cache.write(location, camera, date, index)
 
+    async def delete_slices(pruned: set[tuple[str, str, str]]) -> None:
+        # Evict cache slices for dates the full sweep pruned as stale, so a
+        # vanished date doesn't reseed the calendar on the next warm start.
+        if not cache.enabled:
+            return
+        for location, camera, date in pruned:
+            cache.delete(location, camera, date)
+
     async def warm_metadata(location: str, camera: str) -> None:
         # Pre-fetch the most recent dates' metadata into the LRU after the
         # recent scan, so the first table view of a recent date is a warm hit.
@@ -171,6 +179,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         on_ready=lambda: setattr(state, "ready", True),
         cache_writer=write_cache,
         cache_slice_writer=write_slices,
+        cache_slice_deleter=delete_slices,
         metadata_warmer=warm_metadata,
     )
     # Expose the engine's scan-progress to the status endpoint: the global

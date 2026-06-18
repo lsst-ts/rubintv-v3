@@ -103,3 +103,29 @@ def test_removed_object_reported(poller: PollerFixture) -> None:
     assert len(changes) == 1
     assert changes[0].kind is ObjectKind.REMOVED
     assert changes[0].key == key
+
+
+def test_observed_dates_reflects_last_listing(poller: PollerFixture) -> None:
+    poller.put("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
+    poller.put("auxtel/2026-04-11/monitor/000001/b.png")  # type: ignore[operator]
+    poller.put("auxtel/2026-04-11/metadata.json")  # type: ignore[operator]
+    poller.poller.scan("local", "auxtel/")
+    # Dates present in the bucket, deduped across keys; metadata counts too.
+    assert poller.poller.observed_dates("local", "auxtel/") == {
+        "2026-04-10",
+        "2026-04-11",
+    }
+
+
+def test_observed_dates_drops_a_vanished_date(poller: PollerFixture) -> None:
+    poller.put("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
+    poller.poller.scan("local", "auxtel/")
+    poller.delete("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
+    poller.poller.scan("local", "auxtel/")
+    # A re-listing with the key gone leaves no observed dates, so a sweep
+    # treats the date as stale and prunes it.
+    assert poller.poller.observed_dates("local", "auxtel/") == set()
+
+
+def test_observed_dates_unscanned_prefix_is_empty(poller: PollerFixture) -> None:
+    assert poller.poller.observed_dates("local", "auxtel/") == set()

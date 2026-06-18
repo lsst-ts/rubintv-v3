@@ -68,3 +68,22 @@ def test_clear_removes_all_slices(tmp_path: Path) -> None:
 
 def test_clear_disabled_is_noop() -> None:
     assert DiskCache(None).clear() == 0
+
+
+def test_delete_removes_one_slice(tmp_path: Path) -> None:
+    cache = DiskCache(tmp_path)
+    cache.write("local", "auxtel", "1970-01-01", sample_index())
+    cache.write("local", "auxtel", "2026-04-10", sample_index())
+    cache.delete("local", "auxtel", "1970-01-01")
+    remaining = cache.load_all()[("local", "auxtel")]
+    assert set(remaining) == {"2026-04-10"}
+
+
+def test_delete_missing_slice_is_noop(tmp_path: Path) -> None:
+    # Deleting an already-gone slice must not raise (idempotent eviction).
+    cache = DiskCache(tmp_path)
+    cache.delete("local", "auxtel", "1970-01-01")
+
+
+def test_delete_disabled_is_noop() -> None:
+    DiskCache(None).delete("local", "auxtel", "1970-01-01")  # no raise
