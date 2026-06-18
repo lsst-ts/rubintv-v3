@@ -17,6 +17,18 @@ export interface Column {
   label: string;
 }
 
+// Fixed per-column width (the table is table-layout:fixed). Channel columns are
+// just one image chip + padding; without an explicit width they stretch to
+// absorb leftover space. Action columns size to their link text; metadata
+// columns get a compact default (values are short — angled labels float above
+// in an overlay, so the column needn't fit the label).
+function widthFor(key: string): string {
+  if (key === "seq") return "64px";
+  if (key.startsWith("ch:")) return "44px"; // one chip + padding
+  if (key === "viewer" || key === "quicklook" || key === "copy") return "84px";
+  return "92px";
+}
+
 // Truncate float-like metadata to 2dp for display, keeping the full value for a
 // hover tooltip. Non-numeric values pass through.
 function formatCell(value: unknown): { display: string; title?: string } {
@@ -105,6 +117,11 @@ function CameraDataTableInner({
         className={`data-table hs-angled dens-${density}`}
         style={{ ["--row-pad" as string]: ROW_PAD[density] }}
       >
+        <colgroup>
+          {columns.map((c) => (
+            <col key={c.key} style={{ width: widthFor(c.key) }} />
+          ))}
+        </colgroup>
         <thead ref={headRef}>
           <tr>
             {columns.map((c) => (
