@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -7,38 +7,13 @@ import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
-import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { useDismiss } from "../lib/useDismiss";
-import { fillTemplate, isDevInstance } from "../lib/links";
+import { isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
-import { CopyButton } from "../components/CopyButton";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { AllSky } from "./AllSky";
-
-type Density = "compact" | "regular" | "comfy";
-const ROW_PAD: Record<Density, string> = {
-  compact: "3px 8px",
-  regular: "6px 8px",
-  comfy: "10px 10px",
-};
-
-// Truncate float-like metadata to 2dp for display, keeping the full value for a
-// hover tooltip. Non-numeric values pass through. Mirrors the design's cell
-// formatting.
-function formatCell(value: unknown): { display: string; title?: string } {
-  if (value === null || value === undefined || value === "")
-    return { display: "—" };
-  const s = String(value);
-  if (typeof value === "number" || /^-?\d*\.\d+$/.test(s)) {
-    const n = Number(value);
-    if (!Number.isNaN(n)) {
-      const trunc = (Math.trunc(n * 100) / 100).toFixed(2);
-      return trunc === s ? { display: s } : { display: trunc, title: s };
-    }
-  }
-  return { display: s };
-}
+import { CameraDataTable, type Density } from "./CameraDataTable";
 
 // The main camera view: date picker, per-seq-num table with channel columns
 // and metadata columns, per-day artifacts, night-report link. Subscribes to
@@ -182,12 +157,16 @@ export function CameraTable() {
   const copyRowTmpl = cameraInfo?.copy_row_template ?? null;
   const dev = isDevInstance();
   // siteLocation keys the {siteLoc}→domain map; only summit/base resolve to a
-  // domain. The URL's location segment is that key.
-  const linkCtx = (controller?: unknown) => ({
-    siteLocation: location,
-    controller: typeof controller === "string" ? controller : undefined,
-    isDevInstance: dev,
-  });
+  // domain. The URL's location segment is that key. Stable identity so it
+  // doesn't defeat the memoized data table.
+  const linkCtx = useCallback(
+    (controller?: unknown) => ({
+      siteLocation: location,
+      controller: typeof controller === "string" ? controller : undefined,
+      isDevInstance: dev,
+    }),
+    [location, dev],
+  );
   // Columns are the union of the configured columns (which carry order and
   // tooltip descriptions) and every key actually present in the metadata —
   // metadata.json routinely carries far more fields than the config names,
@@ -243,12 +222,6 @@ export function CameraTable() {
     for (const c of visible) cols.push({ key: `meta:${c}`, label: c });
     return cols;
   }, [channelNames, viewerTmpl, quicklookTmpl, copyRowTmpl, visible]);
-
-  // Angled header labels are drawn in a measured overlay layer.
-  const { wrapRef, headRef, positions, tableWidth } = useAngledHeaders(true, [
-    columns,
-    density,
-  ]);
 
   // Live-view cameras (e.g. All Sky) show a single latest-image/latest-movie
   // panel instead of a per-seq-num table. Delegate once the config has loaded.
@@ -363,149 +336,21 @@ export function CameraTable() {
       ) : !isPending && date !== "" && seqNums.length === 0 ? (
         <div className="table-empty">No data for {date}.</div>
       ) : (
-        <div className="table-wrap" ref={wrapRef}>
-        {/* Angled header labels, positioned over each measured column. */}
-        <div className="header-overlay" style={{ width: tableWidth || undefined }}>
-          <div className="header-overlay-bg" />
-          {columns.map((c, i) => {
-            const pos = positions[i];
-            if (!pos || c.key === "seq") return null; // seq label lives in its <th>
-            return (
-              <div
-                key={c.key}
-                className="hdr-label"
-                title={c.label}
-                style={{ left: pos.left + 4 }}
-              >
-                {c.label}
-              </div>
-            );
-          })}
-        </div>
-
-        <table
-          className={`data-table hs-angled dens-${density}`}
-          style={{ ["--row-pad" as string]: ROW_PAD[density] }}
-        >
-          <thead ref={headRef}>
-            <tr>
-              {columns.map((c) => (
-                <th
-                  key={c.key}
-                  className={c.key === "seq" ? "seq" : undefined}
-                  title={c.key !== "seq" ? c.label : undefined}
-                >
-                  <span className="label">{c.label}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {seqNums.map((seq, rowIdx) => {
-              const meta = metadata[String(seq)] ?? {};
-              return (
-                <tr key={seq} className={rowIdx === 0 ? "newest" : undefined}>
-                  {columns.map((c) => {
-                    if (c.key === "seq") {
-                      return (
-                        <td key="seq" className="seq">
-                          {seq}
-                        </td>
-                      );
-                    }
-                    if (c.key.startsWith("ch:")) {
-                      const chan = c.key.slice(3);
-                      const present = (payload?.channels[chan] ?? []).includes(
-                        seq,
-                      );
-                      return (
-                        <td key={c.key}>
-                          {present ? (
-                            <Link
-                              className="cell-chip"
-                              style={{ background: channelColour[chan] }}
-                              to={`/${location}/${camera}/${chan}?seq=${seq}&date=${date}`}
-                              aria-label={`${chan} ${seq}`}
-                            />
-                          ) : (
-                            <span className="cell-chip empty" />
-                          )}
-                        </td>
-                      );
-                    }
-                    if (c.key === "viewer") {
-                      return (
-                        <td key="viewer">
-                          <a
-                            href={fillTemplate(
-                              viewerTmpl!,
-                              date,
-                              seq,
-                              linkCtx(meta.controller),
-                            )}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Viewer
-                          </a>
-                        </td>
-                      );
-                    }
-                    if (c.key === "quicklook") {
-                      return (
-                        <td key="quicklook">
-                          <a
-                            href={fillTemplate(
-                              quicklookTmpl!,
-                              date,
-                              seq,
-                              linkCtx(meta.controller),
-                            )}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Quicklook
-                          </a>
-                        </td>
-                      );
-                    }
-                    if (c.key === "copy") {
-                      return (
-                        <td key="copy">
-                          <CopyButton
-                            text={fillTemplate(
-                              copyRowTmpl!,
-                              date,
-                              seq,
-                              linkCtx(meta.controller),
-                            )}
-                          />
-                        </td>
-                      );
-                    }
-                    // Metadata cell.
-                    const col = c.key.slice(5);
-                    const { display, title } = formatCell(meta[col]);
-                    return (
-                      <td
-                        key={c.key}
-                        title={title}
-                        style={{
-                          color:
-                            display === "—" ? "var(--ink-soft)" : "var(--ink)",
-                          cursor: title ? "help" : undefined,
-                        }}
-                      >
-                        {display}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        </div>
+        <CameraDataTable
+          columns={columns}
+          seqNums={seqNums}
+          metadata={metadata}
+          payload={payload}
+          channelColour={channelColour}
+          density={density}
+          location={location}
+          camera={camera}
+          date={date}
+          viewerTmpl={viewerTmpl}
+          quicklookTmpl={quicklookTmpl}
+          copyRowTmpl={copyRowTmpl}
+          linkCtx={linkCtx}
+        />
       )}
     </section>
   );

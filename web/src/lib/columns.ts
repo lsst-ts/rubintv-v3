@@ -1,7 +1,7 @@
 // Per-camera metadata column visibility, persisted to localStorage. Returns
 // the selected set and a toggle. Defaults to all columns visible.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 function storageKey(location: string, camera: string): string {
   return `rubintv.columns.${location}.${camera}`;
@@ -35,6 +35,11 @@ export function useColumnPrefs(location: string, camera: string, all: string[]) 
     });
   }, []);
 
-  const visible = all.filter((c) => !hidden.has(c));
+  // Memoize so `visible`'s identity only changes when the column set or the
+  // hidden set actually change — not on every parent render. A fresh array
+  // here cascades into the camera table's `columns` memo and re-runs the
+  // angled-header measurement (a full reflow over every <th>) on unrelated
+  // state changes, e.g. opening the column picker.
+  const visible = useMemo(() => all.filter((c) => !hidden.has(c)), [all, hidden]);
   return { visible, hidden, toggle };
 }
