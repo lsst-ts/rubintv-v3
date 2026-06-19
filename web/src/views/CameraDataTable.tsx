@@ -4,6 +4,7 @@ import type { DatePayload, Metadata } from "../lib/types";
 import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { fillTemplate } from "../lib/links";
 import { CopyButton } from "../components/CopyButton";
+import { ViewerIcon, QuicklookIcon } from "../components/Icons";
 
 export type Density = "compact" | "regular" | "comfy";
 const ROW_PAD: Record<Density, string> = {
@@ -184,8 +185,9 @@ function CameraDataTableInner({
                   }
                   if (c.key === "viewer") {
                     return (
-                      <td key="viewer">
+                      <td key="viewer" className="action-cell">
                         <a
+                          className="action-link"
                           href={fillTemplate(
                             viewerTmpl!,
                             date,
@@ -194,16 +196,19 @@ function CameraDataTableInner({
                           )}
                           target="_blank"
                           rel="noreferrer"
+                          aria-label="Viewer"
+                          title="Open in image viewer"
                         >
-                          Viewer
+                          <ViewerIcon />
                         </a>
                       </td>
                     );
                   }
                   if (c.key === "quicklook") {
                     return (
-                      <td key="quicklook">
+                      <td key="quicklook" className="action-cell">
                         <a
+                          className="action-link"
                           href={fillTemplate(
                             quicklookTmpl!,
                             date,
@@ -212,16 +217,19 @@ function CameraDataTableInner({
                           )}
                           target="_blank"
                           rel="noreferrer"
+                          aria-label="Quicklook"
+                          title="Open in Quicklook"
                         >
-                          Quicklook
+                          <QuicklookIcon />
                         </a>
                       </td>
                     );
                   }
                   if (c.key === "copy") {
                     return (
-                      <td key="copy">
+                      <td key="copy" className="action-cell">
                         <CopyButton
+                          icon
                           text={fillTemplate(
                             copyRowTmpl!,
                             date,

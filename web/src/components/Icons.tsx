@@ -58,3 +58,33 @@ export function ShareIcon() {
     </svg>
   );
 }
+
+// Image viewer — an external-link "open image" glyph.
+export function ViewerIcon() {
+  return (
+    <svg {...base}>
+      <path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" />
+      <path d="M15 3h6v6M21 3l-9 9" />
+    </svg>
+  );
+}
+
+// Quicklook — a quick zoomed preview (magnifier).
+export function QuicklookIcon() {
+  return (
+    <svg {...base}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3M11 8v6M8 11h6" />
+    </svg>
+  );
+}
+
+// Copy row — overlapping sheets (clipboard copy).
+export function CopyIcon() {
+  return (
+    <svg {...base}>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}

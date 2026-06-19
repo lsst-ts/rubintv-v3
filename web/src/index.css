@@ -901,6 +901,20 @@ h1, h2 {
 .data-table td a { color: var(--accent); text-decoration: none; }
 .data-table td a:hover { text-decoration: underline; }
 
+/* Icon action cells (viewer / quicklook / copy). */
+.data-table td.action-cell { text-align: center; padding-left: 0; padding-right: 0; }
+.action-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 20px;
+  border: none; background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.action-link:hover { color: var(--accent); background: var(--paper-3); text-decoration: none; }
+.action-link .ui-icon { width: 14px; height: 14px; }
+.copy-row.action-link.copied { color: var(--good); }
+
 /* Newest-row highlight (top row). */
 .data-table tr.newest td { background: var(--accent-soft); }
 .data-table tr.newest td.seq {
