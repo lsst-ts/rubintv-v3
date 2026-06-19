@@ -607,7 +607,15 @@ h1, h2 {
   cursor: pointer; position: relative;
   font-variant-numeric: tabular-nums; padding: 2px 0;
 }
-.dp-day .num { font-size: 11px; line-height: 1; }
+.dp-day .num { font-size: 12px; line-height: 1; font-weight: 600; }
+/* Max-seq sits below the day number, clearly subordinate: smaller, lighter,
+   and in the accent hue so it reads as data, not part of the date. */
+.dp-day .ct {
+  font-size: 8.5px; line-height: 1;
+  font-weight: 500; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.dp-day.selected .ct { color: var(--paper); opacity: 0.85; }
 .dp-day:hover { background: var(--paper-3); }
 .dp-day.has-data::after {
   content: ""; position: absolute; bottom: 4px;
@@ -645,24 +653,28 @@ h1, h2 {
   gap: 12px 16px;
   justify-content: start;
 }
-.dh-mini { display: flex; flex-direction: column; gap: 4px; }
-/* The month label is a jump target: clicking it opens that month in the Months
-   view. A chevron appears on hover (over the title / its hover strip). */
-.dh-mini-label {
-  display: inline-flex; align-items: center; gap: 2px;
-  align-self: flex-start;
-  border: none; background: transparent;
-  margin: 0 -4px; padding: 1px 4px; border-radius: 3px;
-  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
-  text-transform: uppercase; letter-spacing: 0.4px;
+/* The whole mini-month is the month-jump target: hovering highlights the block
+   and clicking it opens that month in the Months view; clicking a day inside
+   selects that date instead. */
+.dh-mini {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px; margin: -4px; border-radius: 5px;
+  border: 1px solid transparent;
   cursor: pointer;
 }
-.dh-mini-label:hover { background: var(--paper-3); color: var(--accent); }
+.dh-mini:hover { background: var(--paper-3); border-color: var(--line-mid); }
+.dh-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.dh-mini-label {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.dh-mini:hover .dh-mini-label { color: var(--accent); }
 .dh-mini-jump {
   font-family: var(--mono); font-size: 10px; line-height: 1;
   opacity: 0; transition: opacity 100ms ease;
 }
-.dh-mini-label:hover .dh-mini-jump { opacity: 1; }
+.dh-mini:hover .dh-mini-jump { opacity: 1; }
 .dh-mini-grid {
   display: grid;
   grid-template-columns: repeat(7, 9px);

@@ -224,19 +224,28 @@ function MiniMonth({
     [year, month, counts],
   );
   const label = `${MONTH_ABBR[month]} ${year}`;
+  // The whole mini-month is the month-jump target; clicking a day inside selects
+  // that date instead (the day handler stops propagation). role=button keeps it
+  // keyboard-operable without nesting buttons (the day cells are buttons too).
+  const jump = () => onJumpMonth(year, month);
   return (
-    <div className="dh-mini">
-      {/* Clicking the title (or the hover strip around it) jumps to this month
-          in the Months view; clicking a day selects that date. */}
-      <button
-        type="button"
-        className="dh-mini-label"
-        title={`Open ${label} in the month view`}
-        onClick={() => onJumpMonth(year, month)}
-      >
+    <div
+      className="dh-mini"
+      role="button"
+      tabIndex={0}
+      title={`Open ${label} in the month view`}
+      onClick={jump}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          jump();
+        }
+      }}
+    >
+      <div className="dh-mini-label">
         {MONTH_ABBR[month]}
         <span className="dh-mini-jump" aria-hidden="true">›</span>
-      </button>
+      </div>
       <div className="dh-mini-grid">
         {cells.map((c) => {
           const future = c.key > today;
@@ -263,7 +272,10 @@ function MiniMonth({
               style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 1 }}
               disabled={!selectable}
               title={title}
-              onClick={() => selectable && onPickDay(c.key)}
+              onClick={(e) => {
+                e.stopPropagation(); // don't also trigger the month jump
+                if (selectable) onPickDay(c.key);
+              }}
             />
           );
         })}
