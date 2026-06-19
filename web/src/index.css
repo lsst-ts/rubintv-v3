@@ -631,30 +631,30 @@ h1, h2 {
 .dh-year-label {
   font-family: var(--display); font-weight: 700; font-size: 14px; margin-bottom: 6px;
 }
-/* Same orientation as the month calendar: weekday header across, weeks down,
-   with a left gutter of month labels. */
-.dh-body { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
-.dh-monthcol {
+/* 12 mini-months laid out 6 across × 2 rows, so a year is two horizontal rows. */
+.dh-months-grid {
   display: grid;
-  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
-  align-items: center; text-align: right;
+  grid-template-columns: repeat(6, auto);
+  gap: 12px 16px;
+  justify-content: start;
 }
-.dh-month { grid-column: 1; white-space: nowrap; }
-.dh-grid {
+.dh-mini { display: flex; flex-direction: column; gap: 4px; }
+.dh-mini-label {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.dh-mini-grid {
   display: grid;
-  grid-template-columns: repeat(7, 12px);
-  grid-auto-rows: 12px;
-  gap: 2px; align-items: start;
-}
-.dh-dow {
-  grid-row: 1;
-  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
-  text-align: center; line-height: 12px;
+  grid-template-columns: repeat(7, 9px);
+  grid-auto-rows: 9px;
+  gap: 2px;
 }
 .dh-day {
   width: 12px; height: 12px;
   border-radius: 2px; border: 1px solid transparent; padding: 0; cursor: pointer;
 }
+/* Day cells inside a mini-month are smaller than the legend swatches. */
+.dh-mini-grid .dh-day { width: 9px; height: 9px; border-radius: 1.5px; }
 .dh-day:disabled { cursor: default; }
 /* Activity tints: a single teal ramp that monotonically darkens, so perceived
    intensity always rises from lv-1 (lightest) to lv-4 (darkest). lv-none =
@@ -669,6 +669,9 @@ h1, h2 {
 [data-theme="dark"] .dh-day.lv-2 { background: #2a7d82; }
 [data-theme="dark"] .dh-day.lv-3 { background: #34b3ba; }
 [data-theme="dark"] .dh-day.lv-4 { background: #5fe0e6; }
+/* Binary (All Sky): on = has a movie, off = lv-none. */
+.dh-day.lv-on { background: var(--accent); }
+[data-theme="dark"] .dh-day.lv-on { background: var(--accent-bright); }
 .dh-day:not(:disabled):hover { outline: 1.5px solid var(--ink); outline-offset: 0; }
 .dh-day.today { box-shadow: 0 0 0 1px var(--warn); }
 .dh-day.selected { outline: 2px solid var(--ink); outline-offset: 0; }

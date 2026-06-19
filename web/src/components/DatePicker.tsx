@@ -121,14 +121,15 @@ function MonthGrid({
           const future = c.key > today;
           const data = !c.out && hasData(c.key);
           const selectable = data && !future;
+          // Max seq for the day (per-seq cameras only). The seq number is the
+          // data cue for those; All Sky (no seq) keeps the has-data dot.
+          const seq = data && showSeq ? maxSeq[c.key] : undefined;
           const classes = ["dp-day"];
           if (c.out) classes.push("out");
           else if (future || !data) classes.push("disabled");
-          if (data) classes.push("has-data");
+          if (data && !showSeq) classes.push("has-data");
           if (!c.out && c.key === today) classes.push("today");
           if (!c.out && c.key === selected) classes.push("selected");
-          // Max seq for the day (per-seq cameras only); falls back to the dot.
-          const seq = data && showSeq ? maxSeq[c.key] : undefined;
           const title = c.out
             ? ""
             : data
@@ -159,45 +160,37 @@ interface DayCell {
   key: string;
   count: number; // -1 = no data
   col: number; // weekday, Mon=0
-  row: number; // week index within the year
+  row: number; // week index within the month
 }
 
-// Same orientation as the month calendar: 7 weekday columns across, weeks down.
-// Month labels sit to the left of the week-row where each month starts.
-function buildYear(
+// A mini month grid: day cells in 7 weekday columns × up to 6 week rows.
+function buildMonth(
   year: number,
+  m: number,
   counts: Map<string, number>,
-): { cells: DayCell[]; rows: number; monthRows: { m: number; row: number }[] } {
+): DayCell[] {
+  const first = new Date(Date.UTC(year, m, 1));
+  const firstDow = (first.getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(Date.UTC(year, m + 1, 0)).getUTCDate();
   const cells: DayCell[] = [];
-  const monthRows: { m: number; row: number }[] = [];
-  let seenMonth = -1;
-
-  const jan1 = new Date(Date.UTC(year, 0, 1));
-  const jan1Dow = (jan1.getUTCDay() + 6) % 7;
-  const last = new Date(Date.UTC(year, 11, 31));
-  const totalDays = Math.round((last.getTime() - jan1.getTime()) / 86400000) + 1;
-
-  for (let i = 0; i < totalDays; i++) {
-    const date = new Date(Date.UTC(year, 0, 1 + i));
-    const m = date.getUTCMonth();
-    const d = date.getUTCDate();
-    const dow = (date.getUTCDay() + 6) % 7;
-    const row = Math.floor((jan1Dow + i) / 7);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const idx = firstDow + (d - 1);
     const k = key(year, m, d);
-    cells.push({ key: k, count: counts.has(k) ? (counts.get(k) as number) : -1, col: dow, row });
-    if (m !== seenMonth) {
-      monthRows.push({ m, row });
-      seenMonth = m;
-    }
+    cells.push({
+      key: k,
+      count: counts.has(k) ? (counts.get(k) as number) : -1,
+      col: idx % 7,
+      row: Math.floor(idx / 7),
+    });
   }
-  const rows = Math.ceil((jan1Dow + totalDays) / 7);
-  return { cells, rows, monthRows };
+  return cells;
 }
 
-// Activity tint level (0 = no exposures, 1..4 by count). The ramp is a single
-// monotonically darkening teal so perceived intensity always increases.
-function level(count: number): string {
+// Activity tint level. Count mode: 0 = no exposures, 1..4 by count, a single
+// monotonically darkening teal. Binary mode (All Sky): on/off only.
+function level(count: number, binary: boolean): string {
   if (count < 0) return "lv-none";
+  if (binary) return "lv-on";
   if (count === 0) return "lv-0";
   if (count < 50) return "lv-1";
   if (count < 250) return "lv-2";
@@ -205,64 +198,94 @@ function level(count: number): string {
   return "lv-4";
 }
 
+interface MiniMonthProps {
+  year: number;
+  month: number;
+  counts: Map<string, number>;
+  selected: string;
+  today: string;
+  binary: boolean;
+  onPick: (k: string) => void;
+}
+
+function MiniMonth({
+  year,
+  month,
+  counts,
+  selected,
+  today,
+  binary,
+  onPick,
+}: MiniMonthProps) {
+  const cells = useMemo(
+    () => buildMonth(year, month, counts),
+    [year, month, counts],
+  );
+  return (
+    <div className="dh-mini">
+      <div className="dh-mini-label">{MONTH_ABBR[month]}</div>
+      <div className="dh-mini-grid">
+        {cells.map((c) => {
+          const future = c.key > today;
+          const selectable = c.count >= 0 && !future;
+          const cls = [
+            "dh-day",
+            level(future ? -1 : c.count, binary),
+            c.key === selected ? "selected" : "",
+            c.key === today ? "today" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const title =
+            c.count < 0
+              ? c.key
+              : binary
+                ? `${c.key} · movie`
+                : `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`;
+          return (
+            <button
+              key={c.key}
+              type="button"
+              className={cls}
+              style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 1 }}
+              disabled={!selectable}
+              title={title}
+              onClick={() => selectable && onPick(c.key)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface YearBlockProps {
   year: number;
   counts: Map<string, number>;
   selected: string;
   today: string;
+  binary: boolean;
   onPick: (k: string) => void;
 }
 
-function YearBlock({ year, counts, selected, today, onPick }: YearBlockProps) {
-  const { cells, rows, monthRows } = useMemo(
-    () => buildYear(year, counts),
-    [year, counts],
-  );
-
+// A year as 12 mini-months laid out horizontally, 6 across × 2 rows.
+function YearBlock({ year, counts, selected, today, binary, onPick }: YearBlockProps) {
   return (
     <div className="dh-year">
       <div className="dh-year-label">{year}</div>
-      <div className="dh-body">
-        {/* Month labels in a left gutter, aligned to each month's first week. */}
-        <div className="dh-monthcol" style={{ gridTemplateRows: `auto repeat(${rows}, 1fr)` }}>
-          {monthRows.map(({ m, row }) => (
-            <span key={m} className="dh-month" style={{ gridRowStart: row + 2 }}>
-              {MONTH_ABBR[m]}
-            </span>
-          ))}
-        </div>
-        <div className="dh-grid">
-          {DOW.map((d, i) => (
-            <div key={i} className="dh-dow">{d}</div>
-          ))}
-          {cells.map((c) => {
-            const future = c.key > today;
-            const selectable = c.count >= 0 && !future;
-            const cls = [
-              "dh-day",
-              level(future ? -1 : c.count),
-              c.key === selected ? "selected" : "",
-              c.key === today ? "today" : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
-            return (
-              <button
-                key={c.key}
-                type="button"
-                className={cls}
-                style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 2 }}
-                disabled={!selectable}
-                title={
-                  c.count >= 0
-                    ? `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`
-                    : c.key
-                }
-                onClick={() => selectable && onPick(c.key)}
-              />
-            );
-          })}
-        </div>
+      <div className="dh-months-grid">
+        {Array.from({ length: 12 }, (_, m) => (
+          <MiniMonth
+            key={m}
+            year={year}
+            month={m}
+            counts={counts}
+            selected={selected}
+            today={today}
+            binary={binary}
+            onPick={onPick}
+          />
+        ))}
       </div>
     </div>
   );
@@ -450,20 +473,28 @@ export function DatePicker({
                       counts={countMap}
                       selected={value}
                       today={today}
+                      binary={allSky}
                       onPick={jumpToMonth}
                     />
                   ))
                 )}
               </div>
               <div className="dh-foot">
-                <span className="dh-legend">
-                  <span>less</span>
-                  <i className="dh-day lv-1" />
-                  <i className="dh-day lv-2" />
-                  <i className="dh-day lv-3" />
-                  <i className="dh-day lv-4" />
-                  <span>more</span>
-                </span>
+                {allSky ? (
+                  <span className="dh-legend">
+                    <i className="dh-day lv-on" />
+                    <span>has movie</span>
+                  </span>
+                ) : (
+                  <span className="dh-legend">
+                    <span>less</span>
+                    <i className="dh-day lv-1" />
+                    <i className="dh-day lv-2" />
+                    <i className="dh-day lv-3" />
+                    <i className="dh-day lv-4" />
+                    <span>more</span>
+                  </span>
+                )}
                 <span className="dh-hint">click a day to open its month</span>
               </div>
             </>

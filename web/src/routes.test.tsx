@@ -348,11 +348,12 @@ test("All Sky date picker shows the has-data dot, not a max seq num", async () =
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
+  localStorage.removeItem("rubintv.datepicker.mode"); // start on Months
   renderAt("/local/allsky?date=2026-04-10");
   const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
   fireEvent.click(trigger);
   const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
-  // All Sky: the data day shows only the dot (has-data title), no max seq.
+  // Month view — All Sky shows only the has-data dot, no max seq.
   expect(within(dialog).getByTitle("2026-04-10 · has data")).toBeDefined();
   expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
 });
