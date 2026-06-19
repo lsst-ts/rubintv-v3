@@ -88,3 +88,13 @@ export function CopyIcon() {
     </svg>
   );
 }
+
+// Check mark — the copy-confirmation state. pathLength=1 lets CSS animate the
+// stroke "drawing" itself in.
+export function CheckIcon() {
+  return (
+    <svg {...base}>
+      <path d="M4 12.5l5 5 11-11" pathLength={1} />
+    </svg>
+  );
+}

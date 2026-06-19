@@ -26,7 +26,7 @@ export interface Column {
 function widthFor(key: string): string {
   if (key === "seq") return "64px";
   if (key.startsWith("ch:")) return "44px"; // one chip + padding
-  if (key === "viewer" || key === "quicklook" || key === "copy") return "84px";
+  if (key === "viewer" || key === "quicklook" || key === "copy") return "34px";
   return "92px";
 }
 

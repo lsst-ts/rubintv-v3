@@ -913,7 +913,29 @@ h1, h2 {
 }
 .action-link:hover { color: var(--accent); background: var(--paper-3); text-decoration: none; }
 .action-link .ui-icon { width: 14px; height: 14px; }
+
+/* Copy confirmation: the icon swaps to a check that draws its stroke in with a
+   small pop. Respects reduced-motion. */
 .copy-row.action-link.copied { color: var(--good); }
+.copy-row.action-link.copied .ui-icon { animation: copy-pop 220ms ease-out; }
+.copy-row.action-link.copied .ui-icon path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: copy-check 260ms 40ms ease-out forwards;
+}
+@keyframes copy-pop {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes copy-check {
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copy-row.action-link.copied .ui-icon,
+  .copy-row.action-link.copied .ui-icon path { animation: none; }
+  .copy-row.action-link.copied .ui-icon path { stroke-dashoffset: 0; }
+}
 
 /* Newest-row highlight (top row). */
 .data-table tr.newest td { background: var(--accent-soft); }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CopyIcon } from "./Icons";
+import { CopyIcon, CheckIcon } from "./Icons";
 
 // A small button that copies a given string to the clipboard and briefly
 // confirms. Used for per-row "copy row" (a filled copy_row_template, e.g. a
@@ -43,7 +43,7 @@ export function CopyButton({
         aria-label={label}
         title={copied ? "Copied!" : (title ?? text)}
       >
-        <CopyIcon />
+        {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
     );
   }
