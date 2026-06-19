@@ -627,7 +627,14 @@ h1, h2 {
   padding: 24px; text-align: center;
   font-family: var(--hand); color: var(--ink-soft); font-style: italic;
 }
-.dh-year { margin-bottom: 16px; }
+/* Each year block has a subtle alternating background so year boundaries read
+   at a glance. */
+.dh-year {
+  padding: 8px 10px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+.dh-year.alt { background: var(--paper-2); }
 .dh-year-label {
   font-family: var(--display); font-weight: 700; font-size: 14px; margin-bottom: 6px;
 }
@@ -639,10 +646,23 @@ h1, h2 {
   justify-content: start;
 }
 .dh-mini { display: flex; flex-direction: column; gap: 4px; }
+/* The month label is a jump target: clicking it opens that month in the Months
+   view. A chevron appears on hover (over the title / its hover strip). */
 .dh-mini-label {
+  display: inline-flex; align-items: center; gap: 2px;
+  align-self: flex-start;
+  border: none; background: transparent;
+  margin: 0 -4px; padding: 1px 4px; border-radius: 3px;
   font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: 0.4px;
+  cursor: pointer;
 }
+.dh-mini-label:hover { background: var(--paper-3); color: var(--accent); }
+.dh-mini-jump {
+  font-family: var(--mono); font-size: 10px; line-height: 1;
+  opacity: 0; transition: opacity 100ms ease;
+}
+.dh-mini-label:hover .dh-mini-jump { opacity: 1; }
 .dh-mini-grid {
   display: grid;
   grid-template-columns: repeat(7, 9px);

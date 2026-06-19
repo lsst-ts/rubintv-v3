@@ -61,3 +61,61 @@ test("heatmap lays months out 6-across (12 mini-months per year)", () => {
   // One year (2026) → 12 mini-month blocks.
   expect(container.querySelectorAll(".dh-mini").length).toBe(12);
 });
+
+test("heatmap day click selects the date directly", () => {
+  const onChange = vi.fn();
+  render(
+    <DatePicker
+      dates={["2026-04-10"]}
+      counts={{ "2026-04-10": 5 }}
+      maxSeq={{}}
+      value="2026-04-10"
+      onChange={onChange}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /2026-04-10/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "Heatmap" }));
+  fireEvent.click(screen.getByTitle("2026-04-10 · 5 exposures"));
+  expect(onChange).toHaveBeenCalledWith("2026-04-10");
+});
+
+test("heatmap month-title click opens that month in the Months view", () => {
+  render(
+    <DatePicker
+      dates={["2026-04-10"]}
+      counts={{ "2026-04-10": 5 }}
+      maxSeq={{}}
+      value="2026-04-10"
+      onChange={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /2026-04-10/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "Heatmap" }));
+  // Click the August month label; the picker switches to Months showing August.
+  fireEvent.click(screen.getByTitle("Open Aug 2026 in the month view"));
+  expect(
+    (screen.getByRole("tab", { name: "Months" }) as HTMLElement).getAttribute(
+      "aria-selected",
+    ),
+  ).toBe("true");
+  expect(screen.getByText("August")).toBeDefined();
+});
+
+test("alternating year stripe distinguishes adjacent years", () => {
+  const { container } = render(
+    <DatePicker
+      dates={["2026-04-10", "2025-08-30"]}
+      counts={{ "2026-04-10": 5, "2025-08-30": 5 }}
+      maxSeq={{}}
+      value="2026-04-10"
+      onChange={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /2026-04-10/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "Heatmap" }));
+  const yearBlocks = container.querySelectorAll(".dh-year");
+  expect(yearBlocks.length).toBe(2);
+  // First year plain, second striped.
+  expect(yearBlocks[0].className).not.toContain("alt");
+  expect(yearBlocks[1].className).toContain("alt");
+});

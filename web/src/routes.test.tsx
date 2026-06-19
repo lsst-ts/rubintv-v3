@@ -295,6 +295,7 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
   );
 
   // Open the picker (defaults to the Months view) and switch to the heatmap.
+  localStorage.removeItem("rubintv.datepicker.mode");
   const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
   fireEvent.click(trigger);
   const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
@@ -303,22 +304,9 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
   expect(within(dialog).getByText("2026")).toBeDefined();
   expect(within(dialog).getByText("2025")).toBeDefined();
 
-  // Clicking a heatmap day jumps to the month view on that date (overview →
-  // detail); it doesn't commit yet.
+  // Clicking a heatmap day selects that date directly.
   const heatDay = within(dialog).getByTitle(/2025-08-30 · 171 exposures/);
   fireEvent.click(heatDay);
-  expect(
-    (within(dialog).getByRole("tab", { name: "Months" }) as HTMLElement).getAttribute(
-      "aria-selected",
-    ),
-  ).toBe("true");
-  expect(within(dialog).getByText("August")).toBeDefined();
-  expect(router.state.location.search).toContain("date=2026-04-10"); // not yet committed
-
-  // The month cell carries the day's max seq num (per-seq camera). Confirm the
-  // pick by clicking the in-month "30" cell.
-  const day30 = within(dialog).getByTitle("2025-08-30 · max seq 174");
-  fireEvent.click(day30);
   await waitFor(() =>
     expect(router.state.location.search).toContain("date=2025-08-30"),
   );

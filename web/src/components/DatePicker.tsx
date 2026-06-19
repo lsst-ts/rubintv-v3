@@ -205,7 +205,8 @@ interface MiniMonthProps {
   selected: string;
   today: string;
   binary: boolean;
-  onPick: (k: string) => void;
+  onPickDay: (k: string) => void;
+  onJumpMonth: (year: number, month: number) => void;
 }
 
 function MiniMonth({
@@ -215,15 +216,27 @@ function MiniMonth({
   selected,
   today,
   binary,
-  onPick,
+  onPickDay,
+  onJumpMonth,
 }: MiniMonthProps) {
   const cells = useMemo(
     () => buildMonth(year, month, counts),
     [year, month, counts],
   );
+  const label = `${MONTH_ABBR[month]} ${year}`;
   return (
     <div className="dh-mini">
-      <div className="dh-mini-label">{MONTH_ABBR[month]}</div>
+      {/* Clicking the title (or the hover strip around it) jumps to this month
+          in the Months view; clicking a day selects that date. */}
+      <button
+        type="button"
+        className="dh-mini-label"
+        title={`Open ${label} in the month view`}
+        onClick={() => onJumpMonth(year, month)}
+      >
+        {MONTH_ABBR[month]}
+        <span className="dh-mini-jump" aria-hidden="true">›</span>
+      </button>
       <div className="dh-mini-grid">
         {cells.map((c) => {
           const future = c.key > today;
@@ -250,7 +263,7 @@ function MiniMonth({
               style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 1 }}
               disabled={!selectable}
               title={title}
-              onClick={() => selectable && onPick(c.key)}
+              onClick={() => selectable && onPickDay(c.key)}
             />
           );
         })}
@@ -265,13 +278,25 @@ interface YearBlockProps {
   selected: string;
   today: string;
   binary: boolean;
-  onPick: (k: string) => void;
+  // Index of this year among the rendered years (for alternating stripes).
+  stripe: number;
+  onPickDay: (k: string) => void;
+  onJumpMonth: (year: number, month: number) => void;
 }
 
 // A year as 12 mini-months laid out horizontally, 6 across × 2 rows.
-function YearBlock({ year, counts, selected, today, binary, onPick }: YearBlockProps) {
+function YearBlock({
+  year,
+  counts,
+  selected,
+  today,
+  binary,
+  stripe,
+  onPickDay,
+  onJumpMonth,
+}: YearBlockProps) {
   return (
-    <div className="dh-year">
+    <div className={"dh-year" + (stripe % 2 ? " alt" : "")}>
       <div className="dh-year-label">{year}</div>
       <div className="dh-months-grid">
         {Array.from({ length: 12 }, (_, m) => (
@@ -283,7 +308,8 @@ function YearBlock({ year, counts, selected, today, binary, onPick }: YearBlockP
             selected={selected}
             today={today}
             binary={binary}
-            onPick={onPick}
+            onPickDay={onPickDay}
+            onJumpMonth={onJumpMonth}
           />
         ))}
       </div>
@@ -363,16 +389,16 @@ export function DatePicker({
     });
   };
 
-  // Month-grid pick: commit and close.
+  // Selecting a day (in either view) commits and closes.
   const pickDay = (k: string) => {
     onChange(k);
     setOpen(false);
   };
 
-  // Heatmap day click: jump to the month view centred on that date, where the
-  // user confirms the pick (overview → detail). Doesn't commit yet.
-  const jumpToMonth = (k: string) => {
-    setView(viewFromKey(k));
+  // Heatmap month-title click: switch to the Months view centred on that month
+  // (overview → detail), without committing a date.
+  const jumpToMonthView = (y: number, m: number) => {
+    setView({ y, m });
     setModePersisted("months");
   };
 
@@ -466,7 +492,7 @@ export function DatePicker({
                 {years.length === 0 ? (
                   <div className="dh-empty">No dates with data.</div>
                 ) : (
-                  years.map((y) => (
+                  years.map((y, i) => (
                     <YearBlock
                       key={y}
                       year={y}
@@ -474,7 +500,9 @@ export function DatePicker({
                       selected={value}
                       today={today}
                       binary={allSky}
-                      onPick={jumpToMonth}
+                      stripe={i}
+                      onPickDay={pickDay}
+                      onJumpMonth={jumpToMonthView}
                     />
                   ))
                 )}
@@ -495,7 +523,9 @@ export function DatePicker({
                     <span>more</span>
                   </span>
                 )}
-                <span className="dh-hint">click a day to open its month</span>
+                <span className="dh-hint">
+                  click a day to select · a month to open it
+                </span>
               </div>
             </>
           )}
