@@ -908,6 +908,44 @@ h1, h2 {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+/* ── Per-cell colour flags (from "_<col>" metadata indicators) ──────────────
+   Ported verbatim from the original app's $colors map. The backgrounds are
+   light pastels/gradients, so cells force dark text in both themes to stay
+   legible (the original was a single light theme). */
+.data-table td.cell-bad { background: #c64f50; color: #fff; }
+.data-table td.cell-warning { background: #fdf35f; color: #1a1a1a; }
+.data-table td.cell-ok { background: #65e54c; color: #1a1a1a; }
+.data-table td.cell-measured { background: #64ced9; color: #1a1a1a; }
+
+/* Per-filter band colours. */
+.data-table td.cell-u_color { background: #85b7ff; color: #1a1a1a; }
+.data-table td.cell-g_color { background: #a4dfaf; color: #1a1a1a; }
+.data-table td.cell-r_color { background: #e28d7e; color: #1a1a1a; }
+.data-table td.cell-i_color { background: #ffe07e; color: #1a1a1a; }
+.data-table td.cell-z_color { background: #f89fd0; color: #1a1a1a; }
+.data-table td.cell-y_color { background: #ad7f7f; color: #1a1a1a; }
+
+.data-table td.cell-white_color { background: #fefefe; color: #1a1a1a; }
+.data-table td.cell-rainbow_color {
+  color: #1a1a1a;
+  background: linear-gradient(270deg, #fec8c9 0%, #f5dece 16%, #f5f8cd 28%,
+    #e0f5d1 50%, #c9d2fe 66%, #dcddfe 83%, #f1dafe 100%);
+}
+.data-table td.cell-r_stripes {
+  color: #1a1a1a;
+  background: linear-gradient(27deg, #f9bcbc 0%, #f9bcbc 14%, #fefefe 14%,
+    #fefefe 29%, #f9bcbc 29%, #f9bcbc 43%, #fefefe 43%, #fefefe 57%,
+    #f9bcbc 57%, #f9bcbc 71%, #fefefe 71%, #fefefe 84%, #f9bcbc 84%,
+    #f9bcbc 100%);
+}
+.data-table td.cell-b_stripes {
+  color: #1a1a1a;
+  background: linear-gradient(27deg, #a2c6f6 0%, #a2c6f6 14%, #fefefe 14%,
+    #fefefe 29%, #a2c6f6 29%, #a2c6f6 43%, #fefefe 43%, #fefefe 57%,
+    #a2c6f6 57%, #a2c6f6 71%, #fefefe 71%, #fefefe 84%, #a2c6f6 84%,
+    #a2c6f6 100%);
+}
+
 /* ── Angled header overlay ─────────────────────────────────────────────── */
 .hs-angled thead th {
   height: var(--header-h, 150px);
