@@ -116,10 +116,6 @@ export function CameraTable() {
     () => cameraInfo?.channels.filter((c) => !c.per_day) ?? [],
     [cameraInfo],
   );
-  const channelNames = useMemo(
-    () => liveChannels.map((c) => c.name),
-    [liveChannels],
-  );
   const channelColour = useMemo(() => {
     const m: Record<string, string> = {};
     for (const c of liveChannels) m[c.name] = c.colour ?? "var(--accent)";
@@ -238,14 +234,16 @@ export function CameraTable() {
   const columns = useMemo(() => {
     const cols: { key: string; label: string }[] = [
       { key: "seq", label: "Seq.No" },
-      ...channelNames.map((c) => ({ key: `ch:${c}`, label: c })),
+      // Column key is the channel's ref name (cells index by it); the header
+      // label is its human title.
+      ...liveChannels.map((c) => ({ key: `ch:${c.name}`, label: c.title })),
     ];
     if (viewerTmpl) cols.push({ key: "viewer", label: "Viewer" });
     if (quicklookTmpl) cols.push({ key: "quicklook", label: "Quicklook" });
     if (copyRowTmpl) cols.push({ key: "copy", label: "Copy row" });
     for (const c of visible) cols.push({ key: `meta:${c}`, label: c });
     return cols;
-  }, [channelNames, viewerTmpl, quicklookTmpl, copyRowTmpl, visible]);
+  }, [liveChannels, viewerTmpl, quicklookTmpl, copyRowTmpl, visible]);
 
   // Live-view cameras (e.g. All Sky) show a single latest-image/latest-movie
   // panel instead of a per-seq-num table. Delegate once the config has loaded.

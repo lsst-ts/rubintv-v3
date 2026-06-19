@@ -141,7 +141,9 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
       body = {
         name: "auxtel",
         title: "AuxTel",
-        channels: [{ name: "monitor", per_day: false }],
+        channels: [
+          { name: "monitor", title: "Monitor Image", per_day: false },
+        ],
         metadata_columns: {},
         image_viewer_link:
           "http://ccs.lsst.org/view?image=AT_{controller:default=O}_{dayObs}_{seqNum:06}",
@@ -164,6 +166,10 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
   }) as unknown as typeof fetch;
 
   renderAt("/local/auxtel?date=2026-04-10");
+
+  // The channel column header shows the human title, not the ref name.
+  expect(await screen.findByText("Monitor Image")).toBeDefined();
+  expect(screen.queryByText("monitor")).toBeNull();
 
   // Viewer link fills the row's controller ("C"), the 8-digit date, and the
   // zero-padded seq.
