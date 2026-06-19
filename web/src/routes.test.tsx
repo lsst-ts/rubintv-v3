@@ -293,16 +293,30 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
     </QueryClientProvider>,
   );
 
-  // Open the picker; a year block per year with data is shown.
+  // Open the picker (defaults to the Months view) and switch to the heatmap.
   const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
   fireEvent.click(trigger);
   const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
+  fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));
+  // A year block per year with data is shown.
   expect(within(dialog).getByText("2026")).toBeDefined();
   expect(within(dialog).getByText("2025")).toBeDefined();
 
-  // The data day exposes its count via the cell title; selecting it navigates.
-  const day = within(dialog).getByTitle(/2025-08-30 · 171 exposures/);
-  fireEvent.click(day);
+  // Clicking a heatmap day jumps to the month view on that date (overview →
+  // detail); it doesn't commit yet.
+  const heatDay = within(dialog).getByTitle(/2025-08-30 · 171 exposures/);
+  fireEvent.click(heatDay);
+  expect(
+    (within(dialog).getByRole("tab", { name: "Months" }) as HTMLElement).getAttribute(
+      "aria-selected",
+    ),
+  ).toBe("true");
+  expect(within(dialog).getByText("August")).toBeDefined();
+  expect(router.state.location.search).toContain("date=2026-04-10"); // not yet committed
+
+  // Confirm the pick in the month grid (the in-month "30" cell, with data).
+  const day30 = within(dialog).getByTitle("2025-08-30 · has data");
+  fireEvent.click(day30);
   await waitFor(() =>
     expect(router.state.location.search).toContain("date=2025-08-30"),
   );

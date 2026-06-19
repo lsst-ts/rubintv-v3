@@ -528,6 +528,7 @@ h1, h2 {
 .date-pop {
   position: absolute;
   top: calc(100% + 6px); left: 0;
+  width: 640px; max-width: calc(100vw - 24px);
   background: var(--paper);
   border: 1.5px solid var(--stroke);
   border-radius: 6px;
@@ -538,52 +539,123 @@ h1, h2 {
   overflow: hidden;
 }
 
-/* Year-heatmap (GitHub-contributions style). */
-.dh-pop { width: 640px; max-width: calc(100vw - 24px); }
-.dh-scroll {
-  max-height: 56vh; overflow-y: auto;
-  padding: 12px 14px 4px;
+/* Shared header: view tabs (Months / Heatmap) + selected value + jump link. */
+.dp-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
 }
+.dp-tabs {
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2);
+}
+.dp-tab {
+  border: none; background: transparent;
+  font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
+  padding: 4px 12px; border-radius: 6px; cursor: pointer;
+}
+.dp-tab.active {
+  background: var(--paper); color: var(--accent); box-shadow: var(--shadow-card);
+}
+[data-theme="dark"] .dp-tab.active { background: var(--paper-3); }
+.dp-head-val {
+  margin-left: auto;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+}
+.date-pop .today-link {
+  cursor: pointer;
+  font-family: var(--hand); font-size: 12px;
+  color: var(--accent);
+  border-bottom: 1px dashed var(--accent);
+}
+.date-pop .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* ── Two-month view ──────────────────────────────────────────────────────── */
+.dp-two-grids { display: grid; grid-template-columns: 1fr 1fr; }
+.dp-two-grids .dp-month + .dp-month { border-left: 1px solid var(--line-soft); }
+.dp-month { padding: 10px 12px 12px; }
+.dp-mhead {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dp-mhead .month { font-family: var(--hand); font-weight: 700; font-size: 14px; }
+.dp-mhead .yr {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-left: 4px;
+}
+.dp-mhead .arrs { display: inline-flex; gap: 4px; }
+.dp-mhead .arr {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper);
+  font-family: var(--mono); font-size: 11px; color: var(--ink); cursor: pointer;
+}
+.dp-mhead .arr:hover { background: var(--paper-3); }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.dp-grid .dow {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-align: center; padding: 4px 0 5px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.dp-day {
+  height: 38px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  border: 1.25px solid transparent; border-radius: 3px;
+  cursor: pointer; position: relative;
+  font-variant-numeric: tabular-nums; padding: 2px 0;
+}
+.dp-day .num { font-size: 11px; line-height: 1; }
+.dp-day:hover { background: var(--paper-3); }
+.dp-day.has-data::after {
+  content: ""; position: absolute; bottom: 4px;
+  width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
+}
+.dp-day.out { color: var(--line-soft); cursor: default; }
+.dp-day.out:hover { background: transparent; }
+.dp-day.today { border-color: var(--ink); font-weight: 700; }
+.dp-day.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.dp-day.selected.has-data::after { background: var(--paper); }
+.dp-day.disabled { color: var(--line-soft); cursor: not-allowed; }
+.dp-day.disabled:hover { background: transparent; }
+
+/* ── Year-heatmap view ───────────────────────────────────────────────────── */
+.dh-scroll { max-height: 56vh; overflow-y: auto; padding: 12px 14px 4px; }
 .dh-empty {
   padding: 24px; text-align: center;
   font-family: var(--hand); color: var(--ink-soft); font-style: italic;
 }
 .dh-year { margin-bottom: 16px; }
 .dh-year-label {
-  font-family: var(--display); font-weight: 700; font-size: 14px;
-  margin-bottom: 6px;
+  font-family: var(--display); font-weight: 700; font-size: 14px; margin-bottom: 6px;
 }
-.dh-grid {
-  display: grid;
-  grid-auto-rows: 12px;
-  gap: 2px;
-  align-items: start;
-}
-/* Month labels occupy row 1, spanning the full width via auto-placement. */
+.dh-grid { display: grid; grid-auto-rows: 12px; gap: 2px; align-items: start; }
 .dh-months {
-  grid-row: 1;
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: subgrid;
-  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
-  height: 12px;
+  grid-row: 1; grid-column: 1 / -1;
+  display: grid; grid-template-columns: subgrid;
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft); height: 12px;
 }
 .dh-month { grid-row: 1; white-space: nowrap; }
 .dh-day {
   width: 12px; height: 12px;
-  border-radius: 2px;
-  border: 1px solid transparent;
-  padding: 0;
-  cursor: pointer;
+  border-radius: 2px; border: 1px solid transparent; padding: 0; cursor: pointer;
 }
 .dh-day:disabled { cursor: default; }
-/* Activity tints. lv-none = not in calendar (faint), lv-0..4 by count. */
-.dh-day.lv-none { background: transparent; border-color: var(--line-soft); opacity: 0.45; }
+/* Activity tints: a single teal ramp that monotonically darkens, so perceived
+   intensity always rises from lv-1 (lightest) to lv-4 (darkest). lv-none =
+   not in calendar; lv-0 = in calendar but no per-seq exposures. */
+.dh-day.lv-none { background: transparent; border-color: var(--line-soft); opacity: 0.4; }
 .dh-day.lv-0 { background: var(--paper-3); }
-.dh-day.lv-1 { background: var(--accent-line); }
-.dh-day.lv-2 { background: var(--accent); }
-.dh-day.lv-3 { background: var(--accent); filter: brightness(0.85); }
-.dh-day.lv-4 { background: var(--accent-bright); }
+.dh-day.lv-1 { background: #9fe2e6; }
+.dh-day.lv-2 { background: #4fc3c9; }
+.dh-day.lv-3 { background: #1f9aa1; }
+.dh-day.lv-4 { background: #0a6b70; }
+[data-theme="dark"] .dh-day.lv-1 { background: #1d4d50; }
+[data-theme="dark"] .dh-day.lv-2 { background: #2a7d82; }
+[data-theme="dark"] .dh-day.lv-3 { background: #34b3ba; }
+[data-theme="dark"] .dh-day.lv-4 { background: #5fe0e6; }
 .dh-day:not(:disabled):hover { outline: 1.5px solid var(--ink); outline-offset: 0; }
 .dh-day.today { box-shadow: 0 0 0 1px var(--warn); }
 .dh-day.selected { outline: 2px solid var(--ink); outline-offset: 0; }
@@ -597,14 +669,7 @@ h1, h2 {
 }
 .dh-legend { display: inline-flex; align-items: center; gap: 4px; }
 .dh-legend .dh-day { cursor: default; }
-.dh-foot-val { margin-left: auto; color: var(--ink); }
-.dh-foot .today-link {
-  cursor: pointer;
-  font-family: var(--hand); font-size: 12px;
-  color: var(--accent);
-  border-bottom: 1px dashed var(--accent);
-}
-.dh-foot .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
+.dh-hint { margin-left: auto; font-style: italic; }
 
 /* Density segmented control. */
 .density-seg {
