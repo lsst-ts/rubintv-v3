@@ -238,9 +238,10 @@ export function CameraTable() {
       // label is its human title.
       ...liveChannels.map((c) => ({ key: `ch:${c.name}`, label: c.title })),
     ];
-    if (viewerTmpl) cols.push({ key: "viewer", label: "Viewer" });
-    if (quicklookTmpl) cols.push({ key: "quicklook", label: "Quicklook" });
-    if (copyRowTmpl) cols.push({ key: "copy", label: "Copy row" });
+    // Per-row action columns carry no header label.
+    if (viewerTmpl) cols.push({ key: "viewer", label: "" });
+    if (quicklookTmpl) cols.push({ key: "quicklook", label: "" });
+    if (copyRowTmpl) cols.push({ key: "copy", label: "" });
     for (const c of visible) cols.push({ key: `meta:${c}`, label: c });
     return cols;
   }, [liveChannels, viewerTmpl, quicklookTmpl, copyRowTmpl, visible]);

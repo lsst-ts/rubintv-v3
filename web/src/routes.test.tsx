@@ -171,6 +171,10 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
   expect(await screen.findByText("Monitor Image")).toBeDefined();
   expect(screen.queryByText("monitor")).toBeNull();
 
+  // Per-row action columns (viewer/quicklook/copy) have no header label.
+  expect(screen.queryByRole("columnheader", { name: "Viewer" })).toBeNull();
+  expect(screen.queryByRole("columnheader", { name: "Quicklook" })).toBeNull();
+
   // Viewer link fills the row's controller ("C"), the 8-digit date, and the
   // zero-padded seq.
   const viewer = await screen.findByRole("link", { name: "Viewer" });
@@ -269,6 +273,36 @@ test("column picker defaults to configured columns and reset restores them", asy
   await waitFor(() =>
     expect(screen.getByRole("button", { name: /Columns 1\/2/ })).toBeDefined(),
   );
+});
+
+test("a metadata cell gets a colour class from its sibling _<col> indicator", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: { Filter: "The filter" },
+      };
+    } else if (/\/metadata\//.test(url)) {
+      // The "_Filter" indicator names the colour class for the Filter cell.
+      body = { "7": { Filter: "z_20", _Filter: "bad" } };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { container } = renderAt("/local/auxtel?date=2026-04-10");
+  const cell = await screen.findByText("z_20");
+  expect(cell.tagName).toBe("TD");
+  expect(cell.className).toContain("cell-bad");
+  // The indicator key itself is not rendered as a column.
+  expect(within(container).queryByText("_Filter")).toBeNull();
 });
 
 test("date picker opens a year heatmap; selecting a data day sets ?date", async () => {

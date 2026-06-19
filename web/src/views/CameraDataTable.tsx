@@ -29,6 +29,20 @@ function widthFor(key: string): string {
   return "92px";
 }
 
+// A "_<col>" metadata value names CSS class(es) for the "<col>" cell — the old
+// app's per-cell colour-indicator convention. We namespace each token under
+// `cell-` to isolate it from app styles, and sanitise to a safe class token.
+// Multiple space-separated tokens are honoured. Returns "" when absent/empty.
+function cellFlagClass(raw: unknown): string {
+  if (raw === null || raw === undefined) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  return s
+    .split(/\s+/)
+    .map((t) => "cell-" + t.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"))
+    .join(" ");
+}
+
 // Truncate float-like metadata to 2dp for display, keeping the full value for a
 // hover tooltip. Non-numeric values pass through.
 function formatCell(value: unknown): { display: string; title?: string } {
@@ -99,7 +113,9 @@ function CameraDataTableInner({
         <div className="header-overlay-bg" />
         {columns.map((c, i) => {
           const pos = positions[i];
-          if (!pos || c.key === "seq") return null; // seq label lives in its <th>
+          // seq label lives in its <th>; columns with no label (action columns)
+          // draw nothing.
+          if (!pos || c.key === "seq" || !c.label) return null;
           return (
             <div
               key={c.key}
@@ -128,7 +144,7 @@ function CameraDataTableInner({
               <th
                 key={c.key}
                 className={c.key === "seq" ? "seq" : undefined}
-                title={c.key !== "seq" ? c.label : undefined}
+                title={c.key !== "seq" && c.label ? c.label : undefined}
               >
                 <span className="label">{c.label}</span>
               </th>
@@ -216,16 +232,23 @@ function CameraDataTableInner({
                       </td>
                     );
                   }
-                  // Metadata cell.
+                  // Metadata cell. A sibling "_<col>" key, when present, names
+                  // a colour class for this cell (the old app's per-cell
+                  // indicator convention); namespaced under cell- to isolate it.
                   const col = c.key.slice(5);
                   const { display, title } = formatCell(meta[col]);
+                  const flag = cellFlagClass(meta[`_${col}`]);
                   return (
                     <td
                       key={c.key}
+                      className={flag}
                       title={title}
                       style={{
-                        color:
-                          display === "—" ? "var(--ink-soft)" : "var(--ink)",
+                        color: flag
+                          ? undefined
+                          : display === "—"
+                            ? "var(--ink-soft)"
+                            : "var(--ink)",
                         cursor: title ? "help" : undefined,
                       }}
                     >
