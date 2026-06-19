@@ -6,6 +6,7 @@ import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { DatePicker } from "../components/DatePicker";
 
 // Live view (live_view cameras, e.g. All Sky): a single panel showing the most
 // recent movie and (on the current date) the latest still, rather than a
@@ -123,18 +124,14 @@ export function AllSky() {
       {/* Toolbar: historical-date picker + live/historical indicator. */}
       <div className="allsky-toolbar">
         <span className="amovie-label">All-sky feed</span>
-        <select
-          className="date-field"
+        <DatePicker
+          dates={calendar?.dates ?? []}
+          counts={calendar?.counts ?? {}}
+          maxSeq={calendar?.max_seq ?? {}}
+          allSky
           value={date}
-          aria-label="Date"
-          onChange={(e) => setParams({ date: e.target.value })}
-        >
-          {calendar?.dates.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+          onChange={(d) => setParams({ date: d })}
+        />
         <span style={{ flex: 1 }} />
         {isCurrent ? (
           <span className="tag live">live</span>

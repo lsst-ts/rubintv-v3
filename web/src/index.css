@@ -528,7 +528,7 @@ h1, h2 {
 .date-pop {
   position: absolute;
   top: calc(100% + 6px); left: 0;
-  width: 640px; max-width: calc(100vw - 24px);
+  width: max-content; max-width: calc(100vw - 24px);
   background: var(--paper);
   border: 1.5px solid var(--stroke);
   border-radius: 6px;
@@ -572,7 +572,7 @@ h1, h2 {
 .date-pop .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
 
 /* ── Two-month view ──────────────────────────────────────────────────────── */
-.dp-two-grids { display: grid; grid-template-columns: 1fr 1fr; }
+.dp-two-grids { display: grid; grid-template-columns: 1fr 1fr; width: 560px; max-width: calc(100vw - 24px); }
 .dp-two-grids .dp-month + .dp-month { border-left: 1px solid var(--line-soft); }
 .dp-month { padding: 10px 12px 12px; }
 .dp-mhead {
@@ -631,13 +631,26 @@ h1, h2 {
 .dh-year-label {
   font-family: var(--display); font-weight: 700; font-size: 14px; margin-bottom: 6px;
 }
-.dh-grid { display: grid; grid-auto-rows: 12px; gap: 2px; align-items: start; }
-.dh-months {
-  grid-row: 1; grid-column: 1 / -1;
-  display: grid; grid-template-columns: subgrid;
-  font-family: var(--mono); font-size: 9px; color: var(--ink-soft); height: 12px;
+/* Same orientation as the month calendar: weekday header across, weeks down,
+   with a left gutter of month labels. */
+.dh-body { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+.dh-monthcol {
+  display: grid;
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  align-items: center; text-align: right;
 }
-.dh-month { grid-row: 1; white-space: nowrap; }
+.dh-month { grid-column: 1; white-space: nowrap; }
+.dh-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 12px);
+  grid-auto-rows: 12px;
+  gap: 2px; align-items: start;
+}
+.dh-dow {
+  grid-row: 1;
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-align: center; line-height: 12px;
+}
 .dh-day {
   width: 12px; height: 12px;
   border-radius: 2px; border: 1px solid transparent; padding: 0; cursor: pointer;

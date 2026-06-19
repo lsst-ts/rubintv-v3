@@ -132,6 +132,10 @@ class CalendarOut(BaseModel):
     """Per-date exposure count (distinct seq_nums across channels), for the
     date picker's activity overview. Days with no per-seq channels map to 0."""
 
+    max_seq: dict[str, int] = {}
+    """Per-date highest integer seq_num, shown in the calendar's month cells.
+    Days with no numeric seqs are absent."""
+
 
 class EventOut(BaseModel):
     key: str

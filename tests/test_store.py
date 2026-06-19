@@ -31,6 +31,31 @@ async def test_insert_builds_structured_index() -> None:
     assert store.calendar("local", "lsstcam") == ["2026-04-10"]
 
 
+async def test_calendar_counts_and_max_seq() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/witness_detector/000001/a.png"),
+            created("lsstcam/2026-04-10/witness_detector/000005/b.png"),
+            created("lsstcam/2026-04-10/focal_plane/000005/c.png"),
+            # A per-day movie (word-sentinel seq) must not affect max seq.
+            created("lsstcam/2026-04-10/movies/final/m.mp4"),
+        ]
+    )
+    # Count = distinct seqs across channels {1, 5} = 2; max integer seq = 5.
+    assert store.calendar_counts("local", "lsstcam") == {"2026-04-10": 2}
+    assert store.calendar_max_seq("local", "lsstcam") == {"2026-04-10": 5}
+
+
+async def test_calendar_max_seq_omits_days_without_numeric_seqs() -> None:
+    store = EventStore()
+    # A day with only a per-day artifact has no numeric channel seqs.
+    await store.apply([created("auxtel/2026-04-10/movies/final/m.mp4")])
+    assert store.calendar_max_seq("local", "auxtel") == {}
+    # ...but it still has data and counts 0.
+    assert store.calendar_counts("local", "auxtel") == {"2026-04-10": 0}
+
+
 async def test_extension_default_and_exception() -> None:
     store = EventStore()
     await store.apply(

@@ -568,6 +568,13 @@ export interface components {
             counts: {
                 [key: string]: number;
             };
+            /**
+             * Max Seq
+             * @default {}
+             */
+            max_seq: {
+                [key: string]: number;
+            };
         };
         /** CameraGroupOut */
         CameraGroupOut: {

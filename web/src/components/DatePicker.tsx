@@ -50,6 +50,9 @@ interface MonthGridProps {
   monthOffset: number;
   selected: string;
   hasData: (k: string) => boolean;
+  maxSeq: Record<string, number>;
+  // All Sky cameras have no per-seq table, so show only the has-data dot.
+  showSeq: boolean;
   today: string;
   showArrows: boolean;
   onStep: (months: number) => void;
@@ -61,6 +64,8 @@ function MonthGrid({
   monthOffset,
   selected,
   hasData,
+  maxSeq,
+  showSeq,
   today,
   showArrows,
   onStep,
@@ -122,14 +127,24 @@ function MonthGrid({
           if (data) classes.push("has-data");
           if (!c.out && c.key === today) classes.push("today");
           if (!c.out && c.key === selected) classes.push("selected");
+          // Max seq for the day (per-seq cameras only); falls back to the dot.
+          const seq = data && showSeq ? maxSeq[c.key] : undefined;
+          const title = c.out
+            ? ""
+            : data
+              ? seq !== undefined
+                ? `${c.key} · max seq ${seq}`
+                : `${c.key} · has data`
+              : c.key;
           return (
             <div
               key={i}
               className={classes.join(" ")}
-              title={c.out ? "" : data ? `${c.key} · has data` : c.key}
+              title={title}
               onClick={() => selectable && onPick(c.key)}
             >
               <span className="num">{c.d}</span>
+              {seq !== undefined && <span className="ct">{seq}</span>}
             </div>
           );
         })}
@@ -143,16 +158,18 @@ function MonthGrid({
 interface DayCell {
   key: string;
   count: number; // -1 = no data
-  col: number;
-  row: number;
+  col: number; // weekday, Mon=0
+  row: number; // week index within the year
 }
 
+// Same orientation as the month calendar: 7 weekday columns across, weeks down.
+// Month labels sit to the left of the week-row where each month starts.
 function buildYear(
   year: number,
   counts: Map<string, number>,
-): { cells: DayCell[]; weeks: number; monthCols: { m: number; col: number }[] } {
+): { cells: DayCell[]; rows: number; monthRows: { m: number; row: number }[] } {
   const cells: DayCell[] = [];
-  const monthCols: { m: number; col: number }[] = [];
+  const monthRows: { m: number; row: number }[] = [];
   let seenMonth = -1;
 
   const jan1 = new Date(Date.UTC(year, 0, 1));
@@ -165,16 +182,16 @@ function buildYear(
     const m = date.getUTCMonth();
     const d = date.getUTCDate();
     const dow = (date.getUTCDay() + 6) % 7;
-    const col = Math.floor((jan1Dow + i) / 7);
+    const row = Math.floor((jan1Dow + i) / 7);
     const k = key(year, m, d);
-    cells.push({ key: k, count: counts.has(k) ? (counts.get(k) as number) : -1, col, row: dow });
+    cells.push({ key: k, count: counts.has(k) ? (counts.get(k) as number) : -1, col: dow, row });
     if (m !== seenMonth) {
-      monthCols.push({ m, col });
+      monthRows.push({ m, row });
       seenMonth = m;
     }
   }
-  const weeks = Math.ceil((jan1Dow + totalDays) / 7);
-  return { cells, weeks, monthCols };
+  const rows = Math.ceil((jan1Dow + totalDays) / 7);
+  return { cells, rows, monthRows };
 }
 
 // Activity tint level (0 = no exposures, 1..4 by count). The ramp is a single
@@ -197,7 +214,7 @@ interface YearBlockProps {
 }
 
 function YearBlock({ year, counts, selected, today, onPick }: YearBlockProps) {
-  const { cells, weeks, monthCols } = useMemo(
+  const { cells, rows, monthRows } = useMemo(
     () => buildYear(year, counts),
     [year, counts],
   );
@@ -205,41 +222,47 @@ function YearBlock({ year, counts, selected, today, onPick }: YearBlockProps) {
   return (
     <div className="dh-year">
       <div className="dh-year-label">{year}</div>
-      <div className="dh-grid" style={{ gridTemplateColumns: `repeat(${weeks}, 1fr)` }}>
-        <div className="dh-months">
-          {monthCols.map(({ m, col }) => (
-            <span key={m} className="dh-month" style={{ gridColumnStart: col + 1 }}>
+      <div className="dh-body">
+        {/* Month labels in a left gutter, aligned to each month's first week. */}
+        <div className="dh-monthcol" style={{ gridTemplateRows: `auto repeat(${rows}, 1fr)` }}>
+          {monthRows.map(({ m, row }) => (
+            <span key={m} className="dh-month" style={{ gridRowStart: row + 2 }}>
               {MONTH_ABBR[m]}
             </span>
           ))}
         </div>
-        {cells.map((c) => {
-          const future = c.key > today;
-          const selectable = c.count >= 0 && !future;
-          const cls = [
-            "dh-day",
-            level(future ? -1 : c.count),
-            c.key === selected ? "selected" : "",
-            c.key === today ? "today" : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          return (
-            <button
-              key={c.key}
-              type="button"
-              className={cls}
-              style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 2 }}
-              disabled={!selectable}
-              title={
-                c.count >= 0
-                  ? `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`
-                  : c.key
-              }
-              onClick={() => selectable && onPick(c.key)}
-            />
-          );
-        })}
+        <div className="dh-grid">
+          {DOW.map((d, i) => (
+            <div key={i} className="dh-dow">{d}</div>
+          ))}
+          {cells.map((c) => {
+            const future = c.key > today;
+            const selectable = c.count >= 0 && !future;
+            const cls = [
+              "dh-day",
+              level(future ? -1 : c.count),
+              c.key === selected ? "selected" : "",
+              c.key === today ? "today" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <button
+                key={c.key}
+                type="button"
+                className={cls}
+                style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 2 }}
+                disabled={!selectable}
+                title={
+                  c.count >= 0
+                    ? `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`
+                    : c.key
+                }
+                onClick={() => selectable && onPick(c.key)}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -261,11 +284,21 @@ function readMode(): Mode {
 interface Props {
   dates: string[];
   counts: Record<string, number>;
+  maxSeq: Record<string, number>;
+  // True for All Sky / live-view cameras: month cells show only the dot, no seq.
+  allSky?: boolean;
   value: string;
   onChange: (date: string) => void;
 }
 
-export function DatePicker({ dates, counts, value, onChange }: Props) {
+export function DatePicker({
+  dates,
+  counts,
+  maxSeq,
+  allSky = false,
+  value,
+  onChange,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>(readMode);
   const [view, setView] = useState<ViewMonth>(() => viewFromKey(value));
@@ -384,6 +417,8 @@ export function DatePicker({ dates, counts, value, onChange }: Props) {
                 monthOffset={0}
                 selected={value}
                 hasData={hasData}
+                maxSeq={maxSeq}
+                showSeq={!allSky}
                 today={today}
                 showArrows
                 onStep={step}
@@ -394,6 +429,8 @@ export function DatePicker({ dates, counts, value, onChange }: Props) {
                 monthOffset={1}
                 selected={value}
                 hasData={hasData}
+                maxSeq={maxSeq}
+                showSeq={!allSky}
                 today={today}
                 showArrows={false}
                 onStep={step}

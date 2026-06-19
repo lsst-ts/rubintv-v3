@@ -261,6 +261,8 @@ export function CameraTable() {
         <DatePicker
           dates={pickerDates}
           counts={calendar?.counts ?? {}}
+          maxSeq={calendar?.max_seq ?? {}}
+          allSky={cameraInfo?.live_view ?? false}
           value={date}
           onChange={(d) => setParams({ date: d })}
         />

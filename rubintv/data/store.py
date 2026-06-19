@@ -225,8 +225,9 @@ class EventStore:
     def calendar_counts(self, location: str, camera: str) -> dict[str, int]:
         """Per-date exposure count (distinct seq_nums across all channels).
 
-        Feeds the date picker's activity overview. A day with only per-day
-        artifacts or a night report (no per-seq channels) counts as 0.
+        Feeds the date picker's activity overview (heatmap tint). A day with
+        only per-day artifacts or a night report (no per-seq channels) counts
+        as 0.
         """
         dates = self._dates.get((location, camera), {})
         counts: dict[str, int] = {}
@@ -236,6 +237,24 @@ class EventStore:
                 seqs |= chan_seqs
             counts[date] = len(seqs)
         return counts
+
+    def calendar_max_seq(self, location: str, camera: str) -> dict[str, int]:
+        """Per-date highest integer seq_num across all channels.
+
+        Shown in the calendar's month-grid cells. Word-sentinel seqs (e.g.
+        ``"final"``) and days with no numeric seqs are omitted.
+        """
+        dates = self._dates.get((location, camera), {})
+        max_seq: dict[str, int] = {}
+        for date, idx in dates.items():
+            highest = -1
+            for chan_seqs in idx.channels.values():
+                for s in chan_seqs:
+                    if isinstance(s, int) and s > highest:
+                        highest = s
+            if highest >= 0:
+                max_seq[date] = highest
+        return max_seq
 
     def date_index(self, location: str, camera: str, date: str) -> DateIndex | None:
         """Return the index for one date, or ``None`` if absent."""

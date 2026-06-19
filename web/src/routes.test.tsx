@@ -273,6 +273,7 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
       body = {
         dates: ["2026-04-10", "2025-08-30"],
         counts: { "2026-04-10": 1335, "2025-08-30": 171 },
+        max_seq: { "2026-04-10": 1340, "2025-08-30": 174 },
       };
     } else if (/\/cameras\/auxtel$/.test(url)) {
       body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
@@ -314,12 +315,46 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
   expect(within(dialog).getByText("August")).toBeDefined();
   expect(router.state.location.search).toContain("date=2026-04-10"); // not yet committed
 
-  // Confirm the pick in the month grid (the in-month "30" cell, with data).
-  const day30 = within(dialog).getByTitle("2025-08-30 · has data");
+  // The month cell carries the day's max seq num (per-seq camera). Confirm the
+  // pick by clicking the in-month "30" cell.
+  const day30 = within(dialog).getByTitle("2025-08-30 · max seq 174");
   fireEvent.click(day30);
   await waitFor(() =>
     expect(router.state.location.search).toContain("date=2025-08-30"),
   );
+});
+
+test("All Sky date picker shows the has-data dot, not a max seq num", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/allsky\/calendar$/.test(url)) {
+      body = {
+        dates: ["2026-04-10"],
+        counts: { "2026-04-10": 25 },
+        max_seq: { "2026-04-10": 25 },
+      };
+    } else if (/\/cameras\/allsky$/.test(url)) {
+      body = {
+        name: "allsky",
+        title: "All Sky",
+        live_view: true,
+        channels: [],
+        mosaic_view_meta: [],
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/allsky?date=2026-04-10");
+  const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
+  fireEvent.click(trigger);
+  const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
+  // All Sky: the data day shows only the dot (has-data title), no max seq.
+  expect(within(dialog).getByTitle("2026-04-10 · has data")).toBeDefined();
+  expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
 });
 
 test("column picker dismisses on Escape and on an outside click", async () => {

@@ -146,6 +146,7 @@ def get_calendar(
     return CalendarOut(
         dates=state.store.calendar(location.name, camera.name),
         counts=state.store.calendar_counts(location.name, camera.name),
+        max_seq=state.store.calendar_max_seq(location.name, camera.name),
     )
 
 

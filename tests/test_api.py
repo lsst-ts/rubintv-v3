@@ -211,8 +211,10 @@ def test_calendar(seeded_client: TestClient) -> None:
     body = resp.json()
     assert body["dates"] == [DATE]
     # Per-date exposure count = distinct seq_nums across channels. The seeded
-    # witness_detector channel has seqs {1, 2}, so the day counts 2.
+    # witness_detector channel has seqs {1, 2}, so the day counts 2 and its
+    # highest integer seq is 2.
     assert body["counts"][DATE] == 2
+    assert body["max_seq"][DATE] == 2
 
 
 def test_date_payload(seeded_client: TestClient) -> None:

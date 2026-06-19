@@ -1467,6 +1467,14 @@
             "type": "object",
             "title": "Counts",
             "default": {}
+          },
+          "max_seq": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Max Seq",
+            "default": {}
           }
         },
         "type": "object",
