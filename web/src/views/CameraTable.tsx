@@ -260,6 +260,7 @@ export function CameraTable() {
       <div className="cam-toolbar">
         <DatePicker
           dates={pickerDates}
+          counts={calendar?.counts ?? {}}
           value={date}
           onChange={(d) => setParams({ date: d })}
         />

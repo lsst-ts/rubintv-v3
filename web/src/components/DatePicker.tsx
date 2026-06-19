@@ -2,148 +2,134 @@ import { useMemo, useRef, useState } from "react";
 import { useDismiss } from "../lib/useDismiss";
 import { CalendarIcon } from "./Icons";
 
-// Two-month calendar date picker (the design's "two-months" DatePicker, the
-// variant embedded in Camera Table - Sidebar v2). Driven by the real calendar:
-// only dates the camera actually has data for are selectable; other past days
-// are dimmed, future days disabled. Selecting a day calls onChange with a
-// "YYYY-MM-DD" key.
+// Year-heatmap date picker (GitHub-contributions style): one compact block per
+// year with data, each a 7-row grid of day cells laid out by week-column and
+// tinted by activity (exposure count). Scans a wide, sparse time span at a
+// glance without a month grid per month. Click a day with data to select it.
 //
-// Per-night image counts aren't in the calendar API yet — the day cell leaves
-// room for a `.ct` count line so it can be filled in if that's ever exposed.
+// Driven by the real calendar: `dates` are the days with data, `counts` the
+// per-date exposure counts (CalendarOut). Only days with data are selectable.
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+const MONTH_ABBR = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
-const DOW = ["M", "T", "W", "T", "F", "S", "S"];
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
-const key = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const keyOf = (y: number, m: number, d: number) =>
+  `${y}-${pad2(m + 1)}-${pad2(d)}`;
 
-// Today as a UTC YYYY-MM-DD (dayObs is UTC).
-function todayKey(): string {
-  const now = new Date();
-  return key(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+interface DayCell {
+  key: string;
+  count: number; // -1 = no data
+  // Grid position within the year: column = week index, row = weekday (Mon=0).
+  col: number;
+  row: number;
+  month: number;
 }
 
-interface ViewMonth {
-  y: number;
-  m: number; // 0-based
-}
+// Build the per-year cell grid. Columns are ISO-ish weeks (Mon-first) spanning
+// the year; rows are weekdays. Each in-year day gets a cell; data days carry
+// their count.
+function buildYear(
+  year: number,
+  counts: Map<string, number>,
+): { cells: DayCell[]; weeks: number; monthCols: { m: number; col: number }[] } {
+  const cells: DayCell[] = [];
+  const monthCols: { m: number; col: number }[] = [];
+  let seenMonth = -1;
 
-// Parse a YYYY-MM-DD into the month view it belongs to (left grid). Falls back
-// to the current month.
-function viewFromKey(k: string | undefined): ViewMonth {
-  if (k) {
-    const [y, m] = k.split("-").map(Number);
-    if (Number.isFinite(y) && Number.isFinite(m)) return { y, m: m - 1 };
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  // Weekday of Jan 1, Mon=0..Sun=6.
+  const jan1Dow = (jan1.getUTCDay() + 6) % 7;
+
+  const last = new Date(Date.UTC(year, 11, 31));
+  const totalDays =
+    Math.round((last.getTime() - jan1.getTime()) / 86400000) + 1;
+
+  for (let i = 0; i < totalDays; i++) {
+    const date = new Date(Date.UTC(year, 0, 1 + i));
+    const m = date.getUTCMonth();
+    const d = date.getUTCDate();
+    const dow = (date.getUTCDay() + 6) % 7;
+    const col = Math.floor((jan1Dow + i) / 7);
+    const k = keyOf(year, m, d);
+    const count = counts.has(k) ? (counts.get(k) as number) : -1;
+    cells.push({ key: k, count, col, row: dow, month: m });
+    // Record the column where each month first appears, for month labels.
+    if (m !== seenMonth) {
+      monthCols.push({ m, col });
+      seenMonth = m;
+    }
   }
-  const now = new Date();
-  return { y: now.getUTCFullYear(), m: now.getUTCMonth() };
+  const weeks = Math.ceil((jan1Dow + totalDays) / 7);
+  return { cells, weeks, monthCols };
 }
 
-interface MonthGridProps {
-  view: ViewMonth;
-  monthOffset: number;
+// Activity tint level (0 = no data, 1..4 by count) → CSS class.
+function level(count: number): string {
+  if (count < 0) return "lv-none";
+  if (count === 0) return "lv-0";
+  if (count < 50) return "lv-1";
+  if (count < 250) return "lv-2";
+  if (count < 1000) return "lv-3";
+  return "lv-4";
+}
+
+interface YearBlockProps {
+  year: number;
+  counts: Map<string, number>;
   selected: string;
-  hasData: (k: string) => boolean;
   today: string;
-  showArrows: boolean;
-  onStep: (months: number) => void;
   onPick: (k: string) => void;
 }
 
-function MonthGrid({
-  view,
-  monthOffset,
-  selected,
-  hasData,
-  today,
-  showArrows,
-  onStep,
-  onPick,
-}: MonthGridProps) {
-  const base = new Date(Date.UTC(view.y, view.m + monthOffset, 1));
-  const y = base.getUTCFullYear();
-  const m = base.getUTCMonth();
-  // Monday-first: getUTCDay() is 0=Sun..6=Sat; shift so Mon=0.
-  const firstDow = (base.getUTCDay() + 6) % 7;
-  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const daysInPrev = new Date(Date.UTC(y, m, 0)).getUTCDate();
-
-  // 6 weeks × 7 days = 42 cells, with leading/trailing days from adjacent months.
-  const cells: { d: number; out: boolean; key: string }[] = [];
-  for (let i = 0; i < firstDow; i++) {
-    const d = daysInPrev - firstDow + 1 + i;
-    const pm = m === 0 ? 11 : m - 1;
-    const py = m === 0 ? y - 1 : y;
-    cells.push({ d, out: true, key: key(py, pm, d) });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ d, out: false, key: key(y, m, d) });
-  }
-  let nextD = 1;
-  while (cells.length < 42) {
-    const nm = m === 11 ? 0 : m + 1;
-    const ny = m === 11 ? y + 1 : y;
-    cells.push({ d: nextD, out: true, key: key(ny, nm, nextD) });
-    nextD++;
-  }
+function YearBlock({ year, counts, selected, today, onPick }: YearBlockProps) {
+  const { cells, weeks, monthCols } = useMemo(
+    () => buildYear(year, counts),
+    [year, counts],
+  );
 
   return (
-    <div className="dp-month">
-      <div className="dp-mhead">
-        <div>
-          <span className="month">{MONTH_NAMES[m]}</span>
-          <span className="yr">{y}</span>
+    <div className="dh-year">
+      <div className="dh-year-label">{year}</div>
+      <div
+        className="dh-grid"
+        style={{ gridTemplateColumns: `repeat(${weeks}, 1fr)` }}
+      >
+        {/* Month labels along the top, positioned at each month's first week. */}
+        <div className="dh-months">
+          {monthCols.map(({ m, col }) => (
+            <span key={m} className="dh-month" style={{ gridColumnStart: col + 1 }}>
+              {MONTH_ABBR[m]}
+            </span>
+          ))}
         </div>
-        {showArrows && (
-          <div className="arrs">
-            <button type="button" className="arr" onClick={() => onStep(-12)} title="Previous year">
-              «
-            </button>
-            <button type="button" className="arr" onClick={() => onStep(-1)} title="Previous month">
-              ‹
-            </button>
-            <button type="button" className="arr" onClick={() => onStep(1)} title="Next month">
-              ›
-            </button>
-            <button type="button" className="arr" onClick={() => onStep(12)} title="Next year">
-              »
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="dp-grid">
-        {DOW.map((d, i) => (
-          <div key={i} className="dow">
-            {d}
-          </div>
-        ))}
-        {cells.map((c, i) => {
+        {cells.map((c) => {
           const future = c.key > today;
-          const data = !c.out && hasData(c.key);
-          // Only days with data are selectable; out-of-month, future, and
-          // no-data past days are not.
-          const selectable = data && !future;
-          const classes = ["dp-day"];
-          if (c.out) classes.push("out");
-          else if (future) classes.push("disabled");
-          else if (!data) classes.push("disabled");
-          if (data) classes.push("has-data");
-          if (!c.out && c.key === today) classes.push("today");
-          if (!c.out && c.key === selected) classes.push("selected");
+          const selectable = c.count >= 0 && !future;
+          const cls = [
+            "dh-day",
+            level(future ? -1 : c.count),
+            c.key === selected ? "selected" : "",
+            c.key === today ? "today" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
           return (
-            <div
-              key={i}
-              className={classes.join(" ")}
-              title={c.out ? "" : data ? `${c.key} · has data` : c.key}
+            <button
+              key={c.key}
+              type="button"
+              className={cls}
+              style={{ gridColumnStart: c.col + 1, gridRowStart: c.row + 2 }}
+              disabled={!selectable}
+              title={
+                c.count >= 0
+                  ? `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`
+                  : c.key
+              }
               onClick={() => selectable && onPick(c.key)}
-            >
-              <span className="num">{c.d}</span>
-              {/* Room for a per-night count when the API exposes one. */}
-            </div>
+            />
           );
         })}
       </div>
@@ -152,41 +138,43 @@ function MonthGrid({
 }
 
 interface Props {
-  // Dates with data ("YYYY-MM-DD"), newest first as the calendar returns them.
   dates: string[];
-  // Currently-selected date.
+  counts: Record<string, number>;
   value: string;
   onChange: (date: string) => void;
 }
 
-export function DatePicker({ dates, value, onChange }: Props) {
+export function DatePicker({ dates, counts, value, onChange }: Props) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<ViewMonth>(() => viewFromKey(value));
   const rootRef = useRef<HTMLSpanElement | null>(null);
   useDismiss(open, rootRef, () => setOpen(false));
 
-  const dataSet = useMemo(() => new Set(dates), [dates]);
-  const hasData = useMemo(() => (k: string) => dataSet.has(k), [dataSet]);
-  const today = todayKey();
-  // Newest date with data — the picker's "jump to latest" target.
-  const latest = dates[0] ?? "";
+  const countMap = useMemo(() => {
+    const m = new Map<string, number>();
+    // Every date with data gets at least 0; counts override where present.
+    for (const d of dates) m.set(d, counts[d] ?? 0);
+    return m;
+  }, [dates, counts]);
 
-  const step = (months: number) => {
-    setView((v) => {
-      const nm = v.m + months;
-      return { y: v.y + Math.floor(nm / 12), m: ((nm % 12) + 12) % 12 };
-    });
-  };
+  // Years that have data, newest first.
+  const years = useMemo(() => {
+    const ys = new Set<number>();
+    for (const d of dates) {
+      const y = Number(d.slice(0, 4));
+      if (Number.isFinite(y)) ys.add(y);
+    }
+    return [...ys].sort((a, b) => b - a);
+  }, [dates]);
+
+  const today = useMemo(() => {
+    const now = new Date();
+    return keyOf(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  }, []);
+  const latest = dates[0] ?? "";
 
   const pick = (k: string) => {
     onChange(k);
     setOpen(false);
-  };
-
-  const openPicker = () => {
-    // Re-centre the view on the selected date each time it opens.
-    setView(viewFromKey(value || latest));
-    setOpen((o) => !o);
   };
 
   return (
@@ -196,53 +184,54 @@ export function DatePicker({ dates, value, onChange }: Props) {
         className="date-trigger"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={openPicker}
+        onClick={() => setOpen((o) => !o)}
       >
         <CalendarIcon />
         <span>{value || "select date"}</span>
       </button>
 
       {open && (
-        <div className="date-pop v-two-months" role="dialog" aria-label="Choose date">
-          <div className="dp-two">
-            <div className="dp-two-grids">
-              <MonthGrid
-                view={view}
-                monthOffset={0}
-                selected={value}
-                hasData={hasData}
-                today={today}
-                showArrows
-                onStep={step}
-                onPick={pick}
-              />
-              <MonthGrid
-                view={view}
-                monthOffset={1}
-                selected={value}
-                hasData={hasData}
-                today={today}
-                showArrows={false}
-                onStep={step}
-                onPick={pick}
-              />
-            </div>
-            <div className="dp-two-foot">
-              <input className="input" value={value} readOnly aria-label="Selected date" />
-              {latest && (
-                <span
-                  className="today-link"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => pick(latest)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") pick(latest);
-                  }}
-                >
-                  jump to latest
-                </span>
-              )}
-            </div>
+        <div className="date-pop dh-pop" role="dialog" aria-label="Choose date">
+          <div className="dh-scroll">
+            {years.length === 0 ? (
+              <div className="dh-empty">No dates with data.</div>
+            ) : (
+              years.map((y) => (
+                <YearBlock
+                  key={y}
+                  year={y}
+                  counts={countMap}
+                  selected={value}
+                  today={today}
+                  onPick={pick}
+                />
+              ))
+            )}
+          </div>
+          <div className="dh-foot">
+            <span className="dh-legend">
+              <span>less</span>
+              <i className="dh-day lv-0" />
+              <i className="dh-day lv-1" />
+              <i className="dh-day lv-2" />
+              <i className="dh-day lv-3" />
+              <i className="dh-day lv-4" />
+              <span>more</span>
+            </span>
+            <span className="dh-foot-val">{value}</span>
+            {latest && (
+              <span
+                className="today-link"
+                role="button"
+                tabIndex={0}
+                onClick={() => pick(latest)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") pick(latest);
+                }}
+              >
+                jump to latest
+              </span>
+            )}
           </div>
         </div>
       )}

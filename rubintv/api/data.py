@@ -143,7 +143,10 @@ def get_calendar(
     camera: Camera = Depends(get_camera),
     state: AppState = Depends(get_app_state),
 ) -> CalendarOut:
-    return CalendarOut(dates=state.store.calendar(location.name, camera.name))
+    return CalendarOut(
+        dates=state.store.calendar(location.name, camera.name),
+        counts=state.store.calendar_counts(location.name, camera.name),
+    )
 
 
 @router.get(

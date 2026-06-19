@@ -265,12 +265,15 @@ test("column picker defaults to configured columns and reset restores them", asy
   );
 });
 
-test("date picker opens a two-month calendar and selecting a data day sets ?date", async () => {
+test("date picker opens a year heatmap; selecting a data day sets ?date", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
     if (/\/cameras\/auxtel\/calendar$/.test(url)) {
-      body = { dates: ["2026-04-10", "2026-04-08"] };
+      body = {
+        dates: ["2026-04-10", "2025-08-30"],
+        counts: { "2026-04-10": 1335, "2025-08-30": 171 },
+      };
     } else if (/\/cameras\/auxtel$/.test(url)) {
       body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
     } else if (/\/dates\//.test(url)) {
@@ -290,22 +293,18 @@ test("date picker opens a two-month calendar and selecting a data day sets ?date
     </QueryClientProvider>,
   );
 
-  // Open the picker via its trigger (shows the current date).
+  // Open the picker; a year block per year with data is shown.
   const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
   fireEvent.click(trigger);
-  expect(await screen.findByRole("dialog", { name: /Choose date/ })).toBeDefined();
+  const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
+  expect(within(dialog).getByText("2026")).toBeDefined();
+  expect(within(dialog).getByText("2025")).toBeDefined();
 
-  // April is shown; day 8 has data (clickable), day 9 does not.
-  const dialog = screen.getByRole("dialog");
-  const day8 = within(dialog).getAllByText("8")[0];
-  expect(day8.closest(".dp-day")?.className).toContain("has-data");
-  const day9 = within(dialog).getAllByText("9")[0];
-  expect(day9.closest(".dp-day")?.className).toContain("disabled");
-
-  // Selecting day 8 navigates to that date and closes the picker.
-  fireEvent.click(day8.closest(".dp-day")!);
+  // The data day exposes its count via the cell title; selecting it navigates.
+  const day = within(dialog).getByTitle(/2025-08-30 · 171 exposures/);
+  fireEvent.click(day);
   await waitFor(() =>
-    expect(router.state.location.search).toContain("date=2026-04-08"),
+    expect(router.state.location.search).toContain("date=2025-08-30"),
   );
 });
 

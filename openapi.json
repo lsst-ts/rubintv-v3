@@ -360,7 +360,8 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object"
+                    "type": "object",
+                    "additionalProperties": true
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
                 }
@@ -1247,6 +1248,74 @@
         }
       }
     },
+    "/api/health/services": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Services",
+        "description": "Current liveness of every reporting RA service.",
+        "operationId": "services_api_health_services_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/heartbeats": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Post Heartbeat",
+        "description": "Record one liveness beat (fire-and-forget).",
+        "operationId": "post_heartbeat_internal_heartbeats_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Heartbeat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Post Heartbeat Internal Heartbeats Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/subapps": {
       "get": {
         "tags": [
@@ -1390,6 +1459,14 @@
             },
             "type": "array",
             "title": "Dates"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts",
+            "default": {}
           }
         },
         "type": "object",
@@ -1968,6 +2045,37 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "Heartbeat": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "ttl": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Ttl",
+            "default": 30.0
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service"
+        ],
+        "title": "Heartbeat",
+        "description": "One liveness report from an RA service."
+      },
       "KeyValuesText": {
         "properties": {
           "type": {
@@ -2352,6 +2460,23 @@
         ],
         "title": "ReadyResponse"
       },
+      "ServicesResponse": {
+        "properties": {
+          "services": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Services"
+          }
+        },
+        "type": "object",
+        "required": [
+          "services"
+        ],
+        "title": "ServicesResponse"
+      },
       "StatusResponse": {
         "properties": {
           "ready": {
@@ -2424,6 +2549,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

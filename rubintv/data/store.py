@@ -222,6 +222,21 @@ class EventStore:
         """Return all dates with data for a camera, newest first."""
         return sorted(self._calendar.get((location, camera), set()), reverse=True)
 
+    def calendar_counts(self, location: str, camera: str) -> dict[str, int]:
+        """Per-date exposure count (distinct seq_nums across all channels).
+
+        Feeds the date picker's activity overview. A day with only per-day
+        artifacts or a night report (no per-seq channels) counts as 0.
+        """
+        dates = self._dates.get((location, camera), {})
+        counts: dict[str, int] = {}
+        for date, idx in dates.items():
+            seqs: set[object] = set()
+            for chan_seqs in idx.channels.values():
+                seqs |= chan_seqs
+            counts[date] = len(seqs)
+        return counts
+
     def date_index(self, location: str, camera: str, date: str) -> DateIndex | None:
         """Return the index for one date, or ``None`` if absent."""
         return self._dates.get((location, camera), {}).get(date)

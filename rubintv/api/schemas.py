@@ -128,6 +128,10 @@ class CalendarOut(BaseModel):
     dates: list[str]
     """All dates with data, newest first."""
 
+    counts: dict[str, int] = {}
+    """Per-date exposure count (distinct seq_nums across channels), for the
+    date picker's activity overview. Days with no per-seq channels map to 0."""
+
 
 class EventOut(BaseModel):
     key: str
