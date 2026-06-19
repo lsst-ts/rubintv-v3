@@ -386,6 +386,59 @@ test("All Sky date picker shows the has-data dot, not a max seq num", async () =
   expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
 });
 
+test("table filter narrows the rows and a chip clears it", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: { Filter: "The filter" },
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = {
+        "10": { Filter: "z_20" },
+        "11": { Filter: "r_03" },
+        "12": { Filter: "z_20" },
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { c: [10, 11, 12] },
+        extensions: {},
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10");
+  // All three seq rows present initially.
+  expect(await screen.findByText("10")).toBeDefined();
+  expect(screen.getByText("11")).toBeDefined();
+
+  // Open the filter, pick the Filter column (default), set value "z_20", apply.
+  fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+  const dialog = await screen.findByRole("dialog", { name: /Add filter/ });
+  const value = within(dialog).getByLabelText("Filter value");
+  fireEvent.change(value, { target: { value: "z_20" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "add filter" }));
+
+  // Only the z_20 rows (10, 12) remain; the r_03 row (11) is filtered out.
+  await waitFor(() => expect(screen.queryByText("11")).toBeNull());
+  expect(screen.getByText("10")).toBeDefined();
+  expect(screen.getByText("12")).toBeDefined();
+  // A chip shows the active filter; removing it restores all rows.
+  const chip = document.querySelector(".filter-chip");
+  expect(chip?.textContent).toContain("z_20");
+  fireEvent.click(screen.getByTitle("Remove filter"));
+  await waitFor(() => expect(screen.getByText("11")).toBeDefined());
+});
+
 test("column picker dismisses on Escape and on an outside click", async () => {
   // A camera + date whose metadata carries a column, so the picker has content.
   globalThis.fetch = ((input: RequestInfo | URL) => {

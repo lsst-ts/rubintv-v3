@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -14,6 +14,8 @@ import { ShareLink } from "../components/ShareLink";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { DatePicker } from "../components/DatePicker";
+import { FilterControl, FilterBar } from "../components/FilterControl";
+import { matchRow, type Filter } from "../lib/filters";
 import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
 
@@ -205,6 +207,10 @@ export function CameraTable() {
     defaultColumns,
   );
 
+  // Active row filters (ephemeral, per the design — reset on date/camera change).
+  const [filters, setFilters] = useState<Filter[]>([]);
+  useEffect(() => setFilters([]), [location, camera, date]);
+
   // Picker rows filtered by the search box (substring, case-insensitive).
   const colsMatches = useMemo(() => {
     const q = colsQuery.trim().toLowerCase();
@@ -216,7 +222,7 @@ export function CameraTable() {
   // Union of seq_nums across channels and metadata, descending (newest
   // first). Including metadata keys means streamed rows appear immediately,
   // before the (slower) REST channel payload lands.
-  const seqNums = useMemo(() => {
+  const allSeqNums = useMemo(() => {
     const s = new Set<number>();
     for (const seqs of Object.values(payload?.channels ?? {})) {
       for (const n of seqs) if (typeof n === "number") s.add(n);
@@ -227,6 +233,15 @@ export function CameraTable() {
     }
     return [...s].sort((a, b) => b - a);
   }, [payload, metadata]);
+
+  // Rows surviving the active filters (the table renders these).
+  const seqNums = useMemo(
+    () =>
+      filters.length === 0
+        ? allSeqNums
+        : allSeqNums.filter((n) => matchRow(metadata[String(n)], filters)),
+    [allSeqNums, filters, metadata],
+  );
 
   // The full ordered column model: sticky seq, channel chips, per-row action
   // columns (only those configured), then the visible metadata columns. The
@@ -364,6 +379,13 @@ export function CameraTable() {
           </div>
         </div>
 
+        <FilterControl
+          columns={metaColumns}
+          metadata={metadata}
+          filters={filters}
+          setFilters={setFilters}
+        />
+
         {payload?.has_night_report && (
           <Link
             className="tb-btn"
@@ -373,6 +395,8 @@ export function CameraTable() {
           </Link>
         )}
       </div>
+
+      <FilterBar metadata={metadata} filters={filters} setFilters={setFilters} />
 
       {isPending && date !== "" && <p className="skeleton">Loading…</p>}
 
@@ -392,7 +416,11 @@ export function CameraTable() {
       {date === "" && !isPending ? (
         <div className="table-empty">No dates with data for this camera yet.</div>
       ) : !isPending && date !== "" && seqNums.length === 0 ? (
-        <div className="table-empty">No data for {date}.</div>
+        <div className="table-empty">
+          {allSeqNums.length > 0 && filters.length > 0
+            ? `No rows match the active filter${filters.length === 1 ? "" : "s"}.`
+            : `No data for ${date}.`}
+        </div>
       ) : (
         <CameraDataTable
           columns={columns}

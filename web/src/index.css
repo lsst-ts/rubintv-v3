@@ -816,6 +816,154 @@ h1, h2 {
 }
 .cols-pop input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
 
+/* ── Table filters ─────────────────────────────────────────────────────── */
+.filter-cluster { position: relative; display: inline-flex; align-items: center; }
+.filter-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  font-family: var(--hand); font-size: 13px;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  cursor: pointer;
+}
+.filter-btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.filter-btn.active { background: var(--accent-soft); border-color: var(--accent); }
+.filter-btn .count {
+  font-family: var(--mono); font-size: 10px;
+  padding: 1px 5px; border-radius: 10px;
+  background: var(--accent); color: var(--paper);
+}
+.filter-btn .caret { font-size: 9px; margin-left: 1px; color: var(--ink-soft); }
+
+/* Add-filter popover. */
+.filter-pop {
+  position: absolute;
+  top: calc(100% + 6px); left: 0;
+  width: 320px; max-width: calc(100vw - 24px);
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  padding: 10px 12px 12px;
+  font-family: var(--hand);
+}
+.filter-pop h4 {
+  margin: 0 0 8px;
+  font-family: var(--hand); font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-soft);
+}
+.filter-pop .col-row,
+.filter-pop .row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.filter-pop label {
+  font-family: var(--hand); font-size: 11px; color: var(--ink-soft); width: 38px;
+}
+.filter-pop select,
+.filter-pop input {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 11px;
+  padding: 4px 6px;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+}
+.filter-pop select.op { flex: 0 0 92px; }
+.filter-pop .apply {
+  width: 100%;
+  padding: 6px 0; margin-top: 4px;
+  font-family: var(--hand); font-size: 13px; font-weight: 700;
+  background: var(--ink); color: var(--paper);
+  border: none; border-radius: 4px; cursor: pointer;
+}
+.filter-pop .apply:disabled { opacity: 0.4; cursor: not-allowed; }
+.filter-pop .apply:hover:not(:disabled) { background: var(--accent); }
+.filter-pop .hint {
+  margin-top: 6px; font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+}
+.filter-pop .suggestions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.filter-pop .suggestion {
+  font-family: var(--mono); font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-soft); border-radius: 10px;
+  background: var(--paper-2); color: var(--ink); cursor: pointer;
+}
+.filter-pop .suggestion:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Column combobox inside the popover. */
+.filter-combo { position: relative; flex: 1; min-width: 0; }
+.filter-combo input { width: 100%; box-sizing: border-box; }
+.filter-combo input:focus { outline: 2px solid var(--accent-soft); outline-offset: -1px; }
+.filter-combo .list {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+  max-height: 180px; overflow-y: auto;
+  background: var(--paper);
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  z-index: 30; box-shadow: var(--shadow-pop);
+}
+.filter-combo .count {
+  padding: 4px 8px;
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-soft); background: var(--paper-2);
+  text-transform: uppercase; letter-spacing: 0.3px;
+  position: sticky; top: 0; z-index: 1;
+}
+.filter-combo .item {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  padding: 4px 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink); cursor: pointer;
+}
+.filter-combo .item:hover { background: var(--paper-3); }
+.filter-combo .item.kbd-active { background: var(--accent-soft); }
+.filter-combo .item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-combo .item mark { background: transparent; color: var(--accent); font-weight: 700; padding: 0; }
+.filter-combo .item .type-pill {
+  font-family: var(--hand); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.3px; color: var(--ink-soft);
+  padding: 1px 5px; border: 1px solid var(--line-soft); border-radius: 8px;
+  flex-shrink: 0;
+}
+.filter-combo .empty {
+  padding: 8px; text-align: center;
+  font-family: var(--hand); font-size: 11px; color: var(--ink-soft); font-style: italic;
+}
+
+/* Active-filter chip strip below the toolbar. */
+.filter-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 6px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+  min-height: 32px;
+}
+.filter-bar > .label {
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px;
+}
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 4px 3px 8px;
+  border: 1.25px solid var(--stroke); border-radius: 14px;
+  background: var(--paper-2);
+  font-family: var(--mono); font-size: 11px; color: var(--ink); line-height: 1;
+}
+.filter-chip .col { font-family: var(--hand); font-weight: 600; color: var(--ink-soft); }
+.filter-chip .op { font-family: var(--mono); color: var(--ink-soft); padding: 0 2px; }
+.filter-chip .val { color: var(--ink); font-weight: 600; }
+.filter-chip .x {
+  width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--ink-soft);
+  cursor: pointer; margin-left: 2px;
+}
+.filter-chip .x:hover { background: var(--ink); color: var(--paper); }
+.filter-clear {
+  font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
+  cursor: pointer; margin-left: 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.filter-clear:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
 /* Per-day artifacts strip. */
 .per-day {
   display: flex; flex-wrap: wrap; gap: 8px;
