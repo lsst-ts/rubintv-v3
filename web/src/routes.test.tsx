@@ -386,6 +386,46 @@ test("All Sky date picker shows the has-data dot, not a max seq num", async () =
   expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
 });
 
+test("prev/next-day steppers move to adjacent dates with data", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      // Newest-first: 04-10 (newest), 04-08, 04-05 (oldest).
+      body = { dates: ["2026-04-10", "2026-04-08", "2026-04-05"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const router = createMemoryRouter(routes, {
+    initialEntries: ["/local/auxtel?date=2026-04-10"],
+  });
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider router={router} />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+
+  // On the newest date: "next day" (newer) is disabled; "previous day" enables
+  // once the calendar loads.
+  const next = await screen.findByRole("button", { name: /Next day with data/ });
+  const prev = screen.getByRole("button", { name: /Previous day with data/ });
+  expect((next as HTMLButtonElement).disabled).toBe(true);
+  await waitFor(() => expect((prev as HTMLButtonElement).disabled).toBe(false));
+
+  // Stepping to the previous day with data lands on 2026-04-08.
+  fireEvent.click(prev);
+  await waitFor(() =>
+    expect(router.state.location.search).toContain("date=2026-04-08"),
+  );
+});
+
 test("table filter narrows the rows and a chip clears it", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);

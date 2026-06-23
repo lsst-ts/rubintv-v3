@@ -513,6 +513,18 @@ h1, h2 {
 .cam-toolbar .tb-btn .ui-icon.chevron { margin-left: 1px; }
 
 /* Date picker: a trigger button + a two-month calendar popover. */
+/* Prev/next-day steppers flanking the date picker. */
+.date-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.cam-toolbar .tb-btn.step {
+  padding: 6px 8px;
+  font-family: var(--mono); font-size: 13px; line-height: 1;
+  color: var(--ink);
+}
+.cam-toolbar .tb-btn.step:disabled {
+  opacity: 0.4; cursor: default;
+  background: var(--paper); border-color: var(--line-mid);
+}
+
 .date-cluster { position: relative; display: inline-flex; }
 .date-trigger {
   display: inline-flex; align-items: center; gap: 6px;

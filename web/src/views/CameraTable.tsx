@@ -60,6 +60,15 @@ export function CameraTable() {
     return [...dates, date].sort().reverse();
   }, [calendar, date]);
 
+  // Adjacent dates with data for the prev/next-day steppers. pickerDates is
+  // newest-first, so the older day sits at index+1 and the newer at index-1.
+  const dateIdx = pickerDates.indexOf(date);
+  const olderDate =
+    dateIdx >= 0 && dateIdx < pickerDates.length - 1
+      ? pickerDates[dateIdx + 1]
+      : null;
+  const newerDate = dateIdx > 0 ? pickerDates[dateIdx - 1] : null;
+
   // Live updates for this camera (drives table + calendar invalidation).
   // Passing the resolved date also asks the server to stream that date's
   // metadata as it loads, so cells fill progressively rather than after one
@@ -272,14 +281,36 @@ export function CameraTable() {
     <section className="cam-table">
       {/* Toolbar: date, share, columns, filter, download · density, night report. */}
       <div className="cam-toolbar">
-        <DatePicker
-          dates={pickerDates}
-          counts={calendar?.counts ?? {}}
-          maxSeq={calendar?.max_seq ?? {}}
-          allSky={cameraInfo?.live_view ?? false}
-          value={date}
-          onChange={(d) => setParams({ date: d })}
-        />
+        <span className="date-stepper">
+          <button
+            type="button"
+            className="tb-btn step"
+            aria-label="Previous day with data"
+            title="Previous day with data"
+            disabled={!olderDate}
+            onClick={() => olderDate && setParams({ date: olderDate })}
+          >
+            ‹
+          </button>
+          <DatePicker
+            dates={pickerDates}
+            counts={calendar?.counts ?? {}}
+            maxSeq={calendar?.max_seq ?? {}}
+            allSky={cameraInfo?.live_view ?? false}
+            value={date}
+            onChange={(d) => setParams({ date: d })}
+          />
+          <button
+            type="button"
+            className="tb-btn step"
+            aria-label="Next day with data"
+            title="Next day with data"
+            disabled={!newerDate}
+            onClick={() => newerDate && setParams({ date: newerDate })}
+          >
+            ›
+          </button>
+        </span>
         <ShareLink date={date || undefined} />
 
         <div className="cols-cluster" ref={colsRef}>
