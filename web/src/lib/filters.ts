@@ -45,6 +45,7 @@ const numeric = /^-?\d*\.?\d+$/;
 // present value parses as a number; otherwise string. Empty / all-missing
 // columns default to string.
 export function inferType(metadata: Metadata, col: string): FilterType {
+  if (col === SEQ_COL) return "number";
   let sawValue = false;
   for (const row of Object.values(metadata)) {
     const v = row[col];
@@ -101,14 +102,51 @@ function matchOne(cellVal: unknown, op: string, value: string): boolean {
   }
 }
 
-// Does a row (the metadata for one seq) satisfy every active filter?
+// The synthetic "column" for filtering on the row's sequence number. It isn't a
+// metadata field — its value is the row's seq itself — so matchRow handles it
+// specially and the UI exposes it as a numeric column named "Seq.No".
+export const SEQ_COL = "Seq.No";
+
+// Does a row satisfy every active filter? `seq` is the row's sequence number,
+// so a filter on SEQ_COL matches against it rather than a metadata field.
 export function matchRow(
+  seq: number,
   row: Record<string, unknown> | undefined,
   filters: Filter[],
 ): boolean {
   if (filters.length === 0) return true;
   const r = row ?? {};
-  return filters.every((f) => matchOne(r[f.col], f.op, f.value));
+  return filters.every((f) =>
+    matchOne(f.col === SEQ_COL ? seq : r[f.col], f.op, f.value),
+  );
+}
+
+// Build the seq-range filter clauses for the given min/max (either may be
+// null). seqMin → "Seq.No >= min", seqMax → "Seq.No <= max".
+export function seqRangeFilters(
+  seqMin: string | null,
+  seqMax: string | null,
+): Filter[] {
+  const out: Filter[] = [];
+  if (seqMin && seqMin.trim()) out.push({ col: SEQ_COL, op: ">=", value: seqMin.trim() });
+  if (seqMax && seqMax.trim()) out.push({ col: SEQ_COL, op: "<=", value: seqMax.trim() });
+  return out;
+}
+
+// Extract {seqMin, seqMax} from the seq-range clauses in a filter list, for
+// syncing back to the URL.
+export function filtersToSeqRange(filters: Filter[]): {
+  seqMin: string | null;
+  seqMax: string | null;
+} {
+  let seqMin: string | null = null;
+  let seqMax: string | null = null;
+  for (const f of filters) {
+    if (f.col !== SEQ_COL) continue;
+    if (f.op === ">=") seqMin = f.value;
+    else if (f.op === "<=") seqMax = f.value;
+  }
+  return { seqMin, seqMax };
 }
 
 // Up to `limit` distinct non-empty sample values for a column, for the

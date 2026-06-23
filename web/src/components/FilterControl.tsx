@@ -140,10 +140,13 @@ export function FilterControl({
     [metadata],
   );
 
-  // Default the draft column to the first available one.
+  // Default the draft column to the first available one when the popover opens
+  // (by then the async metadata columns have loaded), and re-default if the
+  // current draft column is no longer offered.
   useEffect(() => {
-    if (!draftCol && columns.length) setDraftCol(columns[0]);
-  }, [columns, draftCol]);
+    if (!open || columns.length === 0) return;
+    if (!draftCol || !columns.includes(draftCol)) setDraftCol(columns[0]);
+  }, [open, columns, draftCol]);
 
   const draftType = draftCol ? typeOf(draftCol) : "string";
   const availableOps = OPS_BY_TYPE[draftType];

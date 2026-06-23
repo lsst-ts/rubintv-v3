@@ -16,7 +16,13 @@ import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { DatePicker } from "../components/DatePicker";
 import { FilterControl, FilterBar } from "../components/FilterControl";
 import { LiveClocks } from "../components/LiveClocks";
-import { matchRow, type Filter } from "../lib/filters";
+import {
+  matchRow,
+  SEQ_COL,
+  seqRangeFilters,
+  filtersToSeqRange,
+  type Filter,
+} from "../lib/filters";
 import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
 
@@ -217,9 +223,45 @@ export function CameraTable() {
     defaultColumns,
   );
 
-  // Active row filters (ephemeral, per the design — reset on date/camera change).
-  const [filters, setFilters] = useState<Filter[]>([]);
-  useEffect(() => setFilters([]), [location, camera, date]);
+  // Metadata filters are local + ephemeral (reset on date/camera change). The
+  // seq-range filter is URL-driven (?seqMin=&seqMax=) so it's shareable; the two
+  // are merged into the active filter set the table applies and the chips show.
+  const [metaFilters, setMetaFilters] = useState<Filter[]>([]);
+  useEffect(() => setMetaFilters([]), [location, camera, date]);
+
+  const seqFilters = useMemo(
+    () => seqRangeFilters(params.get("seqMin"), params.get("seqMax")),
+    [params],
+  );
+  const filters = useMemo(
+    () => [...seqFilters, ...metaFilters],
+    [seqFilters, metaFilters],
+  );
+  // Columns offered in the filter popover: the metadata columns plus the
+  // synthetic Seq.No. Seq.No goes last so the popover defaults to a metadata
+  // column (the common case) while a seq-range filter is still selectable.
+  const filterColumns = useMemo(() => [...metaColumns, SEQ_COL], [metaColumns]);
+
+  // Apply an edited filter set: seq-range clauses go to the URL, the rest to
+  // local state. Driven by the FilterControl popover and chip removals.
+  const setFilters = useCallback(
+    (next: Filter[]) => {
+      setMetaFilters(next.filter((f) => f.col !== SEQ_COL));
+      const { seqMin, seqMax } = filtersToSeqRange(next);
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (seqMin) p.set("seqMin", seqMin);
+          else p.delete("seqMin");
+          if (seqMax) p.set("seqMax", seqMax);
+          else p.delete("seqMax");
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
 
   // Picker rows filtered by the search box (substring, case-insensitive).
   const colsMatches = useMemo(() => {
@@ -249,7 +291,7 @@ export function CameraTable() {
     () =>
       filters.length === 0
         ? allSeqNums
-        : allSeqNums.filter((n) => matchRow(metadata[String(n)], filters)),
+        : allSeqNums.filter((n) => matchRow(n, metadata[String(n)], filters)),
     [allSeqNums, filters, metadata],
   );
 
@@ -397,7 +439,7 @@ export function CameraTable() {
         </div>
 
         <FilterControl
-          columns={metaColumns}
+          columns={filterColumns}
           metadata={metadata}
           filters={filters}
           setFilters={setFilters}

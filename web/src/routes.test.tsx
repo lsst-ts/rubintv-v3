@@ -426,6 +426,33 @@ test("prev/next-day steppers move to adjacent dates with data", async () => {
   );
 });
 
+test("a ?seqMin/?seqMax URL range narrows the table to that seq range", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: { c: [10, 11, 12] }, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10&seqMin=11&seqMax=12");
+  // Only seqs in [11, 12] show; seq 10 is excluded by the URL range.
+  expect(await screen.findByText("11")).toBeDefined();
+  expect(screen.getByText("12")).toBeDefined();
+  expect(screen.queryByText("10")).toBeNull();
+  // The range surfaces as removable filter chips.
+  const chips = [...document.querySelectorAll(".filter-chip")].map(
+    (c) => c.textContent,
+  );
+  expect(chips.some((t) => t?.includes("Seq.No") && t.includes("11"))).toBe(true);
+  expect(chips.some((t) => t?.includes("Seq.No") && t.includes("12"))).toBe(true);
+});
+
 test("table filter narrows the rows and a chip clears it", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
