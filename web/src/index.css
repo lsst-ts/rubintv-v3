@@ -742,8 +742,8 @@ h1, h2 {
 .cols-cluster { position: relative; display: inline-flex; }
 .cols-pop {
   position: absolute;
-  top: calc(100% + 6px); right: 0;
-  width: min(720px, 80vw);
+  top: calc(100% + 6px); left: 0;
+  width: min(720px, calc(100vw - 24px));
   max-height: 70vh;
   background: var(--paper);
   border: 1.5px solid var(--stroke);
