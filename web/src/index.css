@@ -513,6 +513,31 @@ h1, h2 {
 .cam-toolbar .tb-btn .ui-icon.chevron { margin-left: 1px; }
 
 /* Date picker: a trigger button + a two-month calendar popover. */
+/* Header clocks (UTC + time-since-last). */
+.status-pill {
+  display: inline-flex; align-items: center;
+  padding: 4px 12px 5px;
+}
+.status-pill .clocks {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 8px;
+  row-gap: 1px;
+  align-items: baseline;
+}
+.status-pill .clock-label {
+  font-family: var(--hand);
+  font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  text-align: right; line-height: 1.1;
+}
+.status-pill .clock-time {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--ink);
+  font-weight: 600; line-height: 1.1; letter-spacing: 0.1px;
+}
+
 /* Prev/next-day steppers flanking the date picker. */
 .date-stepper { display: inline-flex; align-items: center; gap: 4px; }
 .cam-toolbar .tb-btn.step {

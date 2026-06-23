@@ -15,6 +15,7 @@ import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { DatePicker } from "../components/DatePicker";
 import { FilterControl, FilterBar } from "../components/FilterControl";
+import { LiveClocks } from "../components/LiveClocks";
 import { matchRow, type Filter } from "../lib/filters";
 import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
@@ -252,6 +253,21 @@ export function CameraTable() {
     [allSeqNums, filters, metadata],
   );
 
+  // Header clocks: the time-since clock shows only on the current (live) date,
+  // for cameras that have one configured, computed from the newest exposure's
+  // "Date begin" timestamp.
+  const isCurrentDate = date !== "" && date === calendar?.dates[0];
+  const sinceLabel =
+    isCurrentDate && cameraInfo?.time_since_clock
+      ? cameraInfo.time_since_clock.label
+      : null;
+  const lastImageTime = useMemo(() => {
+    const newest = allSeqNums[0];
+    if (newest === undefined) return null;
+    const v = metadata[String(newest)]?.["Date begin"];
+    return v == null ? null : String(v);
+  }, [allSeqNums, metadata]);
+
   // The full ordered column model: sticky seq, channel chips, per-row action
   // columns (only those configured), then the visible metadata columns. The
   // angled-header overlay draws a label per non-seq column.
@@ -403,6 +419,8 @@ export function CameraTable() {
         )}
 
         <span className="tb-grow" />
+
+        <LiveClocks sinceLabel={sinceLabel} lastImage={lastImageTime} />
 
         <div className="density-seg" role="group" aria-label="Row density">
           {(["compact", "regular", "comfy"] as Density[]).map((d) => (
