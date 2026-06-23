@@ -441,7 +441,7 @@ test("a ?seq_filter range narrows the table and surfaces as chips", async () => 
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  renderAt("/local/auxtel?date=2026-04-10&seq_filter=>=11,<=12");
+  renderAt("/local/auxtel?date=2026-04-10&seq_filter=gte11-lte12");
   // Only seqs in [11, 12] show; seq 10 is excluded by the URL range.
   expect(await screen.findByText("11")).toBeDefined();
   expect(screen.getByText("12")).toBeDefined();
@@ -468,8 +468,8 @@ test("a ?seq_filter with a non-range operator (>) narrows the table", async () =
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  // ">11" keeps only seq 12 — a non-range operator the old params couldn't carry.
-  renderAt("/local/auxtel?date=2026-04-10&seq_filter=>11");
+  // "gt11" keeps only seq 12 — a non-range operator the range params couldn't carry.
+  renderAt("/local/auxtel?date=2026-04-10&seq_filter=gt11");
   const body = await waitFor(() => {
     const b = document.querySelector("tbody") as HTMLElement;
     if (!within(b).queryByText("12")) throw new Error("not ready");

@@ -123,32 +123,43 @@ export function matchRow(
 
 // The Seq.No filter is shareable via a single catch-all URL param, ?seq_filter,
 // that encodes every operator (not just the range) — but is scoped to Seq.No so
-// it doesn't imply arbitrary columns are URL-passable. Grammar: a comma-joined
-// list of clauses, each "<op><value>", where op is one of the numeric ops:
-//   >=770,<=786   (a range)      42         (bare value ⇒ "=")
-//   >500          !=99           <1000
-//   between:770-786              in:10;20;30
-// "between" / "in" carry compound values introduced by ":" with their own inner
-// separators ("-" and ";") so they don't collide with the top-level comma.
+// it doesn't imply arbitrary columns are URL-passable. The grammar uses only
+// URL-unreserved characters (letters, digits, "-", "_") so it stays readable in
+// the address bar without percent-encoding. Clauses are "-"-joined; each is a
+// spelled operator token glued to its value:
+//   gte770-lte786   (a range)    42         (bare value ⇒ eq)
+//   gt500           ne99         lt1000
+//   between770_786               in10_20_30
+// "between" / "in" carry compound values with "_" as their inner separator.
 
-// Numeric operators, longest-token-first so ">=" is matched before ">".
-const SEQ_OP_TOKENS = [">=", "<=", "!=", "=", ">", "<"] as const;
+// Spelled operator tokens ⇄ the Filter ops they map to. Order matters: longest
+// token first so "gte" matches before "gt".
+const SEQ_OP_TOKENS: [string, string][] = [
+  ["gte", ">="],
+  ["lte", "<="],
+  ["gt", ">"],
+  ["lt", "<"],
+  ["ne", "!="],
+  ["eq", "="],
+];
+const SEQ_TOKEN_FOR_OP: Record<string, string> = Object.fromEntries(
+  SEQ_OP_TOKENS.map(([tok, op]) => [op, tok]),
+);
 
 // Parse one "seq_filter" clause into a Seq.No filter, or null if unparseable.
 function parseSeqClause(raw: string): Filter | null {
   const s = raw.trim();
   if (!s) return null;
   for (const named of ["between", "in"] as const) {
-    if (s.toLowerCase().startsWith(named + ":")) {
-      const value = s.slice(named.length + 1).trim();
-      // between uses "lo-hi"; in uses ";"-separated values → matchOne wants ",".
-      const v = named === "in" ? value.replace(/;/g, ", ") : value;
+    if (s.toLowerCase().startsWith(named)) {
+      // Compound values use "_" internally → matchOne wants ", ".
+      const v = s.slice(named.length).trim().replace(/_/g, ", ");
       return v ? { col: SEQ_COL, op: named, value: v } : null;
     }
   }
-  for (const op of SEQ_OP_TOKENS) {
-    if (s.startsWith(op)) {
-      const value = s.slice(op.length).trim();
+  for (const [tok, op] of SEQ_OP_TOKENS) {
+    if (s.toLowerCase().startsWith(tok)) {
+      const value = s.slice(tok.length).trim();
       return value ? { col: SEQ_COL, op, value } : null;
     }
   }
@@ -160,7 +171,7 @@ function parseSeqClause(raw: string): Filter | null {
 export function seqFilterToFilters(seqFilter: string | null): Filter[] {
   if (!seqFilter || !seqFilter.trim()) return [];
   return seqFilter
-    .split(",")
+    .split("-")
     .map(parseSeqClause)
     .filter((f): f is Filter => f !== null);
 }
@@ -168,16 +179,16 @@ export function seqFilterToFilters(seqFilter: string | null): Filter[] {
 // Serialize the Seq.No clauses of a filter list back into a ?seq_filter value
 // (the inverse of seqFilterToFilters), or null when there are none.
 export function filtersToSeqFilter(filters: Filter[]): string | null {
+  const join = (v: string) =>
+    v.split(",").map((x) => x.trim()).filter(Boolean).join("_");
   const clauses: string[] = [];
   for (const f of filters) {
     if (f.col !== SEQ_COL) continue;
-    if (f.op === "between") clauses.push(`between:${f.value.replace(/\s*,\s*/, "-")}`);
-    else if (f.op === "in")
-      clauses.push(`in:${f.value.split(",").map((v) => v.trim()).filter(Boolean).join(";")}`);
+    if (f.op === "between" || f.op === "in") clauses.push(`${f.op}${join(f.value)}`);
     else if (f.op === "=") clauses.push(f.value);
-    else clauses.push(`${f.op}${f.value}`);
+    else clauses.push(`${SEQ_TOKEN_FOR_OP[f.op] ?? f.op}${f.value}`);
   }
-  return clauses.length ? clauses.join(",") : null;
+  return clauses.length ? clauses.join("-") : null;
 }
 
 // Up to `limit` distinct non-empty sample values for a column, for the

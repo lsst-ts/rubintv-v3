@@ -77,22 +77,23 @@ test("matchRow: a SEQ_COL filter matches the row's seq, not metadata", () => {
   expect(inferType(meta, SEQ_COL)).toBe("number");
 });
 
-test("seqFilterToFilters parses every operator form", () => {
-  // A range is two clauses.
-  expect(seqFilterToFilters(">=770,<=786")).toEqual([
+test("seqFilterToFilters parses every spelled-token operator form", () => {
+  // A range is two clauses joined by "-".
+  expect(seqFilterToFilters("gte770-lte786")).toEqual([
     { col: SEQ_COL, op: ">=", value: "770" },
     { col: SEQ_COL, op: "<=", value: "786" },
   ]);
-  // A bare value defaults to equality.
+  // A bare value defaults to equality (so does the explicit eq token).
   expect(seqFilterToFilters("42")).toEqual([{ col: SEQ_COL, op: "=", value: "42" }]);
-  // Single-char and not-equal operators.
-  expect(seqFilterToFilters(">500")).toEqual([{ col: SEQ_COL, op: ">", value: "500" }]);
-  expect(seqFilterToFilters("!=99")).toEqual([{ col: SEQ_COL, op: "!=", value: "99" }]);
-  // between uses lo-hi; in uses ";"-separated values (normalised for matchOne).
-  expect(seqFilterToFilters("between:770-786")).toEqual([
-    { col: SEQ_COL, op: "between", value: "770-786" },
+  expect(seqFilterToFilters("eq42")).toEqual([{ col: SEQ_COL, op: "=", value: "42" }]);
+  // gt is matched, not gte (longest-token-first).
+  expect(seqFilterToFilters("gt500")).toEqual([{ col: SEQ_COL, op: ">", value: "500" }]);
+  expect(seqFilterToFilters("ne99")).toEqual([{ col: SEQ_COL, op: "!=", value: "99" }]);
+  // between/in use "_" internally (normalised to ", " for matchOne).
+  expect(seqFilterToFilters("between770_786")).toEqual([
+    { col: SEQ_COL, op: "between", value: "770, 786" },
   ]);
-  expect(seqFilterToFilters("in:10;20;30")).toEqual([
+  expect(seqFilterToFilters("in10_20_30")).toEqual([
     { col: SEQ_COL, op: "in", value: "10, 20, 30" },
   ]);
   // Empty / whitespace yields no clauses.
@@ -107,21 +108,25 @@ test("filtersToSeqFilter serialises Seq.No clauses, ignoring other columns", () 
       { col: SEQ_COL, op: ">=", value: "770" },
       { col: SEQ_COL, op: "<=", value: "786" },
     ]),
-  ).toBe(">=770,<=786");
+  ).toBe("gte770-lte786");
   expect(filtersToSeqFilter([{ col: SEQ_COL, op: "=", value: "42" }])).toBe("42");
-  expect(filtersToSeqFilter([{ col: SEQ_COL, op: ">", value: "5" }])).toBe(">5");
+  expect(filtersToSeqFilter([{ col: SEQ_COL, op: ">", value: "5" }])).toBe("gt5");
   expect(filtersToSeqFilter([{ col: SEQ_COL, op: "between", value: "770, 786" }])).toBe(
-    "between:770-786",
+    "between770_786",
   );
   expect(filtersToSeqFilter([{ col: SEQ_COL, op: "in", value: "10, 20, 30" }])).toBe(
-    "in:10;20;30",
+    "in10_20_30",
   );
   // No Seq.No clauses → null.
   expect(filtersToSeqFilter([{ col: "filter", op: "=", value: "x" }])).toBeNull();
 });
 
-test("seq_filter round-trips through filters and back", () => {
-  for (const sf of [">=770,<=786", "42", ">500", "!=99", "between:770-786", "in:10;20;30"]) {
+test("seq_filter round-trips through filters and back, with no percent-encoding", () => {
+  for (const sf of ["gte770-lte786", "42", "gt500", "ne99", "between770_786", "in10_20_30"]) {
     expect(filtersToSeqFilter(seqFilterToFilters(sf))).toBe(sf);
+    // The serialised form survives URLSearchParams untouched (URL-readable).
+    const p = new URLSearchParams();
+    p.set("seq_filter", sf);
+    expect(p.toString()).toBe(`seq_filter=${sf}`);
   }
 });
