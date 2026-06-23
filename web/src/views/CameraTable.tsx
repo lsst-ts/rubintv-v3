@@ -270,7 +270,7 @@ export function CameraTable() {
 
   return (
     <section className="cam-table">
-      {/* Toolbar: date stepper, share/download, density, columns, night report. */}
+      {/* Toolbar: date, share, columns, filter, download · density, night report. */}
       <div className="cam-toolbar">
         <DatePicker
           dates={pickerDates}
@@ -281,36 +281,6 @@ export function CameraTable() {
           onChange={(d) => setParams({ date: d })}
         />
         <ShareLink date={date || undefined} />
-        <DownloadMetadata
-          metadata={metadata}
-          filename={`${camera}_${date}_metadata.json`}
-          // Enabled only once metadata is fully loaded: the authoritative REST
-          // payload has resolved AND no WS stream is still arriving (a non-null
-          // metaProgress means more chunks are in flight). Downloading mid-load
-          // would save a partial file.
-          disabled={date === "" || !restMetaLoaded || metaProgress != null}
-        />
-        {metaProgress && metaProgress.rows > 0 && (
-          <span className="metadata-progress" role="status">
-            loading metadata… {metaProgress.rows} rows
-          </span>
-        )}
-
-        <span className="tb-grow" />
-
-        <div className="density-seg" role="group" aria-label="Row density">
-          {(["compact", "regular", "comfy"] as Density[]).map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={density === d ? "active" : ""}
-              aria-pressed={density === d}
-              onClick={() => pickDensity(d)}
-            >
-              {d}
-            </button>
-          ))}
-        </div>
 
         <div className="cols-cluster" ref={colsRef}>
           <button
@@ -385,6 +355,37 @@ export function CameraTable() {
           filters={filters}
           setFilters={setFilters}
         />
+
+        <DownloadMetadata
+          metadata={metadata}
+          filename={`${camera}_${date}_metadata.json`}
+          // Enabled only once metadata is fully loaded: the authoritative REST
+          // payload has resolved AND no WS stream is still arriving (a non-null
+          // metaProgress means more chunks are in flight). Downloading mid-load
+          // would save a partial file.
+          disabled={date === "" || !restMetaLoaded || metaProgress != null}
+        />
+        {metaProgress && metaProgress.rows > 0 && (
+          <span className="metadata-progress" role="status">
+            loading metadata… {metaProgress.rows} rows
+          </span>
+        )}
+
+        <span className="tb-grow" />
+
+        <div className="density-seg" role="group" aria-label="Row density">
+          {(["compact", "regular", "comfy"] as Density[]).map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={density === d ? "active" : ""}
+              aria-pressed={density === d}
+              onClick={() => pickDensity(d)}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
 
         {payload?.has_night_report && (
           <Link
