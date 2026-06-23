@@ -506,6 +506,55 @@ test("table filter narrows the rows and a chip clears it", async () => {
   await waitFor(() => expect(screen.getByText("11")).toBeDefined());
 });
 
+test("a Seq.No filter with a non-range operator (=) narrows the rows", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: { c: [10, 11, 12] }, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10");
+  expect(await screen.findByText("10")).toBeDefined();
+
+  // Open the filter, switch the column to Seq.No, choose "=", value 11.
+  fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+  const dialog = await screen.findByRole("dialog", { name: /Add filter/ });
+  const col = within(dialog).getByLabelText("Filter column");
+  fireEvent.focus(col);
+  fireEvent.change(col, { target: { value: "Seq" } });
+  // The combo highlights the matched substring, so the label is split across
+  // elements; match on the option's .name container instead.
+  const seqOpt = await waitFor(() => {
+    const el = [...dialog.querySelectorAll(".item .name")].find((n) =>
+      n.textContent?.includes("Seq.No"),
+    );
+    if (!el) throw new Error("Seq.No option not yet present");
+    return el;
+  });
+  fireEvent.click(seqOpt);
+  fireEvent.change(within(dialog).getByLabelText("Operator"), {
+    target: { value: "=" },
+  });
+  fireEvent.change(within(dialog).getByLabelText("Filter value"), {
+    target: { value: "11" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "add filter" }));
+
+  // Only the seq-11 row remains — the "=" operator must actually apply.
+  // Scope to the table body so the "11" in the filter chip isn't counted.
+  const body = document.querySelector("tbody") as HTMLElement;
+  await waitFor(() => expect(within(body).queryByText("10")).toBeNull());
+  expect(within(body).getByText("11")).toBeDefined();
+  expect(within(body).queryByText("12")).toBeNull();
+});
+
 test("column picker dismisses on Escape and on an outside click", async () => {
   // A camera + date whose metadata carries a column, so the picker has content.
   globalThis.fetch = ((input: RequestInfo | URL) => {

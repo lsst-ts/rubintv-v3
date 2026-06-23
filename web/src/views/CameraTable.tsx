@@ -226,42 +226,45 @@ export function CameraTable() {
   // Metadata filters are local + ephemeral (reset on date/camera change). The
   // seq-range filter is URL-driven (?seqMin=&seqMax=) so it's shareable; the two
   // are merged into the active filter set the table applies and the chips show.
-  const [metaFilters, setMetaFilters] = useState<Filter[]>([]);
-  useEffect(() => setMetaFilters([]), [location, camera, date]);
+  // All active filters live here, including any on the synthetic Seq.No column.
+  // The URL's ?seqMin/?seqMax only *seed* a Seq.No range on load and *mirror*
+  // any >=/<= Seq.No clauses for shareable links — so Seq.No filters with other
+  // operators (=, between, …) still work; they just don't round-trip to a URL.
+  const [filters, setFilters] = useState<Filter[]>(() =>
+    seqRangeFilters(params.get("seqMin"), params.get("seqMax")),
+  );
+  // Reset to the URL-seeded range whenever the view (camera/date) changes.
+  useEffect(() => {
+    setFilters(seqRangeFilters(params.get("seqMin"), params.get("seqMax")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, camera, date]);
 
-  const seqFilters = useMemo(
-    () => seqRangeFilters(params.get("seqMin"), params.get("seqMax")),
-    [params],
-  );
-  const filters = useMemo(
-    () => [...seqFilters, ...metaFilters],
-    [seqFilters, metaFilters],
-  );
   // Columns offered in the filter popover: the metadata columns plus the
   // synthetic Seq.No. Seq.No goes last so the popover defaults to a metadata
   // column (the common case) while a seq-range filter is still selectable.
   const filterColumns = useMemo(() => [...metaColumns, SEQ_COL], [metaColumns]);
 
-  // Apply an edited filter set: seq-range clauses go to the URL, the rest to
-  // local state. Driven by the FilterControl popover and chip removals.
-  const setFilters = useCallback(
-    (next: Filter[]) => {
-      setMetaFilters(next.filter((f) => f.col !== SEQ_COL));
-      const { seqMin, seqMax } = filtersToSeqRange(next);
-      setParams(
-        (prev) => {
-          const p = new URLSearchParams(prev);
-          if (seqMin) p.set("seqMin", seqMin);
-          else p.delete("seqMin");
-          if (seqMax) p.set("seqMax", seqMax);
-          else p.delete("seqMax");
-          return p;
-        },
-        { replace: true },
-      );
-    },
-    [setParams],
+  // Keep ?seqMin/?seqMax in sync with the current >=/<= Seq.No clauses so the
+  // range stays shareable. Other Seq.No operators aren't representable in the
+  // URL and are intentionally left out of it.
+  const { seqMin: urlSeqMin, seqMax: urlSeqMax } = useMemo(
+    () => filtersToSeqRange(filters),
+    [filters],
   );
+  useEffect(() => {
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (urlSeqMin) p.set("seqMin", urlSeqMin);
+        else p.delete("seqMin");
+        if (urlSeqMax) p.set("seqMax", urlSeqMax);
+        else p.delete("seqMax");
+        return p;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSeqMin, urlSeqMax]);
 
   // Picker rows filtered by the search box (substring, case-insensitive).
   const colsMatches = useMemo(() => {
