@@ -1,12 +1,11 @@
 import {
   SEQ_COL,
-  filtersToSeqParams,
+  filtersToSeqFilter,
   inferType,
   matchRow,
   opLabel,
   sampleValues,
-  seqParamsToFilters,
-  seqRangeFilters,
+  seqFilterToFilters,
 } from "./filters";
 import type { Metadata } from "./types";
 
@@ -78,55 +77,51 @@ test("matchRow: a SEQ_COL filter matches the row's seq, not metadata", () => {
   expect(inferType(meta, SEQ_COL)).toBe("number");
 });
 
-test("seqRangeFilters builds >= / <= clauses (open ends allowed)", () => {
-  expect(seqRangeFilters("770", "786")).toEqual([
+test("seqFilterToFilters parses every operator form", () => {
+  // A range is two clauses.
+  expect(seqFilterToFilters(">=770,<=786")).toEqual([
     { col: SEQ_COL, op: ">=", value: "770" },
     { col: SEQ_COL, op: "<=", value: "786" },
   ]);
-  expect(seqRangeFilters("770", null)).toEqual([
-    { col: SEQ_COL, op: ">=", value: "770" },
+  // A bare value defaults to equality.
+  expect(seqFilterToFilters("42")).toEqual([{ col: SEQ_COL, op: "=", value: "42" }]);
+  // Single-char and not-equal operators.
+  expect(seqFilterToFilters(">500")).toEqual([{ col: SEQ_COL, op: ">", value: "500" }]);
+  expect(seqFilterToFilters("!=99")).toEqual([{ col: SEQ_COL, op: "!=", value: "99" }]);
+  // between uses lo-hi; in uses ";"-separated values (normalised for matchOne).
+  expect(seqFilterToFilters("between:770-786")).toEqual([
+    { col: SEQ_COL, op: "between", value: "770-786" },
   ]);
-  expect(seqRangeFilters(null, null)).toEqual([]);
+  expect(seqFilterToFilters("in:10;20;30")).toEqual([
+    { col: SEQ_COL, op: "in", value: "10, 20, 30" },
+  ]);
+  // Empty / whitespace yields no clauses.
+  expect(seqFilterToFilters(null)).toEqual([]);
+  expect(seqFilterToFilters("  ")).toEqual([]);
 });
 
-test("seqParamsToFilters: range wins over a lone seqNum", () => {
-  // A bare seqNum becomes a "=" clause.
-  expect(seqParamsToFilters({ seqMin: null, seqMax: null, seqNum: "42" })).toEqual([
-    { col: SEQ_COL, op: "=", value: "42" },
-  ]);
-  // When any range bound is present, seqNum is ignored (range takes precedence).
-  expect(seqParamsToFilters({ seqMin: "770", seqMax: null, seqNum: "42" })).toEqual([
-    { col: SEQ_COL, op: ">=", value: "770" },
-  ]);
-  expect(seqParamsToFilters({ seqMin: null, seqMax: null, seqNum: null })).toEqual([]);
-});
-
-test("filtersToSeqParams round-trips Seq.No clauses out of a filter list", () => {
-  // A range maps to seqMin/seqMax and clears seqNum.
+test("filtersToSeqFilter serialises Seq.No clauses, ignoring other columns", () => {
   expect(
-    filtersToSeqParams([
+    filtersToSeqFilter([
       { col: "filter", op: "=", value: "z_20" },
       { col: SEQ_COL, op: ">=", value: "770" },
       { col: SEQ_COL, op: "<=", value: "786" },
     ]),
-  ).toEqual({ seqMin: "770", seqMax: "786", seqNum: null });
-  // A single "Seq.No =" clause maps to seqNum.
-  expect(filtersToSeqParams([{ col: SEQ_COL, op: "=", value: "42" }])).toEqual({
-    seqMin: null,
-    seqMax: null,
-    seqNum: "42",
-  });
-  // A range alongside an "=" clause still resolves to the range (mutually exclusive).
-  expect(
-    filtersToSeqParams([
-      { col: SEQ_COL, op: "=", value: "42" },
-      { col: SEQ_COL, op: ">=", value: "770" },
-    ]),
-  ).toEqual({ seqMin: "770", seqMax: null, seqNum: null });
-  // Other Seq.No operators aren't URL-representable.
-  expect(filtersToSeqParams([{ col: SEQ_COL, op: ">", value: "5" }])).toEqual({
-    seqMin: null,
-    seqMax: null,
-    seqNum: null,
-  });
+  ).toBe(">=770,<=786");
+  expect(filtersToSeqFilter([{ col: SEQ_COL, op: "=", value: "42" }])).toBe("42");
+  expect(filtersToSeqFilter([{ col: SEQ_COL, op: ">", value: "5" }])).toBe(">5");
+  expect(filtersToSeqFilter([{ col: SEQ_COL, op: "between", value: "770, 786" }])).toBe(
+    "between:770-786",
+  );
+  expect(filtersToSeqFilter([{ col: SEQ_COL, op: "in", value: "10, 20, 30" }])).toBe(
+    "in:10;20;30",
+  );
+  // No Seq.No clauses → null.
+  expect(filtersToSeqFilter([{ col: "filter", op: "=", value: "x" }])).toBeNull();
+});
+
+test("seq_filter round-trips through filters and back", () => {
+  for (const sf of [">=770,<=786", "42", ">500", "!=99", "between:770-786", "in:10;20;30"]) {
+    expect(filtersToSeqFilter(seqFilterToFilters(sf))).toBe(sf);
+  }
 });

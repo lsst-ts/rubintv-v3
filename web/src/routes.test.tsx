@@ -427,7 +427,7 @@ test("prev/next-day steppers move to adjacent dates with data", async () => {
   );
 });
 
-test("a ?seqMin/?seqMax URL range narrows the table to that seq range", async () => {
+test("a ?seq_filter range narrows the table and surfaces as chips", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
@@ -441,7 +441,7 @@ test("a ?seqMin/?seqMax URL range narrows the table to that seq range", async ()
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  renderAt("/local/auxtel?date=2026-04-10&seqMin=11&seqMax=12");
+  renderAt("/local/auxtel?date=2026-04-10&seq_filter=>=11,<=12");
   // Only seqs in [11, 12] show; seq 10 is excluded by the URL range.
   expect(await screen.findByText("11")).toBeDefined();
   expect(screen.getByText("12")).toBeDefined();
@@ -454,8 +454,8 @@ test("a ?seqMin/?seqMax URL range narrows the table to that seq range", async ()
   expect(chips.some((t) => t?.includes("Seq.No") && t.includes("12"))).toBe(true);
 });
 
-test("a lone ?seqNum URL narrows the table to that seq; range wins when both given", async () => {
-  const f = ((input: RequestInfo | URL) => {
+test("a ?seq_filter with a non-range operator (>) narrows the table", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
     if (/\/cameras\/auxtel\/calendar$/.test(url)) {
@@ -467,39 +467,16 @@ test("a lone ?seqNum URL narrows the table to that seq; range wins when both giv
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
-  globalThis.fetch = f;
 
-  // A lone ?seqNum= shows only that seq.
-  const { unmount } = render(
-    <QueryClientProvider client={createQueryClient()}>
-      <LiveProvider>
-        <RouterProvider
-          router={createMemoryRouter(routes, {
-            initialEntries: ["/local/auxtel?date=2026-04-10&seqNum=11"],
-          })}
-        />
-      </LiveProvider>
-    </QueryClientProvider>,
-  );
-  const body1 = await waitFor(() => {
-    const b = document.querySelector("tbody") as HTMLElement;
-    if (!within(b).queryByText("11")) throw new Error("not ready");
-    return b;
-  });
-  expect(within(body1).queryByText("10")).toBeNull();
-  expect(within(body1).queryByText("12")).toBeNull();
-  unmount();
-
-  // When both a range and a lone seqNum are present, the range takes precedence.
-  globalThis.fetch = f;
-  renderAt("/local/auxtel?date=2026-04-10&seqMin=12&seqMax=12&seqNum=11");
-  const body2 = await waitFor(() => {
+  // ">11" keeps only seq 12 — a non-range operator the old params couldn't carry.
+  renderAt("/local/auxtel?date=2026-04-10&seq_filter=>11");
+  const body = await waitFor(() => {
     const b = document.querySelector("tbody") as HTMLElement;
     if (!within(b).queryByText("12")) throw new Error("not ready");
     return b;
   });
-  expect(within(body2).queryByText("11")).toBeNull();
-  expect(within(body2).queryByText("10")).toBeNull();
+  expect(within(body).queryByText("10")).toBeNull();
+  expect(within(body).queryByText("11")).toBeNull();
 });
 
 test("table filter narrows the rows and a chip clears it", async () => {
@@ -602,11 +579,10 @@ test("a Seq.No filter with a non-range operator (=) narrows the rows", async () 
   await waitFor(() => expect(within(body).queryByText("10")).toBeNull());
   expect(within(body).getByText("11")).toBeDefined();
   expect(within(body).queryByText("12")).toBeNull();
-  // The "=" filter is shareable as ?seqNum= (no range params).
+  // The "=" filter is shareable: a bare value in ?seq_filter means equality.
   await waitFor(() =>
-    expect(router.state.location.search).toContain("seqNum=11"),
+    expect(router.state.location.search).toContain("seq_filter=11"),
   );
-  expect(router.state.location.search).not.toContain("seqMin");
 });
 
 test("column picker dismisses on Escape and on an outside click", async () => {

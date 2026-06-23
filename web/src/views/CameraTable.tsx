@@ -19,8 +19,8 @@ import { LiveClocks } from "../components/LiveClocks";
 import {
   matchRow,
   SEQ_COL,
-  seqParamsToFilters,
-  filtersToSeqParams,
+  seqFilterToFilters,
+  filtersToSeqFilter,
   type Filter,
 } from "../lib/filters";
 import { AllSky } from "./AllSky";
@@ -224,22 +224,17 @@ export function CameraTable() {
   );
 
   // All active filters live here, including any on the synthetic Seq.No column.
-  // A URL-representable Seq.No filter is shareable via the query string: a range
-  // (?seqMin=&seqMax=) or, mutually exclusive with it, a single ?seqNum= ("="),
-  // with the range taking precedence. Those params *seed* the filters on load
-  // and are *mirrored* from them on change. Seq.No filters with other operators
-  // (>, <, between, …) still work; they just don't round-trip to a URL.
-  const readSeqParams = () => ({
-    seqMin: params.get("seqMin"),
-    seqMax: params.get("seqMax"),
-    seqNum: params.get("seqNum"),
-  });
+  // A Seq.No filter is shareable via a single catch-all ?seq_filter param that
+  // carries every operator (range, =, >, <, between, in, …) — scoped to Seq.No
+  // so it doesn't imply arbitrary columns are URL-passable. It *seeds* the
+  // filters on load and is *mirrored* from them on change. Metadata-column
+  // filters stay local + ephemeral (reset on date/camera change).
   const [filters, setFilters] = useState<Filter[]>(() =>
-    seqParamsToFilters(readSeqParams()),
+    seqFilterToFilters(params.get("seq_filter")),
   );
   // Reset to the URL-seeded Seq.No filter whenever the view (camera/date) changes.
   useEffect(() => {
-    setFilters(seqParamsToFilters(readSeqParams()));
+    setFilters(seqFilterToFilters(params.get("seq_filter")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location, camera, date]);
 
@@ -248,31 +243,21 @@ export function CameraTable() {
   // column (the common case) while a seq-range filter is still selectable.
   const filterColumns = useMemo(() => [...metaColumns, SEQ_COL], [metaColumns]);
 
-  // Keep ?seqMin/?seqMax/?seqNum in sync with the current Seq.No clauses so the
-  // filter stays shareable. The three are mutually exclusive (range wins); other
-  // Seq.No operators aren't URL-representable and are intentionally left out.
-  const { seqMin, seqMax, seqNum } = useMemo(
-    () => filtersToSeqParams(filters),
-    [filters],
-  );
+  // Keep ?seq_filter in sync with the current Seq.No clauses so the filter stays
+  // shareable.
+  const seqFilter = useMemo(() => filtersToSeqFilter(filters), [filters]);
   useEffect(() => {
     setParams(
       (prev) => {
         const p = new URLSearchParams(prev);
-        for (const [k, v] of [
-          ["seqMin", seqMin],
-          ["seqMax", seqMax],
-          ["seqNum", seqNum],
-        ] as const) {
-          if (v) p.set(k, v);
-          else p.delete(k);
-        }
+        if (seqFilter) p.set("seq_filter", seqFilter);
+        else p.delete("seq_filter");
         return p;
       },
       { replace: true },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seqMin, seqMax, seqNum]);
+  }, [seqFilter]);
 
   // Picker rows filtered by the search box (substring, case-insensitive).
   const colsMatches = useMemo(() => {

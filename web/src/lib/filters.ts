@@ -121,52 +121,63 @@ export function matchRow(
   );
 }
 
-// The URL params that describe a Seq.No filter. A range (seqMin/seqMax) and a
-// single value (seqNum) are mutually exclusive; when both are present the range
-// wins. Only these forms are URL-representable — other Seq.No operators (>, <,
-// between, …) live in app state but aren't reflected in the URL.
-export interface SeqParams {
-  seqMin: string | null;
-  seqMax: string | null;
-  seqNum: string | null;
+// The Seq.No filter is shareable via a single catch-all URL param, ?seq_filter,
+// that encodes every operator (not just the range) — but is scoped to Seq.No so
+// it doesn't imply arbitrary columns are URL-passable. Grammar: a comma-joined
+// list of clauses, each "<op><value>", where op is one of the numeric ops:
+//   >=770,<=786   (a range)      42         (bare value ⇒ "=")
+//   >500          !=99           <1000
+//   between:770-786              in:10;20;30
+// "between" / "in" carry compound values introduced by ":" with their own inner
+// separators ("-" and ";") so they don't collide with the top-level comma.
+
+// Numeric operators, longest-token-first so ">=" is matched before ">".
+const SEQ_OP_TOKENS = [">=", "<=", "!=", "=", ">", "<"] as const;
+
+// Parse one "seq_filter" clause into a Seq.No filter, or null if unparseable.
+function parseSeqClause(raw: string): Filter | null {
+  const s = raw.trim();
+  if (!s) return null;
+  for (const named of ["between", "in"] as const) {
+    if (s.toLowerCase().startsWith(named + ":")) {
+      const value = s.slice(named.length + 1).trim();
+      // between uses "lo-hi"; in uses ";"-separated values → matchOne wants ",".
+      const v = named === "in" ? value.replace(/;/g, ", ") : value;
+      return v ? { col: SEQ_COL, op: named, value: v } : null;
+    }
+  }
+  for (const op of SEQ_OP_TOKENS) {
+    if (s.startsWith(op)) {
+      const value = s.slice(op.length).trim();
+      return value ? { col: SEQ_COL, op, value } : null;
+    }
+  }
+  // No operator token ⇒ a bare value defaults to equality.
+  return { col: SEQ_COL, op: "=", value: s };
 }
 
-const trimmed = (v: string | null) => (v && v.trim() ? v.trim() : null);
-
-// Build the Seq.No filter clauses described by the URL params. A range
-// (seqMin → "Seq.No >= min", seqMax → "Seq.No <= max") takes precedence; only
-// if neither bound is present does a lone seqNum become "Seq.No = num".
-export function seqParamsToFilters({ seqMin, seqMax, seqNum }: SeqParams): Filter[] {
-  const lo = trimmed(seqMin);
-  const hi = trimmed(seqMax);
-  const out: Filter[] = [];
-  if (lo) out.push({ col: SEQ_COL, op: ">=", value: lo });
-  if (hi) out.push({ col: SEQ_COL, op: "<=", value: hi });
-  if (out.length) return out;
-  const n = trimmed(seqNum);
-  return n ? [{ col: SEQ_COL, op: "=", value: n }] : [];
+// Build the Seq.No filter clauses described by ?seq_filter (may be null/empty).
+export function seqFilterToFilters(seqFilter: string | null): Filter[] {
+  if (!seqFilter || !seqFilter.trim()) return [];
+  return seqFilter
+    .split(",")
+    .map(parseSeqClause)
+    .filter((f): f is Filter => f !== null);
 }
 
-// Back-compat shim for the range-only callers/tests.
-export function seqRangeFilters(seqMin: string | null, seqMax: string | null): Filter[] {
-  return seqParamsToFilters({ seqMin, seqMax, seqNum: null });
-}
-
-// Extract the URL-representable Seq.No params from a filter list, for syncing
-// back to the URL. A >=/<= range takes precedence and clears seqNum; otherwise
-// a single "Seq.No =" clause becomes seqNum. Mutually exclusive by construction.
-export function filtersToSeqParams(filters: Filter[]): SeqParams {
-  let seqMin: string | null = null;
-  let seqMax: string | null = null;
-  let seqNum: string | null = null;
+// Serialize the Seq.No clauses of a filter list back into a ?seq_filter value
+// (the inverse of seqFilterToFilters), or null when there are none.
+export function filtersToSeqFilter(filters: Filter[]): string | null {
+  const clauses: string[] = [];
   for (const f of filters) {
     if (f.col !== SEQ_COL) continue;
-    if (f.op === ">=") seqMin = f.value;
-    else if (f.op === "<=") seqMax = f.value;
-    else if (f.op === "=") seqNum = f.value;
+    if (f.op === "between") clauses.push(`between:${f.value.replace(/\s*,\s*/, "-")}`);
+    else if (f.op === "in")
+      clauses.push(`in:${f.value.split(",").map((v) => v.trim()).filter(Boolean).join(";")}`);
+    else if (f.op === "=") clauses.push(f.value);
+    else clauses.push(`${f.op}${f.value}`);
   }
-  if (seqMin || seqMax) return { seqMin, seqMax, seqNum: null };
-  return { seqMin: null, seqMax: null, seqNum };
+  return clauses.length ? clauses.join(",") : null;
 }
 
 // Up to `limit` distinct non-empty sample values for a column, for the
