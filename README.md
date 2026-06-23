@@ -47,3 +47,10 @@ npm run dev
 
 See the relevant phase section of [the design doc](design/00-overview.md)
 for what is in scope at each stage.
+
+## Docs
+
+- [docs/viewer-guide.md](docs/viewer-guide.md) — using the web app: table
+  filters and shareable URLs (incl. the `seq_filter` parameter).
+- [docs/operator-guide.md](docs/operator-guide.md) — running, configuring, and
+  operating the server.
