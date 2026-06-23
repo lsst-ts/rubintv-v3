@@ -1,10 +1,11 @@
 import {
   SEQ_COL,
-  filtersToSeqRange,
+  filtersToSeqParams,
   inferType,
   matchRow,
   opLabel,
   sampleValues,
+  seqParamsToFilters,
   seqRangeFilters,
 } from "./filters";
 import type { Metadata } from "./types";
@@ -88,15 +89,44 @@ test("seqRangeFilters builds >= / <= clauses (open ends allowed)", () => {
   expect(seqRangeFilters(null, null)).toEqual([]);
 });
 
-test("filtersToSeqRange round-trips the range out of a filter list", () => {
-  const filters = [
-    { col: "filter", op: "=", value: "z_20" },
+test("seqParamsToFilters: range wins over a lone seqNum", () => {
+  // A bare seqNum becomes a "=" clause.
+  expect(seqParamsToFilters({ seqMin: null, seqMax: null, seqNum: "42" })).toEqual([
+    { col: SEQ_COL, op: "=", value: "42" },
+  ]);
+  // When any range bound is present, seqNum is ignored (range takes precedence).
+  expect(seqParamsToFilters({ seqMin: "770", seqMax: null, seqNum: "42" })).toEqual([
     { col: SEQ_COL, op: ">=", value: "770" },
-    { col: SEQ_COL, op: "<=", value: "786" },
-  ];
-  expect(filtersToSeqRange(filters)).toEqual({ seqMin: "770", seqMax: "786" });
-  expect(filtersToSeqRange([{ col: "filter", op: "=", value: "x" }])).toEqual({
+  ]);
+  expect(seqParamsToFilters({ seqMin: null, seqMax: null, seqNum: null })).toEqual([]);
+});
+
+test("filtersToSeqParams round-trips Seq.No clauses out of a filter list", () => {
+  // A range maps to seqMin/seqMax and clears seqNum.
+  expect(
+    filtersToSeqParams([
+      { col: "filter", op: "=", value: "z_20" },
+      { col: SEQ_COL, op: ">=", value: "770" },
+      { col: SEQ_COL, op: "<=", value: "786" },
+    ]),
+  ).toEqual({ seqMin: "770", seqMax: "786", seqNum: null });
+  // A single "Seq.No =" clause maps to seqNum.
+  expect(filtersToSeqParams([{ col: SEQ_COL, op: "=", value: "42" }])).toEqual({
     seqMin: null,
     seqMax: null,
+    seqNum: "42",
+  });
+  // A range alongside an "=" clause still resolves to the range (mutually exclusive).
+  expect(
+    filtersToSeqParams([
+      { col: SEQ_COL, op: "=", value: "42" },
+      { col: SEQ_COL, op: ">=", value: "770" },
+    ]),
+  ).toEqual({ seqMin: "770", seqMax: null, seqNum: null });
+  // Other Seq.No operators aren't URL-representable.
+  expect(filtersToSeqParams([{ col: SEQ_COL, op: ">", value: "5" }])).toEqual({
+    seqMin: null,
+    seqMax: null,
+    seqNum: null,
   });
 });

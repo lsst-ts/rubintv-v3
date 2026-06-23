@@ -121,32 +121,52 @@ export function matchRow(
   );
 }
 
-// Build the seq-range filter clauses for the given min/max (either may be
-// null). seqMin → "Seq.No >= min", seqMax → "Seq.No <= max".
-export function seqRangeFilters(
-  seqMin: string | null,
-  seqMax: string | null,
-): Filter[] {
-  const out: Filter[] = [];
-  if (seqMin && seqMin.trim()) out.push({ col: SEQ_COL, op: ">=", value: seqMin.trim() });
-  if (seqMax && seqMax.trim()) out.push({ col: SEQ_COL, op: "<=", value: seqMax.trim() });
-  return out;
-}
-
-// Extract {seqMin, seqMax} from the seq-range clauses in a filter list, for
-// syncing back to the URL.
-export function filtersToSeqRange(filters: Filter[]): {
+// The URL params that describe a Seq.No filter. A range (seqMin/seqMax) and a
+// single value (seqNum) are mutually exclusive; when both are present the range
+// wins. Only these forms are URL-representable — other Seq.No operators (>, <,
+// between, …) live in app state but aren't reflected in the URL.
+export interface SeqParams {
   seqMin: string | null;
   seqMax: string | null;
-} {
+  seqNum: string | null;
+}
+
+const trimmed = (v: string | null) => (v && v.trim() ? v.trim() : null);
+
+// Build the Seq.No filter clauses described by the URL params. A range
+// (seqMin → "Seq.No >= min", seqMax → "Seq.No <= max") takes precedence; only
+// if neither bound is present does a lone seqNum become "Seq.No = num".
+export function seqParamsToFilters({ seqMin, seqMax, seqNum }: SeqParams): Filter[] {
+  const lo = trimmed(seqMin);
+  const hi = trimmed(seqMax);
+  const out: Filter[] = [];
+  if (lo) out.push({ col: SEQ_COL, op: ">=", value: lo });
+  if (hi) out.push({ col: SEQ_COL, op: "<=", value: hi });
+  if (out.length) return out;
+  const n = trimmed(seqNum);
+  return n ? [{ col: SEQ_COL, op: "=", value: n }] : [];
+}
+
+// Back-compat shim for the range-only callers/tests.
+export function seqRangeFilters(seqMin: string | null, seqMax: string | null): Filter[] {
+  return seqParamsToFilters({ seqMin, seqMax, seqNum: null });
+}
+
+// Extract the URL-representable Seq.No params from a filter list, for syncing
+// back to the URL. A >=/<= range takes precedence and clears seqNum; otherwise
+// a single "Seq.No =" clause becomes seqNum. Mutually exclusive by construction.
+export function filtersToSeqParams(filters: Filter[]): SeqParams {
   let seqMin: string | null = null;
   let seqMax: string | null = null;
+  let seqNum: string | null = null;
   for (const f of filters) {
     if (f.col !== SEQ_COL) continue;
     if (f.op === ">=") seqMin = f.value;
     else if (f.op === "<=") seqMax = f.value;
+    else if (f.op === "=") seqNum = f.value;
   }
-  return { seqMin, seqMax };
+  if (seqMin || seqMax) return { seqMin, seqMax, seqNum: null };
+  return { seqMin: null, seqMax: null, seqNum };
 }
 
 // Up to `limit` distinct non-empty sample values for a column, for the

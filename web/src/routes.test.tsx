@@ -36,13 +36,14 @@ beforeEach(() => {
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  return render(
+  const result = render(
     <QueryClientProvider client={createQueryClient()}>
       <LiveProvider>
         <RouterProvider router={router} />
       </LiveProvider>
     </QueryClientProvider>,
   );
+  return { ...result, router };
 }
 
 test("channel deep link resolves to the channel view", async () => {
@@ -453,6 +454,54 @@ test("a ?seqMin/?seqMax URL range narrows the table to that seq range", async ()
   expect(chips.some((t) => t?.includes("Seq.No") && t.includes("12"))).toBe(true);
 });
 
+test("a lone ?seqNum URL narrows the table to that seq; range wins when both given", async () => {
+  const f = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: { c: [10, 11, 12] }, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  globalThis.fetch = f;
+
+  // A lone ?seqNum= shows only that seq.
+  const { unmount } = render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider
+          router={createMemoryRouter(routes, {
+            initialEntries: ["/local/auxtel?date=2026-04-10&seqNum=11"],
+          })}
+        />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  const body1 = await waitFor(() => {
+    const b = document.querySelector("tbody") as HTMLElement;
+    if (!within(b).queryByText("11")) throw new Error("not ready");
+    return b;
+  });
+  expect(within(body1).queryByText("10")).toBeNull();
+  expect(within(body1).queryByText("12")).toBeNull();
+  unmount();
+
+  // When both a range and a lone seqNum are present, the range takes precedence.
+  globalThis.fetch = f;
+  renderAt("/local/auxtel?date=2026-04-10&seqMin=12&seqMax=12&seqNum=11");
+  const body2 = await waitFor(() => {
+    const b = document.querySelector("tbody") as HTMLElement;
+    if (!within(b).queryByText("12")) throw new Error("not ready");
+    return b;
+  });
+  expect(within(body2).queryByText("11")).toBeNull();
+  expect(within(body2).queryByText("10")).toBeNull();
+});
+
 test("table filter narrows the rows and a chip clears it", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
@@ -520,7 +569,7 @@ test("a Seq.No filter with a non-range operator (=) narrows the rows", async () 
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  renderAt("/local/auxtel?date=2026-04-10");
+  const { router } = renderAt("/local/auxtel?date=2026-04-10");
   expect(await screen.findByText("10")).toBeDefined();
 
   // Open the filter, switch the column to Seq.No, choose "=", value 11.
@@ -553,6 +602,11 @@ test("a Seq.No filter with a non-range operator (=) narrows the rows", async () 
   await waitFor(() => expect(within(body).queryByText("10")).toBeNull());
   expect(within(body).getByText("11")).toBeDefined();
   expect(within(body).queryByText("12")).toBeNull();
+  // The "=" filter is shareable as ?seqNum= (no range params).
+  await waitFor(() =>
+    expect(router.state.location.search).toContain("seqNum=11"),
+  );
+  expect(router.state.location.search).not.toContain("seqMin");
 });
 
 test("column picker dismisses on Escape and on an outside click", async () => {
