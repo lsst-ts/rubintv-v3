@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useParams } from "react-router-dom";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { S3Status } from "./S3Status";
 import { LoadingBanner } from "./LoadingBanner";
 import { ThemeToggle } from "./ThemeToggle";
 import { Sidebar } from "./Sidebar";
@@ -119,6 +120,7 @@ export function Layout() {
                     </a>
                   ))}
                 </nav>
+                <S3Status />
                 <ConnectionStatus />
               </div>
             </div>

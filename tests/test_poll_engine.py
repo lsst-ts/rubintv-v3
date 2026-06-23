@@ -8,8 +8,12 @@ full sweep and that per-camera flags flip in the right order.
 from __future__ import annotations
 
 import asyncio
+import time
+
+import pytest
 
 from rubintv.config.models import Camera, Location, Models
+from rubintv.data import tasks
 from rubintv.data.dayobs import get_current_day_obs
 from rubintv.data.events import ObjectEvent, ObjectKind
 from rubintv.data.store import EventStore
@@ -284,3 +288,111 @@ async def test_sleep_or_rescan_times_out_without_trigger() -> None:
     # Returns on timeout when neither stop nor rescan fires.
     await asyncio.wait_for(engine._sleep_or_rescan(0.01), timeout=1.0)
     assert not engine._rescan.is_set()
+
+
+class FlakyPoller(FakePoller):
+    """A FakePoller whose current-day scans can be made to raise, simulating
+    an S3 connect timeout to the bucket endpoint."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail = False
+
+    def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
+        if self.fail:
+            raise ConnectionError("connect timeout on endpoint URL")
+        return super().scan(location, prefix)
+
+
+async def _run_one_current_cycle(engine: PollEngine) -> None:
+    # Drive exactly one current-day loop iteration. The loop checks _stop at
+    # the top of each pass, so we let the first body run, then stop it during
+    # the post-cycle sleep (which wakes immediately on _stop).
+    engine._interval = 0.01
+    task = asyncio.ensure_future(engine._current_day_loop())
+    await asyncio.sleep(0.05)  # enough for one full body + sleep
+    engine._stop.set()
+    await asyncio.wait_for(task, timeout=1.0)
+
+
+async def test_s3_healthy_starts_true_and_survives_good_cycle() -> None:
+    engine, _ = _engine(window=1)
+    assert engine.s3_healthy is True
+    await _run_one_current_cycle(engine)
+    assert engine.s3_healthy is True
+
+
+async def test_s3_healthy_flips_false_on_failed_cycle() -> None:
+    poller = FlakyPoller()
+    engine = PollEngine(
+        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+    )
+    poller.fail = True
+    await _run_one_current_cycle(engine)
+    assert engine.s3_healthy is False
+
+
+async def test_s3_healthy_recovers_after_good_cycle() -> None:
+    poller = FlakyPoller()
+    engine = PollEngine(
+        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+    )
+    poller.fail = True
+    await _run_one_current_cycle(engine)
+    assert engine.s3_healthy is False
+    # S3 comes back: the next completed cycle clears the alert.
+    poller.fail = False
+    engine._stop.clear()
+    engine._ready_fired = False
+    await _run_one_current_cycle(engine)
+    assert engine.s3_healthy is True
+
+
+class SlowPoller(FakePoller):
+    """A FakePoller whose scans take a controllable wall-clock time, to drive
+    the slow-cycle detection."""
+
+    def __init__(self, delay: float = 0.0) -> None:
+        super().__init__()
+        self.delay = delay
+
+    def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
+        if self.delay:
+            time.sleep(self.delay)  # blocks the worker thread, like real S3
+        return super().scan(location, prefix)
+
+
+async def test_s3_slow_starts_false_and_stays_on_fast_cycle() -> None:
+    engine, _ = _engine(window=1)
+    assert engine.s3_slow is False
+    await _run_one_current_cycle(engine)
+    assert engine.s3_slow is False
+
+
+async def test_s3_slow_flips_true_when_cycle_exceeds_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Lower the threshold so a small real delay trips it (no 5s test sleep).
+    monkeypatch.setattr(tasks, "SLOW_CYCLE_SECONDS", 0.05)
+    poller = SlowPoller(delay=0.15)
+    engine = PollEngine(
+        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+    )
+    await _run_one_current_cycle(engine)
+    # The cycle succeeded (reachable) but was slow.
+    assert engine.s3_healthy is True
+    assert engine.s3_slow is True
+
+
+async def test_s3_slow_cleared_when_cycle_fails() -> None:
+    # A hard failure shows the red 'unreachable' state, not the amber 'slow'
+    # one — slow must not linger over an outright failure.
+    poller = FlakyPoller()
+    engine = PollEngine(
+        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+    )
+    engine.s3_slow = True  # pretend a prior slow cycle set it
+    poller.fail = True
+    await _run_one_current_cycle(engine)
+    assert engine.s3_healthy is False
+    assert engine.s3_slow is False

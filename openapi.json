@@ -2503,6 +2503,14 @@
             "type": "boolean",
             "title": "Historical Loading"
           },
+          "s3_healthy": {
+            "type": "boolean",
+            "title": "S3 Healthy"
+          },
+          "s3_slow": {
+            "type": "boolean",
+            "title": "S3 Slow"
+          },
           "cameras": {
             "items": {
               "$ref": "#/components/schemas/CameraStatus"
@@ -2517,6 +2525,8 @@
           "cache_enabled",
           "warm_start",
           "historical_loading",
+          "s3_healthy",
+          "s3_slow",
           "cameras"
         ],
         "title": "StatusResponse"

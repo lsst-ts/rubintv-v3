@@ -929,6 +929,10 @@ export interface components {
             warm_start: boolean;
             /** Historical Loading */
             historical_loading: boolean;
+            /** S3 Healthy */
+            s3_healthy: boolean;
+            /** S3 Slow */
+            s3_slow: boolean;
             /** Cameras */
             cameras: components["schemas"]["CameraStatus"][];
         };

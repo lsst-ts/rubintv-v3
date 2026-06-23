@@ -70,13 +70,29 @@ class S3ClientPool:
         if location is None:
             raise KeyError(f"unknown location: {location_name}")
         session = boto3.session.Session(profile_name=location.profile)
+        # The poller runs on a ~1s cadence, so a hung connection must fail fast
+        # rather than block on botocore's 60s default connect timeout (×3
+        # retries = a minute-plus before a dead endpoint/tunnel surfaces as an
+        # error). Cap it tight: a 5s connect timeout with one retry (botocore
+        # ``max_attempts`` is the retry count -> 2 total attempts) means a dead
+        # endpoint raises in ~10s, not 60s+. The default (interactive) client
+        # keeps the standard, more patient retry policy for user requests.
+        if role == "poller":
+            config = Config(
+                connect_timeout=5,
+                read_timeout=10,
+                retries={"max_attempts": 1, "mode": "standard"},
+                max_pool_connections=32,
+            )
+        else:
+            config = Config(
+                retries={"max_attempts": 3, "mode": "standard"},
+                max_pool_connections=32,
+            )
         client = session.client(
             "s3",
             endpoint_url=location.endpoint,
-            config=Config(
-                retries={"max_attempts": 3, "mode": "standard"},
-                max_pool_connections=32,
-            ),
+            config=config,
         )
         log.info("s3.client.created", location=location_name, role=role)
         return client

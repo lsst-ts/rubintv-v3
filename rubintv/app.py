@@ -186,6 +186,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # loading flag plus the per-camera readiness map.
     state.historical_loading = lambda: engine.historical_loading
     state.camera_status = engine.camera_status
+    state.s3_healthy = lambda: engine.s3_healthy
+    state.s3_slow = lambda: engine.s3_slow
 
     # Admin handles: the Redis manager (control writes / flush) and the
     # flush-historical action that clears the disk + in-memory cache and kicks

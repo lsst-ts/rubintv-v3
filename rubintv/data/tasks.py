@@ -53,6 +53,7 @@ Conclusions encoded in this module:
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -70,6 +71,12 @@ ReadyCallback = Callable[[], None]
 
 # Per-(location, camera) key, mirroring the store's index keying.
 LocCam = tuple[str, str]
+
+# A current-day cycle slower than this (wall-clock seconds) is flagged as
+# degraded. A healthy USDF cycle is ~0.8s (see the latency table above), so
+# this is well clear of normal jitter while still well under the 5-10s the
+# poller client now waits before a hung connection raises outright.
+SLOW_CYCLE_SECONDS = 5.0
 
 
 @dataclass(slots=True)
@@ -138,6 +145,15 @@ class PollEngine:
         self.historical_loading = True
         """True until the first full historical scan completes. The frontend
         shows a non-blocking 'historical still loading' affordance while set."""
+        # Whether the most recent current-day poll cycle reached S3. Starts
+        # True (optimistic) and flips on the first failed/succeeded cycle, so
+        # the frontend can show an 'S3 unreachable' alert when a cycle throws
+        # (e.g. a botocore ConnectTimeout to the bucket endpoint).
+        self.s3_healthy = True
+        # Whether the most recent successful cycle was unusually slow. A
+        # degrading link (high latency before it fails outright) shows up here
+        # as an amber 'S3 slow' warning ahead of the red 'unreachable' alert.
+        self.s3_slow = False
 
     def camera_status(self) -> dict[LocCam, CameraScanState]:
         """Snapshot of per-camera cold-start scan progress."""
@@ -173,8 +189,10 @@ class PollEngine:
         )
         while not self._stop.is_set():
             try:
+                started = time.monotonic()
                 await self._check_rollover()
                 total = await self._scan_day(self._current_day)
+                elapsed = time.monotonic() - started
                 cycle += 1
                 # Heartbeat at info level every minute or so so operators can
                 # see polling is alive even when nothing is changing.
@@ -184,9 +202,26 @@ class PollEngine:
                         day=self._current_day,
                         cycle=cycle,
                         events_last_cycle=total,
+                        cycle_seconds=round(elapsed, 2),
                     )
+                # A slow-but-successful cycle warns of a degrading link before
+                # it fails outright — log the transition into the slow state.
+                slow = elapsed > SLOW_CYCLE_SECONDS
+                if slow and not self.s3_slow:
+                    log.warning(
+                        "poll.current.slow",
+                        cycle_seconds=round(elapsed, 2),
+                        threshold_seconds=SLOW_CYCLE_SECONDS,
+                    )
+                self.s3_slow = slow
+                self.s3_healthy = True
                 self._fire_ready()
             except Exception:  # noqa: BLE001 - a bad cycle must not kill loop
+                # A thrown cycle means S3 was unreachable (e.g. a connect
+                # timeout to the bucket endpoint). Surface it so the frontend
+                # can alert; the loop keeps retrying every interval.
+                self.s3_healthy = False
+                self.s3_slow = False
                 log.exception("poll.current.error")
             await self._sleep(self._interval)
 

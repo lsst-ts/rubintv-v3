@@ -40,7 +40,7 @@ export function CameraTable() {
     staleTime: STALE.config,
   });
 
-  const { data: calendar } = useQuery({
+  const { data: calendar, isPending: calendarPending } = useQuery({
     queryKey: queryKeys.calendar(location, camera),
     queryFn: () => api.calendar(location, camera),
     staleTime: STALE.calendar,
@@ -486,7 +486,9 @@ export function CameraTable() {
 
       <FilterBar metadata={metadata} filters={filters} setFilters={setFilters} />
 
-      {isPending && date !== "" && <p className="skeleton">Loading…</p>}
+      {((isPending && date !== "") || (date === "" && calendarPending)) && (
+        <p className="skeleton">Loading…</p>
+      )}
 
       {payload && Object.keys(payload.per_day).length > 0 && (
         <div className="per-day">
@@ -501,14 +503,25 @@ export function CameraTable() {
       {/* Empty states: no date available for this camera at all, or the
           resolved date finished loading with no rows. Either way, skip the
           (tall, angled-header) table and show a tidy notice instead. */}
-      {date === "" && !isPending ? (
-        <div className="table-empty">No dates with data for this camera yet.</div>
-      ) : !isPending && date !== "" && seqNums.length === 0 ? (
-        <div className="table-empty">
-          {allSeqNums.length > 0 && filters.length > 0
-            ? `No rows match the active filter${filters.length === 1 ? "" : "s"}.`
-            : `No data for ${date}.`}
-        </div>
+      {date === "" ? (
+        /* No resolved date: either the calendar is still loading (the loader
+           above covers it) or it loaded with no dates for this camera. */
+        calendarPending ? null : (
+          <div className="table-empty">
+            No dates with data for this camera yet.
+          </div>
+        )
+      ) : seqNums.length === 0 ? (
+        /* No rows yet. While the payload (or a deep-linked date's on-demand
+           backfill) is still in flight, the loader above stands in — don't
+           also render an empty table or a premature "no data" notice. */
+        isPending ? null : (
+          <div className="table-empty">
+            {allSeqNums.length > 0 && filters.length > 0
+              ? `No rows match the active filter${filters.length === 1 ? "" : "s"}.`
+              : `No data for ${date}.`}
+          </div>
+        )
       ) : (
         <CameraDataTable
           columns={columns}

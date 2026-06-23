@@ -342,6 +342,22 @@ h1, h2 {
 .conn-connecting { color: var(--warn); }
 .conn-closed { color: var(--ink-soft); }
 
+/* S3-connectivity alert: only rendered when the server can't reach the
+   bucket, so it's styled as an error (not the quiet WS-offline grey) to
+   stand out beside the live indicator. */
+.s3-alert {
+  color: #fff;
+  background: #c64f50;
+  font-weight: 600;
+}
+
+/* S3-slow warning: a degrading-but-alive link. Amber, less loud than the
+   red unreachable alert. */
+.s3-slow {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .skeleton { color: var(--ink-soft); }
 
 /* ── Loading banner ────────────────────────────────────────────────────────

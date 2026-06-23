@@ -13,6 +13,8 @@ function renderWith(
     cache_enabled: true,
     warm_start: false,
     historical_loading: false,
+    s3_healthy: true,
+    s3_slow: false,
     cameras: [],
     ...status,
   };

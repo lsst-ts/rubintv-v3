@@ -46,3 +46,28 @@ def test_unknown_location_raises(locations: list[Location]) -> None:
     pool = S3ClientPool(locations)
     with pytest.raises(KeyError, match="unknown location"):
         pool.client_for("nowhere")
+
+
+@mock_aws
+def test_poller_client_uses_tight_timeouts(locations: list[Location]) -> None:
+    # The poller runs on a ~1s cadence, so a hung connection must fail fast
+    # rather than block on botocore's 60s default. The interactive client keeps
+    # the more patient default retry policy for user requests.
+    pool = S3ClientPool(locations)
+    poller = pool.poller_client_for("local")
+    default = pool.client_for("local")
+
+    # botocore stores the configured retry count as total attempts
+    # (max_attempts=1 -> 1 initial + 1 retry = 2 total).
+    pcfg = poller.meta.config
+    assert pcfg.connect_timeout == 5
+    assert pcfg.read_timeout == 10
+    assert pcfg.retries["total_max_attempts"] == 2
+
+    # The default client is left on botocore's standard (patient) timeouts:
+    # the 60s default connect timeout and 3 retries (4 total attempts).
+    dcfg = default.meta.config
+    assert dcfg.connect_timeout == 60
+    assert dcfg.retries["total_max_attempts"] == 4
+
+    pool.close()

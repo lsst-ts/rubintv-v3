@@ -49,6 +49,14 @@ class StatusResponse(BaseModel):
     historical_loading: bool
     """True while the back-catalogue is still being scanned; the frontend
     shows a non-blocking 'still loading' affordance rather than an error."""
+    s3_healthy: bool
+    """Whether the last current-day poll cycle reached S3. False means the
+    bucket endpoint was unreachable (e.g. a connect timeout); the frontend
+    shows an 'S3 unreachable' alert beside the live indicator."""
+    s3_slow: bool
+    """Whether the last successful poll cycle was unusually slow. True warns of
+    a degrading link before it fails outright; the frontend shows an amber
+    'S3 slow' warning. Ignored when s3_healthy is false."""
     cameras: list[CameraStatus]
     """Per-camera cold-start scan progress, so the frontend can scope the
     'loading' affordance to the camera being viewed."""
@@ -87,5 +95,7 @@ def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse:
         cache_enabled=state.cache_enabled,
         warm_start=state.warm_start,
         historical_loading=state.historical_loading(),
+        s3_healthy=state.s3_healthy(),
+        s3_slow=state.s3_slow(),
         cameras=cameras,
     )

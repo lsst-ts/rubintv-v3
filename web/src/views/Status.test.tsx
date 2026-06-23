@@ -14,6 +14,8 @@ function renderWith(
     cache_enabled: true,
     warm_start: false,
     historical_loading: cameras.some((c) => !c.full_complete),
+    s3_healthy: true,
+    s3_slow: false,
     cameras,
     ...over,
   };

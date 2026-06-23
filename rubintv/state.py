@@ -53,6 +53,14 @@ class AppState:
     historical_loading: Callable[[], bool] = field(default=lambda: True)
     """Callable returning whether the historical back-catalogue is still
     loading (the poll engine owns the flag; this reads it)."""
+    s3_healthy: Callable[[], bool] = field(default=lambda: True)
+    """Callable returning whether the last current-day poll cycle reached S3
+    (the poll engine owns the flag; this reads it). False means the bucket
+    endpoint was unreachable on the most recent cycle."""
+    s3_slow: Callable[[], bool] = field(default=lambda: False)
+    """Callable returning whether the last successful poll cycle was unusually
+    slow (the poll engine owns the flag; this reads it). True warns of a
+    degrading link before it fails the s3_healthy check outright."""
     camera_status: Callable[[], dict[tuple[str, str], CameraScanState]] = field(
         default=dict
     )
