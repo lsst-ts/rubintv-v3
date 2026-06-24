@@ -140,11 +140,11 @@ export function CameraTable() {
     return m;
   }, [liveChannels]);
 
-  // Row density (compact / regular / comfy), persisted per browser.
+  // Row density (compact / regular), persisted per browser.
   const [density, setDensity] = useState<Density>(() => {
     try {
       const d = localStorage.getItem("rubintv.density");
-      if (d === "compact" || d === "regular" || d === "comfy") return d;
+      if (d === "compact" || d === "regular") return d;
     } catch {
       // ignore
     }
@@ -461,7 +461,7 @@ export function CameraTable() {
         <LiveClocks sinceLabel={sinceLabel} lastImage={lastImageTime} />
 
         <div className="density-seg" role="group" aria-label="Row density">
-          {(["compact", "regular", "comfy"] as Density[]).map((d) => (
+          {(["compact", "regular"] as Density[]).map((d) => (
             <button
               key={d}
               type="button"

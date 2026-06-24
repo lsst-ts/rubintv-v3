@@ -7,11 +7,10 @@ import { CopyButton } from "../components/CopyButton";
 import { CellModal } from "../components/CellModal";
 import { ViewerIcon, QuicklookIcon, DetailsIcon } from "../components/Icons";
 
-export type Density = "compact" | "regular" | "comfy";
+export type Density = "compact" | "regular";
 const ROW_PAD: Record<Density, string> = {
   compact: "3px 8px",
   regular: "6px 8px",
-  comfy: "10px 10px",
 };
 
 export interface Column {
@@ -24,11 +23,13 @@ export interface Column {
 // absorb leftover space. Action columns size to their link text; metadata
 // columns get a compact default (values are short — angled labels float above
 // in an overlay, so the column needn't fit the label).
-function widthFor(key: string): string {
+function widthFor(key: string, density: Density): string {
   if (key === "seq") return "64px";
   if (key.startsWith("ch:")) return "44px"; // one chip + padding
   if (key === "viewer" || key === "quicklook" || key === "copy") return "34px";
-  return "92px";
+  // Metadata columns: values are short, so compact trims the padded default
+  // width that regular keeps for breathing room.
+  return density === "compact" ? "64px" : "92px";
 }
 
 // A "_<col>" metadata value names CSS class(es) for the "<col>" cell — the old
@@ -156,7 +157,7 @@ function CameraDataTableInner({
       >
         <colgroup>
           {columns.map((c) => (
-            <col key={c.key} style={{ width: widthFor(c.key) }} />
+            <col key={c.key} style={{ width: widthFor(c.key, density) }} />
           ))}
         </colgroup>
         <thead ref={headRef}>
