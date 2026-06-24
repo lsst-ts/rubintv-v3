@@ -65,6 +65,7 @@ Per-cell styling and the action-column icon/confirmation work.
 - `d2362cb` Replace table action-column text with icons
 - `a1e98bd` Narrow action columns + check-mark copy confirmation
 - `eb273b5` Render object/array metadata cells as a foldout modal
+- `7b1dda7` Simplify table density to two sizes with larger, lighter headers
 
 ### PR 7 — Table filtering + header controls
 The metadata filter, control layout, steppers, and header clocks.
