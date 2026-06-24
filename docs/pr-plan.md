@@ -64,6 +64,7 @@ Per-cell styling and the action-column icon/confirmation work.
 - `02b84df` Add per-cell colour-flag styles from the original app's palette
 - `d2362cb` Replace table action-column text with icons
 - `a1e98bd` Narrow action columns + check-mark copy confirmation
+- `eb273b5` Render object/array metadata cells as a foldout modal
 
 ### PR 7 — Table filtering + header controls
 The metadata filter, control layout, steppers, and header clocks.
