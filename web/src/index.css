@@ -1098,6 +1098,68 @@ h1, h2 {
   background: transparent !important;
 }
 
+/* Foldout button: a metadata cell whose value is a JSON object/array shows
+   this button (its DISPLAY_VALUE or a 📖 glyph); clicking opens .cell-modal. */
+.button-table {
+  border: 1px solid var(--stroke);
+  background: var(--paper-3);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font: inherit;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.button-table:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Object-cell modal: fixed full-viewport backdrop with a centred card listing
+   the cell's key/value pairs. Rendered via a portal on document.body. */
+.cell-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.cell-modal {
+  background: var(--paper);
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: min(90vw, 560px);
+  max-height: 80vh;
+  overflow: auto;
+}
+.cell-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--stroke);
+  position: sticky; top: 0;
+  background: var(--paper);
+}
+.cell-modal-title { font-weight: 600; }
+.cell-modal-close {
+  border: none; background: transparent;
+  color: var(--ink-soft);
+  font-size: 20px; line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.cell-modal-close:hover { color: var(--ink); }
+.cell-dict { width: 100%; border-collapse: collapse; }
+.cell-dict th.key,
+.cell-dict td.value {
+  text-align: left;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--line-mid);
+  vertical-align: top;
+}
+.cell-dict th.key { font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+.cell-dict td.value { word-break: break-word; }
+
 /* Per-row action links. */
 .data-table td a { color: var(--accent); text-decoration: none; }
 .data-table td a:hover { text-decoration: underline; }

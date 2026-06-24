@@ -89,6 +89,17 @@ export function CopyIcon() {
   );
 }
 
+// Foldout — a list/details glyph for metadata cells whose value is an object;
+// clicking opens the full key/value set in a modal.
+export function DetailsIcon() {
+  return (
+    <svg {...base}>
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3 6h.01M3 12h.01M3 18h.01" />
+    </svg>
+  );
+}
+
 // Check mark — the copy-confirmation state. pathLength=1 lets CSS animate the
 // stroke "drawing" itself in.
 export function CheckIcon() {

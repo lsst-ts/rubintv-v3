@@ -1,10 +1,11 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DatePayload, Metadata } from "../lib/types";
 import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { fillTemplate } from "../lib/links";
 import { CopyButton } from "../components/CopyButton";
-import { ViewerIcon, QuicklookIcon } from "../components/Icons";
+import { CellModal } from "../components/CellModal";
+import { ViewerIcon, QuicklookIcon, DetailsIcon } from "../components/Icons";
 
 export type Density = "compact" | "regular" | "comfy";
 const ROW_PAD: Record<Density, string> = {
@@ -60,6 +61,18 @@ function formatCell(value: unknown): { display: string; title?: string } {
   return { display: s };
 }
 
+// Some metadata values are JSON objects/arrays rather than scalars (e.g. a
+// {DISPLAY_VALUE, ...details} record). These can't be shown inline; the cell
+// renders a foldout button that opens a modal of the full key/value set. The
+// button label is the object's DISPLAY_VALUE when present (returned as a
+// string), else null — the caller renders a neutral details icon.
+function foldoutLabel(data: Record<string, unknown> | unknown[]): string | null {
+  if (!Array.isArray(data) && typeof data.DISPLAY_VALUE === "string") {
+    return data.DISPLAY_VALUE;
+  }
+  return null;
+}
+
 interface Props {
   columns: Column[];
   seqNums: number[];
@@ -106,6 +119,13 @@ function CameraDataTableInner({
     columns,
     density,
   ]);
+
+  // The currently open object-cell modal (foldout), or null when none. Holds
+  // the dialog header and the object/array to display.
+  const [modal, setModal] = useState<{
+    header: string;
+    data: Record<string, unknown> | unknown[];
+  } | null>(null);
 
   return (
     <div className="table-wrap" ref={wrapRef}>
@@ -244,8 +264,33 @@ function CameraDataTableInner({
                   // a colour class for this cell (the old app's per-cell
                   // indicator convention); namespaced under cell- to isolate it.
                   const col = c.key.slice(5);
-                  const { display, title } = formatCell(meta[col]);
+                  const value = meta[col];
                   const flag = cellFlagClass(meta[`_${col}`]);
+                  // Object/array values can't render inline: show a foldout
+                  // button that opens the full key/value set in a modal.
+                  if (value !== null && typeof value === "object") {
+                    const data = value as Record<string, unknown> | unknown[];
+                    const label = foldoutLabel(data);
+                    return (
+                      <td key={c.key} className={flag}>
+                        <button
+                          type="button"
+                          className={label ? "button-table" : "action-link"}
+                          onClick={() =>
+                            setModal({
+                              header: `Seq Num: ${seq} - ${col}`,
+                              data,
+                            })
+                          }
+                          aria-label={label ?? `${col} details`}
+                          title={label ? undefined : "View details"}
+                        >
+                          {label ?? <DetailsIcon />}
+                        </button>
+                      </td>
+                    );
+                  }
+                  const { display, title } = formatCell(value);
                   return (
                     <td
                       key={c.key}
@@ -269,6 +314,13 @@ function CameraDataTableInner({
           })}
         </tbody>
       </table>
+      {modal && (
+        <CellModal
+          header={modal.header}
+          data={modal.data}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }
