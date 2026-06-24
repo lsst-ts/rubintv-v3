@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
+import { RubinMark } from "./RubinMark";
 import type { ShellNav } from "../lib/useShellNav";
 
 // The app-shell sidebar: brand head, camera pills (real cameras for the active
@@ -27,17 +28,10 @@ export function Sidebar({ nav, onClose }: Props) {
     <div className="sidebar">
       <div className="sidebar-head">
         <div>
-          {/* Brand mark as a CSS background (not an <img>) so it stays out of
-              media-image assertions. A div, not an <h1>: the only RubinTV
+          {/* Inline vector mark (shared with the header) so it scales crisply
+              and follows the theme accent. A div, not an <h1>: the only RubinTV
               heading is the Home view's. */}
-          <div
-            className="brand-mark"
-            role="img"
-            aria-label="Vera C. Rubin Observatory"
-            style={{
-              backgroundImage: 'url("/rubin-mark.png")',
-            }}
-          />
+          <RubinMark className="brand-mark" />
           <div className="brand-title">RubinTV</div>
           {location && <div className="site">{location}</div>}
         </div>

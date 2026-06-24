@@ -21,17 +21,31 @@ interface Props {
 // What to show given the status payload and the camera in view (if any).
 // Returns null when nothing should be shown — used both for rendering and to
 // decide whether to keep polling.
-function bannerMessage(
+// The inline pill shows a short label; the fuller sentence rides along as a
+// tooltip. Returns null when nothing should be shown — used both for rendering
+// and to decide whether to keep polling.
+interface BannerState {
+  label: string;
+  title: string;
+}
+
+function bannerState(
   data: StatusResponse | undefined,
   location?: string,
   camera?: string,
-): string | null {
+): BannerState | null {
   if (!data) return null;
   // A warm start has the calendar populated from cache, so an in-progress
   // scan is just a refresh — don't imply older dates are missing.
-  const scanning = data.warm_start
-    ? "Refreshing historical data… showing cached dates."
-    : "Loading historical data… older dates may be incomplete.";
+  const scanning: BannerState = data.warm_start
+    ? {
+        label: "Refreshing",
+        title: "Refreshing historical data… cached dates are shown meanwhile.",
+      }
+    : {
+        label: "Loading dates",
+        title: "Loading historical data… older dates may be incomplete.",
+      };
   if (location && camera) {
     const status = (data.cameras ?? []).find(
       (c) => c.location === location && c.camera === camera,
@@ -40,7 +54,10 @@ function bannerMessage(
     if (!status || status.full_complete) return null;
     if (data.warm_start) return scanning;
     return status.recent_ready
-      ? "Recent dates are ready; older dates are still loading…"
+      ? {
+          label: "Loading older",
+          title: "Recent dates are ready; older dates are still loading…",
+        }
       : scanning;
   }
   // No camera in view: site-wide affordance.
@@ -53,15 +70,16 @@ export function LoadingBanner({ location, camera }: Props) {
     queryFn: () => api.status(),
     // Poll while there's still something to report for the current scope.
     refetchInterval: (query) =>
-      bannerMessage(query.state.data, location, camera) === null ? false : 5000,
+      bannerState(query.state.data, location, camera) === null ? false : 5000,
   });
 
-  const message = bannerMessage(data, location, camera);
-  if (message === null) return null;
+  const state = bannerState(data, location, camera);
+  if (state === null) return null;
 
   return (
-    <div className="loading-banner" role="status">
-      {message}
-    </div>
+    <span className="conn scan-pill" role="status" title={state.title}>
+      <span className="scan-spinner" aria-hidden="true" />
+      {state.label}
+    </span>
   );
 }

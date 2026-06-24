@@ -38,23 +38,29 @@ const cam = (over: Partial<StatusResponse["cameras"][number]>) => ({
   ...over,
 });
 
-test("shows the site-wide banner while history is loading (no camera)", async () => {
+// The visible pill carries a short label; the fuller sentence lives in the
+// title tooltip on the same status element. Assert on the tooltip so the
+// wording-level intent stays covered.
+const pillTitle = async () =>
+  (await screen.findByRole("status")).getAttribute("title");
+
+test("shows the site-wide pill while history is loading (no camera)", async () => {
   renderWith({ historical_loading: true });
-  expect(await screen.findByText(/Loading historical data/)).toBeDefined();
+  expect(await pillTitle()).toMatch(/Loading historical data/);
 });
 
 test("renders nothing once history has loaded (no camera)", async () => {
   renderWith({ historical_loading: false });
   await new Promise((r) => setTimeout(r, 0));
-  expect(screen.queryByText(/Loading historical data/)).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
 });
 
-test("scopes to the current camera: full banner before recent is ready", async () => {
+test("scopes to the current camera: full wording before recent is ready", async () => {
   renderWith(
     { historical_loading: true, cameras: [cam({})] },
     { location: "loc", camera: "cam" },
   );
-  expect(await screen.findByText(/older dates may be incomplete/)).toBeDefined();
+  expect(await pillTitle()).toMatch(/older dates may be incomplete/);
 });
 
 test("softens wording once the recent window is ready", async () => {
@@ -62,7 +68,7 @@ test("softens wording once the recent window is ready", async () => {
     { historical_loading: true, cameras: [cam({ recent_ready: true })] },
     { location: "loc", camera: "cam" },
   );
-  expect(await screen.findByText(/Recent dates are ready/)).toBeDefined();
+  expect(await pillTitle()).toMatch(/Recent dates are ready/);
 });
 
 test("on a warm start, calls the scan a refresh rather than a cold load", async () => {
@@ -70,13 +76,13 @@ test("on a warm start, calls the scan a refresh rather than a cold load", async 
     { historical_loading: true, warm_start: true, cameras: [cam({})] },
     { location: "loc", camera: "cam" },
   );
-  expect(await screen.findByText(/Refreshing historical data/)).toBeDefined();
-  expect(screen.queryByText(/older dates may be incomplete/)).toBeNull();
+  expect(await pillTitle()).toMatch(/Refreshing historical data/);
+  expect(await pillTitle()).not.toMatch(/older dates may be incomplete/);
 });
 
 test("warm start refresh wording also applies site-wide (no camera)", async () => {
   renderWith({ historical_loading: true, warm_start: true });
-  expect(await screen.findByText(/Refreshing historical data/)).toBeDefined();
+  expect(await pillTitle()).toMatch(/Refreshing historical data/);
 });
 
 test("clears once the current camera's full sweep completes", async () => {
@@ -88,7 +94,7 @@ test("clears once the current camera's full sweep completes", async () => {
     },
     { location: "loc", camera: "cam" },
   );
-  // …but the camera in view is done, so no banner for it.
+  // …but the camera in view is done, so no pill for it.
   await new Promise((r) => setTimeout(r, 0));
-  expect(screen.queryByText(/historical data|Recent dates/)).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
 });

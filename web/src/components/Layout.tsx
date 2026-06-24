@@ -5,6 +5,7 @@ import { ConnectionStatus } from "./ConnectionStatus";
 import { S3Status } from "./S3Status";
 import { LoadingBanner } from "./LoadingBanner";
 import { Sidebar } from "./Sidebar";
+import { RubinMark } from "./RubinMark";
 import { STALE } from "../lib/queryClient";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
 
@@ -93,24 +94,17 @@ export function Layout() {
               <span style={{ flex: 1 }} />
             )}
             <span style={{ flex: 1 }} />
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-end",
-                gap: 4,
-              }}
-            >
+            <div className="topbar-right">
+              {/* Vectorised Rubin mark on the right of the header. Inline SVG
+                  so it inherits the constellation-cyan accent via currentColor. */}
+              <RubinMark className="topbar-logo" />
               {!sidebarOpen && (
                 <div className="topbar-brand">
                   <span className="brand">RubinTV</span>
                   {location && <span className="site">{location}</span>}
                 </div>
               )}
-              {/* Historical-scan notice: a compact inline pill above the live
-                  indicator, not a full-width banner. */}
-              <LoadingBanner location={location} camera={camera} />
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="topbar-status">
                 <nav className="subapp-nav" aria-label="Sub-apps">
                   {subapps.map((path) => (
                     <a key={path} href={path}>
@@ -119,6 +113,9 @@ export function Layout() {
                   ))}
                 </nav>
                 <S3Status />
+                {/* Historical-scan notice sits with the other status signals
+                    as a compact inline pill, not a full-width banner. */}
+                <LoadingBanner location={location} camera={camera} />
                 <ConnectionStatus />
               </div>
             </div>
