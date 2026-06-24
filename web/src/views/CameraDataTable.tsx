@@ -1,4 +1,5 @@
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import type { DatePayload, Metadata } from "../lib/types";
 import { useAngledHeaders } from "../lib/useAngledHeaders";
@@ -74,6 +75,193 @@ function foldoutLabel(data: Record<string, unknown> | unknown[]): string | null 
   return null;
 }
 
+// One table row. Extracted and memoized so that, with virtualization, only the
+// ~30 on-screen rows exist in the DOM and a column change re-renders just those
+// (not all 1000+). The cell logic is unchanged from the inline version.
+interface RowProps {
+  seq: number;
+  rowIdx: number;
+  columns: Column[];
+  meta: Record<string, unknown>;
+  payload: DatePayload | undefined;
+  channelColour: Record<string, string>;
+  location: string;
+  camera: string;
+  date: string;
+  viewerTmpl: string | null;
+  quicklookTmpl: string | null;
+  copyRowTmpl: string | null;
+  linkCtx: Props["linkCtx"];
+  onFoldout: (modal: {
+    header: string;
+    data: Record<string, unknown> | unknown[];
+  }) => void;
+  // react-virtual measurement: ref + data-index let the virtualizer read each
+  // row's true height (the chip cell makes a static estimate unreliable).
+  measureRef: (el: HTMLTableRowElement | null) => void;
+  dataIndex: number;
+}
+
+const Row = memo(function Row({
+  seq,
+  rowIdx,
+  columns,
+  meta,
+  payload,
+  channelColour,
+  location,
+  camera,
+  date,
+  viewerTmpl,
+  quicklookTmpl,
+  copyRowTmpl,
+  linkCtx,
+  onFoldout,
+  measureRef,
+  dataIndex,
+}: RowProps) {
+  return (
+    <tr
+      ref={measureRef}
+      data-index={dataIndex}
+      className={rowIdx === 0 ? "newest" : undefined}
+    >
+      {columns.map((c) => {
+        if (c.key === "seq") {
+          return (
+            <td key="seq" className="seq">
+              {seq}
+            </td>
+          );
+        }
+        if (c.key.startsWith("ch:")) {
+          const chan = c.key.slice(3);
+          const present = (payload?.channels[chan] ?? []).includes(seq);
+          return (
+            <td key={c.key}>
+              {present ? (
+                <Link
+                  className="cell-chip"
+                  style={{ background: channelColour[chan] }}
+                  to={`/${location}/${camera}/${chan}?seq=${seq}&date=${date}`}
+                  aria-label={`${chan} ${seq}`}
+                />
+              ) : (
+                <span className="cell-chip empty" />
+              )}
+            </td>
+          );
+        }
+        if (c.key === "viewer") {
+          return (
+            <td key="viewer" className="action-cell">
+              <a
+                className="action-link"
+                href={fillTemplate(
+                  viewerTmpl!,
+                  date,
+                  seq,
+                  linkCtx(meta.controller),
+                )}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Viewer"
+                title="Open in image viewer"
+              >
+                <ViewerIcon />
+              </a>
+            </td>
+          );
+        }
+        if (c.key === "quicklook") {
+          return (
+            <td key="quicklook" className="action-cell">
+              <a
+                className="action-link"
+                href={fillTemplate(
+                  quicklookTmpl!,
+                  date,
+                  seq,
+                  linkCtx(meta.controller),
+                )}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Quicklook"
+                title="Open in Quicklook"
+              >
+                <QuicklookIcon />
+              </a>
+            </td>
+          );
+        }
+        if (c.key === "copy") {
+          return (
+            <td key="copy" className="action-cell">
+              <CopyButton
+                icon
+                text={fillTemplate(
+                  copyRowTmpl!,
+                  date,
+                  seq,
+                  linkCtx(meta.controller),
+                )}
+              />
+            </td>
+          );
+        }
+        // Metadata cell. A sibling "_<col>" key, when present, names a colour
+        // class for this cell (the old app's per-cell indicator convention);
+        // namespaced under cell- to isolate it.
+        const col = c.key.slice(5);
+        const value = meta[col];
+        const flag = cellFlagClass(meta[`_${col}`]);
+        // Object/array values can't render inline: show a foldout button that
+        // opens the full key/value set in a modal.
+        if (value !== null && typeof value === "object") {
+          const data = value as Record<string, unknown> | unknown[];
+          const label = foldoutLabel(data);
+          return (
+            <td key={c.key} className={flag}>
+              <button
+                type="button"
+                className={label ? "button-table" : "action-link"}
+                onClick={() =>
+                  onFoldout({
+                    header: `Seq Num: ${seq} - ${col}`,
+                    data,
+                  })
+                }
+                aria-label={label ?? `${col} details`}
+                title={label ? undefined : "View details"}
+              >
+                {label ?? <DetailsIcon />}
+              </button>
+            </td>
+          );
+        }
+        const { display, title } = formatCell(value);
+        return (
+          <td
+            key={c.key}
+            className={flag}
+            title={title}
+            style={{
+              color: flag
+                ? undefined
+                : display === "—"
+                  ? "var(--ink-soft)"
+                  : "var(--ink)",
+              cursor: title ? "help" : undefined,
+            }}
+          >
+            {display}
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
 interface Props {
   columns: Column[];
   seqNums: number[];
@@ -128,6 +316,32 @@ function CameraDataTableInner({
     data: Record<string, unknown> | unknown[];
   } | null>(null);
 
+  // Row virtualization: with 1000+ rows, materializing every <tr> makes layout
+  // (and any column change) costly. We render only the rows in view plus an
+  // overscan margin, and pad the body with two spacer rows so the scrollbar and
+  // sticky header still behave as if the full table were present. The scroll
+  // element is the same `.table-wrap` the angled-header overlay measures; the
+  // header isn't virtualized, so that overlay is unaffected. Rows are measured
+  // dynamically (the fixed-height chip cell makes a static estimate unreliable).
+  const bodyRef = useRef<HTMLTableSectionElement | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: seqNums.length,
+    getScrollElement: () => wrapRef.current,
+    estimateSize: () => (density === "compact" ? 33 : 39),
+    overscan: 12,
+    // Spacer rows live inside the same <tbody> after the (separate, sticky)
+    // <thead>, so row start offsets are measured from the tbody's own origin —
+    // no scrollMargin adjustment needed (the top spacer absorbs the offset).
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+  const padTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const padBottom =
+    virtualRows.length > 0
+      ? totalSize - virtualRows[virtualRows.length - 1].end
+      : 0;
+  const colSpan = columns.length;
+
   return (
     <div className="table-wrap" ref={wrapRef}>
       {/* Angled header labels, positioned over each measured column. */}
@@ -138,12 +352,24 @@ function CameraDataTableInner({
           // seq label lives in its <th>; columns with no label (action columns)
           // draw nothing.
           if (!pos || c.key === "seq" || !c.label) return null;
+          const left = pos.left + 4;
+          // A label rotated -45° from its left-bottom anchor reaches rightward
+          // by (length / √2). For the last column(s) that overflows past the
+          // table's right edge into empty space. Cap each label's length to the
+          // horizontal room remaining (× √2) so the diagonal's right tip stays
+          // inside the table and the text truncates with an ellipsis instead.
+          // The CSS max-width already caps the *vertical* rise; we take the
+          // smaller of the two, leaving 6px slack so the tip clears the border.
+          const room = tableWidth ? (tableWidth - left - 6) * Math.SQRT2 : 0;
           return (
             <div
               key={c.key}
               className="hdr-label"
               title={c.label}
-              style={{ left: pos.left + 4 }}
+              style={{
+                left,
+                maxWidth: room > 0 ? `min(var(--hdr-rise), ${room}px)` : undefined,
+              }}
             >
               {c.label}
             </div>
@@ -173,146 +399,41 @@ function CameraDataTableInner({
             ))}
           </tr>
         </thead>
-        <tbody>
-          {seqNums.map((seq, rowIdx) => {
-            const meta = metadata[String(seq)] ?? {};
+        <tbody ref={bodyRef}>
+          {padTop > 0 && (
+            <tr aria-hidden="true">
+              <td colSpan={colSpan} style={{ height: padTop, padding: 0 }} />
+            </tr>
+          )}
+          {virtualRows.map((vr) => {
+            const seq = seqNums[vr.index];
             return (
-              <tr key={seq} className={rowIdx === 0 ? "newest" : undefined}>
-                {columns.map((c) => {
-                  if (c.key === "seq") {
-                    return (
-                      <td key="seq" className="seq">
-                        {seq}
-                      </td>
-                    );
-                  }
-                  if (c.key.startsWith("ch:")) {
-                    const chan = c.key.slice(3);
-                    const present = (payload?.channels[chan] ?? []).includes(seq);
-                    return (
-                      <td key={c.key}>
-                        {present ? (
-                          <Link
-                            className="cell-chip"
-                            style={{ background: channelColour[chan] }}
-                            to={`/${location}/${camera}/${chan}?seq=${seq}&date=${date}`}
-                            aria-label={`${chan} ${seq}`}
-                          />
-                        ) : (
-                          <span className="cell-chip empty" />
-                        )}
-                      </td>
-                    );
-                  }
-                  if (c.key === "viewer") {
-                    return (
-                      <td key="viewer" className="action-cell">
-                        <a
-                          className="action-link"
-                          href={fillTemplate(
-                            viewerTmpl!,
-                            date,
-                            seq,
-                            linkCtx(meta.controller),
-                          )}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="Viewer"
-                          title="Open in image viewer"
-                        >
-                          <ViewerIcon />
-                        </a>
-                      </td>
-                    );
-                  }
-                  if (c.key === "quicklook") {
-                    return (
-                      <td key="quicklook" className="action-cell">
-                        <a
-                          className="action-link"
-                          href={fillTemplate(
-                            quicklookTmpl!,
-                            date,
-                            seq,
-                            linkCtx(meta.controller),
-                          )}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="Quicklook"
-                          title="Open in Quicklook"
-                        >
-                          <QuicklookIcon />
-                        </a>
-                      </td>
-                    );
-                  }
-                  if (c.key === "copy") {
-                    return (
-                      <td key="copy" className="action-cell">
-                        <CopyButton
-                          icon
-                          text={fillTemplate(
-                            copyRowTmpl!,
-                            date,
-                            seq,
-                            linkCtx(meta.controller),
-                          )}
-                        />
-                      </td>
-                    );
-                  }
-                  // Metadata cell. A sibling "_<col>" key, when present, names
-                  // a colour class for this cell (the old app's per-cell
-                  // indicator convention); namespaced under cell- to isolate it.
-                  const col = c.key.slice(5);
-                  const value = meta[col];
-                  const flag = cellFlagClass(meta[`_${col}`]);
-                  // Object/array values can't render inline: show a foldout
-                  // button that opens the full key/value set in a modal.
-                  if (value !== null && typeof value === "object") {
-                    const data = value as Record<string, unknown> | unknown[];
-                    const label = foldoutLabel(data);
-                    return (
-                      <td key={c.key} className={flag}>
-                        <button
-                          type="button"
-                          className={label ? "button-table" : "action-link"}
-                          onClick={() =>
-                            setModal({
-                              header: `Seq Num: ${seq} - ${col}`,
-                              data,
-                            })
-                          }
-                          aria-label={label ?? `${col} details`}
-                          title={label ? undefined : "View details"}
-                        >
-                          {label ?? <DetailsIcon />}
-                        </button>
-                      </td>
-                    );
-                  }
-                  const { display, title } = formatCell(value);
-                  return (
-                    <td
-                      key={c.key}
-                      className={flag}
-                      title={title}
-                      style={{
-                        color: flag
-                          ? undefined
-                          : display === "—"
-                            ? "var(--ink-soft)"
-                            : "var(--ink)",
-                        cursor: title ? "help" : undefined,
-                      }}
-                    >
-                      {display}
-                    </td>
-                  );
-                })}
-              </tr>
+              <Row
+                key={seq}
+                seq={seq}
+                rowIdx={vr.index}
+                dataIndex={vr.index}
+                measureRef={rowVirtualizer.measureElement}
+                columns={columns}
+                meta={metadata[String(seq)] ?? {}}
+                payload={payload}
+                channelColour={channelColour}
+                location={location}
+                camera={camera}
+                date={date}
+                viewerTmpl={viewerTmpl}
+                quicklookTmpl={quicklookTmpl}
+                copyRowTmpl={copyRowTmpl}
+                linkCtx={linkCtx}
+                onFoldout={setModal}
+              />
             );
           })}
+          {padBottom > 0 && (
+            <tr aria-hidden="true">
+              <td colSpan={colSpan} style={{ height: padBottom, padding: 0 }} />
+            </tr>
+          )}
         </tbody>
       </table>
       {modal && (

@@ -24,6 +24,29 @@ class StubResizeObserver {
 globalThis.ResizeObserver =
   StubResizeObserver as unknown as typeof ResizeObserver;
 
+// jsdom gives every element a zero-size layout (no rendering engine), so the
+// row virtualizer in the camera table reads offsetHeight 0 for both its scroll
+// viewport and its rows, and renders nothing. @tanstack/react-virtual sizes
+// from offsetWidth/offsetHeight, so report a tall, fixed viewport for the
+// scroll container and a stable per-row height; the virtualizer then
+// materializes rows the tests assert on. (In a browser these come from layout.)
+const VIEWPORT_H = 2000;
+const ROW_H = 36;
+Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+  configurable: true,
+  get(this: HTMLElement) {
+    if (this.classList?.contains("table-wrap")) return VIEWPORT_H;
+    if (this.tagName === "TR") return ROW_H;
+    return 0;
+  },
+});
+Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+  configurable: true,
+  get() {
+    return 0;
+  },
+});
+
 if (!HTMLCanvasElement.prototype.getContext) {
   // Minimal stub: the canvas view bails out when getContext returns null.
   HTMLCanvasElement.prototype.getContext = (() =>

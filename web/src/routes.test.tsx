@@ -168,8 +168,12 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
 
   renderAt("/local/auxtel?date=2026-04-10");
 
-  // The channel column header shows the human title, not the ref name.
-  expect(await screen.findByText("Monitor Image")).toBeDefined();
+  // The channel column header shows the human title, not the ref name. Scope to
+  // the <th> (columnheader role): the angled-header overlay also draws the
+  // label in a sibling layer, so a plain text query would match twice.
+  expect(
+    await screen.findByRole("columnheader", { name: "Monitor Image" }),
+  ).toBeDefined();
   expect(screen.queryByText("monitor")).toBeNull();
 
   // Per-row action columns (viewer/quicklook/copy) have no header label.
