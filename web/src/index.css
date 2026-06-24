@@ -1231,7 +1231,10 @@ h1, h2 {
 }
 
 /* Newest-row highlight (top row). */
-.data-table tr.newest td { background: var(--accent-soft); }
+/* Newest-row highlight. Skip cells carrying a "_<col>" colour flag so the
+   indicator background (cell-bad, cell-r_color, …) still shows on the top row —
+   those flag rules have lower specificity and would otherwise be overridden. */
+.data-table tr.newest td:not([class*="cell-"]) { background: var(--accent-soft); }
 .data-table tr.newest td.seq {
   background: var(--accent-soft);
   box-shadow: inset 3px 0 0 var(--accent);
