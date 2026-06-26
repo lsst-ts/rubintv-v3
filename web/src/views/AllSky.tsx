@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
-import { STALE, staleTimeForDate } from "../lib/queryClient";
+import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { DatePicker } from "../components/DatePicker";
@@ -44,6 +44,9 @@ export function AllSky() {
   const date = params.get("date") ?? calendar?.dates[0] ?? "";
   // The newest date with data is the live one; everything else is historical.
   const isCurrent = date !== "" && date === calendar?.dates[0];
+  // Whether the viewed date is the live observing day (UTC−12 rollover) — the
+  // same rule the table/Channels chips use. Tints the date picker chip.
+  const isCurrentDayObs = date !== "" && date === currentDayObs();
   usePageTitle(cameraInfo?.title ?? camera, date);
 
   // Subscribe with the resolved date so channelData updates for today land live.
@@ -130,6 +133,7 @@ export function AllSky() {
           maxSeq={calendar?.max_seq ?? {}}
           allSky
           value={date}
+          isCurrentDayObs={isCurrentDayObs}
           onChange={(d) => setParams({ date: d })}
         />
         <span style={{ flex: 1 }} />
