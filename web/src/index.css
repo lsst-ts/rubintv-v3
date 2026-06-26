@@ -1380,6 +1380,27 @@ h1, h2 {
 
 /* ── Channels browser (latest-frame card grid) ─────────────────────────── */
 .chc-root { padding: 4px 0 24px; }
+
+/* Day-obs banner: the card grid always shows the newest day with data, so
+   state up front whether that is the live observing night or an older one —
+   otherwise a frame from a quiet/old night reads as "now". */
+.chc-dayobs {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--ink-soft);
+}
+.chc-dayobs strong { color: var(--ink); font-weight: 600; }
+.chc-dayobs-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.chc-dayobs--live .chc-dayobs-dot {
+  background: var(--good); animation: pulse 1.5s infinite;
+}
+/* Older night: amber, no pulse — the grid is not updating live. */
+.chc-dayobs--past { color: var(--warn); }
+.chc-dayobs--past strong { color: var(--warn); }
+.chc-dayobs--past .chc-dayobs-dot { background: var(--warn); }
 .chc-group { margin-bottom: 28px; }
 .chc-group-head {
   display: flex; align-items: baseline; gap: 12px;

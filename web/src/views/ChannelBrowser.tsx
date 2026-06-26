@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
-import { STALE, staleTimeForDate } from "../lib/queryClient";
+import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
 import type { ChannelOut, DatePayload } from "../lib/types";
 
@@ -158,6 +158,11 @@ export function ChannelBrowser() {
   if (channels.length === 0)
     return <p className="skeleton">This camera has no channels.</p>;
 
+  // Whether the day these cards are drawn from is the live observing day.
+  // The cards always show the newest day with data (calendar.dates[0]); if
+  // that isn't the current day_obs, the grid is an older night, not "now".
+  const isCurrentDayObs = date !== "" && date === currentDayObs();
+
   // The night's frontier: the highest latest-seq any live card has reached.
   // Per-day cards carry no comparable seq, so they're excluded from both the
   // frontier and the staleness cue.
@@ -195,6 +200,23 @@ export function ChannelBrowser() {
 
   return (
     <div className="chc-root">
+      {date !== "" && (
+        <div
+          className={`chc-dayobs${isCurrentDayObs ? " chc-dayobs--live" : " chc-dayobs--past"}`}
+        >
+          <span className="chc-dayobs-dot" aria-hidden="true" />
+          {isCurrentDayObs ? (
+            <span>
+              Showing <strong>tonight</strong> · {date}
+            </span>
+          ) : (
+            <span>
+              Latest data is from <strong>{date}</strong> — not the current
+              observing day
+            </span>
+          )}
+        </div>
+      )}
       {renderGroup("Image channels", live)}
       {renderGroup("Per night", perDay)}
     </div>
