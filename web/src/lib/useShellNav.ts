@@ -24,11 +24,17 @@ export interface ShellTab {
 // Table is always present; the others appear only when the backend advertises
 // them, so we never link a camera to a view it doesn't have.
 export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
-  const tabs: ShellTab[] = [{ id: "table", label: "Table", suffix: "" }];
+  // Live-view cameras (e.g. All Sky) have no per-seq table or channel grid —
+  // the base camera route is the live panel itself — so they get neither the
+  // Table nor Channels tab. A night report is still a distinct view if
+  // advertised, so it's added below.
+  const tabs: ShellTab[] = cam?.live_view
+    ? []
+    : [{ id: "table", label: "Table", suffix: "" }];
   if (!cam) return tabs;
   const channels = Array.isArray(cam.channels) ? cam.channels : [];
   const channelCount = channels.filter((c) => !c.per_day).length;
-  if (channelCount > 0) {
+  if (!cam.live_view && channelCount > 0) {
     tabs.push({
       id: "channels",
       label: "Channels",

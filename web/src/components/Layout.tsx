@@ -55,6 +55,10 @@ export function Layout() {
   // camera config. Only shown on a camera route.
   const tabs = tabsForCamera(nav.cameraInfo);
   const onCamera = !!location && !!camera && !nav.system;
+  // A camera can have no tabs (live-view cameras with no night report), in
+  // which case the topbar is laid out like the non-camera pages — no tabs row,
+  // so the status pills get the bottom padding they'd otherwise lack.
+  const hasTabs = onCamera && tabs.length > 0;
 
   return (
     <div className={`shell ${sidebarOpen ? "" : "collapsed"}`}>
@@ -67,7 +71,7 @@ export function Layout() {
       <div className="main">
         {/* Without the tabs row the status pills would sit flush on the
             topbar's bottom border; pad the bottom in that case. */}
-        <header className={"topbar" + (onCamera ? "" : " no-tabs")}>
+        <header className={"topbar" + (hasTabs ? "" : " no-tabs")}>
           {!sidebarOpen && (
             <div className="topbar-leftgutter">
               <button
@@ -147,7 +151,7 @@ export function Layout() {
             </div>
           </div>
 
-          {onCamera && (
+          {hasTabs && (
             <div className="tabs">
               {tabs.map((tab) => {
                 const to =

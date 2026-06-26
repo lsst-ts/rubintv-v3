@@ -720,6 +720,15 @@ test("a live_view camera renders the live-view panel, not the table", async () =
   expect(container.querySelector("table.data-table")).toBeNull();
 });
 
+test("a live_view camera shows no Table or Channels tabs", async () => {
+  stubAllSky();
+  renderAt("/local/allsky?date=2026-04-10");
+  // Wait for the panel to mount so tabs (if any) would have rendered.
+  await screen.findByText("All Sky");
+  expect(screen.queryByRole("link", { name: /^Table$/ })).toBeNull();
+  expect(screen.queryByRole("link", { name: /^Channels/ })).toBeNull();
+});
+
 test("current All Sky date shows latest still and movie at their max seq", async () => {
   stubAllSky();
   // Newest date in the calendar -> live mode: still (seq 3) + movie (seq 8).
