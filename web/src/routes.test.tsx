@@ -116,7 +116,7 @@ test("channel /current route follows the newest exposure", async () => {
     "/channels/monitor/2026-04-10/000252/image.png",
   );
   // Live badge present; no "jump to current" link in live mode.
-  expect(screen.getByText("● LIVE")).toBeDefined();
+  expect(screen.getByText("LIVE")).toBeDefined();
   // Back arrow steps to the older seq (251); there is no newer arrow at the
   // latest exposure, so it never links to the image on screen.
   const back = screen.getByRole("link", { name: /← 251/ });

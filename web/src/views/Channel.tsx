@@ -226,7 +226,7 @@ export function Channel({ live = false }: { live?: boolean }) {
         </h3>
         {live ? (
           <span className="tag live live-badge" role="status">
-            ● LIVE
+            LIVE
           </span>
         ) : (
           <Link

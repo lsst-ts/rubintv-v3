@@ -84,8 +84,17 @@ export function useShellNav(): ShellNav {
     if (pathname.endsWith("/night-report")) return "night-report";
     if (pathname.endsWith("/allsky")) return "allsky";
     if (pathname.endsWith("/mosaic")) return "mosaic";
+    // A single-channel view (/:location/:camera/:channel[/current]) is reached
+    // from the Channels tab, so it belongs to that tab — not the Table default.
+    // Detect it by depth: anything beyond /:location/:camera that wasn't one of
+    // the named suffixes above is a channel page.
+    if (camera) {
+      const segments = pathname.split("/").filter(Boolean);
+      const cameraIdx = segments.indexOf(camera);
+      if (cameraIdx >= 0 && segments.length > cameraIdx + 1) return "channels";
+    }
     return "table";
-  }, [pathname]);
+  }, [pathname, camera]);
 
   const locationsQ = useQuery({
     queryKey: queryKeys.locations(),
