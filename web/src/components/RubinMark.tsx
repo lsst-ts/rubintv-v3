@@ -1,10 +1,15 @@
 // Auto-generated from public/rubin-mark.png via potrace. The Rubin "shooting
 // stars" mark as inline SVG so it inherits the theme accent via currentColor.
 export function RubinMark(props: React.SVGProps<SVGSVGElement>) {
+  // Intrinsic width/height keep the mark small before index.css applies, so a
+  // hard refresh can't flash the SVG at its unconstrained default size.
+  // Consumers (.brand-mark / .topbar-logo) override via height + width:auto.
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 502 189"
+      width="80"
+      height="30"
       fill="currentColor"
       role="img"
       aria-label="Vera C. Rubin Observatory"
