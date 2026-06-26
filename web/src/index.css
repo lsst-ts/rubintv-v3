@@ -297,8 +297,17 @@ h1, h2 {
 }
 .crumb a:hover,
 .breadcrumbs a:hover { color: var(--accent); border-bottom-color: var(--accent); }
-.crumb .sep { color: var(--line-mid); }
-.crumb .here { color: var(--ink); }
+.crumb .sep,
+.breadcrumbs .sep {
+  color: var(--line-mid);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+}
+/* Current page: the leaf crumb is not a link, so make it read as the
+   "you are here" anchor — full-ink and a touch heavier than the trail. */
+.crumb .here,
+.breadcrumbs .here { color: var(--ink); font-weight: 600; }
 
 .title-row {
   display: flex; align-items: baseline; gap: 14px; margin-top: 4px;

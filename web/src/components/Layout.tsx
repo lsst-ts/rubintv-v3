@@ -82,10 +82,34 @@ export function Layout() {
           )}
 
           <nav className="crumb breadcrumbs" aria-label="Breadcrumb">
-            <Link to="/">RubinTV</Link>
-            {location && <Link to={`/${location}`}>{location}</Link>}
+            {location ? (
+              <Link to="/">RubinTV</Link>
+            ) : (
+              <span className="here" aria-current="page">
+                RubinTV
+              </span>
+            )}
+            {location && (
+              <>
+                <span className="sep" aria-hidden="true">
+                  ›
+                </span>
+                {camera ? (
+                  <Link to={`/${location}`}>{location}</Link>
+                ) : (
+                  <span className="here">{location}</span>
+                )}
+              </>
+            )}
             {location && camera && (
-              <Link to={`/${location}/${camera}`}>{camera}</Link>
+              <>
+                <span className="sep" aria-hidden="true">
+                  ›
+                </span>
+                <span className="here" aria-current="page">
+                  {camera}
+                </span>
+              </>
             )}
           </nav>
 
