@@ -81,6 +81,55 @@ test("renders queued cell content and the Other Queues table from live data", as
   expect(screen.getByText("12")).toBeDefined();
 });
 
+test("a later full snapshot replaces the previous one (no stale sets linger)", async () => {
+  // The rebuild's contract is that the backend pushes the *entire* site-wide
+  // snapshot on every detectorStatus message (detectors.all()), and the client
+  // replaces the cache slot wholesale — there is no per-set merge. This is what
+  // immunises it against the v2 bug where successive single-set deltas were
+  // shaped differently from the initial snapshot. Assert that a second snapshot
+  // both updates a changed set and drops a set that's no longer present.
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  await screen.findByText("SFM Step 1b");
+
+  // First snapshot: a queued cell in sfmStep1b and an Other Queues row.
+  act(() =>
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        detectors: {
+          sfmStep1b: {
+            workers: { "0": { status: "queued", queue_length: 7 } },
+          },
+          otherQueues: { text: { queueA: "12" } },
+        },
+      },
+    }),
+  );
+  expect(await screen.findByText("7")).toBeDefined();
+  expect(await screen.findByText("queueA")).toBeDefined();
+
+  // Second full snapshot: queue length changes, and otherQueues is gone.
+  act(() =>
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        detectors: {
+          sfmStep1b: {
+            workers: { "0": { status: "queued", queue_length: 3 } },
+          },
+        },
+      },
+    }),
+  );
+
+  // The changed value shows; the stale ones are gone (wholesale replace).
+  expect(await screen.findByText("3")).toBeDefined();
+  await waitFor(() => expect(screen.queryByText("7")).toBeNull());
+  expect(screen.queryByText("queueA")).toBeNull();
+});
+
 test("restart requires a confirm click, then POSTs the set's restart", async () => {
   stub();
   const qc = createQueryClient();
