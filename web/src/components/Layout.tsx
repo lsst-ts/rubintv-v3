@@ -65,7 +65,9 @@ export function Layout() {
       )}
 
       <div className="main">
-        <header className="topbar">
+        {/* Without the tabs row the status pills would sit flush on the
+            topbar's bottom border; pad the bottom in that case. */}
+        <header className={"topbar" + (onCamera ? "" : " no-tabs")}>
           {!sidebarOpen && (
             <div className="topbar-leftgutter">
               <button

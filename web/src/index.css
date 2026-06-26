@@ -235,6 +235,9 @@ h1, h2 {
   position: relative;
 }
 .shell.collapsed .topbar { padding-left: 56px; min-height: 116px; }
+/* No tabs row to fill the gap, so the status pills would otherwise sit flush
+   on the bottom border — give the topbar its own bottom padding. */
+.topbar.no-tabs { padding-bottom: 12px; }
 
 .sidebar-reopen {
   width: 28px; height: 28px;
