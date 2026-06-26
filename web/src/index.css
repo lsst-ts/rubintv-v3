@@ -198,6 +198,9 @@ h1, h2 {
   width: 5px; height: 5px; border-radius: 50%; background: var(--good);
   flex-shrink: 0;
 }
+/* Amber when online but no data for the current observing day. Active/dim
+   pills override below (selected pill / offline camera). */
+.sidebar .cam-pill .pdot.stale { background: var(--warn); }
 .sidebar .cam-pill.active .pdot { background: var(--paper); }
 .sidebar .cam-pill.dim .pdot { background: var(--line-soft); }
 
@@ -504,7 +507,11 @@ h1, h2 {
   border-radius: 50%;
   margin-left: 0.5rem;
 }
-.dot.online { background: var(--good); }
+/* Camera data freshness (location cards): green = has data this observing day,
+   amber = online but no data today (showing an earlier night), grey = offline
+   in config. Full meaning is in the dot's title/aria-label. */
+.dot.fresh { background: var(--good); }
+.dot.stale { background: var(--warn); }
 .dot.offline { background: var(--line-mid); }
 
 /* ── Controls / table header rows ──────────────────────────────────────── */

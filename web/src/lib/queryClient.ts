@@ -22,6 +22,26 @@ export function currentDayObs(now: Date = new Date()): string {
   return new Date(now.getTime() - 12 * 60 * MINUTE).toISOString().slice(0, 10);
 }
 
+/**
+ * Freshness of a camera, for the location/sidebar status dot:
+ *   - "offline" — the camera is disabled in config (online === false).
+ *   - "fresh"   — online and has data for the current observing day.
+ *   - "stale"   — online but its newest data is from an earlier day (or none).
+ *
+ * `latestDate` is the camera's most recent day with data (YYYY-MM-DD) from the
+ * location payload, or null/undefined when it has none.
+ */
+export type CameraDataState = "offline" | "fresh" | "stale";
+
+export function cameraDataState(
+  online: boolean,
+  latestDate: string | null | undefined,
+  now: Date = new Date(),
+): CameraDataState {
+  if (!online) return "offline";
+  return latestDate === currentDayObs(now) ? "fresh" : "stale";
+}
+
 /** staleTime for camera/metadata data, by how many days ago the date is. */
 export function staleTimeForDate(date: Date, now: Date = new Date()): number {
   const daysAgo = Math.floor((now.getTime() - date.getTime()) / (24 * 60 * MINUTE));

@@ -62,7 +62,12 @@ export interface ShellNav {
   locations: { name: string; title: string }[];
   cameraGroups: {
     label: string;
-    cameras: { name: string; title: string; online: boolean }[];
+    cameras: {
+      name: string;
+      title: string;
+      online: boolean;
+      latestDate: string | null;
+    }[];
   }[];
   cameraInfo: CameraOut | undefined;
   hasClusterStatus: boolean;
@@ -143,6 +148,7 @@ export function useShellNav(): ShellNav {
         name: c.name,
         title: c.title,
         online: c.online,
+        latestDate: c.latest_date ?? null,
       })),
     })),
     cameraInfo: cameraQ.data,

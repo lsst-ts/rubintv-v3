@@ -2,10 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
-import { STALE } from "../lib/queryClient";
+import { STALE, cameraDataState } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
 
-// Camera groups with cards and online/offline indicators.
+const DOT_TITLE: Record<string, string> = {
+  offline: "Offline — this camera is disabled in the configuration.",
+  fresh: "Live — this camera has data for the current observing day.",
+  stale: "Stale — no data yet for the current observing day; showing an earlier night.",
+};
+
+// Camera groups with cards and a fresh/stale/offline data indicator.
 export function Location() {
   const { location = "" } = useParams();
   const { data, isPending, isError } = useQuery({
@@ -30,12 +36,22 @@ export function Location() {
         <div key={group.label} className="camera-group">
           <h2>{group.label}</h2>
           <ul className="card-grid">
-            {group.cameras.map((cam) => (
-              <li key={cam.name} className={`card ${cam.online ? "" : "offline"}`}>
-                <Link to={`/${location}/${cam.name}`}>{cam.title}</Link>
-                <span className={`dot ${cam.online ? "online" : "offline"}`} />
-              </li>
-            ))}
+            {group.cameras.map((cam) => {
+              const state = cameraDataState(cam.online, cam.latest_date);
+              return (
+                <li
+                  key={cam.name}
+                  className={`card ${state === "offline" ? "offline" : ""}`}
+                >
+                  <Link to={`/${location}/${cam.name}`}>{cam.title}</Link>
+                  <span
+                    className={`dot ${state}`}
+                    title={DOT_TITLE[state]}
+                    aria-label={DOT_TITLE[state]}
+                  />
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}

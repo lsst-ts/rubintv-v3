@@ -2,6 +2,13 @@ import { Link } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { RubinMark } from "./RubinMark";
 import type { ShellNav } from "../lib/useShellNav";
+import { cameraDataState } from "../lib/queryClient";
+
+const DOT_TITLE: Record<string, string> = {
+  offline: "Offline — this camera is disabled in the configuration.",
+  fresh: "Live — this camera has data for the current observing day.",
+  stale: "Stale — no data yet for the current observing day; showing an earlier night.",
+};
 
 // The app-shell sidebar: brand head, camera pills (real cameras for the active
 // location), a System group, the Location list, and a footer theme toggle.
@@ -51,13 +58,14 @@ export function Sidebar({ nav, onClose }: Props) {
           <div className="cam-pills">
             {group.cameras.map((cam) => {
               const active = cam.name === camera && !system;
+              const state = cameraDataState(cam.online, cam.latestDate);
               const className =
                 "cam-pill" +
                 (active ? " active" : "") +
                 (cam.online ? "" : " dim");
               const content = (
                 <>
-                  <span className="pdot" />
+                  <span className={`pdot ${state}`} title={DOT_TITLE[state]} />
                   <span>{cam.title}</span>
                 </>
               );

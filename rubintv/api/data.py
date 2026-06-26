@@ -55,12 +55,20 @@ def list_locations(models: Models = Depends(get_models)) -> list[LocationSummary
 
 
 @router.get("/locations/{location}", response_model=LocationOut)
-def get_location_detail(location: Location = Depends(get_location)) -> LocationOut:
+def get_location_detail(
+    location: Location = Depends(get_location),
+    state: AppState = Depends(get_app_state),
+) -> LocationOut:
     groups = [
         CameraGroupOut(
             label=label,
             cameras=[
-                CameraSummary(name=c.name, title=c.title, online=c.online)
+                CameraSummary(
+                    name=c.name,
+                    title=c.title,
+                    online=c.online,
+                    latest_date=state.store.latest_date(location.name, c.name),
+                )
                 for name in names
                 if (c := location.camera(name)) is not None
             ],

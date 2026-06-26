@@ -360,8 +360,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": true
+                    "type": "object"
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
                 }
@@ -1718,6 +1717,17 @@
           "online": {
             "type": "boolean",
             "title": "Online"
+          },
+          "latest_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Date"
           }
         },
         "type": "object",
@@ -2472,7 +2482,6 @@
         "properties": {
           "services": {
             "additionalProperties": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "object",
@@ -2567,13 +2576,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

@@ -79,6 +79,19 @@ def test_location_detail_groups(seeded_client: TestClient) -> None:
     assert labels == {"Main", "Auxiliary"}
 
 
+def test_location_detail_includes_camera_latest_date(
+    seeded_client: TestClient,
+) -> None:
+    cams = {
+        c["name"]: c
+        for g in seeded_client.get("/api/locations/test").json()["camera_groups"]
+        for c in g["cameras"]
+    }
+    # lsstcam was seeded with data at DATE; an un-seeded camera has none.
+    assert cams["lsstcam"]["latest_date"] == DATE
+    assert cams["auxtel"]["latest_date"] is None
+
+
 def test_unknown_location_404(seeded_client: TestClient) -> None:
     assert seeded_client.get("/api/locations/nope").status_code == 404
 

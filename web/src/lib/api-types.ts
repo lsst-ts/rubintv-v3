@@ -648,6 +648,8 @@ export interface components {
             title: string;
             /** Online */
             online: boolean;
+            /** Latest Date */
+            latest_date?: string | null;
         };
         /** ChannelOut */
         ChannelOut: {
@@ -914,9 +916,7 @@ export interface components {
         ServicesResponse: {
             /** Services */
             services: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
+                [key: string]: Record<string, never>;
             };
         };
         /** StatusResponse */
@@ -949,10 +949,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -1193,9 +1189,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: {
-                            [key: string]: unknown;
-                        };
+                        [key: string]: Record<string, never>;
                     };
                 };
             };

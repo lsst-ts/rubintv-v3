@@ -28,6 +28,10 @@ class CameraSummary(BaseModel):
     name: str
     title: str
     online: bool
+    latest_date: str | None = None
+    """Most recent observing day with data (YYYY-MM-DD), or None if the camera
+    has no data yet. The client compares it to the current day_obs to show a
+    fresh/stale dot."""
 
 
 class CameraGroupOut(BaseModel):

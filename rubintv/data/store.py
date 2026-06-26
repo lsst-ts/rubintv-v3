@@ -222,6 +222,15 @@ class EventStore:
         """Return all dates with data for a camera, newest first."""
         return sorted(self._calendar.get((location, camera), set()), reverse=True)
 
+    def latest_date(self, location: str, camera: str) -> str | None:
+        """The most recent date with data for a camera, or None if it has none.
+
+        Drives the location/sidebar freshness dot without materialising the
+        whole calendar.
+        """
+        dates = self._calendar.get((location, camera))
+        return max(dates) if dates else None
+
     def calendar_counts(self, location: str, camera: str) -> dict[str, int]:
         """Per-date exposure count (distinct seq_nums across all channels).
 

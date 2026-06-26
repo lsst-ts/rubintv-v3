@@ -31,6 +31,19 @@ async def test_insert_builds_structured_index() -> None:
     assert store.calendar("local", "lsstcam") == ["2026-04-10"]
 
 
+async def test_latest_date_returns_newest_day_or_none() -> None:
+    store = EventStore()
+    # No data yet.
+    assert store.latest_date("local", "lsstcam") is None
+    await store.apply(
+        [
+            created("lsstcam/2026-04-09/witness_detector/000001/a.png"),
+            created("lsstcam/2026-04-10/witness_detector/000002/b.png"),
+        ]
+    )
+    assert store.latest_date("local", "lsstcam") == "2026-04-10"
+
+
 async def test_calendar_counts_and_max_seq() -> None:
     store = EventStore()
     await store.apply(
