@@ -158,7 +158,10 @@ export function AllSky() {
             </figcaption>
             <div className="allsky-frame">
               {t.isVideo ? (
-                <video src={t.src} controls />
+                // Loop the all-sky movie continuously. autoPlay needs muted to
+                // be allowed by browser policy; playsInline keeps it from going
+                // fullscreen on mobile.
+                <video src={t.src} controls loop autoPlay muted playsInline />
               ) : (
                 <img src={t.src} alt={`${t.title} ${t.seq}`} />
               )}
