@@ -340,6 +340,47 @@ async def test_detector_loop_no_seed_when_streams_empty(
     assert fake.closed is True
 
 
+async def test_detector_loop_emits_debug_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The DEBUG trace (enabled via log_level=DEBUG) should follow the data from
+    # seed read -> store apply -> publish so a streaming issue can be located.
+    # We capture by recording the module logger's debug() events directly, which
+    # is independent of structlog's process-wide configuration/cache.
+    events: list[str] = []
+    monkeypatch.setattr(
+        "rubintv.data.redis_inputs.log.debug",
+        lambda event, **kw: events.append(event),
+    )
+
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [RedisDetector(key="CLUSTER_STATUS_AOS_SET_0", name="aosSet0")],
+    )
+    entry = {
+        "data": json.dumps({"4": {"status": "busy", "type": "worker_status"}})
+    }
+    fake = _LoopFakeRedis(
+        seed_entries={"stream:CLUSTER_STATUS_AOS_SET_0": [("1-1", entry)]},
+    )
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        await asyncio.wait_for(anext(stream), timeout=2)
+    await inputs.stop()
+
+    assert "redis.detector.seed_start" in events
+    assert "redis.detector.seed_entry" in events
+    assert "redis.detector.apply" in events
+    assert "redis.detector.seed_publish" in events
+
+
 async def test_detector_loop_applies_stream_entries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

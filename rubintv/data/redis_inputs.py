@@ -73,6 +73,12 @@ def apply_detector_entry(
         # Fallback: fields are already a flat worker->status map.
         for w, s in fields.items():
             workers[str(w)] = {"status": str(s)}
+        log.debug(
+            "redis.detector.apply",
+            set_name=set_name,
+            shape="flat",
+            workers=len(workers),
+        )
         detectors.set(set_name, {"workers": workers})
         return
 
@@ -100,6 +106,14 @@ def apply_detector_entry(
         payload["numWorkers"] = num_workers
     if text:
         payload["text"] = text
+    log.debug(
+        "redis.detector.apply",
+        set_name=set_name,
+        shape="data",
+        workers=len(workers),
+        num_workers=num_workers,
+        text_keys=list(text),
+    )
     detectors.set(set_name, payload)
 
 
@@ -234,6 +248,9 @@ class RedisInputs:
         single ``detectorStatus`` change only if anything was actually seeded.
         """
         assert self._redis is not None
+        # Set log_level=DEBUG to trace the cluster-status data flow end to end
+        # (seed reads, live entries, store applies, publishes).
+        log.debug("redis.detector.seed_start", streams=list(name_for_stream))
         seeded = False
         for stream_name, set_name in name_for_stream.items():
             try:
@@ -246,12 +263,22 @@ class RedisInputs:
                 )
                 continue
             if not entries:
+                log.debug("redis.detector.seed_empty", stream=stream_name)
                 continue
-            _entry_id, fields = entries[0]
+            entry_id, fields = entries[0]
+            log.debug(
+                "redis.detector.seed_entry",
+                stream=stream_name,
+                set=set_name,
+                entry_id=entry_id,
+            )
             apply_detector_entry(self._detectors, set_name, fields)
             seeded = True
         if seeded:
+            log.debug("redis.detector.seed_publish", sets=list(self._detectors.all()))
             self._bus.publish(StoreChange("detectorStatus", "*", ""))
+        else:
+            log.debug("redis.detector.seed_nothing")
 
     async def _detector_loop(self) -> None:
         """Tail the configured cluster-status streams and republish updates.
@@ -289,7 +316,17 @@ class RedisInputs:
                 for entry_id, fields in entries:
                     last_ids[stream_name] = entry_id
                     set_name = name_for_stream.get(stream_name, stream_name)
+                    log.debug(
+                        "redis.detector.live_entry",
+                        stream=stream_name,
+                        set=set_name,
+                        entry_id=entry_id,
+                    )
                     apply_detector_entry(self._detectors, set_name, fields)
                     changed = True
             if changed:
+                log.debug(
+                    "redis.detector.live_publish",
+                    sets=list(self._detectors.all()),
+                )
                 self._bus.publish(StoreChange("detectorStatus", "*", ""))
