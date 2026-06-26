@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
 import type { Metadata } from "../lib/types";
-import { STALE, staleTimeForDate } from "../lib/queryClient";
+import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
@@ -295,6 +295,11 @@ export function CameraTable() {
   // for cameras that have one configured, computed from the newest exposure's
   // "Date begin" timestamp.
   const isCurrentDate = date !== "" && date === calendar?.dates[0];
+  // Whether the viewed date is the live observing day (UTC−12 rollover, the
+  // same rule as the Channels view). Distinct from isCurrentDate, which only
+  // means "newest date with data" — that can be an old night when observing
+  // has paused. Drives the date chip's live/stale styling.
+  const isCurrentDayObs = date !== "" && date === currentDayObs();
   const sinceLabel =
     isCurrentDate && cameraInfo?.time_since_clock
       ? cameraInfo.time_since_clock.label
@@ -352,6 +357,7 @@ export function CameraTable() {
             maxSeq={calendar?.max_seq ?? {}}
             allSky={cameraInfo?.live_view ?? false}
             value={date}
+            isCurrentDayObs={isCurrentDayObs}
             onChange={(d) => setParams({ date: d })}
           />
           <button

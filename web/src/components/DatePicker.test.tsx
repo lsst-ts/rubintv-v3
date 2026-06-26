@@ -119,3 +119,37 @@ test("alternating year stripe distinguishes adjacent years", () => {
   expect(yearBlocks[0].className).not.toContain("alt");
   expect(yearBlocks[1].className).toContain("alt");
 });
+
+test("trigger chip is tinted live when the date is the current day_obs", () => {
+  render(
+    <DatePicker
+      dates={["2026-04-10"]}
+      counts={{ "2026-04-10": 5 }}
+      maxSeq={{}}
+      value="2026-04-10"
+      isCurrentDayObs
+      onChange={() => {}}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: /2026-04-10/ });
+  expect(trigger.className).toContain("is-live-day");
+  expect(trigger.className).not.toContain("is-past-day");
+  expect(trigger.getAttribute("title")).toMatch(/Current observing day/);
+});
+
+test("trigger chip is tinted historical when the date isn't the current day_obs", () => {
+  render(
+    <DatePicker
+      dates={["2026-04-10"]}
+      counts={{ "2026-04-10": 5 }}
+      maxSeq={{}}
+      value="2026-04-10"
+      isCurrentDayObs={false}
+      onChange={() => {}}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: /2026-04-10/ });
+  expect(trigger.className).toContain("is-past-day");
+  expect(trigger.className).not.toContain("is-live-day");
+  expect(trigger.getAttribute("title")).toMatch(/Historical day/);
+});

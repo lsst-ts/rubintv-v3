@@ -349,6 +349,10 @@ interface Props {
   // True for All Sky / live-view cameras: month cells show only the dot, no seq.
   allSky?: boolean;
   value: string;
+  // Whether `value` is the current observing day (computed by the caller via
+  // currentDayObs, the UTC−12 rule). Tints the trigger chip so a date that
+  // isn't tonight reads as historical at a glance.
+  isCurrentDayObs?: boolean;
   onChange: (date: string) => void;
 }
 
@@ -358,6 +362,7 @@ export function DatePicker({
   maxSeq,
   allSky = false,
   value,
+  isCurrentDayObs = false,
   onChange,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -423,9 +428,23 @@ export function DatePicker({
     <span className="date-cluster" ref={rootRef}>
       <button
         type="button"
-        className="date-trigger"
+        className={
+          "date-trigger" +
+          (value
+            ? isCurrentDayObs
+              ? " is-live-day"
+              : " is-past-day"
+            : "")
+        }
         aria-haspopup="dialog"
         aria-expanded={open}
+        title={
+          value
+            ? isCurrentDayObs
+              ? "Current observing day — this table updates live as new exposures arrive."
+              : "Historical day — this is not the current observing day, so the table is not updating live."
+            : undefined
+        }
         onClick={openPicker}
       >
         <CalendarIcon />

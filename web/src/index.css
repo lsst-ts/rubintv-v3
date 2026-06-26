@@ -621,6 +621,21 @@ h1, h2 {
 .date-trigger:hover { background: var(--paper-3); border-color: var(--ink-soft); }
 .date-trigger .ui-icon { color: var(--ink-soft); }
 
+/* Date-chip day_obs state (same UTC−12 rule as the Channels banner). The
+   selected date carries whether it's the live observing day: a quiet green
+   tint when it's tonight (table updates live), amber when it's a historical
+   day (table is static). Full meaning is in the chip's title tooltip. */
+.date-trigger.is-live-day {
+  border-color: color-mix(in srgb, var(--good) 55%, var(--line-mid));
+  background: color-mix(in srgb, var(--good) 9%, var(--paper-2));
+}
+.date-trigger.is-live-day .ui-icon { color: var(--good); }
+.date-trigger.is-past-day {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line-mid));
+  background: color-mix(in srgb, var(--warn) 9%, var(--paper-2));
+}
+.date-trigger.is-past-day .ui-icon { color: var(--warn); }
+
 .date-pop {
   position: absolute;
   top: calc(100% + 6px); left: 0;
