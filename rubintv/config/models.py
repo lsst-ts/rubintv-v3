@@ -85,7 +85,6 @@ class Camera(BaseModel):
     copy_row_template: str | None = None
     """A printf-style template for a 'copy row' admin action — interpolates
     ``{dayObs}`` and ``{seqNum}``."""
-    has_mosaic: bool = False
     live_view: bool = False
     """True if this camera shows a single 'latest image + latest movie' panel
     rather than a per-seq-num table. Replaces the old ``has_allsky`` flag —

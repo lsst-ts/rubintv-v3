@@ -49,6 +49,9 @@ export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
       suffix: "night-report",
     });
   }
+  // Note: the live Mosaic is intentionally NOT a tab. It exists only as an
+  // embed target (an <iframe> loads /:loc/:cam/mosaic?headerless=true); the
+  // in-app movies/plots are served by the Channels viewer instead.
   return tabs;
 }
 

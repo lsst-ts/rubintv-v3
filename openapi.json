@@ -1619,10 +1619,6 @@
             ],
             "title": "Copy Row Template"
           },
-          "has_mosaic": {
-            "type": "boolean",
-            "title": "Has Mosaic"
-          },
           "live_view": {
             "type": "boolean",
             "title": "Live View"
@@ -1667,7 +1663,6 @@
           "night_report_label",
           "night_report_prefix",
           "copy_row_template",
-          "has_mosaic",
           "live_view",
           "time_since_clock",
           "extra_buttons",

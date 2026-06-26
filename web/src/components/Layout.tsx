@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useParams } from "react-router-dom";
+import { Link, Outlet, useParams, useSearchParams } from "react-router-dom";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { S3Status } from "./S3Status";
 import { LoadingBanner } from "./LoadingBanner";
@@ -33,6 +33,7 @@ const SIDEBAR_KEY = "rubintv.sidebarOpen";
 // local page state. Breadcrumbs derive from the URL params (Decision 7).
 export function Layout() {
   const { location, camera } = useParams();
+  const [params] = useSearchParams();
   const nav = useShellNav();
   const subapps = useSubapps();
 
@@ -59,6 +60,21 @@ export function Layout() {
   // which case the topbar is laid out like the non-camera pages — no tabs row,
   // so the status pills get the bottom padding they'd otherwise lack.
   const hasTabs = onCamera && tabs.length > 0;
+
+  // Headerless embedding (?headerless=true): render only the view, with no app
+  // shell — no sidebar, topbar, breadcrumbs or tabs. This lets any view (the
+  // live Mosaic in particular) be dropped into an <iframe> as a bare tile.
+  // It's a global param, matching the original app, so it applies to whatever
+  // route is mounted. The nav hooks above still run, so their data stays warm.
+  if (params.get("headerless") === "true") {
+    return (
+      <div className="shell headerless">
+        <main className="app-content">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={`shell ${sidebarOpen ? "" : "collapsed"}`}>

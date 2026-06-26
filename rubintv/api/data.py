@@ -115,7 +115,6 @@ def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
         night_report_label=camera.night_report_label,
         night_report_prefix=camera.night_report_prefix,
         copy_row_template=camera.copy_row_template,
-        has_mosaic=camera.has_mosaic,
         live_view=camera.live_view,
         time_since_clock=(
             TimeSinceClockOut(label=camera.time_since_clock.label)

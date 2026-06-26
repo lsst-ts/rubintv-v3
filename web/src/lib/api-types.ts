@@ -616,8 +616,6 @@ export interface components {
             night_report_prefix: string | null;
             /** Copy Row Template */
             copy_row_template: string | null;
-            /** Has Mosaic */
-            has_mosaic: boolean;
             /** Live View */
             live_view: boolean;
             time_since_clock: components["schemas"]["TimeSinceClockOut"] | null;

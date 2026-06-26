@@ -220,9 +220,58 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
   }
 });
 
+// A camera whose mosaic_view_meta drives the live grid: one image tile
+// (day_movie rendered as image here is irrelevant — media_type drives the
+// element) and one metadata column. The newest seq is 252.
+function mockMosaicCamera() {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/lsstcam\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+        mosaic_view_meta: [
+          { channel: "monitor", media_type: "image", meta_columns: ["Exposure"] },
+        ],
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "252": { Exposure: 30 } };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [250, 251, 252] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+}
+
 test("mosaic suffix route wins over the channel catch-all", async () => {
+  mockMosaicCamera();
   renderAt("/local/lsstcam/mosaic");
-  expect(await screen.findByText("Mosaic / Movies")).toBeDefined();
+  // A live tile for the latest seq (252), with its chosen metadata column.
+  const img = await screen.findByRole("img", { name: /Monitor 252/ });
+  expect(img.getAttribute("src")).toContain(
+    "/channels/monitor/2026-04-10/000252/image.png",
+  );
+  expect(screen.getByText("Exposure")).toBeDefined();
+  expect(screen.getByText("30")).toBeDefined();
+});
+
+test("headerless=true hides the app shell (no breadcrumbs/tabs)", async () => {
+  mockMosaicCamera();
+  renderAt("/local/lsstcam/mosaic?headerless=true");
+  // The tile still renders…
+  await screen.findByRole("img", { name: /Monitor 252/ });
+  // …but the app-shell chrome (breadcrumb nav, RubinTV crumb) is gone.
+  expect(screen.queryByText("RubinTV")).toBeNull();
+  expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
 });
 
 test("column picker defaults to configured columns and reset restores them", async () => {

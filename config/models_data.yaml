@@ -145,7 +145,6 @@ cameras:
     online: true
     logo: LSSTSummit.jpg
     text_colour: "#fff"
-    has_mosaic: true
     time_since_clock:
       label: Time since last image
     image_viewer_link:
@@ -155,16 +154,6 @@ cameras:
     quicklook_viewer_link:
       "https://usdf-rsp{dev}.slac.stanford.edu/fov-quicklook/\
       visits/embargo:raw:{dayObs}{seqNum:05}"
-    extra_buttons:
-      - title: Movies View
-        name: moviesView
-        linkURL: mosaic
-        logo: AI-astral-movie.jpg
-        text_colour: "#fff"
-    mosaic_view_meta:
-      - channel: day_movie
-        mediaType: video
-        metaColumns: []
     channels:
       - name: witness_detector
         title: Witness Detector

@@ -94,7 +94,6 @@ class CameraOut(BaseModel):
     night_report_label: str | None
     night_report_prefix: str | None
     copy_row_template: str | None
-    has_mosaic: bool
     live_view: bool
     """Render this camera as a single 'latest image + latest movie' panel
     rather than a per-seq-num table. The old ``has_allsky`` flag — renamed

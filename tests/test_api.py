@@ -104,7 +104,6 @@ def test_unknown_camera_404(seeded_client: TestClient) -> None:
 def test_camera_detail(seeded_client: TestClient) -> None:
     resp = seeded_client.get("/api/locations/test/cameras/lsstcam")
     body = resp.json()
-    assert body["has_mosaic"] is True
     assert {c["name"] for c in body["channels"]} >= {"witness_detector", "day_movie"}
 
 
