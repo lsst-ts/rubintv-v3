@@ -22,7 +22,17 @@ interface LatestMedia {
   // Label for the latest exposure ("786" for a seq, "movie"/"stills" for
   // per-day artifacts).
   seqLabel: string | null;
+  // Numeric latest seq for live channels (null for per-day artifacts, which
+  // have no comparable sequence). Drives the cross-card staleness cue.
+  seq: number | null;
 }
+
+// A live card is flagged stale once its latest seq trails the night's frontier
+// (the highest seq any live card has reached) by more than this many frames.
+// Seqs aren't perfectly comparable across channels with different cadences, so
+// the threshold is deliberately loose — the cue should catch a card that has
+// clearly fallen behind, not flicker on normal frame-to-frame jitter.
+const STALE_SEQ_LAG = 5;
 
 // Resolve a channel's latest media URL from the date payload. Live channels
 // take the highest seq present; per-day channels use their raw S3 key.
@@ -32,20 +42,21 @@ function latestFor(
   location: string,
   camera: string,
 ): LatestMedia {
-  if (!payload) return { src: null, isVideo: false, seqLabel: null };
+  if (!payload) return { src: null, isVideo: false, seqLabel: null, seq: null };
 
   if (ch.per_day) {
     const key = payload.per_day?.[ch.name];
-    if (!key) return { src: null, isVideo: false, seqLabel: null };
+    if (!key) return { src: null, isVideo: false, seqLabel: null, seq: null };
     const src = api.perDayMediaUrl(location, camera, key);
     const isVideo = VIDEO_EXTS.some((e) => key.toLowerCase().endsWith(e));
-    return { src, isVideo, seqLabel: isVideo ? "movie" : "stills" };
+    return { src, isVideo, seqLabel: isVideo ? "movie" : "stills", seq: null };
   }
 
   const seqs = (payload.channels?.[ch.name] ?? []).filter(
     (n): n is number => typeof n === "number",
   );
-  if (seqs.length === 0) return { src: null, isVideo: false, seqLabel: null };
+  if (seqs.length === 0)
+    return { src: null, isVideo: false, seqLabel: null, seq: null };
   const seq = Math.max(...seqs);
 
   const ext = payload.extensions?.[ch.name];
@@ -59,20 +70,25 @@ function latestFor(
     String(seq).padStart(6, "0"),
     `image.${fileExt}`,
   );
-  return { src, isVideo, seqLabel: String(seq) };
+  return { src, isVideo, seqLabel: String(seq), seq };
 }
 
 function ChannelCard({
   ch,
   media,
   href,
+  lag,
 }: {
   ch: ChannelOut;
   media: LatestMedia;
   href: string;
+  // How many frames this live card trails the night's frontier by, or null
+  // when staleness doesn't apply (per-day card, no frame yet, or no frontier).
+  lag: number | null;
 }) {
+  const stale = lag !== null && lag > STALE_SEQ_LAG;
   return (
-    <Link className="chc-card" to={href}>
+    <Link className={`chc-card${stale ? " chc-card--stale" : ""}`} to={href}>
       <div className="chc-frame">
         {media.src ? (
           media.isVideo ? (
@@ -94,6 +110,11 @@ function ChannelCard({
       <div className="chc-foot">
         {media.seqLabel && <span className="chc-seq">{media.seqLabel}</span>}
         <span>{ch.label}</span>
+        {stale && (
+          <span className="chc-lag" title={`${lag} frames behind the latest channel`}>
+            −{lag}
+          </span>
+        )}
       </div>
     </Link>
   );
@@ -137,6 +158,14 @@ export function ChannelBrowser() {
   if (channels.length === 0)
     return <p className="skeleton">This camera has no channels.</p>;
 
+  // The night's frontier: the highest latest-seq any live card has reached.
+  // Per-day cards carry no comparable seq, so they're excluded from both the
+  // frontier and the staleness cue.
+  const frontier = Math.max(
+    0,
+    ...live.map((ch) => latestFor(ch, payload, location, camera).seq ?? 0),
+  );
+
   const renderGroup = (title: string, list: ChannelOut[]) =>
     list.length > 0 && (
       <section className="chc-group">
@@ -145,14 +174,21 @@ export function ChannelBrowser() {
           <span className="chc-count">{list.length}</span>
         </div>
         <div className="chc-grid">
-          {list.map((ch) => (
-            <ChannelCard
-              key={ch.name}
-              ch={ch}
-              media={latestFor(ch, payload, location, camera)}
-              href={`/${location}/${camera}/${ch.name}/current`}
-            />
-          ))}
+          {list.map((ch) => {
+            const media = latestFor(ch, payload, location, camera);
+            // Lag only applies once we have a frontier and this card has a seq.
+            const lag =
+              media.seq !== null && frontier > 0 ? frontier - media.seq : null;
+            return (
+              <ChannelCard
+                key={ch.name}
+                ch={ch}
+                media={media}
+                href={`/${location}/${camera}/${ch.name}/current`}
+                lag={lag}
+              />
+            );
+          })}
         </div>
       </section>
     );
