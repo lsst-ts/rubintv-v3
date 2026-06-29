@@ -165,7 +165,11 @@ def write_all(r: redis.Redis, cluster: Cluster) -> None:
     for key, ws in cluster.step1b.items():
         _xadd(pipe, key, ws.payload(with_count=True))
 
-    _xadd(pipe, "CLUSTER_STATUS_SPAREWORKERS_SET_0", cluster.spare.payload(with_count=True))
+    _xadd(
+        pipe,
+        "CLUSTER_STATUS_SPAREWORKERS_SET_0",
+        cluster.spare.payload(with_count=True),
+    )
 
     # Other queues — free-text rows that drift slowly.
     other = {
