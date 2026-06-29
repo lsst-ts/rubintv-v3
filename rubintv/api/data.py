@@ -110,6 +110,7 @@ def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
             for ch in camera.channels
         ],
         metadata_columns=camera.metadata_columns,
+        locked_columns=camera.locked_columns,
         image_viewer_link=camera.image_viewer_link,
         quicklook_viewer_link=camera.quicklook_viewer_link,
         night_report_label=camera.night_report_label,

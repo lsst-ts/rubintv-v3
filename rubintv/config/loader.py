@@ -64,7 +64,8 @@ def load_models(path: Path, *, site: str | None = None) -> Models:
         raise ConfigError(f"invalid YAML in {path}: {exc}") from exc
 
     global_metadata = _global_metadata_columns(raw.get("metadata_columns", {}))
-    cameras = _parse_cameras(raw.get("cameras", []), global_metadata)
+    global_locked = _global_locked_columns(raw.get("locked_columns", {}))
+    cameras = _parse_cameras(raw.get("cameras", []), global_metadata, global_locked)
 
     services = _parse_services(raw.get("services", {}))
     admin_for = _parse_admin_for(raw.get("admin_for", {}))
@@ -108,8 +109,29 @@ def _global_metadata_columns(
     return out
 
 
+def _global_locked_columns(
+    raw: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    """Validate the top-level ``locked_columns`` map keyed by camera name."""
+    out: dict[str, list[str]] = {}
+    for camera_name, columns in raw.items():
+        if not isinstance(columns, list):
+            raise ConfigError(
+                f"locked_columns for {camera_name!r} must be a list"
+            )
+        out[camera_name] = [str(c) for c in columns]
+    return out
+
+
+def _dedup(items: list[str]) -> list[str]:
+    """Order-preserving de-duplication."""
+    return list(dict.fromkeys(items))
+
+
 def _parse_cameras(
-    rows: list[dict[str, Any]], global_metadata: dict[str, dict[str, str]]
+    rows: list[dict[str, Any]],
+    global_metadata: dict[str, dict[str, str]],
+    global_locked: dict[str, list[str]],
 ) -> dict[str, Camera]:
     cameras: dict[str, Camera] = {}
     for row in rows:
@@ -130,6 +152,15 @@ def _parse_cameras(
         merged = {**cameras[name].metadata_columns, **columns}
         cameras[name] = cameras[name].model_copy(update={"metadata_columns": merged})
 
+    # Apply top-level locked_columns the same way (overlays camera-defined ones).
+    for name, columns in global_locked.items():
+        if name not in cameras:
+            continue
+        merged_locked = _dedup(cameras[name].locked_columns + columns)
+        cameras[name] = cameras[name].model_copy(
+            update={"locked_columns": merged_locked}
+        )
+
     # Resolve metadata_from inheritance after the global merge so an inheritor
     # picks up the merged columns of its source.
     for name, camera in list(cameras.items()):
@@ -142,8 +173,13 @@ def _parse_cameras(
                 f"{camera.metadata_from!r}"
             )
         inherited = {**source.metadata_columns, **camera.metadata_columns}
+        inherited_locked = _dedup(source.locked_columns + camera.locked_columns)
         cameras[name] = camera.model_copy(
-            update={"metadata_columns": inherited, "metadata_from": None}
+            update={
+                "metadata_columns": inherited,
+                "locked_columns": inherited_locked,
+                "metadata_from": None,
+            }
         )
 
     return cameras

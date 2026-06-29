@@ -1564,6 +1564,13 @@
             "type": "object",
             "title": "Metadata Columns"
           },
+          "locked_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Locked Columns"
+          },
           "image_viewer_link": {
             "anyOf": [
               {
@@ -1658,6 +1665,7 @@
           "icon",
           "channels",
           "metadata_columns",
+          "locked_columns",
           "image_viewer_link",
           "quicklook_viewer_link",
           "night_report_label",

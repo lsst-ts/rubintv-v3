@@ -89,6 +89,7 @@ class CameraOut(BaseModel):
     icon: str | None
     channels: list[ChannelOut]
     metadata_columns: dict[str, str]
+    locked_columns: list[str]
     image_viewer_link: str | None
     quicklook_viewer_link: str | None
     night_report_label: str | None

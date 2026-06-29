@@ -9,10 +9,16 @@ function storageKey(location: string, camera: string): string {
   return `rubintv.columns.${location}.${camera}`;
 }
 
-// The hidden set that shows only `defaults` out of `all`.
-function defaultHidden(all: string[], defaults: string[]): Set<string> {
+// The hidden set that shows only `defaults` out of `all`. Locked columns —
+// configured per-camera via `locked_columns`, always shown and not hideable —
+// are never placed in the hidden set.
+function defaultHidden(
+  all: string[],
+  defaults: string[],
+  locked: Set<string>,
+): Set<string> {
   const shown = new Set(defaults);
-  return new Set(all.filter((c) => !shown.has(c)));
+  return new Set(all.filter((c) => !shown.has(c) && !locked.has(c)));
 }
 
 export function useColumnPrefs(
@@ -20,8 +26,19 @@ export function useColumnPrefs(
   camera: string,
   all: string[],
   defaults: string[],
+  // Columns that are always shown when present and can't be hidden. The picker
+  // still lists them (checked + disabled), mirroring the old app where
+  // "Retrieval fails" appeared ghosted-out.
+  lockedColumns: string[] = [],
 ) {
   const key = storageKey(location, camera);
+  // Memoize the lookup set so its identity is stable across renders (the array
+  // arrives fresh from the API payload each time).
+  const locked = useMemo(
+    () => new Set(lockedColumns),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lockedColumns.join("\0")],
+  );
 
   // Whether the user has an explicit saved preference. Without one, the visible
   // set tracks the configured defaults (so newly-streamed default columns show,
@@ -32,21 +49,23 @@ export function useColumnPrefs(
       const raw = localStorage.getItem(key);
       if (raw) {
         hasSaved.current = true;
-        return new Set(JSON.parse(raw) as string[]);
+        // Drop any locked columns a stale pref may carry — they're never hidden.
+        const saved = (JSON.parse(raw) as string[]).filter((c) => !locked.has(c));
+        return new Set(saved);
       }
     } catch {
       // fall through to defaults
     }
-    return defaultHidden(all, defaults);
+    return defaultHidden(all, defaults, locked);
   });
 
   // Until the user customises, keep hidden = (all − defaults) as both lists
   // settle (config + streamed metadata arrive after mount).
   useEffect(() => {
     if (hasSaved.current) return;
-    setHidden(defaultHidden(all, defaults));
+    setHidden(defaultHidden(all, defaults, locked));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all.join(""), defaults.join("")]);
+  }, [all.join(""), defaults.join(""), locked]);
 
   // Persist only once the user has actively changed something, so we never
   // freeze the auto-default into storage and stop tracking new default columns.
@@ -64,6 +83,7 @@ export function useColumnPrefs(
 
   const toggle = useCallback(
     (col: string) => {
+      if (locked.has(col)) return; // can't hide locked columns
       setHidden((prev) => {
         const next = new Set(prev);
         if (next.has(col)) next.delete(col);
@@ -72,7 +92,7 @@ export function useColumnPrefs(
         return next;
       });
     },
-    [persist],
+    [persist, locked],
   );
 
   // Bulk actions over the known column set.
@@ -87,17 +107,17 @@ export function useColumnPrefs(
   const hideAll = useCallback(() => {
     setHidden((prev) => {
       const next = new Set(prev);
-      for (const c of all) next.add(c);
+      for (const c of all) if (!locked.has(c)) next.add(c);
       persist(next);
       return next;
     });
-  }, [all, persist]);
+  }, [all, persist, locked]);
   // Reset restores the configured defaults (show metadata_columns, hide rest).
   const reset = useCallback(() => {
-    const next = defaultHidden(all, defaults);
+    const next = defaultHidden(all, defaults, locked);
     persist(next);
     setHidden(next);
-  }, [all, defaults, persist]);
+  }, [all, defaults, persist, locked]);
 
   // Memoize so `visible`'s identity only changes when the column set or the
   // hidden set actually change — not on every parent render. A fresh array
@@ -105,5 +125,5 @@ export function useColumnPrefs(
   // angled-header measurement (a full reflow over every <th>) on unrelated
   // state changes, e.g. opening the column picker.
   const visible = useMemo(() => all.filter((c) => !hidden.has(c)), [all, hidden]);
-  return { visible, hidden, toggle, showAll, hideAll, reset };
+  return { visible, hidden, locked, toggle, showAll, hideAll, reset };
 }

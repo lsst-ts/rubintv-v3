@@ -85,6 +85,49 @@ def test_metadata_from_inheritance() -> None:
     assert wide.metadata_from is None
 
 
+def test_locked_columns_merged_from_global_map() -> None:
+    """Top-level locked_columns are attached to the named camera."""
+    models = load_models(CONFIG_PATH, site="test")
+    lsstcam = models.location("test").camera("lsstcam")  # type: ignore[union-attr]
+    assert "Retrieval fails" in lsstcam.locked_columns  # type: ignore[union-attr]
+    # A camera without an entry has no locked columns.
+    auxtel = models.location("test").camera("auxtel")  # type: ignore[union-attr]
+    assert auxtel.locked_columns == []  # type: ignore[union-attr]
+
+
+def test_locked_columns_inherited_via_metadata_from(tmp_path: Path) -> None:
+    """locked_columns follow metadata_from inheritance, deduped with the child's."""
+    cfg = tmp_path / "models.yaml"
+    cfg.write_text(
+        "locations:\n"
+        "  - {name: loc, title: Loc, bucket_name: b, camera_groups: {G: [src, dst]}}\n"
+        "cameras:\n"
+        "  - {name: src, title: Src}\n"
+        "  - {name: dst, title: Dst, metadata_from: src}\n"
+        "locked_columns:\n"
+        "  src: [Retrieval fails]\n"
+        "  dst: [Retrieval fails, Other]\n"
+    )
+    models = load_models(cfg)
+    dst = models.location("loc").camera("dst")  # type: ignore[union-attr]
+    # Inherited from src, deduped against the child's own list (order preserved).
+    assert dst.locked_columns == ["Retrieval fails", "Other"]  # type: ignore[union-attr]
+
+
+def test_locked_columns_must_be_a_list(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "locations:\n"
+        "  - {name: loc, title: Loc, bucket_name: b, camera_groups: {G: [a]}}\n"
+        "cameras:\n"
+        "  - {name: a, title: A}\n"
+        "locked_columns:\n"
+        "  a: {Retrieval fails: nope}\n"
+    )
+    with pytest.raises(ConfigError, match="locked_columns for 'a' must be a list"):
+        load_models(bad)
+
+
 def test_admin_users_picked_up_from_admin_for() -> None:
     """admin_users on each location come from the global admin_for[site] list."""
     models = load_models(CONFIG_PATH, site="test")

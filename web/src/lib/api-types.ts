@@ -606,6 +606,8 @@ export interface components {
             metadata_columns: {
                 [key: string]: string;
             };
+            /** Locked Columns */
+            locked_columns: string[];
             /** Image Viewer Link */
             image_viewer_link: string | null;
             /** Quicklook Viewer Link */
