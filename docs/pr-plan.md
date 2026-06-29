@@ -87,11 +87,30 @@ Another iterative arc landing on the `?seq_filter` catch-all + its docs.
 ### PR 9 — Loading state fix + S3 connectivity indicators
 - `ec7a6ac` Fix empty-table loading state and add S3 connectivity indicators
 
+### PR 10 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
+Repackages the app the way lsst-ts builds and deploys V2: relocates the backend
+to `python/lsst/ts/rubintv/`, adds the conda/EUPS/Jenkins scaffolding, the
+`run_rubintv` entry point, and a GHCR image-build CI job. Depends on the whole
+app being in place, so it sits last in the stack — currently based on
+`design-port`, to retarget to `phase-8-real-config` once PRs 1–9 merge.
+Open as a stacked PR on branch `conda-parity` (rename to a `tickets/DM-NNNNN`
+branch once a ticket exists — see Notes).
+- `6ee0860` Package as lsst.ts.rubintv for conda/EUPS install parity
+- `562d0f4` Fix pre-existing ruff errors in dev scripts
+- `4f9d104` Fix pre-existing mypy errors exposed by the new check target
+
 ---
 
 ## Notes for whoever splits these
-- The stack must merge in order PR 1 → PR 9; each branch is cut from the tip of
-  the previous one (PR 1 from `phase-8-real-config`).
+- The stack must merge in order PR 1 → PR 10; each branch is cut from the tip of
+  the previous one (PR 1 from `phase-8-real-config`). PR 10 is the packaging
+  layer and depends on the full app, so it merges last.
+- Branch naming: lsst-ts uses `tickets/DM-NNNNN`, and that prefix is what
+  triggers the GHCR image-build CI job. Create branches with the ticket name
+  up front — do **not** rename later, since renaming a branch closes its PR and
+  orphans anything stacked on top. `conda-parity` (PR 10) keeps its descriptive
+  name only until a DM ticket exists, at which point cut a fresh
+  `tickets/DM-NNNNN` branch + new PR rather than renaming.
 - PRs 5 and 8 are iterative arcs where later commits rewrite earlier ones. They
   could be squashed per-PR if reviewers prefer the end state over the history.
 - `ec7a6ac` (PR 9) bundles two concerns (the empty-table loading fix and the S3
