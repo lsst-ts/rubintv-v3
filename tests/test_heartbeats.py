@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import boto3
 import pytest
+from lsst.ts.rubintv.app import create_app
+from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.data.heartbeats import HeartbeatStore
+from lsst.ts.rubintv.ws.internal import Heartbeat
 from moto import mock_aws
 
-from rubintv.app import create_app
-from rubintv.config.settings import Settings
-from rubintv.data.heartbeats import HeartbeatStore
-from rubintv.ws.internal import Heartbeat
 from tests.conftest import TEST_BUCKET, PrefixedTestClient
 
 
@@ -65,9 +65,7 @@ def test_post_heartbeat_rejects_bad_body(hb_client) -> None:  # type: ignore[no-
     # Missing the required service name.
     assert hb_client.post("/internal/heartbeats", json={"ttl": 5}).status_code == 422
     # ttl must be positive.
-    bad_ttl = hb_client.post(
-        "/internal/heartbeats", json={"service": "x", "ttl": 0}
-    )
+    bad_ttl = hb_client.post("/internal/heartbeats", json={"service": "x", "ttl": 0})
     assert bad_ttl.status_code == 422
 
 

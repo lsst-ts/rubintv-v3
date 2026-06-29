@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
+from lsst.ts.rubintv.config.loader import ConfigError, load_models
 
-from rubintv.config.loader import ConfigError, load_models
-
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "models_data.yaml"
+# Packaged copy of the models YAML — the single source of truth.
+CONFIG_PATH = Path(str(files("lsst.ts.rubintv.models").joinpath("models_data.yaml")))
 
 
 def test_loads_sample_config() -> None:
@@ -174,9 +175,7 @@ def test_duplicate_camera_fails_loud(tmp_path: Path) -> None:
 def test_unknown_metadata_from_fails_loud(tmp_path: Path) -> None:
     bad = tmp_path / "bad_inherit.yaml"
     bad.write_text(
-        "cameras:\n"
-        "  - {name: a, title: A, metadata_from: ghost}\n"
-        "locations: []\n"
+        "cameras:\n  - {name: a, title: A, metadata_from: ghost}\nlocations: []\n"
     )
     with pytest.raises(ConfigError, match="metadata_from unknown camera 'ghost'"):
         load_models(bad)

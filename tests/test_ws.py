@@ -6,13 +6,13 @@ import asyncio
 
 import boto3
 import pytest
+from lsst.ts.rubintv.app import create_app
+from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.data.events import StoreChange
+from lsst.ts.rubintv.ws.manager import Connection, ConnectionManager
+from lsst.ts.rubintv.ws.protocol import ServerMessage, SubscribeRequest
 from moto import mock_aws
 
-from rubintv.app import create_app
-from rubintv.config.settings import Settings
-from rubintv.data.events import StoreChange
-from rubintv.ws.manager import Connection, ConnectionManager
-from rubintv.ws.protocol import ServerMessage, SubscribeRequest
 from tests.conftest import TEST_BUCKET, PrefixedTestClient
 
 DATE = "2026-04-10"
@@ -168,7 +168,7 @@ def test_ws_bad_frame_gets_error(ws_client) -> None:  # type: ignore[no-untyped-
 def test_ws_streams_metadata_in_chunks(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 
-    from rubintv.data import metadata as metadata_mod
+    from lsst.ts.rubintv.data import metadata as metadata_mod
 
     client, s3 = ws_client
     # 3 rows with a batch size of 2 -> two metadataChunk frames + complete.

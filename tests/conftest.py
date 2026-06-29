@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -11,12 +12,14 @@ import boto3
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from lsst.ts.rubintv.app import create_app
+from lsst.ts.rubintv.config.settings import Settings
 from moto import mock_aws
 
-from rubintv.app import create_app
-from rubintv.config.settings import Settings
-
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "models_data.yaml"
+# The models YAML now ships inside the package; point tests at the packaged copy
+# so there is a single source of truth. It's a real file on disk in a checkout,
+# so a plain Path is fine (no zip-import materialisation needed for tests).
+CONFIG_PATH = Path(str(files("lsst.ts.rubintv.models").joinpath("models_data.yaml")))
 
 # The whole app is served under this prefix (settings.path_prefix). Tests
 # address routes by their unprefixed path (e.g. "/api/health/ready") and the
@@ -46,6 +49,7 @@ class PrefixedTestClient(TestClient):
         if isinstance(url, httpx.URL) and url.path.startswith("/"):
             return url.copy_with(path=f"{TEST_PREFIX}{url.path}")
         return url
+
 
 # The test site exposes a single location named "test" backed by this bucket.
 # Tests never touch the production-shaped sites (usdf, summit, etc.).

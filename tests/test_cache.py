@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rubintv.data.cache import DiskCache
-from rubintv.data.index import DateIndex, ExtInfo
+from lsst.ts.rubintv.data.cache import DiskCache
+from lsst.ts.rubintv.data.index import DateIndex, ExtInfo
 
 
 def sample_index() -> DateIndex:

@@ -18,7 +18,7 @@ come from the YAML at `RUBINTV_MODELS_PATH`.
 | Variable                      | Default                    | Purpose                                                       |
 | ----------------------------- | -------------------------- | ------------------------------------------------------------- |
 | `RUBINTV_SITE`                | `local`                    | Deployment site name.                                         |
-| `RUBINTV_MODELS_PATH`         | `config/models_data.yaml`  | Validated cameras/locations/channels config.                  |
+| `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
 | `RUBINTV_CACHE_DIR`           | unset                      | PVC dir for warm-start cache. Unset = no disk cache.          |
 | `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = disabled.     |
 | `RUBINTV_POLL_INTERVAL_SECONDS` | `1.0`                    | Current-day S3 poll cadence.                                  |
@@ -76,7 +76,7 @@ reachable; there is no other auth layer.
 Dev:
 
 ```sh
-uv run uvicorn rubintv.main:app --reload    # backend on :8000
+uv run uvicorn lsst.ts.rubintv.main:app --reload    # backend on :8000
 cd web && npm run dev                        # SPA on :5173, proxies /api,/ws
 ```
 

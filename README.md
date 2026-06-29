@@ -23,9 +23,10 @@ each branch builds on the last.
 ## Layout
 
 ```
-rubintv/        Python backend (FastAPI)
-web/            React + TypeScript SPA (Vite)
-design/         The rebuild plan and design notes
+python/lsst/ts/rubintv/   Python backend (FastAPI), packaged as lsst.ts.rubintv
+web/                       React + TypeScript SPA (Vite)
+design/                    The rebuild plan and design notes
+conda/, ups/, Jenkinsfile* lsst-ts conda/EUPS packaging (Jenkins CI)
 ```
 
 ## Development
@@ -34,7 +35,9 @@ Backend (uses [uv](https://docs.astral.sh/uv/)):
 
 ```sh
 uv sync
-uv run uvicorn rubintv.main:app --reload
+uv run uvicorn lsst.ts.rubintv.main:app --reload
+# or via the installed console script:
+uv run run_rubintv
 ```
 
 Frontend:

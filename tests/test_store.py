@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import pytest
-
-from rubintv.data.bus import EventBus
-from rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
-from rubintv.data.store import EventStore
+from lsst.ts.rubintv.data.bus import EventBus
+from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
+from lsst.ts.rubintv.data.store import EventStore
 
 
 def created(key: str, etag: str = "e1", location: str = "local") -> ObjectEvent:
@@ -282,7 +281,7 @@ async def test_bus_drops_changes_for_slow_subscriber(
 ) -> None:
     # A subscriber whose queue is full loses the overflow (logged) instead of
     # stalling the publisher; the queued change still arrives.
-    import rubintv.data.bus as bus_mod
+    import lsst.ts.rubintv.data.bus as bus_mod
 
     monkeypatch.setattr(bus_mod, "_QUEUE_MAXSIZE", 1)
     bus = EventBus()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from rubintv.data.dayobs import get_current_day_obs, recent_day_obs
+from lsst.ts.rubintv.data.dayobs import get_current_day_obs, recent_day_obs
 
 
 def test_before_noon_utc_is_previous_day() -> None:

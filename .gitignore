@@ -30,3 +30,6 @@ cache/
 .vscode/
 .idea/
 .claude/
+
+# setuptools_scm generated version file
+python/lsst/ts/rubintv/_version.py

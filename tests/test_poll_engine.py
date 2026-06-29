@@ -11,13 +11,12 @@ import asyncio
 import time
 
 import pytest
-
-from rubintv.config.models import Camera, Location, Models
-from rubintv.data import tasks
-from rubintv.data.dayobs import get_current_day_obs
-from rubintv.data.events import ObjectEvent, ObjectKind
-from rubintv.data.store import EventStore
-from rubintv.data.tasks import PollEngine
+from lsst.ts.rubintv.config.models import Camera, Location, Models
+from lsst.ts.rubintv.data import tasks
+from lsst.ts.rubintv.data.dayobs import get_current_day_obs
+from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind
+from lsst.ts.rubintv.data.store import EventStore
+from lsst.ts.rubintv.data.tasks import PollEngine
 
 
 class FakePoller:
@@ -39,9 +38,7 @@ class FakePoller:
         key = f"{prefix.split('/')[0]}/{date}/c/000001/a.png"
         self._seen[(location, prefix)] = {date}
         return [
-            ObjectEvent(
-                kind=ObjectKind.CREATED, location=location, key=key, etag="e"
-            )
+            ObjectEvent(kind=ObjectKind.CREATED, location=location, key=key, etag="e")
         ]
 
     def observed_dates(self, location: str, prefix: str) -> set[str]:
@@ -143,7 +140,10 @@ async def test_full_sweep_keeps_observed_dates() -> None:
     poller = FakePoller()
     store = EventStore()
     engine = PollEngine(
-        _models(), store, poller, recent_window_days=0  # type: ignore[arg-type]
+        _models(),
+        store,
+        poller,
+        recent_window_days=0,  # type: ignore[arg-type]
     )
     await engine._scan_all_history()
     assert store.calendar("loc", "cam") == ["2026-01-01"]
@@ -152,9 +152,7 @@ async def test_full_sweep_keeps_observed_dates() -> None:
 async def test_full_sweep_scans_bare_prefix() -> None:
     engine, poller = _engine(window=0)
     await engine._scan_all_history()
-    assert ("loc", "cam") in {
-        (loc, "cam") for loc, _ in poller.scanned
-    }
+    assert ("loc", "cam") in {(loc, "cam") for loc, _ in poller.scanned}
     assert [p for _, p in poller.scanned] == ["cam/"]
 
 
@@ -230,7 +228,10 @@ async def test_scan_date_fills_store_on_demand() -> None:
     poller = FakePoller()
     store = EventStore()
     engine = PollEngine(
-        _models(), store, poller, recent_window_days=0  # type: ignore[arg-type]
+        _models(),
+        store,
+        poller,
+        recent_window_days=0,  # type: ignore[arg-type]
     )
     applied = await engine.scan_date("loc", "cam", "2026-01-05")
     assert applied == 1
@@ -267,7 +268,10 @@ async def test_scan_date_error_reports_zero_events() -> None:
             raise RuntimeError("boom")
 
     engine = PollEngine(
-        _models(), EventStore(), BoomPoller(), recent_window_days=0  # type: ignore[arg-type]
+        _models(),
+        EventStore(),
+        BoomPoller(),
+        recent_window_days=0,  # type: ignore[arg-type]
     )
     # Best-effort: an S3 failure degrades to "no events", never raises into
     # the request handler.
@@ -325,7 +329,10 @@ async def test_s3_healthy_starts_true_and_survives_good_cycle() -> None:
 async def test_s3_healthy_flips_false_on_failed_cycle() -> None:
     poller = FlakyPoller()
     engine = PollEngine(
-        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+        _models(),
+        EventStore(),
+        poller,
+        recent_window_days=1,  # type: ignore[arg-type]
     )
     poller.fail = True
     await _run_one_current_cycle(engine)
@@ -335,7 +342,10 @@ async def test_s3_healthy_flips_false_on_failed_cycle() -> None:
 async def test_s3_healthy_recovers_after_good_cycle() -> None:
     poller = FlakyPoller()
     engine = PollEngine(
-        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+        _models(),
+        EventStore(),
+        poller,
+        recent_window_days=1,  # type: ignore[arg-type]
     )
     poller.fail = True
     await _run_one_current_cycle(engine)
@@ -376,7 +386,10 @@ async def test_s3_slow_flips_true_when_cycle_exceeds_threshold(
     monkeypatch.setattr(tasks, "SLOW_CYCLE_SECONDS", 0.05)
     poller = SlowPoller(delay=0.15)
     engine = PollEngine(
-        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+        _models(),
+        EventStore(),
+        poller,
+        recent_window_days=1,  # type: ignore[arg-type]
     )
     await _run_one_current_cycle(engine)
     # The cycle succeeded (reachable) but was slow.
@@ -389,7 +402,10 @@ async def test_s3_slow_cleared_when_cycle_fails() -> None:
     # one — slow must not linger over an outright failure.
     poller = FlakyPoller()
     engine = PollEngine(
-        _models(), EventStore(), poller, recent_window_days=1  # type: ignore[arg-type]
+        _models(),
+        EventStore(),
+        poller,
+        recent_window_days=1,  # type: ignore[arg-type]
     )
     engine.s3_slow = True  # pretend a prior slow cycle set it
     poller.fail = True

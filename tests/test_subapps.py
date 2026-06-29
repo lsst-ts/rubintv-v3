@@ -8,10 +8,10 @@ from pathlib import Path
 
 import boto3
 import pytest
+from lsst.ts.rubintv.app import create_app
+from lsst.ts.rubintv.config.settings import Settings
 from moto import mock_aws
 
-from rubintv.app import create_app
-from rubintv.config.settings import Settings
 from tests.conftest import (
     CONFIG_PATH,
     TEST_BUCKET,

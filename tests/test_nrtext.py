@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rubintv.data.nrtext import parse_text_items
+from lsst.ts.rubintv.data.nrtext import parse_text_items
 
 NEW = "2026-04-10"  # on/after cutoff
 OLD = "2025-12-01"  # before cutoff
