@@ -148,10 +148,12 @@ def _parse_cameras(
         cameras[name] = cameras[name].model_copy(update={"metadata_columns": merged})
 
     # Apply top-level locked_columns the same way (overlays camera-defined ones).
-    for name, columns in global_locked.items():
+    # Distinct loop var from the metadata loop above: reusing `columns` would
+    # leave mypy joining dict[str, str] with list[str].
+    for name, locked in global_locked.items():
         if name not in cameras:
             continue
-        merged_locked = _dedup(cameras[name].locked_columns + columns)
+        merged_locked = _dedup(cameras[name].locked_columns + locked)
         cameras[name] = cameras[name].model_copy(
             update={"locked_columns": merged_locked}
         )
