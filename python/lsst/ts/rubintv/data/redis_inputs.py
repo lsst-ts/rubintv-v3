@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.events import StoreChange
 from lsst.ts.rubintv.logging import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from lsst.ts.rubintv.config.models import RedisDetector
     from lsst.ts.rubintv.data.bus import EventBus
     from redis.asyncio import Redis
@@ -168,7 +170,10 @@ class RedisInputs:
             from redis.asyncio import Redis
 
             self._redis = Redis.from_url(self._url, decode_responses=True)
-            await self._redis.ping()
+            # redis-py types ping() as returning ResponseT (Awaitable[bool] |
+            # bool) for the shared sync/async signature; on the asyncio client
+            # it's always awaitable, so cast to satisfy the checker.
+            await cast("Awaitable[bool]", self._redis.ping())
         except Exception as exc:  # noqa: BLE001 - degrade, don't crash
             log.warning("redis.unavailable", error=str(exc))
             self._redis = None
