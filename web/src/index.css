@@ -423,6 +423,19 @@ h1, h2 {
   .scan-spinner { animation: none; }
 }
 
+/* Stalled scan: the server can't reach S3, so the refresh isn't progressing.
+   Drop the accent register for the amber warning tone and freeze the spinner
+   so the pill doesn't imply movement it isn't making. */
+.scan-stalled {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.scan-stalled .scan-spinner {
+  animation: none;
+  border-color: var(--warn);
+  border-top-color: var(--warn);
+}
+
 .metadata-progress {
   color: var(--ink-soft);
   font-family: var(--mono);
@@ -929,6 +942,14 @@ h1, h2 {
 }
 .cols-pop .picker-item:hover { background: var(--paper-3); }
 .cols-pop .picker-item.dim { color: var(--ink-soft); }
+/* Locked columns (always shown when present): ghosted + non-interactive. */
+.cols-pop .picker-item.locked {
+  color: var(--ink-soft);
+  cursor: default;
+  opacity: 0.7;
+}
+.cols-pop .picker-item.locked:hover { background: transparent; }
+.cols-pop .picker-item.locked input[type="checkbox"] { cursor: default; }
 .cols-pop .picker-item .label-text {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

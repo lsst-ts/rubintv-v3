@@ -85,6 +85,30 @@ test("warm start refresh wording also applies site-wide (no camera)", async () =
   expect(await pillTitle()).toMatch(/Refreshing historical data/);
 });
 
+test("reflects a stalled refresh when S3 is unreachable (no camera)", async () => {
+  renderWith({
+    historical_loading: true,
+    warm_start: true,
+    s3_healthy: false,
+  });
+  const pill = await screen.findByRole("status");
+  expect(pill.textContent).toMatch(/Refresh stalled/);
+  expect(pill.getAttribute("title")).toMatch(/Can't reach S3/);
+  expect(pill.className).toMatch(/scan-stalled/);
+});
+
+test("stalled wording overrides the per-camera recent/older distinction", async () => {
+  renderWith(
+    {
+      historical_loading: true,
+      s3_healthy: false,
+      cameras: [cam({ recent_ready: true })],
+    },
+    { location: "loc", camera: "cam" },
+  );
+  expect(await pillTitle()).toMatch(/Can't reach S3/);
+});
+
 test("clears once the current camera's full sweep completes", async () => {
   renderWith(
     {
