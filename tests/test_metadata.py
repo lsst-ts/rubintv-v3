@@ -7,10 +7,10 @@ from collections.abc import Iterator
 
 import boto3
 import pytest
+from lsst.ts.rubintv.data import metadata as metadata_mod
+from lsst.ts.rubintv.data.metadata import Metadata, MetadataCache
 from moto import mock_aws
 
-from rubintv.data import metadata as metadata_mod
-from rubintv.data.metadata import Metadata, MetadataCache
 from tests.conftest import TEST_BUCKET
 
 DATE = "2026-04-10"

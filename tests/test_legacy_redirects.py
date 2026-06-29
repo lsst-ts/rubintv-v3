@@ -126,9 +126,7 @@ def test_event_by_split_form(client: TestClient) -> None:
         "/summit/lsstcam/event?channel_name=witness_detector"
         "&date_str=2025-04-22&seq_num=7",
     )
-    assert (
-        loc == f"{TEST_PREFIX}/summit/lsstcam/witness_detector?date=2025-04-22&seq=7"
-    )
+    assert loc == f"{TEST_PREFIX}/summit/lsstcam/witness_detector?date=2025-04-22&seq=7"
 
 
 def test_event_by_key(client: TestClient) -> None:

@@ -1,6 +1,6 @@
 [project]
 name = "rubintv"
-version = "3.0.0"
+dynamic = ["version"]
 description = "RubinTV — web app for viewing Vera C. Rubin Observatory data products (rebuild)"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -31,12 +31,35 @@ dev = [
     "boto3-stubs[s3]>=1.35",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.scripts]
+# Console entry point used by the conda package, EUPS, and start-daemon.sh —
+# matches the V2 deployment so the same launch command works everywhere.
+run_rubintv = "lsst.ts.rubintv.run_rubintv:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["rubintv"]
+[project.urls]
+Homepage = "https://rubintv.lsst.io"
+Source = "https://github.com/lsst-ts/rubintv"
+
+[build-system]
+# setuptools + setuptools_scm matches the lsst-ts conda/EUPS toolchain. uv reads
+# this backend fine, so local `uv sync`/`uv run` keep working unchanged.
+requires = ["setuptools>=61", "setuptools-scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+# Sources live under python/ in the LSST namespace layout (lsst.ts.rubintv).
+[tool.setuptools.packages.find]
+where = ["python"]
+
+# Ship the models YAML and the py.typed marker inside the package: the YAML so
+# the app resolves config from any CWD, py.typed so downstream type-checkers
+# treat the installed package as typed.
+[tool.setuptools.package-data]
+"lsst.ts.rubintv" = ["py.typed"]
+"lsst.ts.rubintv.models" = ["*.yaml"]
+
+[tool.setuptools_scm]
+# Version derived from git tags; written into the package for runtime/import.
+write_to = "python/lsst/ts/rubintv/_version.py"
 
 [tool.ruff]
 line-length = 88
@@ -51,9 +74,15 @@ ignore = ["B008"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+# Sources live under python/ in a PEP 420 namespace (lsst.ts.rubintv). Tell mypy
+# the import root so it resolves files to their dotted module name once, instead
+# of also discovering them as a top-level "rubintv".
+mypy_path = "python"
+explicit_package_bases = true
+namespace_packages = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 # Always-on coverage reporting; no --cov-fail-under, so it never fails the run.
-addopts = "--cov=rubintv --cov-report=term-missing --cov-report=html"
+addopts = "--cov=lsst.ts.rubintv --cov-report=term-missing --cov-report=html"

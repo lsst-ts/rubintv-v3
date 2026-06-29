@@ -9,10 +9,10 @@ from collections.abc import Iterator
 import boto3
 import pytest
 from fastapi.testclient import TestClient
+from lsst.ts.rubintv.app import create_app
+from lsst.ts.rubintv.config.settings import Settings
 from moto import mock_aws
 
-from rubintv.app import create_app
-from rubintv.config.settings import Settings
 from tests.conftest import TEST_BUCKET, PrefixedTestClient
 
 DATE = "2026-04-10"
@@ -111,7 +111,7 @@ def test_detectors_config_lists_configured_streams(seeded_client: TestClient) ->
     resp = seeded_client.get("/api/detectors/config")
     assert resp.status_code == 200
     names = {d["name"] for d in resp.json()["detectors"]}
-    # From config/models_data.yaml's redis_detectors.
+    # From the packaged models_data.yaml's redis_detectors.
     assert {"sfmSet0", "aosSet0"} <= names
 
 
@@ -295,9 +295,7 @@ def test_bad_date_422(seeded_client: TestClient) -> None:
 
 
 def test_night_report(seeded_client: TestClient) -> None:
-    resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}"
-    )
+    resp = seeded_client.get(f"/api/locations/test/cameras/lsstcam/night-report/{DATE}")
     body = resp.json()
     assert body["exists"] is True
     by_type = {item["type"]: item for item in body["text"]}
@@ -356,8 +354,7 @@ def test_night_report_plot_streams_object(seeded_client: TestClient) -> None:
     assert resp.content == b"x"
     assert "Cache-Control" in resp.headers
     assert (
-        resp.headers["Content-Disposition"]
-        == 'inline; filename="elana_coverage.png"'
+        resp.headers["Content-Disposition"] == 'inline; filename="elana_coverage.png"'
     )
 
 
@@ -422,7 +419,7 @@ def test_proxy_fast_path_skips_listing(
     # A convention-named object is served by a direct GET without any LIST.
     # We seed the convention key into the already-mocked bucket, then make
     # _resolve_key explode so any fallback to listing fails the test.
-    import rubintv.api.proxy as proxy
+    import lsst.ts.rubintv.api.proxy as proxy
 
     s3 = boto3.client("s3", region_name="us-east-1")
     conv_key = (
@@ -528,7 +525,7 @@ def test_proxy_404_when_listed_key_vanishes(
 ) -> None:
     # The LIST finds a key but the GET misses (object deleted in between):
     # that's a 404, not a crash.
-    import rubintv.api.proxy as proxy
+    import lsst.ts.rubintv.api.proxy as proxy
 
     monkeypatch.setattr(
         proxy, "_resolve_key", lambda *_a, **_k: "lsstcam/gone/nothing.png"
@@ -544,9 +541,8 @@ def test_admin_gate_rejects_unlisted_user() -> None:
     # Direct dependency check: the seeded test site uses the "*" wildcard, so
     # the named-user branch is exercised against a hand-built location.
     from fastapi import HTTPException
-
-    from rubintv.api.admin import require_admin
-    from rubintv.config.models import Location
+    from lsst.ts.rubintv.api.admin import require_admin
+    from lsst.ts.rubintv.config.models import Location
 
     loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
     assert require_admin(location=loc, x_auth_user="alice") == "alice"
@@ -560,15 +556,12 @@ def test_site_admin_gate_rejects_unlisted_user() -> None:
     from typing import cast
 
     from fastapi import HTTPException
-
-    from rubintv.api.admin import require_site_admin
-    from rubintv.config.models import Location
-    from rubintv.state import AppState
+    from lsst.ts.rubintv.api.admin import require_site_admin
+    from lsst.ts.rubintv.config.models import Location
+    from lsst.ts.rubintv.state import AppState
 
     loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
-    state = cast(
-        "AppState", SimpleNamespace(models=SimpleNamespace(locations=[loc]))
-    )
+    state = cast("AppState", SimpleNamespace(models=SimpleNamespace(locations=[loc])))
     assert require_site_admin(state=state, x_auth_user="alice") == "alice"
     with pytest.raises(HTTPException) as excinfo:
         require_site_admin(state=state, x_auth_user="bob")
@@ -624,7 +617,7 @@ def test_admin_actions_write_through_redis(seeded_client: TestClient) -> None:
 def test_admin_action_503_when_redis_drops_mid_request(
     seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from rubintv.data.redis_inputs import RedisUnavailable
+    from lsst.ts.rubintv.data.redis_inputs import RedisUnavailable
 
     state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
     state.redis._redis = _FakeAdminRedis()  # noqa: SLF001 - enables the gate

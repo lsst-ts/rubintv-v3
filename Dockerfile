@@ -37,14 +37,20 @@ RUN git clone -b stable --depth 1 \
 ENV PATH="/home/rubintv/flutter/bin:/home/rubintv/.pub-cache/bin:${PATH}"
 RUN flutter doctor && dart pub global activate fvm
 
+# setuptools_scm derives the version from git, which isn't present in this
+# context. CI passes the computed version as a build arg; fall back to 0.0.0
+# for ad-hoc local builds so the install still succeeds.
+ARG RUBINTV_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${RUBINTV_VERSION}
+
 # Install deps first for layer caching.
 COPY --chown=rubintv:rubintv pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY --chown=rubintv:rubintv rubintv/ ./rubintv/
-COPY --chown=rubintv:rubintv config/ ./config/
-# pyproject declares readme = README.md; hatchling refuses to build the
-# project wheel without it.
+# Source + packaged config live under python/ (lsst.ts.rubintv namespace).
+COPY --chown=rubintv:rubintv python/ ./python/
+# pyproject declares readme = README.md; the build backend refuses to build
+# the project wheel without it.
 COPY --chown=rubintv:rubintv README.md ./
 RUN uv sync --locked --no-dev
 

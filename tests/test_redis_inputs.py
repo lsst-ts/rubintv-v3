@@ -7,11 +7,10 @@ import json
 from collections.abc import AsyncIterator
 
 import pytest
-
-from rubintv.config.models import RedisDetector
-from rubintv.data.bus import EventBus
-from rubintv.data.controls import ControlStore, DetectorStore
-from rubintv.data.redis_inputs import (
+from lsst.ts.rubintv.config.models import RedisDetector
+from lsst.ts.rubintv.data.bus import EventBus
+from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
+from lsst.ts.rubintv.data.redis_inputs import (
     RedisInputs,
     RedisUnavailable,
     apply_detector_entry,
@@ -186,9 +185,7 @@ class _LoopFakeRedis:
     async def get(self, key: str) -> str | None:
         return self.store.get(key)
 
-    async def xread(
-        self, last_ids: dict[str, str], block: int = 0
-    ) -> _StreamBatch:
+    async def xread(self, last_ids: dict[str, str], block: int = 0) -> _StreamBatch:
         if self._batches:
             return self._batches.pop(0)
         await asyncio.Event().wait()  # no more entries; park until cancelled
@@ -215,9 +212,7 @@ async def test_start_without_url_stays_disabled() -> None:
 async def test_start_degrades_when_redis_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    inputs = RedisInputs(
-        "redis://x", EventBus(), ControlStore(), DetectorStore(), []
-    )
+    inputs = RedisInputs("redis://x", EventBus(), ControlStore(), DetectorStore(), [])
     _patch_from_url(monkeypatch, _LoopFakeRedis(ping_ok=False))
     await inputs.start()
     # Unreachable Redis disables the inputs but must not raise.
@@ -268,9 +263,7 @@ async def test_detector_loop_applies_stream_entries(
         detectors,
         [RedisDetector(key="CLUSTER_STATUS_SFM_SET_0", name="sfmSet0")],
     )
-    entry = {
-        "data": json.dumps({"189": {"status": "busy", "type": "worker_status"}})
-    }
+    entry = {"data": json.dumps({"189": {"status": "busy", "type": "worker_status"}})}
     fake = _LoopFakeRedis(
         stream_batches=[
             [("stream:CLUSTER_STATUS_SFM_SET_0", [("1-1", entry)])],
@@ -284,9 +277,7 @@ async def test_detector_loop_applies_stream_entries(
         # detector snapshot; payloads are stored under the config *name*.
         change = await asyncio.wait_for(anext(stream), timeout=2)
     assert change.type == "detectorStatus"
-    assert detectors.all() == {
-        "sfmSet0": {"workers": {"189": {"status": "busy"}}}
-    }
+    assert detectors.all() == {"sfmSet0": {"workers": {"189": {"status": "busy"}}}}
 
     await inputs.stop()
     assert fake.closed is True

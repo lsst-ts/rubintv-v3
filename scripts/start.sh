@@ -47,5 +47,7 @@ case "$RUBINTV_EXP_CHECKER_ENABLED" in
 esac
 
 # --no-sync: uv run must not "correct" the venv back to the lockfile, which
-# would strip the exp_checker install above.
-exec uv run --no-sync uvicorn rubintv.main:app --host 0.0.0.0 --port 8000
+# would strip the exp_checker install above. run_rubintv is the console
+# entry point from pyproject's [project.scripts] — the same launch path the
+# conda/EUPS install uses, so deployment tooling needs no special casing.
+exec uv run --no-sync run_rubintv

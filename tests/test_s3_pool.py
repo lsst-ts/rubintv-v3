@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import boto3
 import pytest
+from lsst.ts.rubintv.config.models import Location
+from lsst.ts.rubintv.s3.client import S3ClientPool
 from moto import mock_aws
-
-from rubintv.config.models import Location
-from rubintv.s3.client import S3ClientPool
 
 
 @pytest.fixture

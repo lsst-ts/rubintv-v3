@@ -7,12 +7,11 @@ from dataclasses import dataclass
 
 import boto3
 import pytest
+from lsst.ts.rubintv.config.models import Location
+from lsst.ts.rubintv.data.events import ObjectKind
+from lsst.ts.rubintv.data.source import S3Poller
+from lsst.ts.rubintv.s3.client import S3ClientPool
 from moto import mock_aws
-
-from rubintv.config.models import Location
-from rubintv.data.events import ObjectKind
-from rubintv.data.source import S3Poller
-from rubintv.s3.client import S3ClientPool
 
 BUCKET = "rubintv-local"
 

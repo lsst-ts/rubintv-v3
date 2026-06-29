@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # setuptools_scm derives the version from git history/tags.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v7
       - name: Sync deps
@@ -23,7 +26,7 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check .
       - name: mypy
-        run: uv run mypy rubintv
+        run: uv run mypy -p lsst.ts.rubintv
       - name: pytest
         run: uv run pytest -q
 
@@ -49,12 +52,14 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Build + push the container image for deployable refs: ticket branches,
-  # deploy branches, develop, and release tags — the same gating as the
-  # original rubintv repo. The SPA is built inside the Dockerfile (stage 1),
+  # Build the container image and push it to GHCR, mirroring V2's pipeline so
+  # ArgoCD can deploy the same way. Runs only on deploy-style refs (ticket
+  # branches, deploy branches, develop, main, release tags) to avoid pushing
+  # images for every PR. The SPA is built inside the Dockerfile (stage 1),
   # so no npm step is needed here.
   build:
     runs-on: ubuntu-latest
+    needs: [backend, frontend]
     timeout-minutes: 15
     permissions:
       contents: read
@@ -65,18 +70,28 @@ jobs:
       && (startsWith(github.ref, 'refs/tags/')
           || startsWith(github.ref, 'refs/heads/tickets/')
           || startsWith(github.ref, 'refs/heads/deploy')
-          || startsWith(github.ref, 'refs/heads/develop'))
+          || startsWith(github.ref, 'refs/heads/develop')
+          || github.ref == 'refs/heads/main')
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # setuptools_scm derives the version from git history/tags.
+          fetch-depth: 0
+
+      - name: Compute version (setuptools_scm)
+        id: version
+        run: |
+          pipx run setuptools-scm >> /tmp/v.txt 2>/dev/null || true
+          echo "value=$(cat /tmp/v.txt 2>/dev/null || echo 0.0.0)" >> "$GITHUB_OUTPUT"
 
       - name: Define the Docker tag and build provenance
         id: vars
         run: |
-          echo "tag=$(scripts/docker-tag.sh)" >> $GITHUB_OUTPUT
-          echo "git_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "tag=$(scripts/docker-tag.sh)" >> "$GITHUB_OUTPUT"
+          echo "git_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "git_date=$(git log -1 --format=%cd --date=format:%Y-%m-%d)" \
-            >> $GITHUB_OUTPUT
+            >> "$GITHUB_OUTPUT"
 
       - name: Print the tag
         run: echo ${{ steps.vars.outputs.tag }}
@@ -99,6 +114,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.tag }}
           build-args: |
+            RUBINTV_VERSION=${{ steps.version.outputs.value }}
             GIT_SHA=${{ steps.vars.outputs.git_sha }}
             GIT_DATE=${{ steps.vars.outputs.git_date }}
           cache-from: type=gha

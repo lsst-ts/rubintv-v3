@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rubintv.data.parser import (
+from lsst.ts.rubintv.data.parser import (
     parse_channel_event,
     parse_metadata,
     parse_night_report,
