@@ -651,6 +651,13 @@ metadata_columns:
 
   dream: {}
 
+# Columns that are always shown when present and can't be hidden in the column
+# picker (they appear there ghosted/locked). Keyed by camera name, same as
+# metadata_columns; inherited along metadata_from.
+locked_columns:
+  lsstcam: [Retrieval fails]
+  lsstcam_aos: [Retrieval fails]
+
 admin_for:
   usdf-k8s: [mfl, cslater, saranda, guymw, kbechtol, bechtol, ktl, jfcrenshaw, bpolen]
   summit:

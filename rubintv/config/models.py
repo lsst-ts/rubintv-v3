@@ -75,6 +75,10 @@ class Camera(BaseModel):
     channels: list[Channel] = Field(default_factory=list)
     metadata_columns: dict[str, str] = Field(default_factory=dict)
     """Column name -> human description, for the metadata table."""
+    locked_columns: list[str] = Field(default_factory=list)
+    """Columns always shown when present and not hideable in the picker (shown
+    there ghosted). Populated from the top-level ``locked_columns`` map and
+    inherited along ``metadata_from``."""
     metadata_from: str | None = None
     """Inherit ``metadata_columns`` from this other camera. Resolved by the
     loader; never observed as non-None on a loaded ``Camera``."""

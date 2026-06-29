@@ -216,12 +216,14 @@ export function CameraTable() {
       (name) => name[0] !== "_" && name[0] !== "@",
     );
   }, [cameraInfo, metadata]);
-  const { visible, hidden, toggle, showAll, hideAll, reset } = useColumnPrefs(
-    location,
-    camera,
-    metaColumns,
-    defaultColumns,
-  );
+  const { visible, hidden, locked, toggle, showAll, hideAll, reset } =
+    useColumnPrefs(
+      location,
+      camera,
+      metaColumns,
+      defaultColumns,
+      cameraInfo?.locked_columns,
+    );
 
   // All active filters live here, including any on the synthetic Seq.No column.
   // A Seq.No filter is shareable via a single catch-all ?seq_filter param that
@@ -421,19 +423,32 @@ export function CameraTable() {
                 <div className="picker-empty">no columns match “{colsQuery}”</div>
               ) : (
                 <div className="cols-grid">
-                  {colsMatches.map((col) => (
-                    <label
-                      key={col}
-                      className={hidden.has(col) ? "picker-item dim" : "picker-item"}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!hidden.has(col)}
-                        onChange={() => toggle(col)}
-                      />
-                      <span className="label-text">{col}</span>
-                    </label>
-                  ))}
+                  {colsMatches.map((col) => {
+                    const isLocked = locked.has(col);
+                    return (
+                      <label
+                        key={col}
+                        className={
+                          isLocked
+                            ? "picker-item locked"
+                            : hidden.has(col)
+                              ? "picker-item dim"
+                              : "picker-item"
+                        }
+                        title={
+                          isLocked ? "Always shown when present" : undefined
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isLocked || !hidden.has(col)}
+                          disabled={isLocked}
+                          onChange={() => toggle(col)}
+                        />
+                        <span className="label-text">{col}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>
