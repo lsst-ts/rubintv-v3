@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -9,6 +10,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
 import { LiveProvider } from "./lib/LiveContext";
+import {
+  openLiveSockets,
+  pushLiveMessage,
+  sentLiveFrames,
+} from "./test-setup";
 import { routes } from "./routes";
 
 // Views fetch on mount; in jsdom those calls fail, but headings still render
@@ -81,6 +87,82 @@ test("channels route renders the channel browser, grouped by cadence", async () 
   const monitor = screen.getByRole("link", { name: /Monitor/ });
   expect(monitor.getAttribute("href")).toBe("/local/lsstcam/monitor/current");
   expect(screen.getByRole("link", { name: /Day Movie/ })).toBeDefined();
+});
+
+test("channel browser advances its cards on a live channelData message", async () => {
+  // The grid subscribes to the camera topic; a channelData frame must
+  // invalidate the date payload so each card re-resolves to the newest seq.
+  // Without the subscription (the bug) the cards froze on their first fetch
+  // while the table kept updating. The date payload's monitor seq advances
+  // 250 -> 252 between the initial fetch and the post-message refetch.
+  let latestSeq = 250;
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/lsstcam\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [
+          { name: "monitor", title: "Monitor", label: "raw", per_day: false },
+        ],
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        date: "2026-04-10",
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [250, latestSeq] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/lsstcam/channels");
+
+  // The card first shows seq 250 (its src encodes the zero-padded seq).
+  const img = await screen.findByRole("img", { name: "Monitor latest" });
+  await waitFor(() =>
+    expect(img.getAttribute("src")).toContain("/000250/image.png"),
+  );
+
+  // Open the connection so the view's queued subscribe frame flushes.
+  act(() => openLiveSockets());
+
+  // The grid must subscribe to the camera topic for the resolved date — that
+  // subscription is what tells the server to stream this camera's updates to
+  // the tab. (A pushed message alone can't prove this: applyLiveMessage
+  // invalidates regardless of who subscribed, so the seq assertion below would
+  // pass even unsubscribed; this is the check that actually guards the fix.)
+  await waitFor(() =>
+    expect(sentLiveFrames()).toContainEqual({
+      action: "subscribe",
+      topic: "camera",
+      location: "local",
+      camera: "lsstcam",
+      date: "2026-04-10",
+    }),
+  );
+
+  // A new exposure lands: the next date-payload fetch will carry seq 252, and
+  // a channelData frame for this camera/date invalidates it.
+  latestSeq = 252;
+  act(() =>
+    pushLiveMessage({
+      type: "channelData",
+      location: "local",
+      camera: "lsstcam",
+      date: "2026-04-10",
+    }),
+  );
+
+  // The same <img> element now points at the newer exposure — no reload.
+  await waitFor(() =>
+    expect(img.getAttribute("src")).toContain("/000252/image.png"),
+  );
 });
 
 test("channel /current route follows the newest exposure", async () => {
