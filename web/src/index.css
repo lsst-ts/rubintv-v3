@@ -1542,6 +1542,7 @@ h1, h2 {
 }
 .chc-card:hover { transform: translateY(-2px); border-color: var(--accent); }
 .chc-frame {
+  position: relative;
   aspect-ratio: 4 / 3;
   background: var(--paper-3);
   border-bottom: 1px solid var(--line-mid);
@@ -1550,6 +1551,17 @@ h1, h2 {
 }
 .chc-frame img,
 .chc-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Loading feedback while a card image paints (shares the channel-view spinner
+   keyframes/swatch). The card image fades in once loaded rather than streaming
+   in top-down. */
+.chc-frame img.chc-img-loading { opacity: 0; }
+.chc-frame img { transition: opacity 160ms ease; }
+.chc-img-spinner {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.chc-img-spinner .chv-spinner { width: 26px; height: 26px; border-width: 2.5px; }
 .chc-empty {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
