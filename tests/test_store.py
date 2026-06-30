@@ -60,6 +60,31 @@ async def test_calendar_counts_and_max_seq() -> None:
     assert store.calendar_max_seq("local", "lsstcam") == {"2026-04-10": 5}
 
 
+async def test_calendar_channel_latest_picks_newest_date_per_channel() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            # witness_detector last has data on 04-08; focal_plane on 04-10.
+            created("lsstcam/2026-04-08/witness_detector/000001/a.png"),
+            created("lsstcam/2026-04-10/witness_detector/000002/b.png"),
+            created("lsstcam/2026-04-08/witness_detector/000009/x.png"),
+            created("lsstcam/2026-04-10/focal_plane/000005/c.png"),
+            # A per-day artifact counts as data even with no per-seq channel.
+            created("lsstcam/2026-04-09/movies/final/m.mp4"),
+        ]
+    )
+    assert store.calendar_channel_latest("local", "lsstcam") == {
+        "witness_detector": "2026-04-10",
+        "focal_plane": "2026-04-10",
+        "movies": "2026-04-09",
+    }
+
+
+async def test_calendar_channel_latest_empty_for_unknown_camera() -> None:
+    store = EventStore()
+    assert store.calendar_channel_latest("local", "nope") == {}
+
+
 async def test_calendar_max_seq_omits_days_without_numeric_seqs() -> None:
     store = EventStore()
     # A day with only a per-day artifact has no numeric channel seqs.

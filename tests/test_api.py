@@ -227,6 +227,9 @@ def test_calendar(seeded_client: TestClient) -> None:
     # highest integer seq is 2.
     assert body["counts"][DATE] == 2
     assert body["max_seq"][DATE] == 2
+    # The seeded witness_detector channel's most recent date, so a card with no
+    # current frame can link straight to its last known plot.
+    assert body["channel_latest"]["witness_detector"] == DATE
 
 
 def test_date_payload(seeded_client: TestClient) -> None:

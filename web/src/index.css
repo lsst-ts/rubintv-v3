@@ -1551,8 +1551,13 @@ h1, h2 {
 .chc-frame img,
 .chc-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .chc-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--ink-soft);
+}
+.chc-empty-label { font-size: 9px; opacity: 0.75; }
+.chc-empty-date {
+  font-size: 12px; letter-spacing: 0.04em; color: var(--ink);
 }
 .chc-body {
   display: flex; align-items: center; gap: 8px;

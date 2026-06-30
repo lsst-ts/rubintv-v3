@@ -79,6 +79,7 @@ function ChannelCard({
   media,
   href,
   lag,
+  lastDate,
 }: {
   ch: ChannelOut;
   media: LatestMedia;
@@ -86,6 +87,10 @@ function ChannelCard({
   // How many frames this live card trails the night's frontier by, or null
   // when staleness doesn't apply (per-day card, no frame yet, or no frontier).
   lag: number | null;
+  // The channel's most recent date with data when it has no frame on the
+  // grid's day, so the empty placeholder names where its last plot is (the
+  // card links there). Null when the channel has never had data.
+  lastDate: string | null;
 }) {
   const stale = lag !== null && lag > STALE_SEQ_LAG;
   return (
@@ -97,6 +102,11 @@ function ChannelCard({
           ) : (
             <img src={media.src} alt={`${ch.title} latest`} loading="lazy" />
           )
+        ) : lastDate ? (
+          <div className="chc-empty">
+            <span className="chc-empty-label">last frame</span>
+            <span className="chc-empty-date">{lastDate}</span>
+          </div>
         ) : (
           <div className="chc-empty">no recent frame</div>
         )}
@@ -179,6 +189,32 @@ export function ChannelBrowser() {
     ...live.map((ch) => latestFor(ch, payload, location, camera).seq ?? 0),
   );
 
+  // Per-channel last-known date, supplied by the calendar so an empty card
+  // can deep-link without scanning older payloads client-side.
+  const channelLatest = calendar?.channel_latest ?? {};
+
+  // An empty card's last-known date: the channel's most recent date with data
+  // when it has none on the grid's day. Null when it has a frame today or has
+  // never had data (so the card reads "no recent frame", not a stale date).
+  const lastDateFor = (ch: ChannelOut, media: LatestMedia) => {
+    if (media.src) return null;
+    const last = channelLatest[ch.name];
+    return last && last !== date ? last : null;
+  };
+
+  // Where a card links. A card with a frame on the grid's day opens the live
+  // view (follows the newest exposure). A live card with *no* frame today but
+  // data on an earlier day links straight to that day's last plot — a bare
+  // ?date= (no seq) which the viewer resolves to the newest seq there. Per-day
+  // channels stay on /current: the seq-based viewer can't render their
+  // artifacts, so there's no better fixed target.
+  const hrefFor = (ch: ChannelOut, media: LatestMedia) => {
+    const current = `/${location}/${camera}/${ch.name}/current`;
+    const last = lastDateFor(ch, media);
+    if (!last || ch.per_day) return current;
+    return `/${location}/${camera}/${ch.name}?date=${last}`;
+  };
+
   const renderGroup = (title: string, list: ChannelOut[]) =>
     list.length > 0 && (
       <section className="chc-group">
@@ -197,7 +233,8 @@ export function ChannelBrowser() {
                 key={ch.name}
                 ch={ch}
                 media={media}
-                href={`/${location}/${camera}/${ch.name}/current`}
+                href={hrefFor(ch, media)}
+                lastDate={lastDateFor(ch, media)}
                 lag={lag}
               />
             );

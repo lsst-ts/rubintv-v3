@@ -140,6 +140,11 @@ class CalendarOut(BaseModel):
     """Per-date highest integer seq_num, shown in the calendar's month cells.
     Days with no numeric seqs are absent."""
 
+    channel_latest: dict[str, str] = {}
+    """Per-channel most recent date with data. Lets the channel grid link a
+    card with no frame on the newest date to that channel's last known plot
+    instead of a live view that would render nothing."""
+
 
 class EventOut(BaseModel):
     key: str
