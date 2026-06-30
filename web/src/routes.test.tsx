@@ -441,6 +441,107 @@ test("a metadata cell gets a colour class from its sibling _<col> indicator", as
   expect(within(container).queryByText("_Filter")).toBeNull();
 });
 
+test("single-channel sidebar colours values, strips objects, and offers a download", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+        metadata_columns: {},
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = {
+        "7": {
+          Filter: "z_20",
+          _Filter: "bad", // colour indicator for the Filter value
+          Exposure: 30, // plain scalar, no colour
+          Detail: { DISPLAY_VALUE: "x", extra: 1 }, // object value, stripped
+        },
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [7] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
+
+  // The Filter value carries the colour class named by its "_Filter" sibling.
+  const filter = await screen.findByText("z_20");
+  expect(filter.className).toContain("cell-bad");
+  // A scalar without an indicator gets no colour class.
+  expect(screen.getByText("30").className).not.toContain("cell-");
+  // The "_Filter" indicator and the object value are not rendered as rows.
+  expect(screen.queryByText("_Filter")).toBeNull();
+  expect(screen.queryByText("Detail")).toBeNull();
+  // A download link points at the image with a sensible filename.
+  const download = screen.getByRole("link", { name: /Download/ });
+  expect(download.getAttribute("href")).toContain(
+    "/channels/monitor/2026-04-10/000007/image.png",
+  );
+  expect(download.getAttribute("download")).toBe(
+    "auxtel_monitor_2026-04-10_000007.png",
+  );
+});
+
+test("single-channel metadata folds away and remembers its state globally", async () => {
+  localStorage.removeItem("rubintv.channel.metaCollapsed");
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+        metadata_columns: {},
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "7": { Exposure: 30 } };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [7] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { unmount } = renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
+
+  // Open by default: the metadata value shows and a hide button is present.
+  await screen.findByText("30");
+  fireEvent.click(screen.getByRole("button", { name: "Hide exposure metadata" }));
+
+  // Collapsed: the values are gone, only the reopen button remains, and the
+  // choice is persisted globally.
+  expect(screen.queryByText("30")).toBeNull();
+  expect(screen.getByRole("button", { name: "Show exposure metadata" })).toBeDefined();
+  expect(localStorage.getItem("rubintv.channel.metaCollapsed")).toBe("true");
+
+  // Remounting (a fresh visit) restores the collapsed state from storage.
+  unmount();
+  renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
+  await screen.findByRole("button", { name: "Show exposure metadata" });
+  expect(screen.queryByText("30")).toBeNull();
+
+  localStorage.removeItem("rubintv.channel.metaCollapsed");
+});
+
 test("date picker opens a year heatmap; selecting a data day sets ?date", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);

@@ -8,6 +8,7 @@ import {
   type SortState,
 } from "../lib/sort";
 import { useAngledHeaders } from "../lib/useAngledHeaders";
+import { cellFlagClass } from "../lib/metaCells";
 import { fillTemplate } from "../lib/links";
 import { CopyButton } from "../components/CopyButton";
 import { CellModal } from "../components/CellModal";
@@ -43,20 +44,6 @@ function widthFor(key: string, density: Density): string {
   // Metadata columns: values are short, so compact trims the padded default
   // width that regular keeps for breathing room.
   return density === "compact" ? "64px" : "92px";
-}
-
-// A "_<col>" metadata value names CSS class(es) for the "<col>" cell — the old
-// app's per-cell colour-indicator convention. We namespace each token under
-// `cell-` to isolate it from app styles, and sanitise to a safe class token.
-// Multiple space-separated tokens are honoured. Returns "" when absent/empty.
-function cellFlagClass(raw: unknown): string {
-  if (raw === null || raw === undefined) return "";
-  const s = String(raw).trim();
-  if (!s) return "";
-  return s
-    .split(/\s+/)
-    .map((t) => "cell-" + t.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"))
-    .join(" ");
 }
 
 // Truncate float-like metadata to 2dp for display, keeping the full value for a

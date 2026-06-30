@@ -7,6 +7,9 @@ import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { cellFlagClass } from "../lib/metaCells";
+import { usePersistentToggle } from "../lib/usePersistentToggle";
+import { DownloadIcon, ChevronDownIcon } from "../components/Icons";
 
 // Single-channel image/video view with prev/next seq navigation and a
 // metadata sidebar. Subscribes to the camera topic for live updates.
@@ -23,6 +26,12 @@ export function Channel({ live = false }: { live?: boolean }) {
   const { location = "", camera = "", channel = "" } = useParams();
   const [params] = useSearchParams();
   const qc = useQueryClient();
+
+  // Metadata sidebar collapse, remembered globally across channels/sessions.
+  const [metaCollapsed, setMetaCollapsed] = usePersistentToggle(
+    "rubintv.channel.metaCollapsed",
+    false,
+  );
 
   const { data: cameraInfo } = useQuery({
     queryKey: queryKeys.camera(location, camera),
@@ -211,10 +220,30 @@ export function Channel({ live = false }: { live?: boolean }) {
   }, [prev, next, isVideo]);
 
   const channelInfo = cameraInfo?.channels?.find((c) => c.name === channel);
-  const metaEntries = Object.entries(metadata?.[String(seq)] ?? {});
+
+  // Sidebar rows for the displayed exposure. Mirror the table's conventions:
+  //   * Drop object/array values — they're foldout-only in the table and have
+  //     no inline form here, so showing "[object Object]" is noise.
+  //   * Drop "_"/"@"-prefixed keys as their own rows; the "_<col>" entries are
+  //     per-cell colour indicators (consumed below), "@<col>" are empty-channel
+  //     replacements that aren't real metadata.
+  //   * Each remaining value carries the cell-colour class named by its
+  //     matching "_<col>" indicator, so the value text gets the same band/flag
+  //     background the table cell would.
+  const row = (metadata?.[String(seq)] ?? {}) as Record<string, unknown>;
+  const metaEntries = Object.entries(row)
+    .filter(
+      ([k, v]) =>
+        k[0] !== "_" &&
+        k[0] !== "@" &&
+        !(v !== null && typeof v === "object"),
+    )
+    .map(([k, v]) => ({ k, v, flag: cellFlagClass(row[`_${k}`]) }));
 
   return (
-    <section className="channel-view">
+    <section
+      className={`channel-view${metaCollapsed ? " meta-collapsed" : ""}`}
+    >
       {/* Head: channel swatch + title, live/seq status, prev/next nav. */}
       <header className="chv-vhead channel-head">
         <span
@@ -235,6 +264,20 @@ export function Channel({ live = false }: { live?: boolean }) {
           >
             Jump to current
           </Link>
+        )}
+        {src && !isVideo && (
+          <a
+            className="chv-download"
+            href={src}
+            download={`${camera}_${channel}_${date}_${String(seq).padStart(
+              6,
+              "0",
+            )}.${fileExtFor(seq)}`}
+            title="Download this image"
+          >
+            <DownloadIcon />
+            <span>Download</span>
+          </a>
         )}
         <span style={{ flex: 1 }} />
         <nav className="seq-nav">
@@ -260,18 +303,47 @@ export function Channel({ live = false }: { live?: boolean }) {
       </div>
 
       <aside className="metadata-sidebar">
-        <div className="chv-section-h">Exposure metadata</div>
-        {metaEntries.length === 0 ? (
-          <p className="skeleton">No metadata for this exposure.</p>
+        {metaCollapsed ? (
+          // Collapsed: a thin rail whose button reopens the panel. Reusing the
+          // chevron (rotated to point left) keeps the affordance consistent.
+          <button
+            type="button"
+            className="chv-meta-toggle collapsed"
+            onClick={() => setMetaCollapsed(false)}
+            aria-label="Show exposure metadata"
+            aria-expanded={false}
+            title="Show metadata"
+          >
+            <ChevronDownIcon />
+          </button>
         ) : (
-          <div className="chv-meta-grid">
-            {metaEntries.map(([k, v]) => (
-              <Fragment key={k}>
-                <div className="k">{k}</div>
-                <div className="v">{String(v)}</div>
-              </Fragment>
-            ))}
-          </div>
+          <>
+            <div className="chv-section-h">
+              <span>Exposure metadata</span>
+              <button
+                type="button"
+                className="chv-meta-toggle"
+                onClick={() => setMetaCollapsed(true)}
+                aria-label="Hide exposure metadata"
+                aria-expanded={true}
+                title="Hide metadata"
+              >
+                <ChevronDownIcon />
+              </button>
+            </div>
+            {metaEntries.length === 0 ? (
+              <p className="skeleton">No metadata for this exposure.</p>
+            ) : (
+              <div className="chv-meta-grid">
+                {metaEntries.map(({ k, v, flag }) => (
+                  <Fragment key={k}>
+                    <div className="k">{k}</div>
+                    <div className={flag ? `v ${flag}` : "v"}>{String(v)}</div>
+                  </Fragment>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </aside>
     </section>
