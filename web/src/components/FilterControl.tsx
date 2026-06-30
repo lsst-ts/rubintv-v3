@@ -183,6 +183,7 @@ export function FilterControl({
         type="button"
         className={"filter-btn" + (filters.length ? " active" : "")}
         aria-expanded={open}
+        aria-label="Add or edit filters"
         onClick={() => setOpen((v) => !v)}
         title="Add or edit filters"
       >

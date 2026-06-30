@@ -1377,6 +1377,23 @@ h1, h2 {
   padding: 2px 6px 2px 4px;
   pointer-events: auto; cursor: help;
 }
+/* Orderable metadata labels: clickable, with a sort arrow when active. */
+.header-overlay .hdr-label.sortable { cursor: pointer; }
+.header-overlay .hdr-label.sortable:hover { color: var(--accent); }
+.header-overlay .hdr-label.sorted { color: var(--accent); font-weight: 600; }
+.header-overlay .hdr-label .sort-arrow {
+  font-size: 9px; margin-left: 3px; vertical-align: middle;
+}
+
+/* Seq.No header sort button (label lives in its own <th>, not the overlay). */
+.data-table thead th.seq .th-sort {
+  display: inline-flex; align-items: center; gap: 3px;
+  border: none; background: transparent; padding: 0;
+  font: inherit; color: inherit; cursor: pointer;
+}
+.data-table thead th.seq .th-sort:hover { color: var(--accent); }
+.data-table thead th.seq.sorted .th-sort { color: var(--accent); font-weight: 600; }
+.data-table thead th.seq .sort-arrow { font-size: 9px; }
 
 /* Channel cadence tag (live / day) — shared by the browser cards and the
    single-exposure viewer head. */

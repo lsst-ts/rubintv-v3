@@ -568,7 +568,7 @@ test("table filter narrows the rows and a chip clears it", async () => {
   expect(screen.getByText("11")).toBeDefined();
 
   // Open the filter, pick the Filter column (default), set value "z_20", apply.
-  fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Add or edit filters" }));
   const dialog = await screen.findByRole("dialog", { name: /Add filter/ });
   const value = within(dialog).getByLabelText("Filter value");
   fireEvent.change(value, { target: { value: "z_20" } });
@@ -603,7 +603,7 @@ test("a Seq.No filter with a non-range operator (=) narrows the rows", async () 
   expect(await screen.findByText("10")).toBeDefined();
 
   // Open the filter, switch the column to Seq.No, choose "=", value 11.
-  fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Add or edit filters" }));
   const dialog = await screen.findByRole("dialog", { name: /Add filter/ });
   const col = within(dialog).getByLabelText("Filter column");
   fireEvent.focus(col);

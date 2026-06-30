@@ -2,6 +2,11 @@ import { memo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import type { DatePayload, Metadata } from "../lib/types";
+import {
+  isSortableKey,
+  sortColForKey,
+  type SortState,
+} from "../lib/sort";
 import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { fillTemplate } from "../lib/links";
 import { CopyButton } from "../components/CopyButton";
@@ -17,6 +22,13 @@ const ROW_PAD: Record<Density, string> = {
 export interface Column {
   key: string;
   label: string;
+}
+
+// The active sort direction for a column model key, or null when it isn't the
+// sorted column. Used to render the ▲/▼ indicator and aria-sort on the header.
+function sortDirFor(key: string, sort: SortState | null): "asc" | "desc" | null {
+  if (!sort) return null;
+  return sortColForKey(key) === sort.col ? sort.dir : null;
 }
 
 // Fixed per-column width (the table is table-layout:fixed). Channel columns are
@@ -268,6 +280,8 @@ interface Props {
   metadata: Metadata;
   payload: DatePayload | undefined;
   channelColour: Record<string, string>;
+  sort: SortState | null;
+  onSort: (key: string) => void;
   density: Density;
   location: string;
   camera: string;
@@ -293,6 +307,8 @@ function CameraDataTableInner({
   metadata,
   payload,
   channelColour,
+  sort,
+  onSort,
   density,
   location,
   camera,
@@ -361,17 +377,48 @@ function CameraDataTableInner({
           // The CSS max-width already caps the *vertical* rise; we take the
           // smaller of the two, leaving 6px slack so the tip clears the border.
           const room = tableWidth ? (tableWidth - left - 6) * Math.SQRT2 : 0;
+          const dir = sortDirFor(c.key, sort);
+          const sortable = isSortableKey(c.key);
+          // Metadata labels are orderable: clicking cycles desc → asc → off.
+          // The arrow shows the active direction; the diagonal label stays an
+          // overlay <div> (a real button can't sit at -45° cleanly), so it
+          // carries the button role/handlers itself.
           return (
             <div
               key={c.key}
-              className="hdr-label"
-              title={c.label}
+              className={
+                "hdr-label" +
+                (sortable ? " sortable" : "") +
+                (dir ? " sorted" : "")
+              }
+              title={
+                sortable
+                  ? `${c.label} — click to sort`
+                  : c.label
+              }
+              role={sortable ? "button" : undefined}
+              tabIndex={sortable ? 0 : undefined}
+              aria-sort={
+                dir ? (dir === "asc" ? "ascending" : "descending") : undefined
+              }
+              onClick={sortable ? () => onSort(c.key) : undefined}
+              onKeyDown={
+                sortable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSort(c.key);
+                      }
+                    }
+                  : undefined
+              }
               style={{
                 left,
                 maxWidth: room > 0 ? `min(var(--hdr-rise), ${room}px)` : undefined,
               }}
             >
               {c.label}
+              {dir && <span className="sort-arrow">{dir === "asc" ? "▲" : "▼"}</span>}
             </div>
           );
         })}
@@ -388,15 +435,49 @@ function CameraDataTableInner({
         </colgroup>
         <thead ref={headRef}>
           <tr>
-            {columns.map((c) => (
-              <th
-                key={c.key}
-                className={c.key === "seq" ? "seq" : undefined}
-                title={c.key !== "seq" && c.label ? c.label : undefined}
-              >
-                <span className="label">{c.label}</span>
-              </th>
-            ))}
+            {columns.map((c) => {
+              // The seq header's label lives in its <th> (the overlay skips it),
+              // so its sort affordance is wired here rather than in the overlay.
+              // Other columns render their label/sort UI in the overlay above; a
+              // plain <th> backs them for layout.
+              const dir = c.key === "seq" ? sortDirFor(c.key, sort) : null;
+              return (
+                <th
+                  key={c.key}
+                  className={
+                    c.key === "seq"
+                      ? "seq sortable" + (dir ? " sorted" : "")
+                      : undefined
+                  }
+                  title={c.key !== "seq" && c.label ? c.label : undefined}
+                  aria-sort={
+                    c.key === "seq" && dir
+                      ? dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : undefined
+                  }
+                >
+                  {c.key === "seq" ? (
+                    <button
+                      type="button"
+                      className="th-sort"
+                      onClick={() => onSort("seq")}
+                      title="Sort by sequence number"
+                    >
+                      <span className="label">{c.label}</span>
+                      {dir && (
+                        <span className="sort-arrow">
+                          {dir === "asc" ? "▲" : "▼"}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="label">{c.label}</span>
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody ref={bodyRef}>

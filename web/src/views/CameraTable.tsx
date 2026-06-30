@@ -23,6 +23,12 @@ import {
   filtersToSeqFilter,
   type Filter,
 } from "../lib/filters";
+import {
+  sortSeqNums,
+  nextSort,
+  sortColForKey,
+  type SortState,
+} from "../lib/sort";
 import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
 
@@ -234,9 +240,19 @@ export function CameraTable() {
   const [filters, setFilters] = useState<Filter[]>(() =>
     seqFilterToFilters(params.get("seq_filter")),
   );
+  // Active column sort, or null for the default order (Seq.No descending). Like
+  // metadata filters this is local + ephemeral — reset on date/camera change,
+  // since a column sorted on one day may not even exist on another.
+  const [sort, setSort] = useState<SortState | null>(null);
+  // Toggle the sort for a column-model key (cycles desc → asc → default).
+  const onSort = useCallback((key: string) => {
+    const col = sortColForKey(key);
+    if (col) setSort((s) => nextSort(s, col));
+  }, []);
   // Reset to the URL-seeded Seq.No filter whenever the view (camera/date) changes.
   useEffect(() => {
     setFilters(seqFilterToFilters(params.get("seq_filter")));
+    setSort(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location, camera, date]);
 
@@ -284,14 +300,15 @@ export function CameraTable() {
     return [...s].sort((a, b) => b - a);
   }, [payload, metadata]);
 
-  // Rows surviving the active filters (the table renders these).
-  const seqNums = useMemo(
-    () =>
+  // Rows surviving the active filters, then ordered by the active column sort
+  // (default: the newest-first order allSeqNums already carries).
+  const seqNums = useMemo(() => {
+    const filtered =
       filters.length === 0
         ? allSeqNums
-        : allSeqNums.filter((n) => matchRow(n, metadata[String(n)], filters)),
-    [allSeqNums, filters, metadata],
-  );
+        : allSeqNums.filter((n) => matchRow(n, metadata[String(n)], filters));
+    return sortSeqNums(filtered, metadata, sort);
+  }, [allSeqNums, filters, metadata, sort]);
 
   // Header clocks: the time-since clock shows only on the current (live) date,
   // for cameras that have one configured, computed from the newest exposure's
@@ -550,6 +567,8 @@ export function CameraTable() {
           metadata={metadata}
           payload={payload}
           channelColour={channelColour}
+          sort={sort}
+          onSort={onSort}
           density={density}
           location={location}
           camera={camera}
