@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import type { DatePayload, Metadata } from "../lib/types";
@@ -340,11 +340,42 @@ function CameraDataTableInner({
   // header isn't virtualized, so that overlay is unaffected. Rows are measured
   // dynamically (the fixed-height chip cell makes a static estimate unreliable).
   const bodyRef = useRef<HTMLTableSectionElement | null>(null);
+
+  // Whether the table is scrolled to (or near) the very top. Drives anchorTo:
+  // at the top we want new exposures to scroll into view like a live feed; once
+  // the user has scrolled down to read older rows we pin the view instead so
+  // prepended rows don't displace it. A few px of slack absorbs sub-pixel
+  // scroll positions and momentum settling.
+  const [atTop, setAtTop] = useState(true);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const onScroll = () => setAtTop(wrap.scrollTop <= 4);
+    onScroll(); // sync initial state (e.g. after a remount with a saved scroll)
+    wrap.addEventListener("scroll", onScroll, { passive: true });
+    return () => wrap.removeEventListener("scroll", onScroll);
+  }, [wrapRef]);
+
   const rowVirtualizer = useVirtualizer({
     count: seqNums.length,
     getScrollElement: () => wrapRef.current,
     estimateSize: () => (density === "compact" ? 33 : 39),
     overscan: 12,
+    // Key rows by their seq number, not the default list index. The table is
+    // newest-first, so a live exposure prepends a row and shifts every index
+    // down by one; a stable per-exposure key lets the virtualizer (and React)
+    // track each row across that shift.
+    getItemKey: (i) => seqNums[i],
+    // Scroll anchoring for live updates. With newest-first ordering, new
+    // exposures prepend and push every row down — a user scrolled into older
+    // rows would otherwise have their view bumped on each update. anchorTo
+    // "end" makes the virtualizer pin the scroll position to the row under the
+    // viewport (keyed via getItemKey), correcting scrollTop before paint so the
+    // inserted rows extend off-screen above instead of displacing the view.
+    // At the very top we use "start" instead, letting new exposures scroll in
+    // like a live feed (anchorTo "end" would otherwise hold the old top row and
+    // park new rows just above the fold).
+    anchorTo: atTop ? "start" : "end",
     // Spacer rows live inside the same <tbody> after the (separate, sticky)
     // <thead>, so row start offsets are measured from the tbody's own origin —
     // no scrollMargin adjustment needed (the top spacer absorbs the offset).
