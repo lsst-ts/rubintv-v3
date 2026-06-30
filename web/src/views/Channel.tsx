@@ -97,9 +97,15 @@ export function Channel({ live = false }: { live?: boolean }) {
 
   // The newest exposure available. Live mode follows it; fixed mode pins the
   // URL's seq. seqs is ascending, so the last element is the newest.
+  // A fixed link with a date but no seq (how the channel grid links a card
+  // whose channel has no frame on the newest day — straight to its last known
+  // plot) resolves to that date's newest seq, same as live mode would.
+  const newestSeq = seqs.length > 0 ? seqs[seqs.length - 1] : 0;
   const targetSeq = live
-    ? (seqs.length > 0 ? seqs[seqs.length - 1] : 0)
-    : Number(params.get("seq") ?? "0");
+    ? newestSeq
+    : params.has("seq")
+      ? Number(params.get("seq"))
+      : newestSeq;
 
   const ext = payload?.extensions[channel];
   const fileExtFor = (s: number) =>

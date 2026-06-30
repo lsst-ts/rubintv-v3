@@ -575,6 +575,13 @@ export interface components {
             max_seq: {
                 [key: string]: number;
             };
+            /**
+             * Channel Latest
+             * @default {}
+             */
+            channel_latest: {
+                [key: string]: string;
+            };
         };
         /** CameraGroupOut */
         CameraGroupOut: {

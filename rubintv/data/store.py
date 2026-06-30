@@ -265,6 +265,28 @@ class EventStore:
                 max_seq[date] = highest
         return max_seq
 
+    def calendar_channel_latest(
+        self, location: str, camera: str
+    ) -> dict[str, str]:
+        """Most recent date with data, per channel, newest first.
+
+        The per-date calendar tells the channel grid which dates the *camera*
+        has data on, but not which dates a given *channel* does. A channel that
+        is quiet on the newest date (the grid's "no recent frame" state) needs
+        its own last-known date so its card can link to that plot instead of a
+        live view that would render nothing. Both per-seq channels
+        (``idx.channels``) and per-day artifacts (``idx.per_day``) count as
+        data. Single in-memory pass over the already-hydrated index — no scan.
+        """
+        dates = self._dates.get((location, camera), {})
+        latest: dict[str, str] = {}
+        for date in sorted(dates, reverse=True):
+            idx = dates[date]
+            for channel in (*idx.channels, *idx.per_day):
+                if channel not in latest:
+                    latest[channel] = date
+        return latest
+
     def date_index(self, location: str, camera: str, date: str) -> DateIndex | None:
         """Return the index for one date, or ``None`` if absent."""
         return self._dates.get((location, camera), {}).get(date)

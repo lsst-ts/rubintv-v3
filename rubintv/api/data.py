@@ -155,6 +155,9 @@ def get_calendar(
         dates=state.store.calendar(location.name, camera.name),
         counts=state.store.calendar_counts(location.name, camera.name),
         max_seq=state.store.calendar_max_seq(location.name, camera.name),
+        channel_latest=state.store.calendar_channel_latest(
+            location.name, camera.name
+        ),
     )
 
 
