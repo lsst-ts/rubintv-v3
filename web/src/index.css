@@ -1634,6 +1634,55 @@ h1, h2 {
   border: 1.5px solid var(--line-mid);
   border-radius: 5px;
 }
+/* Positioning context for the loading spinner; shrinks to the image so the
+   spinner centres over the frame rather than the whole media column. */
+.chv-frame { position: relative; display: inline-block; line-height: 0; }
+
+/* While a newly-selected image is still loading, dim it and float a spinner so
+   it's clear the on-screen frame doesn't yet match the (already-updated)
+   header/seq label. */
+.media img.chv-img-loading { opacity: 0.4; transition: opacity 120ms ease; }
+.chv-img-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.chv-spinner {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  border-top-color: var(--accent);
+  animation: chv-spin 0.7s linear infinite;
+}
+@keyframes chv-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chv-spinner { animation-duration: 1.6s; }
+}
+
+/* Strip of sibling channels offering the same exposure, above the image. Wraps
+   on narrow widths; each chip is tinted with its channel colour. */
+.chv-chan-strip {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 10px;
+}
+.chv-chan {
+  font-family: var(--hand); font-size: 12px; font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #1a1a1a; /* default ink for light channel tints; per-channel text_colour overrides */
+  text-decoration: none;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+a.chv-chan:hover { filter: brightness(1.08); }
+.chv-chan.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  cursor: default;
+}
 .metadata-sidebar { grid-area: sidebar; }
 .seq-nav {
   display: flex;

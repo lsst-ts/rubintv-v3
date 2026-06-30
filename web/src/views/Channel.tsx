@@ -197,6 +197,25 @@ export function Channel({ live = false }: { live?: boolean }) {
   const isVideo = isVideoFor(seq);
   const src = date && seq ? mediaFor(seq) : "";
 
+  // In fixed mode a prev/next/sibling link changes the seq (and so src) at once,
+  // but the <img> keeps painting the previously decoded frame until the new one
+  // loads — so the header/seq label can describe an image that isn't on screen
+  // yet. Track whether the current src has finished loading and overlay a
+  // spinner while it hasn't, so the swap is unmistakable. Live mode already
+  // latches the displayed seq to a decoded frame, so it needs no spinner.
+  const [imgLoaded, setImgLoaded] = useState(false);
+  // Reset to "loading" whenever the source changes; an already-cached image
+  // will complete near-instantly (handled below) so the spinner won't flash.
+  useEffect(() => {
+    setImgLoaded(false);
+  }, [src]);
+  // Cached images can already be complete before React attaches onLoad, which
+  // would then never fire — mark loaded immediately in that case.
+  const imgRef = (el: HTMLImageElement | null) => {
+    if (el?.complete) setImgLoaded(true);
+  };
+  const showSpinner = !isVideo && src !== "" && !imgLoaded;
+
   const navTo = (s: number) =>
     `/${location}/${camera}/${channel}?seq=${s}&date=${date}`;
 
@@ -226,6 +245,19 @@ export function Channel({ live = false }: { live?: boolean }) {
   }, [prev, next, isVideo]);
 
   const channelInfo = cameraInfo?.channels?.find((c) => c.name === channel);
+
+  // Sibling channels offering the same exposure: every configured channel whose
+  // payload lists this seq on this date (the current channel included, shown as
+  // the active item). Ordered by the camera's channel config so the strip reads
+  // the same as the table's channel columns. Each links to the same seq+date in
+  // that channel, dropping out of live mode like every other nav here.
+  const siblingChannels = useMemo(
+    () =>
+      (cameraInfo?.channels ?? []).filter((c) =>
+        (payload?.channels[c.name] ?? []).includes(seq),
+      ),
+    [cameraInfo, payload, seq],
+  );
 
   // Sidebar rows for the displayed exposure. Mirror the table's conventions:
   //   * Drop object/array values — they're foldout-only in the table and have
@@ -298,13 +330,64 @@ export function Channel({ live = false }: { live?: boolean }) {
       </header>
 
       <div className="media">
+        {siblingChannels.length > 1 && (
+          <nav className="chv-chan-strip" aria-label="Channels for this exposure">
+            {siblingChannels.map((c) => {
+              const active = c.name === channel;
+              const style = {
+                background: c.colour ?? "var(--line-mid)",
+                color: c.text_colour ?? undefined,
+              };
+              return active ? (
+                <span
+                  key={c.name}
+                  className="chv-chan active"
+                  style={style}
+                  aria-current="page"
+                >
+                  {c.title}
+                </span>
+              ) : (
+                <Link
+                  key={c.name}
+                  className="chv-chan"
+                  style={style}
+                  to={`/${location}/${camera}/${c.name}?seq=${seq}&date=${date}`}
+                >
+                  {c.title}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         {src &&
           (isVideo ? (
             <video src={src} controls />
           ) : (
-            // src is the latched seq, decoded before promotion (see loadedSeq),
-            // so the image, seq label, and prev/next links all change together.
-            <img src={src} alt={`${channel} ${seq}`} />
+            // Wrap so the loading spinner can centre over the image itself, not
+            // the whole media column (which also holds the channel strip above).
+            <div className="chv-frame">
+              {/* src is the latched seq, decoded before promotion (see
+                  loadedSeq), so the image, seq label, and prev/next links all
+                  change together. */}
+              <img
+                ref={imgRef}
+                src={src}
+                alt={`${channel} ${seq}`}
+                onLoad={() => setImgLoaded(true)}
+                onError={() => setImgLoaded(true)}
+                className={imgLoaded ? undefined : "chv-img-loading"}
+              />
+              {showSpinner && (
+                <div
+                  className="chv-img-spinner"
+                  role="status"
+                  aria-label="Loading image"
+                >
+                  <span className="chv-spinner" />
+                </div>
+              )}
+            </div>
           ))}
       </div>
 
