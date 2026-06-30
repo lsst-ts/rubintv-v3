@@ -19,6 +19,10 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.28.0"
   },
+  "//overrides": "CameraDataTable's live-update scroll anchoring uses react-virtual's `anchorTo` option, which lives in @tanstack/virtual-core (versioned independently of react-virtual) and was added in virtual-core 3.16.0. It silently no-ops below that, so the override floors the transitive version to stop a lockfile regen resolving lower.",
+  "overrides": {
+    "@tanstack/virtual-core": ">=3.16.0"
+  },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@testing-library/react": "^16.1.0",
