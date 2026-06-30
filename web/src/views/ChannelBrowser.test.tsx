@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
@@ -115,6 +115,31 @@ test("a never-seen channel keeps 'no recent frame' and the live link", async () 
   expect(await screen.findByText("no recent frame")).toBeDefined();
   const link = screen.getByRole("link", { name: /witness/ });
   expect(link.getAttribute("href")).toBe("/local/lsstcam/witness/current");
+});
+
+test("a card image shows a loading spinner until it loads", async () => {
+  stub({
+    channels: [channel("witness")],
+    payload: {
+      ...emptyPayload,
+      channels: { witness: [1, 2] },
+      extensions: { witness: { default: "png", exceptions: {} } },
+    },
+    channelLatest: { witness: NEWEST },
+  });
+  renderBrowser();
+
+  // Image not yet loaded (jsdom won't fire load): spinner shown, image hidden.
+  const img = await screen.findByRole("img", { name: /witness latest/ });
+  expect(screen.getByRole("status", { name: "Loading image" })).toBeDefined();
+  expect(img.className).toContain("chc-img-loading");
+
+  // On load the spinner clears and the image is revealed.
+  fireEvent.load(img);
+  await waitFor(() =>
+    expect(screen.queryByRole("status", { name: "Loading image" })).toBeNull(),
+  );
+  expect(img.className).not.toContain("chc-img-loading");
 });
 
 test("an empty per-day channel shows its last date but keeps the live link", async () => {

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -93,6 +93,14 @@ function ChannelCard({
   lastDate: string | null;
 }) {
   const stale = lag !== null && lag > STALE_SEQ_LAG;
+  // While the card's image is still loading the browser paints it top-down; dim
+  // it and show a spinner until it's done so the card reads as "loading" rather
+  // than half-drawn. Keyed on src so a live frame swap re-arms it; an already
+  // cached image (img.complete in the ref) clears it without a flash.
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const imgRef = (el: HTMLImageElement | null) => {
+    if (el?.complete) setImgLoaded(true);
+  };
   return (
     <Link className={`chc-card${stale ? " chc-card--stale" : ""}`} to={href}>
       <div className="chc-frame">
@@ -100,7 +108,26 @@ function ChannelCard({
           media.isVideo ? (
             <video src={media.src} muted playsInline preload="metadata" />
           ) : (
-            <img src={media.src} alt={`${ch.title} latest`} loading="lazy" />
+            <>
+              <img
+                ref={imgRef}
+                src={media.src}
+                alt={`${ch.title} latest`}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                onError={() => setImgLoaded(true)}
+                className={imgLoaded ? undefined : "chc-img-loading"}
+              />
+              {!imgLoaded && (
+                <div
+                  className="chc-img-spinner"
+                  role="status"
+                  aria-label="Loading image"
+                >
+                  <span className="chv-spinner" />
+                </div>
+              )}
+            </>
           )
         ) : lastDate ? (
           <div className="chc-empty">
