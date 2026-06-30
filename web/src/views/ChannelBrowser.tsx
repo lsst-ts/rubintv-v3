@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
+import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import type { ChannelOut, DatePayload } from "../lib/types";
 
@@ -138,6 +139,13 @@ export function ChannelBrowser() {
     staleTime: STALE.calendar,
   });
   const date = calendar?.dates?.[0] ?? "";
+
+  // Subscribe to this camera's live topic so new exposures advance the cards
+  // without a reload — the same subscription the table and single-channel
+  // views use. A channelData message invalidates the date payload below, which
+  // re-resolves each card's latest frame. Without this the grid froze on its
+  // first fetch while the table (which does subscribe) kept updating.
+  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
