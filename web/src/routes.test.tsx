@@ -542,6 +542,100 @@ test("single-channel metadata folds away and remembers its state globally", asyn
   localStorage.removeItem("rubintv.channel.metaCollapsed");
 });
 
+test("single-channel view shows a strip linking sibling channels for the same exposure", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [
+          { name: "monitor", title: "Monitor", per_day: false },
+          { name: "imexam", title: "ImExam", per_day: false },
+          { name: "spec", title: "Spectrum", per_day: false },
+        ],
+        metadata_columns: {},
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "7": { Exposure: 30 } };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        // monitor + imexam carry seq 7; spec only has an earlier seq, so it
+        // must not appear in the strip for this exposure.
+        channels: { monitor: [7], imexam: [7], spec: [6] },
+        extensions: {
+          monitor: { default: "png", exceptions: {} },
+          imexam: { default: "png", exceptions: {} },
+        },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
+
+  const strip = await screen.findByRole("navigation", {
+    name: "Channels for this exposure",
+  });
+  // The current channel is shown active (not a link); the sibling links to the
+  // same seq+date; the channel without this seq is absent.
+  const current = within(strip).getByText("Monitor");
+  expect(current.getAttribute("aria-current")).toBe("page");
+  expect(current.tagName).not.toBe("A");
+  const sibling = within(strip).getByRole("link", { name: "ImExam" });
+  expect(sibling.getAttribute("href")).toBe(
+    "/local/auxtel/imexam?seq=7&date=2026-04-10",
+  );
+  expect(within(strip).queryByText("Spectrum")).toBeNull();
+});
+
+test("single-channel view shows a loading spinner until the image loads", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+        metadata_columns: {},
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = { "7": { Exposure: 30 } };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [7] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
+
+  // The image isn't loaded yet (jsdom never fires load on its own), so the
+  // spinner is shown and the image carries the dimmed loading class.
+  const img = await screen.findByRole("img", { name: /monitor 7/ });
+  expect(screen.getByRole("status", { name: "Loading image" })).toBeDefined();
+  expect(img.className).toContain("chv-img-loading");
+
+  // Once the image fires load, the spinner clears and the dim is removed.
+  fireEvent.load(img);
+  await waitFor(() =>
+    expect(screen.queryByRole("status", { name: "Loading image" })).toBeNull(),
+  );
+  expect(img.className).not.toContain("chv-img-loading");
+});
+
 test("date picker opens a year heatmap; selecting a data day sets ?date", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
