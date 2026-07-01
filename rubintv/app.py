@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.gzip import GZipMiddleware
 
-from rubintv import __version__
+from rubintv import __version__, legacy_redirects
 from rubintv.api import admin, data, health, internal, nightreport, proxy
 from rubintv.config.loader import load_models
 from rubintv.config.settings import Settings, get_settings
@@ -285,6 +285,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def list_subapps() -> dict[str, list[str]]:
         """Mounted sub-app paths, for the frontend nav."""
         return {"mounted": app.state.subapps}
+
+    # Translate legacy /rubintv deep links (old URL shapes: date-in-path,
+    # type/visit events, reversed current/{channel}) to the new SPA routes.
+    # Registered before the SPA catch-all so it isn't swallowed.
+    app.include_router(legacy_redirects.build_router(prefix))
 
     # Serve the built SPA last so its deep-link catch-all never shadows the
     # API, WebSocket, or sub-app routes registered above.
