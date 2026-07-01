@@ -22,10 +22,9 @@ from tests.conftest import (
 
 def make_settings(**overrides: object) -> Settings:
     return Settings(
-        site="test",
         models_path=CONFIG_PATH,
         poll_interval_seconds=0.05,
-        **overrides,  # type: ignore[arg-type]
+        **{"site": "test", **overrides},  # type: ignore[arg-type]
     )
 
 
@@ -41,6 +40,15 @@ def run_app(settings: Settings) -> Iterator[PrefixedTestClient]:
 def test_no_subapps_by_default() -> None:
     with run_app(make_settings()) as client:
         assert client.get("/api/subapps").json() == {"mounted": []}
+
+
+def test_config_reports_the_deployment_site() -> None:
+    # The SPA reads /api/config at startup to label the header (processing
+    # banner, non-prod flag) by where the pod runs, not by the viewed location.
+    with run_app(make_settings(site="test")) as client:
+        assert client.get("/api/config").json() == {"site": "test"}
+    with run_app(make_settings(site="usdf-k8s")) as client:
+        assert client.get("/api/config").json() == {"site": "usdf-k8s"}
 
 
 def test_ddv_mounted_when_assets_present(tmp_path: Path) -> None:
@@ -95,7 +103,6 @@ def test_exp_checker_mounted_when_importable(monkeypatch: pytest.MonkeyPatch) ->
     settings = make_settings(exp_checker_enabled=True)
     with run_app(settings) as client:
         assert (
-            f"{TEST_PREFIX}/exp_checker"
-            in client.get("/api/subapps").json()["mounted"]
+            f"{TEST_PREFIX}/exp_checker" in client.get("/api/subapps").json()["mounted"]
         )
         assert client.get("/exp_checker/ping").json() == {"pong": "ok"}

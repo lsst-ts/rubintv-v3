@@ -123,13 +123,47 @@ h1, h2 {
 }
 
 /* ── App shell (collapsible sidebar + main column) ─────────────────────── */
+/* App root wraps the optional full-width environment strip above the shell.
+   The strip takes its natural height; the shell fills the rest of the
+   viewport. */
+.app-root { height: 100vh; display: flex; flex-direction: column; }
+
 .shell {
   height: 100vh;
   display: grid;
   grid-template-columns: 240px 1fr;
   transition: grid-template-columns 180ms ease;
 }
+/* Inside the app-root flex column the shell no longer owns the full viewport —
+   it flexes into whatever the env strip leaves. min-height:0 lets its
+   overflow:hidden children scroll instead of forcing the column taller. */
+.app-root .shell { height: auto; flex: 1; min-height: 0; }
 .shell.collapsed { grid-template-columns: 0 1fr; }
+
+/* Full-width "this isn't production" strip across the top of the app. Amber
+   for a deployed -dev instance, a louder red for a local dev server, so the
+   two are distinguishable at a glance. */
+.env-strip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 16px;
+  font-family: var(--hand); font-size: 12px; font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.28);
+}
+.env-strip.env-dev { background: var(--warn); }
+.env-strip.env-localhost { background: #c0392b; }
+/* CI and the test site are non-prod but low-stakes — a muted slate keeps them
+   visible without the alarm colour reserved for a live localhost/-dev box. */
+.env-strip.env-ci,
+.env-strip.env-test { background: #556070; }
+.env-strip .env-tag {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  letter-spacing: 0.06em;
+}
+.env-strip .env-label { text-transform: uppercase; }
 
 .sidebar {
   border-right: 1.5px solid var(--stroke);
@@ -317,6 +351,33 @@ h1, h2 {
 }
 .title-row h2 { font-family: var(--display); font-weight: 700; font-size: 30px; margin: 0; }
 .title-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+/* Processing-mode banner beside the LSSTCam title: "USDF Nightly Validation
+   Processing" / "Summit Quicklook Processing". A solid muted chip so it reads
+   as an active-state label, not a passive caption. The title-row is
+   baseline-aligned, so nudge the chip's baseline down to sit optically level
+   with the big title instead of riding high on it. */
+.processing-banner {
+  align-self: baseline;
+  transform: translateY(-0.18em);
+  margin-left: 6px;
+  font-family: var(--display); font-size: 15px; font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 8px 16px; border-radius: 8px;
+  background: #446538; color: #fff;
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+}
+/* Two muted hues at roughly equal brightness so the site reads at a glance
+   without either shouting: Summit's live quicklook keeps the v2 olive-green;
+   USDF's nightly batch takes a muted steel-blue in the same brightness band. */
+.processing-banner.site-summit,
+.processing-banner.site-summit-usdf {
+  background: #446538;
+}
+.processing-banner.site-usdf {
+  background: #38556b;
+}
 
 /* View tab bar */
 .tabs {

@@ -64,6 +64,11 @@ const enc = encodeURIComponent;
 export const api = {
   locations: () => getJson<LocationSummary[]>("/locations"),
 
+  // Deployment bootstrap: the site the backend pod runs under (RUBINTV_SITE —
+  // "summit", "usdf-k8s", "local"…). Distinct from the viewed location; drives
+  // the header's processing banner and non-prod flag.
+  config: () => getJson<{ site: string }>("/config"),
+
   status: () => getJson<StatusResponse>("/health/status"),
 
   location: (loc: string) => getJson<LocationOut>(`/locations/${enc(loc)}`),
