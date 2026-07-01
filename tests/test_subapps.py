@@ -8,12 +8,16 @@ from pathlib import Path
 
 import boto3
 import pytest
-from fastapi.testclient import TestClient
 from moto import mock_aws
 
 from rubintv.app import create_app
 from rubintv.config.settings import Settings
-from tests.conftest import CONFIG_PATH, TEST_BUCKET
+from tests.conftest import (
+    CONFIG_PATH,
+    TEST_BUCKET,
+    TEST_PREFIX,
+    PrefixedTestClient,
+)
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -26,11 +30,11 @@ def make_settings(**overrides: object) -> Settings:
 
 
 @contextmanager
-def run_app(settings: Settings) -> Iterator[TestClient]:
+def run_app(settings: Settings) -> Iterator[PrefixedTestClient]:
     """Run the app under a live moto mock for the client's lifetime."""
     with mock_aws():
         boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
-        with TestClient(create_app(settings)) as client:
+        with PrefixedTestClient(create_app(settings)) as client:
             yield client
 
 
@@ -43,7 +47,8 @@ def test_ddv_mounted_when_assets_present(tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<!doctype html><title>DDV</title>")
     settings = make_settings(ddv_path=tmp_path)
     with run_app(settings) as client:
-        assert "/ddv" in client.get("/api/subapps").json()["mounted"]
+        # The reported mount path is the full browser-facing (prefixed) URL.
+        assert f"{TEST_PREFIX}/ddv" in client.get("/api/subapps").json()["mounted"]
         resp = client.get("/ddv/")
         assert resp.status_code == 200
         assert "DDV" in resp.text
@@ -61,7 +66,8 @@ def test_exp_checker_import_failure_is_isolated() -> None:
     # Enabled but the module isn't importable -> mount skipped, app survives.
     settings = make_settings(exp_checker_enabled=True)
     with run_app(settings) as client:
-        assert "/exp_checker" not in client.get("/api/subapps").json()["mounted"]
+        mounted = client.get("/api/subapps").json()["mounted"]
+        assert f"{TEST_PREFIX}/exp_checker" not in mounted
         assert client.get("/api/health/live").status_code == 200
 
 
@@ -88,5 +94,8 @@ def test_exp_checker_mounted_when_importable(monkeypatch: pytest.MonkeyPatch) ->
 
     settings = make_settings(exp_checker_enabled=True)
     with run_app(settings) as client:
-        assert "/exp_checker" in client.get("/api/subapps").json()["mounted"]
+        assert (
+            f"{TEST_PREFIX}/exp_checker"
+            in client.get("/api/subapps").json()["mounted"]
+        )
         assert client.get("/exp_checker/ping").json() == {"pong": "ok"}

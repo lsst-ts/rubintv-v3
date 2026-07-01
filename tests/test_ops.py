@@ -7,16 +7,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import boto3
-from fastapi.testclient import TestClient
 from moto import mock_aws
 
 from rubintv.app import create_app
 from rubintv.config.settings import Settings
-from tests.conftest import CONFIG_PATH, TEST_BUCKET
+from tests.conftest import CONFIG_PATH, TEST_BUCKET, TEST_PREFIX, PrefixedTestClient
 
 
 @contextmanager
-def run_app(**overrides: object) -> Iterator[TestClient]:
+def run_app(**overrides: object) -> Iterator[PrefixedTestClient]:
     settings = Settings(
         site="test",
         models_path=CONFIG_PATH,
@@ -25,7 +24,7 @@ def run_app(**overrides: object) -> Iterator[TestClient]:
     )
     with mock_aws():
         boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
-        with TestClient(create_app(settings)) as client:
+        with PrefixedTestClient(create_app(settings)) as client:
             yield client
 
 
@@ -93,13 +92,19 @@ def test_spa_served_with_catch_all(tmp_path: Path) -> None:
     (dist / "assets" / "app.js").write_text("console.log(1)")
 
     with run_app(spa_dist=dist) as client:
-        # Root serves index.html.
+        # The prefix root ({prefix}/) serves index.html.
         assert "id=root" in client.get("/").text
         # A deep link (no matching API route) also serves index.html, so a
         # hard reload of an SPA route works.
         assert "id=root" in client.get("/summit/lsstcam/witness_detector").text
-        # Hashed asset is served.
+        # Hashed asset is served (under the prefix).
         assert client.get("/assets/app.js").status_code == 200
+        # Nothing is served off-prefix: a bare path outside {prefix} is a 404,
+        # not the SPA index — the whole app lives under the prefix.
+        off_prefix = client.get(
+            "http://testserver/summit/lsstcam", follow_redirects=False
+        )
+        assert off_prefix.status_code == 404
 
 
 def test_spa_catch_all_does_not_shadow_api(tmp_path: Path) -> None:

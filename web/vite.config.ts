@@ -6,12 +6,24 @@ import react from "@vitejs/plugin-react";
 // backend port is overridable via RUBINTV_BACKEND_PORT so a second backend
 // (e.g. one wired to a local Redis) can be targeted without editing config.
 const BACKEND_PORT = process.env.RUBINTV_BACKEND_PORT ?? "8000";
+// The whole app is served under this prefix in every environment (the backend
+// mounts its API/WS/SPA here too, matching the previous app's /rubintv root).
+// Vite's base rewrites asset URLs and feeds import.meta.env.BASE_URL, which the
+// router basename and the api/ws clients read, so this is the single source of
+// truth for the prefix on the frontend.
+const BASE = "/rubintv/";
 export default defineConfig({
+  base: BASE,
   plugins: [react()],
   server: {
     proxy: {
-      "/api": { target: `http://localhost:${BACKEND_PORT}`, changeOrigin: true },
-      "/ws": {
+      // The prefixed paths the SPA now requests, forwarded to the backend
+      // (which also serves them under the prefix).
+      [`${BASE}api`]: {
+        target: `http://localhost:${BACKEND_PORT}`,
+        changeOrigin: true,
+      },
+      [`${BASE}ws`]: {
         target: `ws://localhost:${BACKEND_PORT}`,
         ws: true,
         changeOrigin: true,

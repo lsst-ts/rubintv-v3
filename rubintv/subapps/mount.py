@@ -22,11 +22,17 @@ log = get_logger(__name__)
 
 
 def mount_subapps(app: FastAPI, settings: Settings) -> list[str]:
-    """Mount available sub-apps; return the list of mounted paths."""
+    """Mount available sub-apps; return the list of mounted paths.
+
+    Sub-apps mount under the app's ``path_prefix`` (e.g. ``/rubintv/ddv``),
+    alongside the API and SPA. The returned paths are the full browser-facing
+    URLs, so the frontend nav (``/api/subapps``) links them directly.
+    """
+    prefix = settings.path_prefix
     mounted: list[str] = []
     for name, mount_fn in (("ddv", _mount_ddv), ("exp_checker", _mount_exp_checker)):
         try:
-            path = mount_fn(app, settings)
+            path = mount_fn(app, settings, prefix)
         except Exception as exc:  # noqa: BLE001 - isolation: never fatal
             log.warning("subapp.mount.failed", subapp=name, error=str(exc))
             continue
@@ -36,22 +42,23 @@ def mount_subapps(app: FastAPI, settings: Settings) -> list[str]:
     return mounted
 
 
-def _mount_ddv(app: FastAPI, settings: Settings) -> str | None:
-    """Serve the DDV Flutter build at /ddv if its assets exist."""
+def _mount_ddv(app: FastAPI, settings: Settings, prefix: str) -> str | None:
+    """Serve the DDV Flutter build at {prefix}/ddv if its assets exist."""
     ddv_dir = settings.ddv_path
     if ddv_dir is None or not ddv_dir.is_dir():
         log.info("subapp.skip", subapp="ddv", reason="no build directory")
         return None
+    path = f"{prefix}/ddv"
     app.mount(
-        "/ddv",
+        path,
         StaticFiles(directory=ddv_dir, html=True),
         name="ddv",
     )
-    return "/ddv"
+    return path
 
 
-def _mount_exp_checker(app: FastAPI, settings: Settings) -> str | None:
-    """Mount the exp_checker FastAPI sub-app at /exp_checker if importable.
+def _mount_exp_checker(app: FastAPI, settings: Settings, prefix: str) -> str | None:
+    """Mount the exp_checker sub-app at {prefix}/exp_checker if importable.
 
     The sub-app is expected to expose ``create_app() -> FastAPI`` (or an
     ``app`` instance). It is optional; absence is not an error.
@@ -63,5 +70,6 @@ def _mount_exp_checker(app: FastAPI, settings: Settings) -> str | None:
 
     module = import_module("exp_checker")
     sub: FastAPI = module.create_app() if hasattr(module, "create_app") else module.app
-    app.mount("/exp_checker", sub, name="exp_checker")
-    return "/exp_checker"
+    path = f"{prefix}/exp_checker"
+    app.mount(path, sub, name="exp_checker")
+    return path

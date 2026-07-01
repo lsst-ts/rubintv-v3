@@ -8,6 +8,7 @@
 // spam.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BASE } from "./basePath";
 import { debugLog } from "./debug";
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
@@ -38,7 +39,7 @@ const MAX_BACKOFF_MS = 10_000;
  * subscribe frame and re-sends it after any reconnect), and an `onMessage`
  * registrar.
  */
-export function useWebSocket(url = "/ws") {
+export function useWebSocket(url = `${BASE}/ws`) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const socketRef = useRef<WebSocket | null>(null);
   const subscriptionsRef = useRef<Map<string, Subscription>>(new Map());

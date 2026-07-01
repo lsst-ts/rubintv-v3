@@ -13,7 +13,7 @@ from moto import mock_aws
 
 from rubintv.app import create_app
 from rubintv.config.settings import Settings
-from tests.conftest import TEST_BUCKET
+from tests.conftest import TEST_BUCKET, PrefixedTestClient
 
 DATE = "2026-04-10"
 
@@ -57,7 +57,7 @@ def seeded_client(settings: Settings) -> Iterator[TestClient]:
             ).encode(),
         )
         app = create_app(settings)
-        with TestClient(app) as client:
+        with PrefixedTestClient(app) as client:
             for _ in range(60):
                 cal = client.get("/api/locations/test/cameras/lsstcam/calendar").json()
                 if cal["dates"]:

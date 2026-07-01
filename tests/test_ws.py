@@ -6,7 +6,6 @@ import asyncio
 
 import boto3
 import pytest
-from fastapi.testclient import TestClient
 from moto import mock_aws
 
 from rubintv.app import create_app
@@ -14,7 +13,7 @@ from rubintv.config.settings import Settings
 from rubintv.data.events import StoreChange
 from rubintv.ws.manager import Connection, ConnectionManager
 from rubintv.ws.protocol import ServerMessage, SubscribeRequest
-from tests.conftest import TEST_BUCKET
+from tests.conftest import TEST_BUCKET, PrefixedTestClient
 
 DATE = "2026-04-10"
 
@@ -100,7 +99,7 @@ def ws_client(settings: Settings):  # type: ignore[no-untyped-def]
         s3 = boto3.client("s3", region_name="us-east-1")
         s3.create_bucket(Bucket=TEST_BUCKET)
         app = create_app(settings)
-        with TestClient(app) as client:
+        with PrefixedTestClient(app) as client:
             yield client, s3
 
 
