@@ -27,7 +27,12 @@ log = get_logger(__name__)
 # Metadata dict: seq_num (as string) -> {column name -> value}.
 Metadata = dict[str, dict[str, object]]
 
-_MAX_ENTRIES = 60  # ~60 days per (location, camera), as in the old app
+# Global LRU cap: at most this many (location, camera, date) metadata dicts
+# are held process-wide at once — NOT per camera. This bounds the resident
+# footprint to a constant regardless of camera count (the old app cached ~60
+# days for every camera, which spiked memory); demand-driven eviction keeps
+# only the most recently viewed dates.
+_MAX_ENTRIES = 60
 
 # Rows per streamed batch. The S3 body trickles in on slow links (USDF dev
 # measured ~80 KB/s), so emitting every N parsed rows lets the table fill
