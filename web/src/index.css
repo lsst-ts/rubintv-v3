@@ -354,6 +354,34 @@ h1, h2 {
 }
 .tabs .tab.active .count { background: var(--accent-soft); color: var(--accent); }
 
+/* The date picker + prev/next steppers, hoisted from the table toolbar into the
+   tabs row so the selected day persists across the Table / Channels tabs. It
+   sits to the left of the tabs, lifted off the row's bottom border so the
+   trigger chip isn't clipped. The stepper buttons need their own rule here
+   because the shared .tb-btn styles are scoped to .cam-toolbar. */
+.topbar-datepicker {
+  align-self: center;
+  margin-right: 14px;
+  margin-bottom: 6px;
+}
+.topbar-datepicker .tb-btn.step {
+  display: inline-flex; align-items: center;
+  padding: 6px 8px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  font-family: var(--mono); font-size: 13px; line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+}
+.topbar-datepicker .tb-btn.step:hover {
+  background: var(--paper-3); border-color: var(--ink-soft);
+}
+.topbar-datepicker .tb-btn.step:disabled {
+  opacity: 0.4; cursor: default;
+  background: var(--paper); border-color: var(--line-mid);
+}
+
 .app-content {
   flex: 1;
   overflow: auto;
@@ -1649,11 +1677,26 @@ h1, h2 {
 /* Positioning context for the loading spinner; shrinks to the image so the
    spinner centres over the frame rather than the whole media column. */
 .chv-frame { position: relative; display: inline-block; line-height: 0; }
+/* While the image is hidden it has no intrinsic size, so the frame would
+   collapse. During loading make it a full-width 1:1 placeholder surface so the
+   spinner sits centred in a stable square; once the image reveals the frame
+   shrinks back to it (below), so a non-square plot isn't forced square. */
+.chv-frame:has(img.chv-img-loading) {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 5px;
+  background: var(--paper-2);
+}
 
-/* While a newly-selected image is still loading, dim it and float a spinner so
-   it's clear the on-screen frame doesn't yet match the (already-updated)
-   header/seq label. */
-.media img.chv-img-loading { opacity: 0.4; transition: opacity 120ms ease; }
+/* While a newly-selected image is still loading, hide it and float a spinner in
+   its place. `visibility: hidden` (not opacity) so a partially-decoded frame is
+   never shown: on first load — with no prior frame beneath — dimming would let
+   you watch the new image paint in top-down. The box is preserved so the frame
+   keeps its size and the spinner stays centred; the image reveals whole once
+   onLoad fires. Neighbours are preloaded, so prev/next swaps complete from
+   cache and never enter this state. */
+.media img.chv-img-loading { visibility: hidden; }
 .chv-img-spinner {
   position: absolute;
   inset: 0;

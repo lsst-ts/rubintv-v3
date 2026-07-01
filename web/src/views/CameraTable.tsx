@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
 import type { Metadata } from "../lib/types";
-import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
+import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
@@ -13,7 +13,6 @@ import { usePageTitle } from "../lib/usePageTitle";
 import { ShareLink } from "../components/ShareLink";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
-import { DatePicker } from "../components/DatePicker";
 import { FilterControl, FilterBar } from "../components/FilterControl";
 import { LiveClocks } from "../components/LiveClocks";
 import {
@@ -61,26 +60,6 @@ export function CameraTable() {
     !cameraInfo?.live_view && (cameraInfo?.title ?? camera),
     !cameraInfo?.live_view && date,
   );
-
-  // The picker must always display the date actually being viewed. A
-  // deep-linked date the scanner hasn't indexed yet isn't in the calendar,
-  // and a <select> whose value matches no option silently displays the
-  // first one — making it look like the latest day is shown. Splice the
-  // resolved date in (newest-first order, matching the calendar).
-  const pickerDates = useMemo(() => {
-    const dates = calendar?.dates ?? [];
-    if (!date || dates.includes(date)) return dates;
-    return [...dates, date].sort().reverse();
-  }, [calendar, date]);
-
-  // Adjacent dates with data for the prev/next-day steppers. pickerDates is
-  // newest-first, so the older day sits at index+1 and the newer at index-1.
-  const dateIdx = pickerDates.indexOf(date);
-  const olderDate =
-    dateIdx >= 0 && dateIdx < pickerDates.length - 1
-      ? pickerDates[dateIdx + 1]
-      : null;
-  const newerDate = dateIdx > 0 ? pickerDates[dateIdx - 1] : null;
 
   // Live updates for this camera (drives table + calendar invalidation).
   // Passing the resolved date also asks the server to stream that date's
@@ -314,11 +293,6 @@ export function CameraTable() {
   // for cameras that have one configured, computed from the newest exposure's
   // "Date begin" timestamp.
   const isCurrentDate = date !== "" && date === calendar?.dates[0];
-  // Whether the viewed date is the live observing day (UTC−12 rollover, the
-  // same rule as the Channels view). Distinct from isCurrentDate, which only
-  // means "newest date with data" — that can be an old night when observing
-  // has paused. Drives the date chip's live/stale styling.
-  const isCurrentDayObs = date !== "" && date === currentDayObs();
   const sinceLabel =
     isCurrentDate && cameraInfo?.time_since_clock
       ? cameraInfo.time_since_clock.label
@@ -357,39 +331,12 @@ export function CameraTable() {
 
   return (
     <section className="cam-table">
-      {/* Toolbar: date, share, columns, filter, download · density, night report. */}
+      {/* Toolbar: share, columns, filter, download · density, night report.
+          The date picker + prev/next steppers now live in the shell topbar
+          (see Layout), so the selected date persists across the Table /
+          Channels / single-channel tabs rather than resetting to the newest
+          day on every tab switch. */}
       <div className="cam-toolbar">
-        <span className="date-stepper">
-          <button
-            type="button"
-            className="tb-btn step"
-            aria-label="Previous day with data"
-            title="Previous day with data"
-            disabled={!olderDate}
-            onClick={() => olderDate && setParams({ date: olderDate })}
-          >
-            ‹
-          </button>
-          <DatePicker
-            dates={pickerDates}
-            counts={calendar?.counts ?? {}}
-            maxSeq={calendar?.max_seq ?? {}}
-            allSky={cameraInfo?.live_view ?? false}
-            value={date}
-            isCurrentDayObs={isCurrentDayObs}
-            onChange={(d) => setParams({ date: d })}
-          />
-          <button
-            type="button"
-            className="tb-btn step"
-            aria-label="Next day with data"
-            title="Next day with data"
-            disabled={!newerDate}
-            onClick={() => newerDate && setParams({ date: newerDate })}
-          >
-            ›
-          </button>
-        </span>
         <ShareLink date={date || undefined} />
 
         <div className="cols-cluster" ref={colsRef}>
