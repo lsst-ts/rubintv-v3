@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { fillTemplate } from "./links";
+import { fillTemplate, instanceEnv, processingBanner } from "./links";
 
 describe("fillTemplate", () => {
   test("fills dayObs (hyphens stripped) and zero-padded seqNum", () => {
@@ -62,5 +62,55 @@ describe("fillTemplate", () => {
     expect(out).toBe(
       'dataId = {"day_obs": 20260410, "seq_num": 000252, "detector": 0}',
     );
+  });
+});
+
+describe("processingBanner", () => {
+  test("USDF's LSSTCam cameras show the nightly-validation banner", () => {
+    expect(processingBanner("usdf", "lsstcam")).toBe(
+      "USDF Nightly Validation Processing",
+    );
+    expect(processingBanner("usdf", "lsstcam_aos")).toBe(
+      "USDF Nightly Validation Processing",
+    );
+  });
+
+  test("summit (and its USDF mirror) show the quicklook banner", () => {
+    expect(processingBanner("summit", "lsstcam")).toBe(
+      "Summit Quicklook Processing",
+    );
+    expect(processingBanner("summit-usdf", "lsstcam_aos")).toBe(
+      "Summit Quicklook Processing",
+    );
+  });
+
+  test("no banner for other cameras on a banner location", () => {
+    expect(processingBanner("usdf", "auxtel")).toBeNull();
+    expect(processingBanner("summit", "lsstcam_guider")).toBeNull();
+  });
+
+  test("no banner for the LSSTCam cameras on a non-banner location", () => {
+    expect(processingBanner("base-usdf", "lsstcam")).toBeNull();
+    expect(processingBanner("tucson-usdf", "lsstcam_aos")).toBeNull();
+  });
+});
+
+describe("instanceEnv", () => {
+  // jsdom's default location is http://localhost/, so the hostname branch
+  // resolves to "localhost" when no non-prod site is passed.
+  test("a non-prod backend site wins over the hostname", () => {
+    expect(instanceEnv("gha")).toBe("ci");
+    expect(instanceEnv("test")).toBe("test");
+    expect(instanceEnv("local")).toBe("localhost");
+  });
+
+  test("a prod site falls back to the hostname heuristic", () => {
+    // usdf-k8s is prod, but the test host is localhost — still flagged.
+    expect(instanceEnv("usdf-k8s")).toBe("localhost");
+    expect(instanceEnv("summit")).toBe("localhost");
+  });
+
+  test("no site uses the hostname heuristic", () => {
+    expect(instanceEnv()).toBe("localhost");
   });
 });

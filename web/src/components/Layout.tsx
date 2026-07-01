@@ -15,6 +15,8 @@ import { RubinMark } from "./RubinMark";
 import { DatePicker } from "./DatePicker";
 import { STALE } from "../lib/queryClient";
 import { BASE } from "../lib/basePath";
+import { api } from "../lib/api";
+import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
 
 // Mounted sub-apps (DDV, exp_checker) are reported by the backend; render
@@ -32,6 +34,18 @@ function useSubapps(): string[] {
   return data?.mounted ?? [];
 }
 
+// The deployment site (RUBINTV_SITE) from /api/config, used to label the
+// header. Undefined until it resolves — the env strip falls back to the
+// hostname heuristic meanwhile, so a non-prod host still flags immediately.
+function useSite(): string | undefined {
+  const { data } = useQuery({
+    queryKey: ["config"],
+    queryFn: api.config,
+    staleTime: STALE.config,
+  });
+  return data?.site;
+}
+
 const SIDEBAR_KEY = "rubintv.sidebarOpen";
 
 // App shell: collapsible sidebar (camera/system/location nav) + a main column
@@ -45,6 +59,7 @@ export function Layout() {
   const navigate = useNavigate();
   const nav = useShellNav();
   const subapps = useSubapps();
+  const site = useSite();
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     try {
@@ -65,6 +80,33 @@ export function Layout() {
   // camera config. Only shown on a camera route.
   const tabs = tabsForCamera(nav.cameraInfo);
   const onCamera = !!location && !!camera && !nav.system;
+
+  // The LSSTCam processing-mode banner ("USDF Nightly Validation Processing" /
+  // "Summit Quicklook Processing"). Non-null only on the lsstcam/lsstcam_aos
+  // cameras of the USDF/summit locations; it labels what the pipeline behind
+  // this view is doing.
+  const banner = onCamera ? processingBanner(location, camera) : null;
+
+  // A full-width strip warning that this isn't production. It shows if EITHER
+  // the backend site is a non-prod shape (local/gha/test) OR the hostname looks
+  // like localhost/-dev — so a prod-shaped instance served from a dev host is
+  // still flagged. Shown on every full-shell route, but not on headerless
+  // embeds (bare chromeless tiles).
+  const env = instanceEnv(site);
+  const ENV_LABELS: Record<string, string> = {
+    localhost: "Localhost — development server",
+    dev: "Development instance",
+    ci: "CI — GitHub Actions",
+    test: "Test instance",
+  };
+  const envLabel = ENV_LABELS[env] ?? null;
+  const ENV_TAGS: Record<string, string> = {
+    localhost: "LOCAL",
+    dev: "DEV",
+    ci: "CI",
+    test: "TEST",
+  };
+  const envTag = ENV_TAGS[env] ?? "";
   // A camera can have no tabs (live-view cameras with no night report), in
   // which case the topbar is laid out like the non-camera pages — no tabs row,
   // so the status pills get the bottom padding they'd otherwise lack.
@@ -113,12 +155,19 @@ export function Layout() {
   }
 
   return (
-    <div className={`shell ${sidebarOpen ? "" : "collapsed"}`}>
-      {sidebarOpen ? (
-        <Sidebar nav={nav} onClose={() => setSidebarOpen(false)} />
-      ) : (
-        <div />
+    <div className="app-root">
+      {envLabel && (
+        <div className={`env-strip env-${env}`} role="status">
+          <span className="env-tag">{envTag}</span>
+          <span className="env-label">{envLabel}</span>
+        </div>
       )}
+      <div className={`shell ${sidebarOpen ? "" : "collapsed"}`}>
+        {sidebarOpen ? (
+          <Sidebar nav={nav} onClose={() => setSidebarOpen(false)} />
+        ) : (
+          <div />
+        )}
 
       <div className="main">
         {/* Without the tabs row the status pills would sit flush on the
@@ -174,6 +223,14 @@ export function Layout() {
               <h2>{nav.cameraInfo?.title ?? camera}</h2>
             ) : (
               <span style={{ flex: 1 }} />
+            )}
+            {banner && (
+              <span
+                className={`processing-banner site-${location}`}
+                role="status"
+              >
+                {banner}
+              </span>
             )}
             <span style={{ flex: 1 }} />
             <div className="topbar-right">
@@ -268,6 +325,7 @@ export function Layout() {
         <main className="app-content">
           <Outlet />
         </main>
+        </div>
       </div>
     </div>
   );

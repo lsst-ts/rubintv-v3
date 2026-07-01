@@ -286,6 +286,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Mounted sub-app paths, for the frontend nav."""
         return {"mounted": app.state.subapps}
 
+    @app.get(f"{prefix}/api/config", tags=["config"])
+    def app_config() -> dict[str, str]:
+        """Deployment bootstrap the SPA reads at startup.
+
+        ``site`` is the deployment site name (``RUBINTV_SITE``: ``summit``,
+        ``usdf-k8s``, ``local`` …). The frontend uses it to label the header —
+        which processing banner to show and whether to flag a non-prod
+        instance — since where the *pod* runs is distinct from which location's
+        bucket is being viewed.
+        """
+        return {"site": settings.site}
+
     # Translate legacy /rubintv deep links (old URL shapes: date-in-path,
     # type/visit events, reversed current/{channel}) to the new SPA routes.
     # Registered before the SPA catch-all so it isn't swallowed.
