@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  Outlet,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { S3Status } from "./S3Status";
 import { LoadingBanner } from "./LoadingBanner";
 import { Sidebar } from "./Sidebar";
 import { RubinMark } from "./RubinMark";
+import { DatePicker } from "./DatePicker";
 import { STALE } from "../lib/queryClient";
 import { BASE } from "../lib/basePath";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
@@ -34,7 +41,8 @@ const SIDEBAR_KEY = "rubintv.sidebarOpen";
 // local page state. Breadcrumbs derive from the URL params (Decision 7).
 export function Layout() {
   const { location, camera } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const nav = useShellNav();
   const subapps = useSubapps();
 
@@ -61,6 +69,33 @@ export function Layout() {
   // which case the topbar is laid out like the non-camera pages — no tabs row,
   // so the status pills get the bottom padding they'd otherwise lack.
   const hasTabs = onCamera && tabs.length > 0;
+
+  // The date picker is hoisted from the Table view into the shell so the
+  // selected date persists across the Table / Channels / single-channel tabs —
+  // previously switching tabs (or opening a plot) dropped the ?date= and the
+  // Table reverted to the newest day. It shows on any per-date camera view once
+  // a date resolves; live-view cameras (which have no per-date table) never do.
+  const showDatePicker =
+    onCamera && !nav.cameraInfo?.live_view && nav.date !== "";
+
+  // Applying a date. On the Table view we just update ?date= in place. From a
+  // Channels/single-channel view — where a historical date has no meaning (the
+  // grid always shows the newest frame per channel) — picking a date takes the
+  // user to that date's Table, which is where the date applies.
+  const applyDate = (d: string) => {
+    if (nav.activeTab === "table") {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set("date", d);
+          return p;
+        },
+        { replace: true },
+      );
+    } else {
+      navigate(`/${location}/${camera}?date=${d}`);
+    }
+  };
 
   // Headerless embedding (?headerless=true): render only the view, with no app
   // shell — no sidebar, topbar, breadcrumbs or tabs. This lets any view (the
@@ -170,10 +205,47 @@ export function Layout() {
 
           {hasTabs && (
             <div className="tabs">
+              {showDatePicker && (
+                <span className="topbar-datepicker date-stepper">
+                  <button
+                    type="button"
+                    className="tb-btn step"
+                    aria-label="Previous day with data"
+                    title="Previous day with data"
+                    disabled={!nav.olderDate}
+                    onClick={() => nav.olderDate && applyDate(nav.olderDate)}
+                  >
+                    ‹
+                  </button>
+                  <DatePicker
+                    dates={nav.pickerDates}
+                    counts={nav.calendar?.counts ?? {}}
+                    maxSeq={nav.calendar?.max_seq ?? {}}
+                    value={nav.date}
+                    isCurrentDayObs={nav.isCurrentDayObs}
+                    onChange={applyDate}
+                  />
+                  <button
+                    type="button"
+                    className="tb-btn step"
+                    aria-label="Next day with data"
+                    title="Next day with data"
+                    disabled={!nav.newerDate}
+                    onClick={() => nav.newerDate && applyDate(nav.newerDate)}
+                  >
+                    ›
+                  </button>
+                </span>
+              )}
               {tabs.map((tab) => {
-                const to =
+                const base =
                   `/${location}/${camera}` +
                   (tab.suffix ? `/${tab.suffix}` : "");
+                // Carry the resolved date into every tab link so switching
+                // views keeps the day in view — the fix for returning to the
+                // Table and seeing the newest day instead of the one you left.
+                // The night-report link already takes ?date= too.
+                const to = nav.date ? `${base}?date=${nav.date}` : base;
                 const active = nav.activeTab === tab.id;
                 return (
                   <Link
