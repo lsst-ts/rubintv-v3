@@ -1323,15 +1323,23 @@ h1, h2 {
   padding: 0 4px;
 }
 .cell-modal-close:hover { color: var(--ink); }
-.cell-dict { width: 100%; border-collapse: collapse; }
+.cell-dict { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .cell-dict th.key,
 .cell-dict td.value {
   text-align: left;
   padding: 5px 14px;
   border-bottom: 1px solid var(--line-mid);
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
-.cell-dict th.key { font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+/* Cap the key column so a pathologically long key can't crush the value into a
+   sliver (which shreds short values like "raw" into r/a/w). The value column
+   takes the remaining width. */
+.cell-dict th.key {
+  width: 45%;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
 .cell-dict td.value { word-break: break-word; }
 
 /* Per-row action links. */
