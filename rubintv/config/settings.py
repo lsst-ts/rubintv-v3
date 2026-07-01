@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     site: str = "local"
     """Deployment site name; selects which locations are visible."""
 
+    path_prefix: str = "/rubintv"
+    """URL prefix the whole app is served under (``RUBINTV_PATH_PREFIX``).
+
+    The deployment mounts everything — API, WebSockets, sub-apps, and the SPA
+    — beneath this prefix, matching the previous app's ``/rubintv`` root, so
+    external deep links resolve. Must start with ``/`` and carry no trailing
+    slash (``/rubintv``, not ``rubintv/``); ``""`` serves at the root."""
+
     models_path: Path = Path("config/models_data.yaml")
     """Path to the YAML defining locations, cameras, channels, services."""
 

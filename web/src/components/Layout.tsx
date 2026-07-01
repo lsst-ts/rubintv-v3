@@ -7,6 +7,7 @@ import { LoadingBanner } from "./LoadingBanner";
 import { Sidebar } from "./Sidebar";
 import { RubinMark } from "./RubinMark";
 import { STALE } from "../lib/queryClient";
+import { BASE } from "../lib/basePath";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
 
 // Mounted sub-apps (DDV, exp_checker) are reported by the backend; render
@@ -16,7 +17,7 @@ function useSubapps(): string[] {
   const { data } = useQuery({
     queryKey: ["subapps"],
     queryFn: async () => {
-      const resp = await fetch("/api/subapps");
+      const resp = await fetch(`${BASE}/api/subapps`);
       return (await resp.json()) as { mounted: string[] };
     },
     staleTime: STALE.config,

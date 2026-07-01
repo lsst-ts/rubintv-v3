@@ -5,8 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import boto3
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from moto import mock_aws
@@ -15,6 +17,35 @@ from rubintv.app import create_app
 from rubintv.config.settings import Settings
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "models_data.yaml"
+
+# The whole app is served under this prefix (settings.path_prefix). Tests
+# address routes by their unprefixed path (e.g. "/api/health/ready") and the
+# client below prepends the prefix, so both the prefix wiring and the routes
+# stay covered without threading it through every call site.
+TEST_PREFIX = "/rubintv"
+
+
+class PrefixedTestClient(TestClient):
+    """TestClient that prepends ``TEST_PREFIX`` to same-app request paths.
+
+    Absolute URLs (``http://...``) pass through untouched; anything starting
+    ``/`` is treated as an in-app path and gets the prefix. Covers the HTTP
+    verbs and ``websocket_connect``.
+    """
+
+    def request(self, method: str, url: Any, *args: Any, **kwargs: Any) -> Any:
+        return super().request(method, self._prefixed(url), *args, **kwargs)
+
+    def websocket_connect(self, url: str, *args: Any, **kwargs: Any) -> Any:
+        return super().websocket_connect(self._prefixed(url), *args, **kwargs)
+
+    @staticmethod
+    def _prefixed(url: Any) -> Any:
+        if isinstance(url, str) and url.startswith("/"):
+            return f"{TEST_PREFIX}{url}"
+        if isinstance(url, httpx.URL) and url.path.startswith("/"):
+            return url.copy_with(path=f"{TEST_PREFIX}{url.path}")
+        return url
 
 # The test site exposes a single location named "test" backed by this bucket.
 # Tests never touch the production-shaped sites (usdf, summit, etc.).
@@ -53,7 +84,7 @@ def client(settings: Settings, s3_bucket: None) -> Iterator[TestClient]:
     Waits briefly for the first poll to flip readiness.
     """
     app = create_app(settings)
-    with TestClient(app) as test_client:
+    with PrefixedTestClient(app) as test_client:
         for _ in range(40):
             if test_client.get("/api/health/ready").json()["ready"]:
                 break

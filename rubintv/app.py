@@ -248,21 +248,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # outweighs the gain.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-    app.include_router(health.router, prefix="/api/health", tags=["health"])
-    app.include_router(data.router, prefix="/api", tags=["data"])
-    app.include_router(nightreport.router, prefix="/api", tags=["night-report"])
-    app.include_router(admin.router, prefix="/api", tags=["admin"])
-    app.include_router(proxy.router, prefix="/api", tags=["proxy"])
-    # GET /api/health/services for probes; POST /internal/heartbeats pod-local.
-    app.include_router(internal.status_router, prefix="/api")
-    app.include_router(internal.internal_router)
+    # The whole app is served under this prefix (default /rubintv), so external
+    # deep links from the previous app resolve. The prefix carries no trailing
+    # slash, so f"{prefix}/api" yields "/rubintv/api"; an empty prefix serves
+    # everything at the root.
+    prefix = settings.path_prefix
 
-    @app.websocket("/ws")
+    app.include_router(health.router, prefix=f"{prefix}/api/health", tags=["health"])
+    app.include_router(data.router, prefix=f"{prefix}/api", tags=["data"])
+    app.include_router(
+        nightreport.router, prefix=f"{prefix}/api", tags=["night-report"]
+    )
+    app.include_router(admin.router, prefix=f"{prefix}/api", tags=["admin"])
+    app.include_router(proxy.router, prefix=f"{prefix}/api", tags=["proxy"])
+    # GET {prefix}/api/health/services for probes; the internal heartbeat
+    # ingest stays pod-local under {prefix}/internal.
+    app.include_router(internal.status_router, prefix=f"{prefix}/api")
+    app.include_router(internal.internal_router, prefix=prefix)
+
+    @app.websocket(f"{prefix}/ws")
     async def ws_endpoint(socket: WebSocket) -> None:
         state: AppState = app.state.app_state
         await state.ws.handle(socket)
 
-    @app.websocket("/internal/heartbeats")
+    @app.websocket(f"{prefix}/internal/heartbeats")
     async def heartbeat_endpoint(socket: WebSocket) -> None:
         state: AppState = app.state.app_state
         await state.heartbeat_svc.handle(socket)
@@ -272,13 +281,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     mounted = mount_subapps(app, settings)
     app.state.subapps = mounted
 
-    @app.get("/api/subapps", tags=["subapps"])
+    @app.get(f"{prefix}/api/subapps", tags=["subapps"])
     def list_subapps() -> dict[str, list[str]]:
         """Mounted sub-app paths, for the frontend nav."""
         return {"mounted": app.state.subapps}
 
     # Serve the built SPA last so its deep-link catch-all never shadows the
     # API, WebSocket, or sub-app routes registered above.
-    mount_spa(app, settings.spa_dist)
+    mount_spa(app, settings.spa_dist, prefix)
 
     return app

@@ -8,7 +8,13 @@ import { routes } from "./routes";
 import "./index.css";
 
 const queryClient = createQueryClient();
-const router = createBrowserRouter(routes);
+// The app is served under a path prefix (Vite `base`, e.g. /rubintv/), so the
+// router lives under the same basename — deep links and generated <Link> URLs
+// all carry the prefix. import.meta.env.BASE_URL is that base, trailing slash
+// included, which react-router accepts.
+const router = createBrowserRouter(routes, {
+  basename: import.meta.env.BASE_URL,
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

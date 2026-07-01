@@ -1,6 +1,7 @@
-// Typed fetch client. All calls go to same-origin /api (Vite proxies to
+// Typed fetch client. All calls go to same-origin {BASE}/api (Vite proxies to
 // FastAPI in dev). Types come from the OpenAPI-generated schema.
 
+import { BASE } from "./basePath";
 import type {
   AdminActionOut,
   AdminMenusOut,
@@ -28,7 +29,7 @@ export class ApiError extends Error {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const resp = await fetch(`/api${path}`, {
+  const resp = await fetch(`${BASE}/api${path}`, {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) {
@@ -38,7 +39,7 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 async function postJson<T>(path: string, body?: unknown): Promise<T> {
-  const resp = await fetch(`/api${path}`, {
+  const resp = await fetch(`${BASE}/api${path}`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -130,7 +131,7 @@ export const api = {
     seq: string,
     filename: string,
   ) =>
-    `/api/locations/${enc(loc)}/cameras/${enc(cam)}/channels/${enc(channel)}/` +
+    `${BASE}/api/locations/${enc(loc)}/cameras/${enc(cam)}/channels/${enc(channel)}/` +
     `${enc(date)}/${enc(seq)}/${enc(filename)}`,
 
   // Build a proxied URL for a night-report plot. The plot key is fully known
@@ -143,7 +144,7 @@ export const api = {
     group: string,
     filename: string,
   ) =>
-    `/api/locations/${enc(loc)}/cameras/${enc(cam)}/night-report/` +
+    `${BASE}/api/locations/${enc(loc)}/cameras/${enc(cam)}/night-report/` +
     `${enc(date)}/plot/${enc(group)}/${enc(filename)}`,
 
   // Build a proxied media URL from a raw per-day S3 key. Per-day keys follow
