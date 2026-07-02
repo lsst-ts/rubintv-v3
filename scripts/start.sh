@@ -21,13 +21,28 @@ else
 fi
 
 # exp_checker: the one knob (RUBINTV_EXP_CHECKER_ENABLED) both installs it
-# here and mounts it in the app. The tarball URL avoids cloning;
-# setuptools_scm can't derive a version without .git, hence the pretend pin.
+# here and mounts it in the app. Its packaging is unreliable — setup.py
+# ships a top-level package literally named "python", so a pip install
+# never yields an importable lsst.ts.exp_checker — and its pyproject
+# under-declares dependencies (sqlalchemy/psycopg live only in
+# requirements.txt). So: install it purely for dependency resolution (both
+# lists), and put the clone's python/ tree on PYTHONPATH for the actual
+# import. The pretend version spares setuptools_scm the tagless clone.
 case "$RUBINTV_EXP_CHECKER_ENABLED" in
 [Tt]rue | 1 | [Yy]es)
-    SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0 uv pip install \
-        "rubin-exp-checker @ https://github.com/lsst-sitcom/rubin_exp_checker/archive/${EXP_CHECKER_REF:-main}.tar.gz" ||
+    EXP_CHECKER_DIR=${EXP_CHECKER_DIR:-/app/exp-checker-src}
+    rm -rf "$EXP_CHECKER_DIR"
+    # psycopg2 needs pg_config + a compiler to build; the -binary wheel
+    # provides the same module without either.
+    if git clone --depth 1 --branch "${EXP_CHECKER_REF:-main}" \
+        https://github.com/lsst-sitcom/rubin_exp_checker.git "$EXP_CHECKER_DIR" &&
+        sed -i 's/^psycopg2$/psycopg2-binary/' "$EXP_CHECKER_DIR/requirements.txt" &&
+        SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0 uv pip install \
+            "$EXP_CHECKER_DIR" -r "$EXP_CHECKER_DIR/requirements.txt"; then
+        export PYTHONPATH="$EXP_CHECKER_DIR/python${PYTHONPATH:+:$PYTHONPATH}"
+    else
         echo "exp_checker install failed; continuing without it" >&2
+    fi
     ;;
 esac
 
