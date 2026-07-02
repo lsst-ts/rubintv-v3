@@ -1,6 +1,6 @@
 # PR plan: splitting `design-port` for review
 
-`design-port` has accumulated 45 commits ahead of `phase-8-real-config`.
+`design-port` has accumulated ~90 commits ahead of `phase-8-real-config`.
 Reviewing them as one PR is impractical, so this file groups them into
 reviewable, **stacked** branches: each branch builds on the previous, so they
 must be opened and merged in order. The stack order below is dependency order,
@@ -87,12 +87,73 @@ Another iterative arc landing on the `?seq_filter` catch-all + its docs.
 ### PR 9 — Loading state fix + S3 connectivity indicators
 - `ec7a6ac` Fix empty-table loading state and add S3 connectivity indicators
 
-### PR 10 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
+### PR 10 — Header, nav and chrome polish
+Small independent UI fixes to the shell chrome; low review risk.
+- `de6a2d3` Remove appearance controls from the main-page gutter
+- `2dbca79` Add vector Rubin mark and tidy the header status row
+- `ba71c34` Highlight Channels tab on channel pages, drop doubled live dot
+- `676ff9a` Pad the topbar bottom on pages without a tabs row
+- `f32e9a8` Add tooltip explaining the live indicator's states
+- `d25b952` Make breadcrumbs read as breadcrumbs with › separators
+- `0f8ea6a` Give RubinMark intrinsic size to prevent logo flash on refresh
+
+### PR 11 — Liveness cues across views
+Everything that signals "is this the live observing day / is this fresh":
+- `7919ae5` Dim channel cards that lag the night's seq frontier
+- `38c8d44` Show whether Channels cards are the live observing day
+- `9147926` Tint the table date chip by observing-day state
+- `106a2d0` Pass isCurrentDayObs to the All Sky date chip
+- `ac7ed49` Show camera dots as stale when no data for the current day
+- `4611d5a` Reflect S3 unreachable in the historical-refresh pill
+
+### PR 12 — All Sky, Mosaic and live-view cameras
+- `8a88f25` Drop Table/Channels tabs for live-view cameras
+- `cf7601a` Let All Sky frames fill the stage
+- `68f5f33` Shrink All Sky frames to the image on short pages
+- `751dbf5` Autoplay and loop the All Sky movie
+- `bb4c3f6` Make Mosaic a live, embeddable view; drop obsolete has_mosaic flag
+
+### PR 13 — Camera table: virtualization, sorting, config-locked columns
+- `20db80d` Virtualize camera table rows and clip overhanging headers
+- `86564d9` Let cell colour flags show through the newest-row highlight
+- `e705206` Drive locked metadata columns from config
+- `ae2e081` Add ascending/descending sort to orderable table columns
+- `632b22c` Pin camera table scroll position during live updates
+- `b7b6194` Floor @tanstack/virtual-core at >=3.16.0 for anchorTo
+- `74a39d4` Cap cell-modal key column so short values aren't shredded
+
+### PR 14 — Channel view enrichment
+- `e58d0b3` Subscribe the channel browser to live camera updates
+- `8f87ab4` Enrich the single-channel metadata sidebar
+- `e775c6d` Link empty channel cards to their last known plot
+- `1a822fc` Add a sibling-channel strip and image-load spinner to the channel view
+- `e6fe3a2` Show a loading spinner on channel grid cards
+
+### PR 15 — Path prefix, legacy redirects, shell header, site banners
+Backend routing parity with V2 deployments plus the header work built on it.
+- `afd4a43` Serve the whole app under a configurable path prefix
+- `a2e7985` Redirect legacy deep links to the new SPA routes
+- `444eccc` Clarify metadata LRU cap is global, not per-camera
+- `dc3bd98` Hoist the date picker into the shell header
+- `2fec1f0` Add site processing banners and a non-prod header strip
+
+### PR 16 — Sub-apps: DDV websocket bridge + image-time builds
+Replaces v2's start-daemon.sh: the DDV client/worker relay, the Flutter
+build stage and exp_checker install in the Dockerfile.
+- `fdbdff1` Replace v2's start-daemon steps: DDV bridge, image-time subapp builds
+
+### PR 17 — CI and dependency chores
+Could also be folded into whichever PR is open when splitting.
+- `ff7f010` Apply npm audit fix and ignore the Vite cache
+- `9bcc7b0` Bump CI actions off the deprecated Node 20 runtime
+- `6ebbbdd` Bump setup-uv off the deprecated Node 20 runtime
+
+### PR 18 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
 Repackages the app the way lsst-ts builds and deploys V2: relocates the backend
 to `python/lsst/ts/rubintv/`, adds the conda/EUPS/Jenkins scaffolding, the
 `run_rubintv` entry point, and a GHCR image-build CI job. Depends on the whole
 app being in place, so it sits last in the stack — currently based on
-`design-port`, to retarget to `phase-8-real-config` once PRs 1–9 merge.
+`design-port`, to retarget to `phase-8-real-config` once PRs 1–17 merge.
 Open as a stacked PR on branch `conda-parity` (rename to a `tickets/DM-NNNNN`
 branch once a ticket exists — see Notes).
 - `6ee0860` Package as lsst.ts.rubintv for conda/EUPS install parity
@@ -102,13 +163,18 @@ branch once a ticket exists — see Notes).
 ---
 
 ## Notes for whoever splits these
-- The stack must merge in order PR 1 → PR 10; each branch is cut from the tip of
-  the previous one (PR 1 from `phase-8-real-config`). PR 10 is the packaging
+- The stack must merge in order PR 1 → PR 18; each branch is cut from the tip of
+  the previous one (PR 1 from `phase-8-real-config`). PR 18 is the packaging
   layer and depends on the full app, so it merges last.
+- Commit order across groups 10–17 is thematic, not chronological, so
+  cherry-picks may conflict where themes touched the same files; resolve in
+  stack order or fall back to chronological grouping if it gets painful.
+- Plan-upkeep commits (`e768300`, `3277c95`, `13069c6`, `12faf36`, and this
+  update) are docs-only; fold them into any convenient PR.
 - Branch naming: lsst-ts uses `tickets/DM-NNNNN`, and that prefix is what
   triggers the GHCR image-build CI job. Create branches with the ticket name
   up front — do **not** rename later, since renaming a branch closes its PR and
-  orphans anything stacked on top. `conda-parity` (PR 10) keeps its descriptive
+  orphans anything stacked on top. `conda-parity` (PR 18) keeps its descriptive
   name only until a DM ticket exists, at which point cut a fresh
   `tickets/DM-NNNNN` branch + new PR rather than renaming.
 - PRs 5 and 8 are iterative arcs where later commits rewrite earlier ones. They
