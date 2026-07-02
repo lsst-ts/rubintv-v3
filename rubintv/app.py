@@ -32,6 +32,7 @@ from rubintv.s3.client import S3ClientPool
 from rubintv.spa import mount_spa
 from rubintv.state import AppState
 from rubintv.subapps import mount_subapps
+from rubintv.ws.ddv import DdvBridge
 from rubintv.ws.handler import WsService
 from rubintv.ws.internal import HeartbeatService
 
@@ -275,6 +276,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def heartbeat_endpoint(socket: WebSocket) -> None:
         state: AppState = app.state.app_state
         await state.heartbeat_svc.handle(socket)
+
+    # DDV job relay. The client path matches the address baked into the DDV
+    # Flutter build (DDV_CLIENT_WS_ADDRESS, default rubintv/ws/ddv, plus
+    # /client). Worker pods connect on the internal endpoint (v2 served this
+    # at the unprefixed /ws/worker; the pods' target URL is deployment
+    # config, updated alongside this app).
+    ddv_bridge = DdvBridge()
+    app.state.ddv_bridge = ddv_bridge
+
+    @app.websocket(f"{prefix}/ws/ddv/client")
+    async def ddv_client_endpoint(socket: WebSocket) -> None:
+        await ddv_bridge.handle_client(socket)
+
+    @app.websocket(f"{prefix}/internal/ddv/worker")
+    async def ddv_worker_endpoint(socket: WebSocket) -> None:
+        await ddv_bridge.handle_worker(socket)
 
     # Optional sub-apps (DDV, exp_checker). Each is isolated: a failure to
     # mount is logged and skipped, never blocking the main app.
