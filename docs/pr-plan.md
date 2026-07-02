@@ -152,14 +152,29 @@ Could also be folded into whichever PR is open when splitting.
 - `9bcc7b0` Bump CI actions off the deprecated Node 20 runtime
 - `6ebbbdd` Bump setup-uv off the deprecated Node 20 runtime
 
-### PR 18 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
+### PR 18 — Version 3.0.0 + build provenance + image-build CI
+Stamps the release: version 3.0.0 everywhere, git sha + commit date on the
+Admin page (baked in as Docker build args — the runtime image has no .git),
+and the V2-convention image-build CI job (tickets/**, deploy**, develop,
+tags → ghcr). The drift-sync commit is mechanical (the committed
+openapi.json/api-types had gone stale); review the feature commit for the
+real schema change.
+- `b65de07` Regenerate the stale openapi.json and api-types
+- `29f585b` Bump to 3.0.0 and show git provenance on the Admin page
+
+### PR 19 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
 Repackages the app the way lsst-ts builds and deploys V2: relocates the backend
 to `python/lsst/ts/rubintv/`, adds the conda/EUPS/Jenkins scaffolding, the
 `run_rubintv` entry point, and a GHCR image-build CI job. Depends on the whole
 app being in place, so it sits last in the stack — currently based on
-`design-port`, to retarget to `phase-8-real-config` once PRs 1–17 merge.
+`design-port`, to retarget to `phase-8-real-config` once PRs 1–18 merge.
 Open as a stacked PR on branch `conda-parity` (rename to a `tickets/DM-NNNNN`
 branch once a ticket exists — see Notes).
+**Conflict warning:** this branch carries its own `scripts/docker-tag.sh` and
+ci.yml build job (setuptools_scm `RUBINTV_VERSION` build-arg; gates on `main`
+rather than `develop`), which now collide with PR 18's. On rebase, keep one
+build job that passes *both* the version arg and PR 18's `GIT_SHA`/`GIT_DATE`
+provenance args; the two docker-tag.sh copies are equivalent.
 - `6ee0860` Package as lsst.ts.rubintv for conda/EUPS install parity
 - `562d0f4` Fix pre-existing ruff errors in dev scripts
 - `4f9d104` Fix pre-existing mypy errors exposed by the new check target
@@ -167,8 +182,8 @@ branch once a ticket exists — see Notes).
 ---
 
 ## Notes for whoever splits these
-- The stack must merge in order PR 1 → PR 18; each branch is cut from the tip of
-  the previous one (PR 1 from `phase-8-real-config`). PR 18 is the packaging
+- The stack must merge in order PR 1 → PR 19; each branch is cut from the tip of
+  the previous one (PR 1 from `phase-8-real-config`). PR 19 is the packaging
   layer and depends on the full app, so it merges last.
 - Commit order across groups 10–17 is thematic, not chronological, so
   cherry-picks may conflict where themes touched the same files; resolve in
@@ -178,7 +193,7 @@ branch once a ticket exists — see Notes).
 - Branch naming: lsst-ts uses `tickets/DM-NNNNN`, and that prefix is what
   triggers the GHCR image-build CI job. Create branches with the ticket name
   up front — do **not** rename later, since renaming a branch closes its PR and
-  orphans anything stacked on top. `conda-parity` (PR 18) keeps its descriptive
+  orphans anything stacked on top. `conda-parity` (PR 19) keeps its descriptive
   name only until a DM ticket exists, at which point cut a fresh
   `tickets/DM-NNNNN` branch + new PR rather than renaming.
 - PRs 5 and 8 are iterative arcs where later commits rewrite earlier ones. They
