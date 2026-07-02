@@ -143,7 +143,7 @@ entrypoint that builds DDV / installs exp_checker at container start (kept
 at container start, as in v2, so pod restarts pick up new DDV commits
 without an image rebuild).
 - `fdbdff1` Replace v2's start-daemon steps: DDV bridge, image-time subapp builds
-- `d76f629` Build DDV at container start again, not at image build
+- `2967d0b` Build DDV at container start again, not at image build
 
 ### PR 17 — CI and dependency chores
 Could also be folded into whichever PR is open when splitting.
