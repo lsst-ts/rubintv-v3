@@ -87,6 +87,30 @@ docker build -t rubintv .
 docker run -p 8000:8000 -e RUBINTV_SITE=summit rubintv
 ```
 
+## Releasing
+
+The git tag is the single source of truth for the version — no files are
+edited to cut a release:
+
+```sh
+git tag -a v3.1.0 -m "RubinTV 3.1.0"
+git push origin v3.1.0
+```
+
+Everything else follows from the tag automatically:
+
+- setuptools_scm derives the package version (`3.1.0`) from it and writes
+  `_version.py`, which is what `__version__` (and the Admin page) report.
+- The tag push triggers CI's image build, which passes the computed version
+  plus the commit sha/date as build args; the image lands at
+  `ghcr.io/lsst-ts/rubintv-v3:v3.1.0` (the docker tag is the git ref name).
+- Untagged commits self-describe as dev versions (`3.1.1.dev5+g<sha>`), so
+  ticket-branch images are always distinguishable from releases.
+
+Tags must be `vX.Y.Z` on a commit reachable from the deployed branch. The
+`web/package.json` version is vestigial (nothing reads it); sync it if tidiness
+demands, but nothing breaks when it drifts.
+
 ## Observability
 
 Structured logs (JSON in prod) carry a per-request `request_id` (honours an
