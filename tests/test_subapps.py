@@ -100,7 +100,7 @@ def test_exp_checker_mounted_when_importable(monkeypatch: pytest.MonkeyPatch) ->
     module.create_app = create_app  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "exp_checker", module)
 
-    settings = make_settings(exp_checker_enabled=True)
+    settings = make_settings(exp_checker_enabled=True, exp_checker_module="exp_checker")
     with run_app(settings) as client:
         assert (
             f"{TEST_PREFIX}/exp_checker" in client.get("/api/subapps").json()["mounted"]

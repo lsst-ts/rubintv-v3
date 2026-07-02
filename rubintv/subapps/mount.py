@@ -68,7 +68,7 @@ def _mount_exp_checker(app: FastAPI, settings: Settings, prefix: str) -> str | N
         return None
     from importlib import import_module
 
-    module = import_module("exp_checker")
+    module = import_module(settings.exp_checker_module)
     sub: FastAPI = module.create_app() if hasattr(module, "create_app") else module.app
     path = f"{prefix}/exp_checker"
     app.mount(path, sub, name="exp_checker")

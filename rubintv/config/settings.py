@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     exp_checker_enabled: bool = False
     """Mount the exp_checker sub-app at /exp_checker (must be importable)."""
 
+    exp_checker_module: str = "lsst.ts.exp_checker"
+    """Import path of the exp_checker package (must expose ``create_app()``
+    or an ``app`` instance)."""
+
     poll_interval_seconds: float = 1.0
     """Current-day poll cadence."""
 
