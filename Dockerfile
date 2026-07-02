@@ -53,11 +53,21 @@ COPY --from=web --chown=rubintv:rubintv /web/dist ./web/dist
 
 COPY --chown=rubintv:rubintv scripts/build-ddv.sh scripts/start.sh ./scripts/
 
+# Build provenance for the Admin page. Passed in by the image builder
+# (`--build-arg GIT_SHA=$(git rev-parse --short HEAD) --build-arg
+# GIT_DATE=$(git log -1 --format=%cd --date=format:%Y-%m-%d)`) because the
+# runtime image carries no .git, so the backend can't recover them later.
+# Default "unknown" keeps a plain `docker build` (no build args) working.
+ARG GIT_SHA=unknown
+ARG GIT_DATE=unknown
+
 # RUBINTV_DDV_PATH matches where start.sh leaves the DDV build (under
 # DDV_BUILD_DIR); the mount skips quietly when no build happened.
 ENV RUBINTV_SPA_DIST=/app/web/dist \
     RUBINTV_DDV_PATH=/app/ddv-build/ddv/build/web \
-    RUBINTV_JSON_LOGS=true
+    RUBINTV_JSON_LOGS=true \
+    RUBINTV_GIT_SHA=$GIT_SHA \
+    RUBINTV_GIT_DATE=$GIT_DATE
 
 EXPOSE 8000
 CMD ["bash", "scripts/start.sh"]

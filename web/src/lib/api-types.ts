@@ -576,6 +576,10 @@ export interface components {
         AdminStatusOut: {
             /** Version */
             version: string;
+            /** Git Sha */
+            git_sha: string;
+            /** Commit Date */
+            commit_date: string;
             /** Redis Enabled */
             redis_enabled: boolean;
             /** Cache Enabled */

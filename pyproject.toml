@@ -1,6 +1,6 @@
 [project]
 name = "rubintv"
-version = "0.1.0"
+version = "3.0.0"
 description = "RubinTV — web app for viewing Vera C. Rubin Observatory data products (rebuild)"
 readme = "README.md"
 requires-python = ">=3.12"

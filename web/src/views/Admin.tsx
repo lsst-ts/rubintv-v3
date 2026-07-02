@@ -68,7 +68,9 @@ export function Admin() {
       <header className="admin-header">
         <h1>Admin</h1>
         <span className="admin-version">
-          {status ? `v${status.version}` : ""}
+          {status
+            ? `v${status.version} · ${status.git_sha} · ${status.commit_date}`
+            : ""}
           {status && !status.redis_enabled && (
             <span className="admin-warn" role="alert">
               {" "}

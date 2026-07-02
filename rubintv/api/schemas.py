@@ -185,6 +185,10 @@ class AdminStatusOut(BaseModel):
     """Site-wide admin panel header info."""
 
     version: str
+    git_sha: str
+    """Short git hash of the built commit ("unknown" if unavailable)."""
+    commit_date: str
+    """Commit date of the built commit as YYYY-MM-DD ("unknown" if unavailable)."""
     redis_enabled: bool
     cache_enabled: bool
     witness_detector_key: str

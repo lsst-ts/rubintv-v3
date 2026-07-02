@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "RubinTV",
-    "version": "0.1.0"
+    "version": "3.0.0"
   },
   "paths": {
     "/api/health/live": {
@@ -1454,6 +1454,14 @@
             "type": "string",
             "title": "Version"
           },
+          "git_sha": {
+            "type": "string",
+            "title": "Git Sha"
+          },
+          "commit_date": {
+            "type": "string",
+            "title": "Commit Date"
+          },
           "redis_enabled": {
             "type": "boolean",
             "title": "Redis Enabled"
@@ -1470,6 +1478,8 @@
         "type": "object",
         "required": [
           "version",
+          "git_sha",
+          "commit_date",
           "redis_enabled",
           "cache_enabled",
           "witness_detector_key"
