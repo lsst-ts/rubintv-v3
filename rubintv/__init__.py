@@ -1,3 +1,3 @@
 """RubinTV — viewer for Vera C. Rubin Observatory data products."""
 
-__version__ = "0.1.0"
+__version__ = "3.0.0"

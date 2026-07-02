@@ -137,6 +137,10 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     assert resp.status_code == 200
     body = resp.json()
     assert body["version"]
+    # Build provenance for the Admin page. In the test tree git resolves live;
+    # both are non-empty (real value or the "unknown" fallback), never blank.
+    assert body["git_sha"]
+    assert body["commit_date"]
     # The seeded client has no Redis and no cache dir configured.
     assert body["redis_enabled"] is False
     assert body["cache_enabled"] is False

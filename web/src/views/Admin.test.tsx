@@ -23,7 +23,9 @@ function stub(redisEnabled = true) {
     let body: unknown = {};
     if (url.endsWith("/admin/status")) {
       body = {
-        version: "0.1.0",
+        version: "3.0.0",
+        git_sha: "abc1234",
+        commit_date: "2026-07-02",
         redis_enabled: redisEnabled,
         cache_enabled: true,
         witness_detector_key: "RUBINTV_CONTROL_WITNESS_DETECTOR",
@@ -62,7 +64,10 @@ test("shows version, renders menu box, and sends the chosen value", async () => 
   const qc = createQueryClient();
   renderAdmin(qc);
 
-  expect(await screen.findByText("v0.1.0")).toBeDefined();
+  // Version line carries the git sha and commit date alongside the version.
+  expect(
+    await screen.findByText("v3.0.0 · abc1234 · 2026-07-02"),
+  ).toBeDefined();
   expect(await screen.findByText("AOS Pipeline")).toBeDefined();
 
   // The menu's first option (DANISH) sends on click.
@@ -117,8 +122,9 @@ test("flush redis is disabled when redis is not configured", async () => {
   const qc = createQueryClient();
   renderAdmin(qc);
   // Wait for the status query to resolve (version appears) before asserting
-  // the redis-gated disabled state, which depends on it.
-  await screen.findByText("v0.1.0");
+  // the redis-gated disabled state, which depends on it. The version line now
+  // also carries the git sha and commit date, so match a substring.
+  await screen.findByText(/v3\.0\.0/);
   await waitFor(() => {
     const flush = screen.getByRole("button", { name: "Flush Redis" });
     expect((flush as HTMLButtonElement).disabled).toBe(true);

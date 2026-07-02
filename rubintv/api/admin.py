@@ -23,6 +23,7 @@ from rubintv.api.schemas import (
     DetectorOut,
     DetectorsConfigOut,
 )
+from rubintv.build_info import commit_date, git_sha
 from rubintv.config.models import Location
 from rubintv.data.redis_inputs import RedisUnavailable
 from rubintv.state import AppState
@@ -161,9 +162,7 @@ async def _set_redis(state: AppState, key: str, value: str) -> AdminActionOut:
     try:
         await state.redis.set_value(key, value)
     except RedisUnavailable as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
-        ) from exc
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     return AdminActionOut(ok=True, detail=f"set {key}")
 
 
@@ -173,6 +172,8 @@ def get_admin_status(
 ) -> AdminStatusOut:
     return AdminStatusOut(
         version=__version__,
+        git_sha=git_sha(),
+        commit_date=commit_date(),
         redis_enabled=state.redis is not None and state.redis.enabled,
         cache_enabled=state.cache_enabled,
         witness_detector_key=state.settings.witness_detector_key,
@@ -242,9 +243,7 @@ async def flush_historical(
 ) -> AdminActionOut:
     """Clear the disk + in-memory historical cache and trigger a cold rescan."""
     if state.flush_historical is None:  # pragma: no cover - always wired
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "flush not available"
-        )
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "flush not available")
     removed = await state.flush_historical()
     return AdminActionOut(ok=True, detail=f"cleared {removed} cached slices")
 
@@ -262,7 +261,5 @@ async def flush_redis(
     try:
         await state.redis.flushdb()
     except RedisUnavailable as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
-        ) from exc
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     return AdminActionOut(ok=True, detail="redis flushed")
