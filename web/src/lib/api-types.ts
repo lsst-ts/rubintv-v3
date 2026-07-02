@@ -507,6 +507,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * App Config
+         * @description Deployment bootstrap the SPA reads at startup.
+         *
+         *     ``site`` is the deployment site name (``RUBINTV_SITE``: ``summit``,
+         *     ``usdf-k8s``, ``local`` …). The frontend uses it to label the header —
+         *     which processing banner to show and whether to flag a non-prod
+         *     instance — since where the *pod* runs is distinct from which location's
+         *     bucket is being viewed.
+         */
+        get: operations["app_config_api_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -923,7 +949,9 @@ export interface components {
         ServicesResponse: {
             /** Services */
             services: {
-                [key: string]: Record<string, never>;
+                [key: string]: {
+                    [key: string]: unknown;
+                };
             };
         };
         /** StatusResponse */
@@ -956,6 +984,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -1196,7 +1228,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: Record<string, never>;
+                        [key: string]: {
+                            [key: string]: unknown;
+                        };
                     };
                 };
             };
@@ -1771,6 +1805,28 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: string[];
+                    };
+                };
+            };
+        };
+    };
+    app_config_api_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
                     };
                 };
             };
