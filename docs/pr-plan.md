@@ -144,6 +144,7 @@ at container start, as in v2, so pod restarts pick up new DDV commits
 without an image rebuild).
 - `fdbdff1` Replace v2's start-daemon steps: DDV bridge, image-time subapp builds
 - `2967d0b` Build DDV at container start again, not at image build
+- `c27fed0` Fix image build and exp_checker install found by a real docker run
 
 ### PR 17 — CI and dependency chores
 Could also be folded into whichever PR is open when splitting.
