@@ -360,7 +360,8 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object"
+                    "type": "object",
+                    "additionalProperties": true
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
                 }
@@ -1343,6 +1344,32 @@
           }
         }
       }
+    },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "App Config",
+        "description": "Deployment bootstrap the SPA reads at startup.\n\n``site`` is the deployment site name (``RUBINTV_SITE``: ``summit``,\n``usdf-k8s``, ``local`` \u2026). The frontend uses it to label the header \u2014\nwhich processing banner to show and whether to flag a non-prod\ninstance \u2014 since where the *pod* runs is distinct from which location's\nbucket is being viewed.",
+        "operationId": "app_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response App Config Api Config Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1473,6 +1500,14 @@
             },
             "type": "object",
             "title": "Max Seq",
+            "default": {}
+          },
+          "channel_latest": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Channel Latest",
             "default": {}
           }
         },
@@ -2485,6 +2520,7 @@
         "properties": {
           "services": {
             "additionalProperties": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "object",
@@ -2579,6 +2615,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
