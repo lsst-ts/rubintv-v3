@@ -43,6 +43,9 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY --chown=rubintv:rubintv rubintv/ ./rubintv/
 COPY --chown=rubintv:rubintv config/ ./config/
+# pyproject declares readme = README.md; hatchling refuses to build the
+# project wheel without it.
+COPY --chown=rubintv:rubintv README.md ./
 RUN uv sync --locked --no-dev
 
 # Built SPA assets, served by FastAPI (catch-all for deep links).
