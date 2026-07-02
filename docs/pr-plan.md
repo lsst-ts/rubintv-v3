@@ -137,10 +137,13 @@ Backend routing parity with V2 deployments plus the header work built on it.
 - `dc3bd98` Hoist the date picker into the shell header
 - `2fec1f0` Add site processing banners and a non-prod header strip
 
-### PR 16 — Sub-apps: DDV websocket bridge + image-time builds
-Replaces v2's start-daemon.sh: the DDV client/worker relay, the Flutter
-build stage and exp_checker install in the Dockerfile.
+### PR 16 — Sub-apps: DDV websocket bridge + container-start builds
+Replaces v2's start-daemon.sh: the DDV client/worker relay, plus a start.sh
+entrypoint that builds DDV / installs exp_checker at container start (kept
+at container start, as in v2, so pod restarts pick up new DDV commits
+without an image rebuild).
 - `fdbdff1` Replace v2's start-daemon steps: DDV bridge, image-time subapp builds
+- `d76f629` Build DDV at container start again, not at image build
 
 ### PR 17 — CI and dependency chores
 Could also be folded into whichever PR is open when splitting.

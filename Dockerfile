@@ -1,5 +1,8 @@
-# Multi-stage build: build the SPA with Node and the DDV Flutter app with
-# the Flutter SDK, then serve API + static assets from a slim Python runtime.
+# Multi-stage build: build the SPA with Node, then serve API + static assets
+# from a Python runtime. The DDV Flutter app is deliberately *not* built
+# here: the entrypoint (scripts/start.sh) builds it at container start, so a
+# pod restart picks up new commits of the DDV repos without rebuilding this
+# image. The runtime image therefore carries the Flutter SDK + fvm.
 
 # --- Stage 1: build the frontend ---
 FROM node:22-slim AS web
@@ -9,52 +12,49 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-# --- Stage 2: build the DDV Flutter app ---
-# DDV (rubintv_visualization + its rubin_chart dependency) is cloned and
-# built here so the runtime image ships ready-made assets — v2 rebuilt it at
-# every container start. The websocket address and base href are baked into
-# the build, so they're build args, not runtime env.
-FROM ghcr.io/cirruslabs/flutter:stable AS ddv
-ARG DDV_DEPLOY_BRANCH=main
-ARG DDV_BASE_HREF=/rubintv/ddv/
-ARG DDV_CLIENT_WS_ADDRESS=rubintv/ws/ddv
-ENV PATH="/root/.pub-cache/bin:${PATH}"
-RUN dart pub global activate fvm
-WORKDIR /src
-COPY scripts/build-ddv.sh .
-RUN bash build-ddv.sh
-
-# --- Stage 3: Python runtime ---
+# --- Stage 2: Python runtime ---
 FROM python:3.12-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# What the container-start DDV build needs: git to clone, the rest for the
+# Flutter web toolchain.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl git libglu1-mesa unzip xz-utils zip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Flutter won't run as root, so everything runs as a dedicated user.
+RUN groupadd -g 1000 rubintv && useradd -u 1000 -g rubintv -m rubintv
 WORKDIR /app
+RUN chown rubintv:rubintv /app
+USER rubintv
+
+# Flutter SDK + fvm for the container-start DDV build. `flutter doctor`
+# pre-warms the Dart SDK so container start only pays for the build itself;
+# fvm fetches whatever SDK version the DDV repos pin.
+RUN git clone -b stable --depth 1 \
+    https://github.com/flutter/flutter.git /home/rubintv/flutter
+ENV PATH="/home/rubintv/flutter/bin:/home/rubintv/.pub-cache/bin:${PATH}"
+RUN flutter doctor && dart pub global activate fvm
 
 # Install deps first for layer caching.
-COPY pyproject.toml uv.lock ./
+COPY --chown=rubintv:rubintv pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY rubintv/ ./rubintv/
-COPY config/ ./config/
+COPY --chown=rubintv:rubintv rubintv/ ./rubintv/
+COPY --chown=rubintv:rubintv config/ ./config/
 RUN uv sync --locked --no-dev
 
-# The exp_checker sub-app, mounted at {prefix}/exp_checker only where
-# RUBINTV_EXP_CHECKER_ENABLED=true (USDF); installed unconditionally so one
-# image serves every site. The tarball URL avoids needing git in the image;
-# setuptools_scm can't derive a version without .git, hence the pretend pin.
-ARG EXP_CHECKER_REF=main
-RUN SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0 uv pip install \
-    "rubin-exp-checker @ https://github.com/lsst-sitcom/rubin_exp_checker/archive/${EXP_CHECKER_REF}.tar.gz"
-
 # Built SPA assets, served by FastAPI (catch-all for deep links).
-COPY --from=web /web/dist ./web/dist
-# Built DDV Flutter assets, served at {prefix}/ddv.
-COPY --from=ddv /src/ddv/build/web ./ddv
+COPY --from=web --chown=rubintv:rubintv /web/dist ./web/dist
 
+COPY --chown=rubintv:rubintv scripts/build-ddv.sh scripts/start.sh ./scripts/
+
+# RUBINTV_DDV_PATH matches where start.sh leaves the DDV build (under
+# DDV_BUILD_DIR); the mount skips quietly when no build happened.
 ENV RUBINTV_SPA_DIST=/app/web/dist \
-    RUBINTV_DDV_PATH=/app/ddv \
+    RUBINTV_DDV_PATH=/app/ddv-build/ddv/build/web \
     RUBINTV_JSON_LOGS=true
 
 EXPOSE 8000
-# --no-sync: uv run must not "correct" the venv back to the lockfile, which
-# would strip the exp_checker install above.
-CMD ["uv", "run", "--no-sync", "uvicorn", "rubintv.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["bash", "scripts/start.sh"]
