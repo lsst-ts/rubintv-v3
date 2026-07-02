@@ -181,6 +181,7 @@ generation of fetch scripts was dropped in its favour.
 - `72ca084` Package as lsst.ts.rubintv for conda/EUPS install parity
 - `54537a6` Fix pre-existing ruff errors in dev scripts
 - `8014ed5` Fix pre-existing mypy errors exposed by the new check target
+- `d3998b4` Document the tag-driven release procedure in the operator guide
 
 ---
 
