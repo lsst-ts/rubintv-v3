@@ -146,13 +146,29 @@ without an image rebuild).
 - `2967d0b` Build DDV at container start again, not at image build
 - `c27fed0` Fix image build and exp_checker install found by a real docker run
 
-### PR 17 — CI and dependency chores
+### PR 17 — Landing pages: location/camera/app logos
+Restyles the Home and Location landing pages into the original RubinTV
+full-bleed logo buttons: each camera/location logo fills its button as a
+background image (jpg photos cover, svg marks contain) with the title overlaid
+using the config's text_colour/text_shadow. Home splits into grouped sections
+(Processing Locations / Apps / Test-stand Locations, each hidden when empty),
+single-location deployments redirect straight to that location, and the
+Location page's cluster-status text link becomes a matching logo button.
+Depends on the design foundation (PR 2), the app shell (PR 3), and the sub-apps
+enumeration (PR 16 — Home's Apps section reuses `api.subapps`), so it sits here
+after the sub-apps work. Bundles the logo images under `web/public/logos/` and
+adds logo/text_colour/text_shadow to CameraSummary + has_cluster_status to
+LocationSummary (openapi.json + api-types regenerated in the same commit).
+- `1f0e133` Incorporate location/camera/app logos as full-bleed buttons
+
+### PR 18 — CI and dependency chores
 Could also be folded into whichever PR is open when splitting.
 - `ff7f010` Apply npm audit fix and ignore the Vite cache
 - `9bcc7b0` Bump CI actions off the deprecated Node 20 runtime
 - `6ebbbdd` Bump setup-uv off the deprecated Node 20 runtime
+- `d6c757e` Inject X-Auth-User in the Vite dev proxy for local admin access
 
-### PR 18 — Version 3.0.0 + build provenance + image-build CI
+### PR 19 — Version 3.0.0 + build provenance + image-build CI
 Stamps the release: version 3.0.0 everywhere, git sha + commit date on the
 Admin page (baked in as Docker build args — the runtime image has no .git),
 and the V2-convention image-build CI job (tickets/**, deploy**, develop,
@@ -162,28 +178,37 @@ real schema change.
 - `b65de07` Regenerate the stale openapi.json and api-types
 - `29f585b` Bump to 3.0.0 and show git provenance on the Admin page
 
-### PR 19 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
+### PR 20 — Package as `lsst.ts.rubintv` for conda/EUPS install parity
 Repackages the app the way lsst-ts builds and deploys V2: relocates the backend
 to `python/lsst/ts/rubintv/`, adds the conda/EUPS/Jenkins scaffolding, the
 `run_rubintv` entry point, and a GHCR image-build CI job. Depends on the whole
 app being in place, so it sits last in the stack — currently based on
-`design-port`, to retarget to `phase-8-real-config` once PRs 1–18 merge.
+`design-port`, to retarget to `phase-8-real-config` once PRs 1–19 merge.
 Open as a stacked PR on branch `conda-parity` (rename to a `tickets/DM-NNNNN`
 branch once a ticket exists — see Notes).
-**Conflict warning:** this branch carries its own `scripts/docker-tag.sh` and
-ci.yml build job (setuptools_scm `RUBINTV_VERSION` build-arg; gates on `main`
-rather than `develop`), which now collide with PR 18's. On rebase, keep one
-build job that passes *both* the version arg and PR 18's `GIT_SHA`/`GIT_DATE`
-provenance args; the two docker-tag.sh copies are equivalent.
-- `6ee0860` Package as lsst.ts.rubintv for conda/EUPS install parity
-- `562d0f4` Fix pre-existing ruff errors in dev scripts
-- `4f9d104` Fix pre-existing mypy errors exposed by the new check target
+Already rebased onto PR 19's tip with the overlaps reconciled: one CI build
+job passes both the setuptools_scm `RUBINTV_VERSION` arg and PR 19's
+`GIT_SHA`/`GIT_DATE` provenance args (gating on tickets/deploy/develop/main
+/tags); the static 3.0.0 version gives way to the tag-derived one (cut a
+v3.0.0 tag at release); `scripts/start.sh` stays the entrypoint — carrying
+the newer container-start DDV/exp_checker logic — but launches via the
+`run_rubintv` console script, and the branch's older start-daemon.sh
+generation of fetch scripts was dropped in its favour.
+- `72ca084` Package as lsst.ts.rubintv for conda/EUPS install parity
+- `54537a6` Fix pre-existing ruff errors in dev scripts
+- `8014ed5` Fix pre-existing mypy errors exposed by the new check target
+- `d3998b4` Document the tag-driven release procedure in the operator guide
+- `0155e97` Adopt the TSSW pre-commit config for Jenkins CI
+- `168493c` Conform doc lines and benchmark lambdas to the TSSW hooks
+- `fcb1ae1` Make the test suite hermetic to the developer's AWS config
+- `485711c` Survive Kubernetes service links and listen on 8080 in the container
+- `8ea9cb4` Answer the readiness probe at bare / with a redirect into the prefix
 
 ---
 
 ## Notes for whoever splits these
-- The stack must merge in order PR 1 → PR 19; each branch is cut from the tip of
-  the previous one (PR 1 from `phase-8-real-config`). PR 19 is the packaging
+- The stack must merge in order PR 1 → PR 20; each branch is cut from the tip of
+  the previous one (PR 1 from `phase-8-real-config`). PR 20 is the packaging
   layer and depends on the full app, so it merges last.
 - Commit order across groups 10–17 is thematic, not chronological, so
   cherry-picks may conflict where themes touched the same files; resolve in
@@ -193,7 +218,7 @@ provenance args; the two docker-tag.sh copies are equivalent.
 - Branch naming: lsst-ts uses `tickets/DM-NNNNN`, and that prefix is what
   triggers the GHCR image-build CI job. Create branches with the ticket name
   up front — do **not** rename later, since renaming a branch closes its PR and
-  orphans anything stacked on top. `conda-parity` (PR 19) keeps its descriptive
+  orphans anything stacked on top. `conda-parity` (PR 20) keeps its descriptive
   name only until a DM ticket exists, at which point cut a fresh
   `tickets/DM-NNNNN` branch + new PR rather than renaming.
 - PRs 5 and 8 are iterative arcs where later commits rewrite earlier ones. They

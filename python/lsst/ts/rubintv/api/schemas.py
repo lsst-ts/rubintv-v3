@@ -27,6 +27,14 @@ class CameraSummary(BaseModel):
     name: str
     title: str
     online: bool
+    logo: str | None = None
+    """Logo image filename (served from the SPA under ``/logos/``), shown as a
+    full-bleed background on the location camera buttons."""
+    text_colour: str | None = None
+    """CSS colour for the button title, so it stays legible over the logo photo
+    (some logos are dark, some light). ``None`` falls back to the theme ink."""
+    text_shadow: bool = False
+    """Whether to drop a shadow behind the button title (for busy photos)."""
     latest_date: str | None = None
     """Most recent observing day with data (YYYY-MM-DD), or None if the camera
     has no data yet. The client compares it to the current day_obs to show a
@@ -45,6 +53,10 @@ class LocationSummary(BaseModel):
     text_colour: str | None = None
     text_shadow: bool = False
     is_teststand: bool = False
+    has_cluster_status: bool = False
+    """Whether this location runs a cluster/detector-status service, so the Home
+    page can offer a single 'Cluster status' app when any visible location has
+    it."""
 
 
 class LocationOut(BaseModel):

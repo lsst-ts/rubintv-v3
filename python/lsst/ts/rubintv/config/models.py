@@ -72,6 +72,7 @@ class Camera(BaseModel):
     online: bool = True
     logo: str | None = None
     text_colour: str | None = None
+    text_shadow: bool = False
     icon: str | None = None
     channels: list[Channel] = Field(default_factory=list)
     metadata_columns: dict[str, str] = Field(default_factory=dict)

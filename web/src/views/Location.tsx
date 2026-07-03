@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { logoButtonStyle } from "../lib/logoButton";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, cameraDataState } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
@@ -28,27 +29,46 @@ export function Location() {
     <section>
       <h1>{data.title}</h1>
       {data.has_cluster_status && (
-        <nav className="location-nav" aria-label="Location views">
-          <Link to="/detectors">Cluster status</Link>
-        </nav>
+        <div className="camera-group">
+          <h2>Apps</h2>
+          <ul className="button-grid">
+            <li>
+              <Link
+                className="logo-button"
+                to="/detectors"
+                // The logo already has the title baked in, so hide the overlaid
+                // text (kept for screen readers / if the image fails to load).
+                style={logoButtonStyle({
+                  logo: "cluster-status.jpg",
+                  text_colour: "rgba(0,0,0,0)",
+                })}
+              >
+                <span className="logo-button-title">Cluster status</span>
+              </Link>
+            </li>
+          </ul>
+        </div>
       )}
       {data.camera_groups.map((group) => (
         <div key={group.label} className="camera-group">
           <h2>{group.label}</h2>
-          <ul className="card-grid">
+          <ul className="button-grid">
             {group.cameras.map((cam) => {
               const state = cameraDataState(cam.online, cam.latest_date);
               return (
-                <li
-                  key={cam.name}
-                  className={`card ${state === "offline" ? "offline" : ""}`}
-                >
-                  <Link to={`/${location}/${cam.name}`}>{cam.title}</Link>
-                  <span
-                    className={`dot ${state}`}
-                    title={DOT_TITLE[state]}
-                    aria-label={DOT_TITLE[state]}
-                  />
+                <li key={cam.name}>
+                  <Link
+                    className={`logo-button ${state === "offline" ? "offline" : ""}`}
+                    to={`/${location}/${cam.name}`}
+                    style={logoButtonStyle(cam)}
+                  >
+                    <span
+                      className={`logo-button-dot dot ${state}`}
+                      title={DOT_TITLE[state]}
+                      aria-label={DOT_TITLE[state]}
+                    />
+                    <span className="logo-button-title">{cam.title}</span>
+                  </Link>
                 </li>
               );
             })}
