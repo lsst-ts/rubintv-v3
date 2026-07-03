@@ -44,8 +44,11 @@ class Settings(BaseSettings):
     ``lsst.ts.rubintv.models``; set ``RUBINTV_MODELS_PATH`` to override with an
     on-disk file (e.g. a site-specific mount)."""
 
-    cache_dir: Path | None = None
-    """PVC cache directory for warm starts. ``None`` disables disk cache."""
+    cache_dir: Path | None = Path("/scratch")
+    """PVC cache directory for warm starts. Defaults to /scratch, the PVC
+    mount used in deployments; when the directory is missing or unwritable
+    (pods without a PVC, local dev) the cache disables itself with a single
+    warning. ``None`` disables it explicitly."""
 
     redis_url: str | None = None
     """Redis connection URL. ``None`` disables detector/admin live updates."""

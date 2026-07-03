@@ -29,6 +29,15 @@ class DiskCache:
 
     def __init__(self, cache_dir: Path | None) -> None:
         self._root = cache_dir / CACHE_VERSION if cache_dir else None
+        # Probe writability once up front: cache_dir defaults to the PVC
+        # mount (/scratch), which not every pod (or dev machine) has. An
+        # unusable dir means "no cache", not a crash or a warning per write.
+        if self._root is not None:
+            try:
+                self._root.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                log.warning("cache.disabled", dir=str(self._root), error=str(exc))
+                self._root = None
 
     @property
     def enabled(self) -> bool:
