@@ -13,6 +13,7 @@ always continues to serve.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.logging import get_logger
 from starlette.staticfiles import StaticFiles
@@ -37,8 +38,25 @@ def mount_subapps(app: FastAPI, settings: Settings) -> list[str]:
             continue
         if path is not None:
             mounted.append(path)
+            _redirect_bare_path(app, path)
             log.info("subapp.mounted", subapp=name, path=path)
     return mounted
+
+
+def _redirect_bare_path(app: FastAPI, path: str) -> None:
+    """Send the slash-less mount path into the mount.
+
+    Starlette mounts only match ``{path}/...``, so the bare path (which is
+    what ``/api/subapps`` advertises and users type) would fall through to
+    the SPA catch-all and 404. An explicit redirect closes that gap; the
+    router's automatic slash-redirect can't, because the catch-all matches
+    first.
+    """
+
+    async def bare() -> RedirectResponse:
+        return RedirectResponse(f"{path}/")
+
+    app.add_api_route(path, bare, include_in_schema=False)
 
 
 def _mount_ddv(app: FastAPI, settings: Settings, prefix: str) -> str | None:
