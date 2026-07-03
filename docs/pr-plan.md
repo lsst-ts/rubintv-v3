@@ -198,6 +198,8 @@ generation of fetch scripts was dropped in its favour.
 - `54537a6` Fix pre-existing ruff errors in dev scripts
 - `8014ed5` Fix pre-existing mypy errors exposed by the new check target
 - `d3998b4` Document the tag-driven release procedure in the operator guide
+- `0155e97` Adopt the TSSW pre-commit config for Jenkins CI
+- `168493c` Conform doc lines and benchmark lambdas to the TSSW hooks
 
 ---
 
