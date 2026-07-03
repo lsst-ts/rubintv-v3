@@ -202,6 +202,7 @@ generation of fetch scripts was dropped in its favour.
 - `168493c` Conform doc lines and benchmark lambdas to the TSSW hooks
 - `fcb1ae1` Make the test suite hermetic to the developer's AWS config
 - `485711c` Survive Kubernetes service links and listen on 8080 in the container
+- `8ea9cb4` Answer the readiness probe at bare / with a redirect into the prefix
 
 ---
 
