@@ -70,6 +70,15 @@ select = ["E", "F", "I", "UP", "B", "W"]
 # B008: FastAPI's Depends()/Query() in argument defaults is the intended idiom.
 ignore = ["B008"]
 
+[tool.ruff.lint.pycodestyle]
+# Activates W505 to mirror the Jenkins-generated flake8 max-doc-length check,
+# so doc/comment overruns show up in the editor before CI sees them.
+max-doc-length = 79
+
+[tool.ruff.lint.per-file-ignores]
+# The Jenkins flake8 config excludes __init__.py wholesale; match it for W505.
+"**/__init__.py" = ["W505"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
