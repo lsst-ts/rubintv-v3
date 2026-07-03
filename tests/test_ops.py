@@ -16,11 +16,12 @@ from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
 
 @contextmanager
 def run_app(**overrides: object) -> Iterator[PrefixedTestClient]:
+    # cache_dir=None: the setting defaults to the real /scratch PVC mount,
+    # which tests must never read or write (hermeticity).
     settings = Settings(
-        site="test",
         models_path=CONFIG_PATH,
         poll_interval_seconds=0.05,
-        **overrides,  # type: ignore[arg-type]
+        **{"site": "test", "cache_dir": None, **overrides},  # type: ignore[arg-type]
     )
     with mock_aws():
         boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
@@ -116,6 +117,23 @@ def test_spa_served_with_catch_all(tmp_path: Path) -> None:
             "http://testserver/summit/lsstcam", follow_redirects=False
         )
         assert off_prefix.status_code == 404
+
+
+def test_spa_serves_public_assets_from_dist_root(tmp_path: Path) -> None:
+    # Vite copies web/public/* verbatim into dist/ (logos, rubin-mark.png).
+    # These must come back as the actual files — the catch-all previously
+    # answered them with index.html, which broke every logo image.
+    dist = tmp_path / "dist"
+    (dist / "logos").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id=root></div>")
+    (dist / "logos" / "Summit.jpg").write_bytes(b"\xff\xd8jpegbytes")
+
+    with run_app(spa_dist=dist) as client:
+        resp = client.get("/logos/Summit.jpg")
+        assert resp.status_code == 200
+        assert resp.content == b"\xff\xd8jpegbytes"
+        # A path that names no real file still falls back to the SPA index.
+        assert "id=root" in client.get("/logos/missing.jpg").text
 
 
 def test_spa_catch_all_does_not_shadow_api(tmp_path: Path) -> None:

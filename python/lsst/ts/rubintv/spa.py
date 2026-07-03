@@ -55,6 +55,12 @@ def mount_spa(app: FastAPI, dist_dir: Path | None, prefix: str = "") -> bool:
         # so these leading segments match regardless of the prefix.
         if full_path.startswith(("api/", "ws", "ddv", "exp_checker", "internal")):
             raise HTTPException(status_code=404)
+        # Vite copies web/public/* verbatim into the dist root (logos,
+        # rubin-mark.png), so a path naming a real file is a static asset,
+        # not an SPA route. resolve() + is_relative_to guards traversal.
+        candidate = (dist_dir / full_path).resolve()
+        if candidate.is_file() and candidate.is_relative_to(dist_dir.resolve()):
+            return FileResponse(candidate)
         return FileResponse(index)
 
     log.info("spa.mounted", dir=str(dist_dir), prefix=prefix)

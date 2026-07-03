@@ -24,6 +24,18 @@ def test_disabled_when_no_dir() -> None:
     assert cache.load_all() == {}
 
 
+def test_disabled_when_dir_unusable(tmp_path: Path) -> None:
+    # cache_dir defaults to the /scratch PVC mount, which pods without a
+    # PVC don't have: an uncreatable directory must disable the cache at
+    # construction, not crash or warn on every write.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file where the cache dir should go")
+    cache = DiskCache(blocker / "cache")
+    assert cache.enabled is False
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())  # no-op
+    assert cache.load_all() == {}
+
+
 def test_round_trip(tmp_path: Path) -> None:
     cache = DiskCache(tmp_path)
     cache.write("local", "lsstcam", "2026-04-10", sample_index())

@@ -21,10 +21,12 @@ from tests.conftest import (
 
 
 def make_settings(**overrides: object) -> Settings:
+    # cache_dir=None: the setting defaults to the real /scratch PVC mount,
+    # which tests must never read or write (hermeticity).
     return Settings(
         models_path=CONFIG_PATH,
         poll_interval_seconds=0.05,
-        **{"site": "test", **overrides},  # type: ignore[arg-type]
+        **{"site": "test", "cache_dir": None, **overrides},  # type: ignore[arg-type]
     )
 
 

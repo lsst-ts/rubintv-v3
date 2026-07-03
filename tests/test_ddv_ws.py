@@ -18,8 +18,12 @@ WORKER_WS = "/internal/ddv/worker"
 
 @contextmanager
 def run_app() -> Iterator[PrefixedTestClient]:
+    # cache_dir=None: tests must never touch the real /scratch default.
     settings = Settings(
-        models_path=CONFIG_PATH, site="test", poll_interval_seconds=0.05
+        models_path=CONFIG_PATH,
+        site="test",
+        poll_interval_seconds=0.05,
+        cache_dir=None,
     )
     with mock_aws():
         boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)

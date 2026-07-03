@@ -19,7 +19,7 @@ come from the YAML at `RUBINTV_MODELS_PATH`.
 | ----------------------------- | -------------------------- | ------------------------------------------------------------- |
 | `RUBINTV_SITE`                | `local`                    | Deployment site name.                                         |
 | `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
-| `RUBINTV_CACHE_DIR`           | unset                      | PVC dir for warm-start cache. Unset = no disk cache.          |
+| `RUBINTV_CACHE_DIR`           | `/scratch`                 | PVC dir for warm-start cache. Missing/unwritable dir (no PVC) disables the cache with one warning. |
 | `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = disabled.     |
 | `RUBINTV_POLL_INTERVAL_SECONDS` | `1.0`                    | Current-day S3 poll cadence.                                  |
 | `RUBINTV_SPA_DIST`            | unset                      | Built SPA dir to serve. Unset (dev) = Vite serves the SPA.    |
@@ -40,7 +40,7 @@ come from the YAML at `RUBINTV_MODELS_PATH`.
 
 ## Startup behaviour (cache warming)
 
-- **With a PVC** (`RUBINTV_CACHE_DIR` set): the store loads cached per-date
+- **With a PVC** (mounted at `RUBINTV_CACHE_DIR`, default `/scratch`): the store loads cached per-date
   slices on startup and serves immediately, then reconciles against S3 in
   the background. The cache is **never** trusted as truth — every load is
   reconciled by a real scan. Corrupt or version-mismatched slices are
