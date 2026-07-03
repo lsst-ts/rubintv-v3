@@ -201,6 +201,7 @@ generation of fetch scripts was dropped in its favour.
 - `0155e97` Adopt the TSSW pre-commit config for Jenkins CI
 - `168493c` Conform doc lines and benchmark lambdas to the TSSW hooks
 - `fcb1ae1` Make the test suite hermetic to the developer's AWS config
+- `485711c` Survive Kubernetes service links and listen on 8080 in the container
 
 ---
 
