@@ -84,7 +84,7 @@ Production (container serves API + SPA from one process):
 
 ```sh
 docker build -t rubintv .
-docker run -p 8000:8000 -e RUBINTV_SITE=summit rubintv
+docker run -p 8080:8080 -e RUBINTV_SITE=summit rubintv   # container listens on 8080
 ```
 
 ## Releasing

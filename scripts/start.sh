@@ -50,4 +50,9 @@ esac
 # would strip the exp_checker install above. run_rubintv is the console
 # entry point from pyproject's [project.scripts] — the same launch path the
 # conda/EUPS install uses, so deployment tooling needs no special casing.
-exec uv run --no-sync run_rubintv
+# The port is pinned by argument, not $RUBINTV_PORT: a Kubernetes Service
+# named rubintv makes the kubelet inject RUBINTV_PORT=tcp://... into every
+# pod in the namespace. 8080 is what the phalanx chart's containerPort and
+# probe (and V2) expect; RUBINTV_HTTP_PORT — a name Kubernetes never
+# injects — is the override knob.
+exec uv run --no-sync run_rubintv --port "${RUBINTV_HTTP_PORT:-8080}"
