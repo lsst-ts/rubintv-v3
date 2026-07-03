@@ -69,6 +69,10 @@ export const api = {
   // the header's processing banner and non-prod flag.
   config: () => getJson<{ site: string }>("/config"),
 
+  // Mounted sub-app paths (e.g. "/rubintv/ddv"), reported by the backend so the
+  // nav/Home can link whatever is actually available on this deployment.
+  subapps: () => getJson<{ mounted: string[] }>("/subapps"),
+
   status: () => getJson<StatusResponse>("/health/status"),
 
   location: (loc: string) => getJson<LocationOut>(`/locations/${enc(loc)}`),

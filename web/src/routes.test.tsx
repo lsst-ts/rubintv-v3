@@ -58,6 +58,42 @@ test("channel deep link resolves to the channel view", async () => {
   expect(await screen.findByText(/witness_detector/)).toBeDefined();
 });
 
+// Single-location deployments (summit/base/tucson) skip the landing page and
+// drop straight into that location, so users don't face a one-button Home.
+test("a single-location deployment redirects Home to that location", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    const body = url.endsWith("/api/locations")
+      ? [{ name: "summit", title: "Summit" }]
+      : { camera_groups: [], has_cluster_status: false };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { router } = renderAt("/");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/summit"),
+  );
+});
+
+// With more than one location, Home stays put and lists the grouped sections.
+test("a multi-location deployment shows the grouped landing", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    const body = url.endsWith("/api/locations")
+      ? [
+          { name: "summit-usdf", title: "Summit" },
+          { name: "base-usdf", title: "Base", is_teststand: true },
+        ]
+      : { camera_groups: [], has_cluster_status: false };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { router } = renderAt("/");
+  expect(await screen.findByText("Processing Locations")).toBeDefined();
+  expect(await screen.findByText("Test-stand Locations")).toBeDefined();
+  expect(router.state.location.pathname).toBe("/");
+});
+
 test("channels route renders the channel browser, grouped by cadence", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);

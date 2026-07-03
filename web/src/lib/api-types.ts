@@ -685,6 +685,15 @@ export interface components {
             title: string;
             /** Online */
             online: boolean;
+            /** Logo */
+            logo?: string | null;
+            /** Text Colour */
+            text_colour?: string | null;
+            /**
+             * Text Shadow
+             * @default false
+             */
+            text_shadow: boolean;
             /** Latest Date */
             latest_date?: string | null;
         };
@@ -900,6 +909,11 @@ export interface components {
              * @default false
              */
             is_teststand: boolean;
+            /**
+             * Has Cluster Status
+             * @default false
+             */
+            has_cluster_status: boolean;
         };
         /** MosaicViewEntryOut */
         MosaicViewEntryOut: {

@@ -22,6 +22,10 @@ export default defineConfig({
       [`${BASE}api`]: {
         target: `http://localhost:${BACKEND_PORT}`,
         changeOrigin: true,
+        // In deployment Gafaelfawr injects the authenticated user; locally
+        // there is no auth proxy, so inject one here or the admin gate 403s
+        // every write (local's admin_for is "*" = any authenticated user).
+        headers: { "X-Auth-User": process.env.RUBINTV_DEV_USER ?? "localdev" },
       },
       [`${BASE}ws`]: {
         target: `ws://localhost:${BACKEND_PORT}`,
