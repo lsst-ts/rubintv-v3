@@ -54,9 +54,9 @@ class LocationSummary(BaseModel):
     text_shadow: bool = False
     is_teststand: bool = False
     has_cluster_status: bool = False
-    """Whether this location runs a cluster/detector-status service, so the Home
-    page can offer a single 'Cluster status' app when any visible location has
-    it."""
+    """Whether this location runs a cluster/detector-status service, so the
+    Home page can offer a single 'Cluster status' app when any visible
+    location has it."""
 
 
 class LocationOut(BaseModel):
