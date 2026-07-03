@@ -166,6 +166,7 @@ Could also be folded into whichever PR is open when splitting.
 - `ff7f010` Apply npm audit fix and ignore the Vite cache
 - `9bcc7b0` Bump CI actions off the deprecated Node 20 runtime
 - `6ebbbdd` Bump setup-uv off the deprecated Node 20 runtime
+- `d6c757e` Inject X-Auth-User in the Vite dev proxy for local admin access
 
 ### PR 19 — Version 3.0.0 + build provenance + image-build CI
 Stamps the release: version 3.0.0 everywhere, git sha + commit date on the
