@@ -13,6 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import RedirectResponse
 from lsst.ts.rubintv import __version__, legacy_redirects
 from lsst.ts.rubintv.api import admin, data, health, internal, nightreport, proxy
 from lsst.ts.rubintv.config.loader import load_models
@@ -327,6 +328,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bucket is being viewed.
         """
         return {"site": settings.site}
+
+    # Bare "/" sits outside the prefix, so nothing above answers it — yet
+    # the deployment chart's readiness probe (and anyone hitting the host
+    # root) GETs exactly that. Redirect into the SPA: Kubernetes httpGet
+    # probes count any 2xx/3xx as healthy.
+    if prefix:
+
+        @app.get("/", include_in_schema=False)
+        async def root_redirect() -> RedirectResponse:
+            return RedirectResponse(f"{prefix}/")
 
     # Translate legacy /rubintv deep links (old URL shapes: date-in-path,
     # type/visit events, reversed current/{channel}) to the new SPA routes.

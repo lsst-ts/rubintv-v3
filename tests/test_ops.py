@@ -28,6 +28,16 @@ def run_app(**overrides: object) -> Iterator[PrefixedTestClient]:
             yield client
 
 
+def test_root_redirects_into_the_prefix() -> None:
+    # The deployment chart's readiness probe GETs bare "/", which sits
+    # outside the path prefix; it must answer 2xx/3xx, not 404. The absolute
+    # URL bypasses PrefixedTestClient's prefixing.
+    with run_app() as client:
+        resp = client.get("http://testserver/", follow_redirects=False)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == "/rubintv/"
+
+
 def test_status_endpoint_reports_loading() -> None:
     with run_app() as client:
         body = client.get("/api/health/status").json()
