@@ -200,6 +200,7 @@ generation of fetch scripts was dropped in its favour.
 - `d3998b4` Document the tag-driven release procedure in the operator guide
 - `0155e97` Adopt the TSSW pre-commit config for Jenkins CI
 - `168493c` Conform doc lines and benchmark lambdas to the TSSW hooks
+- `fcb1ae1` Make the test suite hermetic to the developer's AWS config
 
 ---
 
