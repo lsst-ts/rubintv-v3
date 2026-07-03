@@ -17,7 +17,6 @@ import { STALE } from "../lib/queryClient";
 import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
-import { useSubapps } from "../lib/useSubapps";
 
 // The deployment site (RUBINTV_SITE) from /api/config, used to label the
 // header. Undefined until it resolves — the env strip falls back to the
@@ -43,7 +42,6 @@ export function Layout() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const nav = useShellNav();
-  const subapps = useSubapps();
   const site = useSite();
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
@@ -229,13 +227,6 @@ export function Layout() {
                 </div>
               )}
               <div className="topbar-status">
-                <nav className="subapp-nav" aria-label="Sub-apps">
-                  {subapps.map((path) => (
-                    <a key={path} href={path}>
-                      {path.replace("/", "")}
-                    </a>
-                  ))}
-                </nav>
                 <S3Status />
                 {/* Historical-scan notice sits with the other status signals
                     as a compact inline pill, not a full-width banner. */}

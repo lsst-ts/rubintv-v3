@@ -64,6 +64,25 @@ def test_ddv_mounted_when_assets_present(tmp_path: Path) -> None:
         assert "DDV" in resp.text
 
 
+def test_ddv_bare_path_redirects_with_spa_mounted(tmp_path: Path) -> None:
+    # Production shape: DDV mounted AND the SPA catch-all installed. The
+    # catch-all matches the slash-less /ddv (Starlette mounts only match
+    # {path}/...), so without the explicit redirect the advertised sub-app
+    # URL answered 404 on the deployed pod.
+    ddv = tmp_path / "ddv"
+    ddv.mkdir()
+    (ddv / "index.html").write_text("<!doctype html><title>DDV</title>")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><div id=root></div>")
+
+    with run_app(make_settings(ddv_path=ddv, spa_dist=dist)) as client:
+        resp = client.get("/ddv", follow_redirects=False)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == f"{TEST_PREFIX}/ddv/"
+        assert "DDV" in client.get("/ddv/").text
+
+
 def test_ddv_skipped_when_dir_missing(tmp_path: Path) -> None:
     settings = make_settings(ddv_path=tmp_path / "does-not-exist")
     with run_app(settings) as client:
