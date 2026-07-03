@@ -1766,6 +1766,33 @@
             "type": "boolean",
             "title": "Online"
           },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "text_shadow": {
+            "type": "boolean",
+            "title": "Text Shadow",
+            "default": false
+          },
           "latest_date": {
             "anyOf": [
               {
@@ -2367,6 +2394,11 @@
           "is_teststand": {
             "type": "boolean",
             "title": "Is Teststand",
+            "default": false
+          },
+          "has_cluster_status": {
+            "type": "boolean",
+            "title": "Has Cluster Status",
             "default": false
           }
         },
