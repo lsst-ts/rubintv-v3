@@ -49,6 +49,7 @@ def list_locations(models: Models = Depends(get_models)) -> list[LocationSummary
             text_colour=loc.text_colour,
             text_shadow=loc.text_shadow,
             is_teststand=loc.is_teststand,
+            has_cluster_status=loc.has_cluster_status,
         )
         for loc in models.locations
     ]
@@ -67,6 +68,9 @@ def get_location_detail(
                     name=c.name,
                     title=c.title,
                     online=c.online,
+                    logo=c.logo,
+                    text_colour=c.text_colour,
+                    text_shadow=c.text_shadow,
                     latest_date=state.store.latest_date(location.name, c.name),
                 )
                 for name in names

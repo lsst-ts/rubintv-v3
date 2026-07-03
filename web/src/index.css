@@ -585,23 +585,65 @@ h1, h2 {
   cursor: pointer;
 }
 
-/* ── Camera card grid (location landing) ───────────────────────────────── */
-.card-grid {
+/* Grouped landing sections (Home's Processing/Apps/Test-stand groups and the
+   Location page's camera groups): space each heading + its button row apart. */
+.camera-group { margin-bottom: 1.75rem; }
+.camera-group h2 { margin-bottom: 0.75rem; }
+
+/* ── Logo buttons (Home locations + location camera landing) ───────────────
+   Full-bleed photo buttons ported from the original RubinTV: the camera/
+   location logo fills the button as a background image (set inline via
+   logoButtonStyle) with the title overlaid at the bottom-left. A button with
+   no configured logo falls back to the themed paper background below. */
+.button-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.9rem;
   list-style: none;
   padding: 0;
 }
-.card {
-  background: var(--paper-2);
-  border: 1.5px solid var(--stroke);
-  border-radius: 0.4rem;
-  padding: 0.75rem 1rem;
-  min-width: 8rem;
+.logo-button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 160px;
+  height: 110px;
+  padding: 0.5rem 0.7rem;
+  border-radius: 12px;
+  background-color: var(--paper-2);
+  background-position: center;
+  background-repeat: no-repeat;
+  color: var(--ink);
+  text-decoration: none;
   box-shadow: var(--shadow-card);
+  transition: transform 0.15s, box-shadow 0.15s;
 }
-.card.offline { opacity: 0.55; }
+.logo-button:hover {
+  transform: scale(0.99);
+  box-shadow: none;
+}
+.logo-button.offline {
+  opacity: 0.55;
+}
+.logo-button-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.1;
+  /* Colour + text-shadow come from logoButtonStyle (per-camera config); this is
+     just the layout. */
+}
+/* Freshness dot, pinned to the button's top-right corner so it reads over the
+   photo. A subtle outline keeps it visible on both light and dark logos. */
+.logo-button-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  margin: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
 .dot {
   display: inline-block;
   width: 0.5rem;
@@ -609,9 +651,9 @@ h1, h2 {
   border-radius: 50%;
   margin-left: 0.5rem;
 }
-/* Camera data freshness (location cards): green = has data this observing day,
-   amber = online but no data today (showing an earlier night), grey = offline
-   in config. Full meaning is in the dot's title/aria-label. */
+/* Camera data freshness (location buttons): green = has data this observing
+   day, amber = online but no data today (showing an earlier night), grey =
+   offline in config. Full meaning is in the dot's title/aria-label. */
 .dot.fresh { background: var(--good); }
 .dot.stale { background: var(--warn); }
 .dot.offline { background: var(--line-mid); }
@@ -2035,13 +2077,6 @@ a.chv-chan:hover { filter: brightness(1.08); }
     grid-template-columns: 1fr;
     grid-template-areas: "header" "media" "sidebar";
   }
-}
-
-/* Site-wide nav on the location page. */
-.location-nav {
-  display: flex;
-  gap: 1rem;
-  margin: 0.5rem 0 1rem;
 }
 
 /* ── Cluster Status (detectors) ────────────────────────────────────────── */

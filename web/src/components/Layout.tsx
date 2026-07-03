@@ -14,25 +14,10 @@ import { Sidebar } from "./Sidebar";
 import { RubinMark } from "./RubinMark";
 import { DatePicker } from "./DatePicker";
 import { STALE } from "../lib/queryClient";
-import { BASE } from "../lib/basePath";
 import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
-
-// Mounted sub-apps (DDV, exp_checker) are reported by the backend; render
-// links to whatever is available. Sub-apps live outside the SPA router, so
-// these are plain anchors.
-function useSubapps(): string[] {
-  const { data } = useQuery({
-    queryKey: ["subapps"],
-    queryFn: async () => {
-      const resp = await fetch(`${BASE}/api/subapps`);
-      return (await resp.json()) as { mounted: string[] };
-    },
-    staleTime: STALE.config,
-  });
-  return data?.mounted ?? [];
-}
+import { useSubapps } from "../lib/useSubapps";
 
 // The deployment site (RUBINTV_SITE) from /api/config, used to label the
 // header. Undefined until it resolves — the env strip falls back to the
