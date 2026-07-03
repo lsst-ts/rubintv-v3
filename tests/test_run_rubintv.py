@@ -1,4 +1,4 @@
-"""run_rubintv entry point: port resolution under Kubernetes service links."""
+"""run_rubintv entry point: host/port are flags only, never environment."""
 
 from __future__ import annotations
 
@@ -6,28 +6,29 @@ import pytest
 from lsst.ts.rubintv.run_rubintv import parse_args
 
 
-def test_port_defaults_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("RUBINTV_PORT", raising=False)
+def test_port_defaults_to_8000() -> None:
     assert parse_args([]).port == 8000
 
 
-def test_port_honours_numeric_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_rubintv_port_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    # RUBINTV_PORT belongs to Kubernetes: a Service named "rubintv" makes
+    # the kubelet inject RUBINTV_PORT=tcp://<cluster-ip>:<port> into every
+    # pod in the namespace, so the app must never read it — numeric or not.
+    monkeypatch.setenv("RUBINTV_PORT", "tcp://10.106.28.210:8080")
+    assert parse_args([]).port == 8000
     monkeypatch.setenv("RUBINTV_PORT", "9001")
-    assert parse_args([]).port == 9001
-
-
-def test_port_ignores_kubernetes_service_link(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # A Service named "rubintv" in the pod's namespace makes the kubelet
-    # inject RUBINTV_PORT=tcp://<cluster-ip>:<port>; startup must not crash.
-    monkeypatch.setenv("RUBINTV_PORT", "tcp://10.106.28.210:8080")
     assert parse_args([]).port == 8000
-    assert "Ignoring non-numeric RUBINTV_PORT" in capsys.readouterr().err
 
 
-def test_port_flag_wins_over_garbage_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The container entrypoint passes --port explicitly (start.sh), so the
-    # injected variable must not even matter when the flag is given.
+def test_env_rubintv_host_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUBINTV_HOST", "10.0.0.7")
+    assert parse_args([]).host == "0.0.0.0"
+
+
+def test_port_and_host_flags_win(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The container entrypoint passes --port explicitly (start.sh); the
+    # injected environment must not matter.
     monkeypatch.setenv("RUBINTV_PORT", "tcp://10.106.28.210:8080")
-    assert parse_args(["--port", "8080"]).port == 8080
+    args = parse_args(["--port", "8080", "--host", "127.0.0.1"])
+    assert args.port == 8080
+    assert args.host == "127.0.0.1"

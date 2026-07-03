@@ -10,34 +10,8 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 
 import uvicorn
-
-DEFAULT_PORT = 8000
-
-
-def _port_from_env() -> int:
-    """Listen port from ``$RUBINTV_PORT``, tolerating Kubernetes noise.
-
-    When a Service named ``rubintv`` shares the pod's namespace, the
-    kubelet injects docker-link-style variables — including
-    ``RUBINTV_PORT=tcp://<cluster-ip>:<port>`` — which is service
-    discovery, not our configuration. Treat anything that isn't a plain
-    integer as unset rather than crash on startup.
-    """
-    raw = os.environ.get("RUBINTV_PORT", "")
-    if not raw:
-        return DEFAULT_PORT
-    try:
-        return int(raw)
-    except ValueError:
-        print(
-            f"Ignoring non-numeric RUBINTV_PORT={raw!r} (Kubernetes "
-            f"service link?); listening on {DEFAULT_PORT}.",
-            file=sys.stderr,
-        )
-        return DEFAULT_PORT
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -49,16 +23,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["critical", "error", "warning", "info", "debug", "trace"],
         help="uvicorn log level (default: info, or $RUBINTV_LOG_LEVEL).",
     )
+    # Host and port are flags only, never environment variables. A
+    # Kubernetes Service named rubintv makes the kubelet inject
+    # RUBINTV_PORT=tcp://<cluster-ip>:<port> (docker service links) into
+    # every pod in the namespace, so that name can never be trusted as
+    # configuration; deployments pass --port explicitly (start.sh).
     parser.add_argument(
         "--host",
-        default=os.environ.get("RUBINTV_HOST", "0.0.0.0"),
-        help="Bind host (default: 0.0.0.0, or $RUBINTV_HOST).",
+        default="0.0.0.0",
+        help="Bind host (default: 0.0.0.0).",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=_port_from_env(),
-        help="Bind port (default: 8000, or $RUBINTV_PORT).",
+        default=8000,
+        help="Bind port (default: 8000).",
     )
     return parser.parse_args(argv)
 
