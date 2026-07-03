@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
 from collections.abc import Iterator
 from importlib.resources import files
@@ -11,6 +13,7 @@ from typing import Any
 import boto3
 import httpx
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
@@ -60,6 +63,42 @@ TEST_BUCKET = "rubintv-local"
 
 # Back-compat aliases for tests written before the rename.
 LOCAL_BUCKET = TEST_BUCKET
+
+
+@pytest.fixture(scope="session", autouse=True)
+def aws_profiles() -> Iterator[None]:
+    """Hermetic AWS config declaring every profile the models YAML names.
+
+    Deployments mount an AWS config that defines these profiles; without
+    one, building a boto3 session for a real location raises
+    ProfileNotFound. Write a stand-in config and point boto3 at it, so the
+    suite neither requires nor reads the developer's ~/.aws and behaves
+    the same locally and on CI.
+    """
+    raw = yaml.safe_load(CONFIG_PATH.read_text())
+    profiles = sorted(
+        {loc["profile_name"] for loc in raw["locations"] if loc.get("profile_name")}
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        config = Path(tmp) / "config"
+        config.write_text(
+            "".join(f"[profile {p}]\nregion = us-east-1\n" for p in profiles)
+        )
+        (Path(tmp) / "credentials").touch()
+        saved = {
+            var: os.environ.get(var)
+            for var in ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE")
+        }
+        os.environ["AWS_CONFIG_FILE"] = str(config)
+        os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(Path(tmp) / "credentials")
+        try:
+            yield
+        finally:
+            for var, value in saved.items():
+                if value is None:
+                    del os.environ[var]
+                else:
+                    os.environ[var] = value
 
 
 @pytest.fixture
