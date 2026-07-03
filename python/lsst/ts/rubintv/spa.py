@@ -23,11 +23,12 @@ log = get_logger(__name__)
 
 
 def mount_spa(app: FastAPI, dist_dir: Path | None, prefix: str = "") -> bool:
-    """Serve the SPA from ``dist_dir`` under ``prefix``. Returns True if mounted.
+    """Serve the SPA from ``dist_dir``; returns True if mounted.
 
     The app is served beneath ``prefix`` (e.g. ``/rubintv``), so the catch-all
     and the hashed-asset mount live there too. Vite builds the SPA with a
-    matching ``base``, so ``index.html`` requests assets at ``{prefix}/assets``.
+    matching ``base``, so ``index.html`` requests assets at
+    ``{prefix}/assets``.
     """
     if dist_dir is None or not (dist_dir / "index.html").is_file():
         log.info("spa.skip", reason="no build directory", dir=str(dist_dir))

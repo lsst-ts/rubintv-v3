@@ -16,9 +16,10 @@ from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
 from moto import mock_aws
 
-# The models YAML now ships inside the package; point tests at the packaged copy
-# so there is a single source of truth. It's a real file on disk in a checkout,
-# so a plain Path is fine (no zip-import materialisation needed for tests).
+# The models YAML now ships inside the package; point tests at the packaged
+# copy so there is a single source of truth. It's a real file on disk in a
+# checkout, so a plain Path is fine (no zip-import materialisation needed
+# for tests).
 CONFIG_PATH = Path(str(files("lsst.ts.rubintv.models").joinpath("models_data.yaml")))
 
 # The whole app is served under this prefix (settings.path_prefix). Tests

@@ -44,7 +44,8 @@ class StatusResponse(BaseModel):
     warm_start: bool
     """Whether a cached snapshot populated the calendar at boot. When true,
     an in-progress scan is a refresh (older dates already showing); when
-    false it is a cold load (older dates appear only as the sweep finds them)."""
+    false it is a cold load (older dates appear only as the sweep finds
+    them)."""
     historical_loading: bool
     """True while the back-catalogue is still being scanned; the frontend
     shows a non-blocking 'still loading' affordance rather than an error."""

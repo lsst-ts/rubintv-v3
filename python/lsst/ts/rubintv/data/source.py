@@ -125,7 +125,8 @@ def _date_of(key: str) -> str | None:
 def _diff(
     location: str, previous: dict[str, str], current: dict[str, str]
 ) -> list[ObjectEvent]:
-    """Compute created/updated (CREATED) and removed events between listings."""
+    """Compute created/updated (CREATED) and removed events between
+    listings."""
     changes: list[ObjectEvent] = []
     for key, etag in current.items():
         if key not in previous or previous[key] != etag:

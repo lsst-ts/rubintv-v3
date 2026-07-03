@@ -147,9 +147,9 @@ def _parse_cameras(
         merged = {**cameras[name].metadata_columns, **columns}
         cameras[name] = cameras[name].model_copy(update={"metadata_columns": merged})
 
-    # Apply top-level locked_columns the same way (overlays camera-defined ones).
-    # Distinct loop var from the metadata loop above: reusing `columns` would
-    # leave mypy joining dict[str, str] with list[str].
+    # Apply top-level locked_columns the same way (overlays camera-defined
+    # ones). Distinct loop var from the metadata loop above: reusing
+    # `columns` would leave mypy joining dict[str, str] with list[str].
     for name, locked in global_locked.items():
         if name not in cameras:
             continue
@@ -183,7 +183,8 @@ def _parse_cameras(
 
 
 def _parse_channel(row: dict[str, Any]) -> Channel:
-    """Normalise a channel row. Accepts ``color`` as a synonym for ``colour``."""
+    """Normalise a channel row. Accepts ``color`` as a synonym for
+    ``colour``."""
     if "color" in row and "colour" not in row:
         row = {**row, "colour": row["color"]}
         row.pop("color", None)

@@ -20,7 +20,8 @@ _UNKNOWN = "unknown"
 
 
 def _git(*args: str) -> str | None:
-    """Run ``git args...`` in the source tree, or return None on any failure."""
+    """Run ``git args...`` in the source tree, or return None on any
+    failure."""
     try:
         out = subprocess.run(
             ["git", *args],
@@ -49,7 +50,8 @@ def git_sha() -> str:
 
 @lru_cache(maxsize=1)
 def commit_date() -> str:
-    """Commit date of the built commit as YYYY-MM-DD ("unknown" if unavailable)."""
+    """Commit date of the built commit as YYYY-MM-DD ("unknown" if
+    unavailable)."""
     return (
         os.environ.get("RUBINTV_GIT_DATE")
         or _git("log", "-1", "--format=%cd", "--date=format:%Y-%m-%d")

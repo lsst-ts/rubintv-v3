@@ -62,6 +62,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 
 import boto3
 from botocore.config import Config
@@ -205,9 +206,7 @@ def bench_serial(
             client = client_factory() if fresh_client_each_call else shared
             assert client is not None
             label = f"sample{sample_idx}:{prefix}"
-            secs = time_call(
-                lambda c=client, p=prefix: list_prefix_paginator(c, bucket, p)
-            )
+            secs = time_call(partial(list_prefix_paginator, client, bucket, prefix))
             result.per_call.append(Sample(label=label, seconds=secs))
         result.per_cycle.append(time.monotonic() - cycle_start)
     return result
@@ -298,14 +297,15 @@ def bench_raw_vs_paginator(
     *,
     raw: bool,
 ) -> StrategyResult:
-    """Compare ``client.get_paginator`` against a manual ContinuationToken loop."""
+    """Compare ``client.get_paginator`` against a manual ContinuationToken
+    loop."""
     result = StrategyResult(name=name)
     client = client_factory()
     fn = list_prefix_raw if raw else list_prefix_paginator
     for sample_idx in range(samples):
         cycle_start = time.monotonic()
         for prefix in prefixes:
-            secs = time_call(lambda p=prefix: fn(client, bucket, p))
+            secs = time_call(partial(fn, client, bucket, prefix))
             result.per_call.append(
                 Sample(label=f"sample{sample_idx}:{prefix}", seconds=secs)
             )

@@ -1,4 +1,5 @@
-"""Config loader: valid parse, defaults, fail-loud behaviour, site filtering."""
+"""Config loader: valid parse, defaults, fail-loud behaviour, site
+filtering."""
 
 from __future__ import annotations
 
@@ -80,7 +81,8 @@ def test_metadata_from_inheritance() -> None:
     # startracker_wide inherits from startracker_narrow.
     wide = models.location("summit").camera("startracker_wide")  # type: ignore[union-attr]
     assert wide is not None
-    # The shared 'narrow' columns are present even though wide doesn't list them.
+    # The shared 'narrow' columns are present even though wide doesn't list
+    # them.
     assert any("narrow" in c for c in wide.metadata_columns)
     # The metadata_from field is resolved to None after inheritance is applied.
     assert wide.metadata_from is None
@@ -97,7 +99,8 @@ def test_locked_columns_merged_from_global_map() -> None:
 
 
 def test_locked_columns_inherited_via_metadata_from(tmp_path: Path) -> None:
-    """locked_columns follow metadata_from inheritance, deduped with the child's."""
+    """locked_columns follow metadata_from inheritance, deduped with the
+    child's."""
     cfg = tmp_path / "models.yaml"
     cfg.write_text(
         "locations:\n"
@@ -111,7 +114,8 @@ def test_locked_columns_inherited_via_metadata_from(tmp_path: Path) -> None:
     )
     models = load_models(cfg)
     dst = models.location("loc").camera("dst")  # type: ignore[union-attr]
-    # Inherited from src, deduped against the child's own list (order preserved).
+    # Inherited from src, deduped against the child's own list (order
+    # preserved).
     assert dst.locked_columns == ["Retrieval fails", "Other"]  # type: ignore[union-attr]
 
 
@@ -130,7 +134,8 @@ def test_locked_columns_must_be_a_list(tmp_path: Path) -> None:
 
 
 def test_admin_users_picked_up_from_admin_for() -> None:
-    """admin_users on each location come from the global admin_for[site] list."""
+    """admin_users on each location come from the global admin_for[site]
+    list."""
     models = load_models(CONFIG_PATH, site="test")
     assert "testadmin" in models.location("test").admin_users  # type: ignore[union-attr]
     assert "*" in models.location("test").admin_users  # type: ignore[union-attr]

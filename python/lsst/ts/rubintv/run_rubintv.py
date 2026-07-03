@@ -40,8 +40,8 @@ def parse_args() -> argparse.Namespace:
 def run_rubintv(
     log_level: str = "info", host: str = "0.0.0.0", port: int = 8000
 ) -> None:
-    # Import lazily so `--help` and entry-point resolution don't pay the cost of
-    # building the app (and importing boto3, etc.).
+    # Import lazily so `--help` and entry-point resolution don't pay the
+    # cost of building the app (and importing boto3, etc.).
     uvicorn.run(
         "lsst.ts.rubintv.main:app",
         host=host,

@@ -144,7 +144,8 @@ class PollEngine:
         }
         self.historical_loading = True
         """True until the first full historical scan completes. The frontend
-        shows a non-blocking 'historical still loading' affordance while set."""
+        shows a non-blocking 'historical still loading' affordance while
+        set."""
         # Whether the most recent current-day poll cycle reached S3. Starts
         # True (optimistic) and flips on the first failed/succeeded cycle, so
         # the frontend can show an 'S3 unreachable' alert when a cycle throws
@@ -381,7 +382,8 @@ class PollEngine:
             self._mark(location.name, camera.name, "recent_ready")
             self._mark(location.name, camera.name, "full_complete")
             # Only warm here when the recent phase is disabled; otherwise the
-            # recent scan already warmed these dates and re-warming is redundant.
+            # recent scan already warmed these dates and re-warming is
+            # redundant.
             if self._recent_window_days <= 0:
                 await self._warm_metadata(location.name, camera.name)
         return total

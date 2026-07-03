@@ -36,13 +36,15 @@ class HeartbeatStore:
         self._beats: dict[str, _Beat] = {}
 
     def beat(self, service: str, ttl: float, location: str | None = None) -> bool:
-        """Record a beat. Returns True if this revived a previously-stale service."""
+        """Record a beat. Returns True if this revived a previously-stale
+        service."""
         was_live = self._is_live(self._beats.get(service))
         self._beats[service] = _Beat(time.monotonic(), ttl, location)
         return not was_live
 
     def all(self) -> dict[str, dict[str, object]]:
-        """Every known service with its current liveness, for snapshot/probe."""
+        """Every known service with its current liveness, for
+        snapshot/probe."""
         now = time.monotonic()
         return {
             name: {

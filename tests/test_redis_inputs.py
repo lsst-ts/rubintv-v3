@@ -34,10 +34,10 @@ def test_detector_store_all_is_a_copy() -> None:
 
 
 def test_apply_detector_entry_splits_workers_count_and_text() -> None:
-    # The real producer wraps everything in a single ``data`` JSON field, each
-    # entry being a {status, type} dict (see stream_writer_demo.py). We split by
-    # type into workers / numWorkers / text, and a numeric worker status becomes
-    # a queue length.
+    # The real producer wraps everything in a single ``data`` JSON field,
+    # each entry being a {status, type} dict (see stream_writer_demo.py). We
+    # split by type into workers / numWorkers / text, and a numeric worker
+    # status becomes a queue length.
     store = DetectorStore()
     payload = {
         "189": {"status": "busy", "type": "worker_status"},
@@ -130,7 +130,7 @@ async def test_set_value_and_flushdb_use_the_connection() -> None:
     assert fake.store == {}
 
 
-# --- start/stop lifecycle and the two reader loops, against a scripted fake ---
+# --- start/stop lifecycle and the two reader loops (scripted fake) ---
 
 
 class _FakePubSub:

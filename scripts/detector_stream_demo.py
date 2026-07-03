@@ -5,12 +5,12 @@ subscribes to (one stream per ``redis_detectors`` config entry), in the same
 shape the real producer uses: each XADD carries a single ``data`` field holding
 ``{worker: {"status", "type"}}`` JSON.
 
-Unlike a pure-random feed, this keeps **persistent per-worker state** that looks
-like a steady-ish cluster (mostly free, some busy) and only churns a little each
-tick. Periodically a *queue burst* hits a cluster of imaging workers, but the
-total queued imaging workers is capped at a quarter of all imaging cells, so the
-grid never goes fully red — you see localised, sudden queues that drain back to
-steady state.
+Unlike a pure-random feed, this keeps **persistent per-worker state** that
+looks like a steady-ish cluster (mostly free, some busy) and only churns a
+little each tick. Periodically a *queue burst* hits a cluster of imaging
+workers, but the total queued imaging workers is capped at a quarter of all
+imaging cells, so the grid never goes fully red — you see localised, sudden
+queues that drain back to steady state.
 
 Adapted from rubintv/local_scripts/stream_writer_demo.py.
 
@@ -71,7 +71,8 @@ class WorkerSet:
         return sum(1 for s in self.status.values() if s == "queued")
 
     def churn(self) -> None:
-        """Small steady-state movement: a few free<->busy flips, rare restart."""
+        """Small steady-state movement: a few free<->busy flips, rare
+        restart."""
         for i in self.ids:
             s = self.status[i]
             if s in ("free", "busy") and random.random() < CHURN:
@@ -89,7 +90,8 @@ class WorkerSet:
                 self.status[i] = "busy" if random.random() < 0.5 else "free"
 
     def start_burst(self, max_workers: int) -> None:
-        """Queue a localised cluster of up to ``max_workers`` free/busy workers."""
+        """Queue a localised cluster of up to ``max_workers`` free/busy
+        workers."""
         if max_workers <= 0:
             return
         candidates = [i for i in self.ids if self.status[i] in ("free", "busy")]
