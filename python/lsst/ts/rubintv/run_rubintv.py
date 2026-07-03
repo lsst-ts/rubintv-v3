@@ -10,11 +10,37 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 import uvicorn
 
+DEFAULT_PORT = 8000
 
-def parse_args() -> argparse.Namespace:
+
+def _port_from_env() -> int:
+    """Listen port from ``$RUBINTV_PORT``, tolerating Kubernetes noise.
+
+    When a Service named ``rubintv`` shares the pod's namespace, the
+    kubelet injects docker-link-style variables — including
+    ``RUBINTV_PORT=tcp://<cluster-ip>:<port>`` — which is service
+    discovery, not our configuration. Treat anything that isn't a plain
+    integer as unset rather than crash on startup.
+    """
+    raw = os.environ.get("RUBINTV_PORT", "")
+    if not raw:
+        return DEFAULT_PORT
+    try:
+        return int(raw)
+    except ValueError:
+        print(
+            f"Ignoring non-numeric RUBINTV_PORT={raw!r} (Kubernetes "
+            f"service link?); listening on {DEFAULT_PORT}.",
+            file=sys.stderr,
+        )
+        return DEFAULT_PORT
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the RubinTV application.")
     parser.add_argument(
         "-l",
@@ -31,10 +57,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("RUBINTV_PORT", "8000")),
+        default=_port_from_env(),
         help="Bind port (default: 8000, or $RUBINTV_PORT).",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def run_rubintv(

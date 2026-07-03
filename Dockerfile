@@ -75,5 +75,5 @@ ENV RUBINTV_SPA_DIST=/app/web/dist \
     RUBINTV_GIT_SHA=$GIT_SHA \
     RUBINTV_GIT_DATE=$GIT_DATE
 
-EXPOSE 8000
+EXPOSE 8080
 CMD ["bash", "scripts/start.sh"]
