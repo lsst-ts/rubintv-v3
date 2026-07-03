@@ -38,7 +38,8 @@ class Channel(BaseModel):
 
 
 class MosaicViewEntry(BaseModel):
-    """One tile on a camera's mosaic page (a channel rendered as image/video)."""
+    """One tile on a camera's mosaic page (a channel rendered as
+    image/video)."""
 
     channel: str
     media_type: str = "image"
@@ -154,7 +155,8 @@ class Service(BaseModel):
     name: str
     display_name: str = ""
     channels: str | None = None
-    """Camera name whose channel heartbeats are watched alongside this group."""
+    """Camera name whose channel heartbeats are watched alongside this
+    group."""
     services: list[ServiceItem] = Field(default_factory=list)
 
     @model_validator(mode="after")

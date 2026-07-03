@@ -162,7 +162,8 @@ class RedisInputs:
         log.warning("redis.flushdb")
 
     async def start(self) -> None:
-        """Connect and launch readers. No-op (warns) if disabled/unreachable."""
+        """Connect and launch readers. No-op (warns) if
+        disabled/unreachable."""
         if not self._url:
             log.warning("redis.disabled", reason="no RUBINTV_REDIS_URL configured")
             return
@@ -179,10 +180,10 @@ class RedisInputs:
             self._redis = None
             return
         log.info("redis.connected", url=self._url)
-        # Enable keyspace notifications so the readback loop receives key-change
-        # events (matches the original app's startup). Best-effort: a managed
-        # Redis may forbid CONFIG SET, in which case live readback degrades but
-        # the rest still works.
+        # Enable keyspace notifications so the readback loop receives
+        # key-change events (matches the original app's startup).
+        # Best-effort: a managed Redis may forbid CONFIG SET, in which case
+        # live readback degrades but the rest still works.
         try:
             await self._redis.config_set("notify-keyspace-events", "KEA")
         except Exception as exc:  # noqa: BLE001 - non-fatal
@@ -234,14 +235,15 @@ class RedisInputs:
         to a stream named ``stream:{key}`` (see ``stream_writer_demo.py``), so
         we subscribe to the prefixed names but store under the bare config key
         the frontend looks up. We block on ``XREAD`` across all of them; every
-        new entry is a fresh snapshot of that set's ``{worker: status}`` map. On
-        any change we store the latest map and publish a single
-        ``detectorStatus`` StoreChange so the WS handler re-pushes the site-wide
-        snapshot.
+        new entry is a fresh snapshot of that set's ``{worker: status}`` map.
+        On any change we store the latest map and publish a single
+        ``detectorStatus`` StoreChange so the WS handler re-pushes the
+        site-wide snapshot.
         """
         assert self._redis is not None
-        # stream name (stream:KEY) -> set name, so payloads are stored under the
-        # config ``name`` (sfmSet0, otherQueues, ...) the frontend renders by.
+        # stream name (stream:KEY) -> set name, so payloads are stored under
+        # the config ``name`` (sfmSet0, otherQueues, ...) the frontend
+        # renders by.
         name_for_stream = {
             f"{STREAM_PREFIX}{d.key}": d.name for d in self._detector_streams
         }

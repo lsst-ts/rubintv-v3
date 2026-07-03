@@ -55,7 +55,8 @@ class Settings(BaseSettings):
     static assets; Vite serves the SPA in development."""
 
     ddv_path: Path | None = None
-    """Directory of the built DDV Flutter app. ``None`` skips the /ddv mount."""
+    """Directory of the built DDV Flutter app. ``None`` skips the /ddv
+    mount."""
 
     exp_checker_enabled: bool = False
     """Mount the exp_checker sub-app at /exp_checker (must be importable)."""
@@ -87,7 +88,8 @@ class Settings(BaseSettings):
     value sent is the trigger sentinel ``reset_head_node_value``)."""
 
     reset_head_node_value: str = "1"
-    """Value written to ``reset_head_node_key`` to trigger a head-node reset."""
+    """Value written to ``reset_head_node_key`` to trigger a head-node
+    reset."""
 
     log_level: str = "INFO"
     json_logs: bool = False

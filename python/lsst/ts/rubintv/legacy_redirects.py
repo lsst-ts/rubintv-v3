@@ -15,19 +15,23 @@ route) and after ``/api``/``/ws``, so they intercept only the legacy shapes.
 
 Mapping (paths shown relative to the shared prefix P, e.g. P=/rubintv):
 
-    P/admin                                -> P/admin              (passthrough)
-    P/slac[/...]                           -> P/usdf[/...]         (alias, 1st hop)
-    P/{loc}/cluster-status                 -> P/detectors          (loc dropped)
+    P/admin                                -> P/admin (passthrough)
+    P/slac[/...]                           -> P/usdf[/...] (alias, 1st hop)
+    P/{loc}/cluster-status                 -> P/detectors (loc dropped)
     P/{loc}/{cam}/date/{date}              -> P/{loc}/{cam}?date={date}
     P/{loc}/{cam}/date/historical          -> P/{loc}/{cam}
     P/{loc}/{cam}/historical               -> P/{loc}/{cam}
     P/{loc}/{cam}/night_report             -> P/{loc}/{cam}/night-report
-    P/{loc}/{cam}/night_report/{date}      -> P/{loc}/{cam}/night-report?date={date}
+    P/{loc}/{cam}/night_report/{date}
+        -> P/{loc}/{cam}/night-report?date={date}
+        -> P/{loc}/{cam}/night-report?date={date}
     P/{loc}/{cam}/current/{channel}        -> P/{loc}/{cam}/{channel}/current
     P/{loc}/{cam}/event?type=&visit=&ext=  -> P/{loc}/{cam}/{type}?date=&seq=
     P/{loc}/{cam}/event?channel_name=&date_str=&seq_num=
-                                           -> P/{loc}/{cam}/{channel}?date=&seq=
-    P/{loc}/{cam}/event?key=<s3 key>       -> P/{loc}/{cam}/{channel}?date=&seq=
+        -> P/{loc}/{cam}/{channel}?date=&seq=
+    P/{loc}/{cam}/event?key=<s3 key>
+        -> P/{loc}/{cam}/{channel}?date=&seq=
+        -> P/{loc}/{cam}/{channel}?date=&seq=
 
 Endpoints whose old and new shapes are identical (``P/``, ``P/{loc}``,
 ``P/{loc}/{cam}``, ``P/{loc}/{cam}/mosaic``) need no redirect — the SPA
@@ -89,8 +93,9 @@ def build_router(prefix: str) -> APIRouter:
         # the segment and 301 to the equivalent /usdf legacy URL (same shape,
         # query string intact). That lands on the real legacy handlers above,
         # which do the second hop to the new SPA route. Keeping this a plain
-        # alias — rather than re-implementing the shape mapping here — means the
-        # whole /slac block can be deleted in one piece once no links use it.
+        # alias — rather than re-implementing the shape mapping here — means
+        # the whole /slac block can be deleted in one piece once no links
+        # use it.
         url = f"{prefix}/usdf/{rest}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
@@ -174,7 +179,7 @@ def build_router(prefix: str) -> APIRouter:
     async def legacy_current(
         location: str, camera: str, channel: str
     ) -> RedirectResponse:
-        # Segment order reversed: old current/{channel} -> new {channel}/current.
+        # Segment order reversed: current/{channel} -> {channel}/current.
         return to(f"/{location}/{camera}/{channel}/current")
 
     return router
@@ -184,7 +189,8 @@ def build_router(prefix: str) -> APIRouter:
 
 
 def _seq_filter(seq_num: str | None) -> dict[str, str]:
-    """Old ``?seq_num=`` highlight list -> new ``?seq_filter=`` (passthrough)."""
+    """Old ``?seq_num=`` highlight list -> new ``?seq_filter=``
+    (passthrough)."""
     return {"seq_filter": seq_num} if seq_num else {}
 
 

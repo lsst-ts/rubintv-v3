@@ -396,9 +396,10 @@ def test_admin_set_and_get(seeded_client: TestClient) -> None:
 
 
 def test_proxy_streams_object(seeded_client: TestClient) -> None:
-    # The seeded object (a.png) does NOT follow the filename convention, so the
-    # proxy's direct-key GET misses and it falls back to listing the seq prefix.
-    # This exercises the fallback path and confirms it still serves correctly.
+    # The seeded object (a.png) does NOT follow the filename convention, so
+    # the proxy's direct-key GET misses and it falls back to listing the seq
+    # prefix. This exercises the fallback path and confirms it still serves
+    # correctly.
     resp = seeded_client.get(
         f"/api/locations/test/cameras/lsstcam/channels/witness_detector/{DATE}/000001/image.png"
     )

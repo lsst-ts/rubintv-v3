@@ -82,8 +82,8 @@ def test_date_historical_sentinel_dropped(client: TestClient) -> None:
 
 
 def test_date_carries_seq_num_as_seq_filter(client: TestClient) -> None:
-    # The old ?seq_num= highlight list survives as the new table's ?seq_filter=,
-    # alongside the moved date.
+    # The old ?seq_num= highlight list survives as the new table's
+    # ?seq_filter=, alongside the moved date.
     assert (
         _location(client, "/summit/lsstcam/date/2025-04-22?seq_num=42")
         == f"{TEST_PREFIX}/summit/lsstcam?seq_filter=42&date=2025-04-22"

@@ -169,7 +169,8 @@ class WsService:
         req: SubscribeRequest,
         stream_tasks: set[asyncio.Task[None]],
     ) -> None:
-        """Launch a background task streaming a date's metadata to one client."""
+        """Launch a background task streaming a date's metadata to one
+        client."""
         task = asyncio.create_task(
             self._stream_metadata(conn, req.location, req.camera or "", req.date or "")
         )

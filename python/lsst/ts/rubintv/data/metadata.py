@@ -133,7 +133,7 @@ class MetadataCache:
     def _stream_blocking(
         self, location: str, camera: str, date: str
     ) -> Iterator[MetadataBatch]:
-        """Blocking generator: head-check, then ijson-parse the body in batches.
+        """Head-check, then ijson-parse the body in batches (blocking).
 
         Lives on a worker thread (see :meth:`stream`). Accumulates the full
         dict to seed the cache on completion.

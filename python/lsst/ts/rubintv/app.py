@@ -42,17 +42,17 @@ log = get_logger(__name__)
 def _resolve_models_path(configured: Path | None) -> Path:
     """Locate the models YAML.
 
-    When ``configured`` is set (via ``RUBINTV_MODELS_PATH``) it wins, allowing a
-    site to mount its own config. Otherwise fall back to the copy packaged in
-    ``lsst.ts.rubintv.models`` so the app works from any CWD once installed
+    When ``configured`` is set (via ``RUBINTV_MODELS_PATH``) it wins, allowing
+    a site to mount its own config. Otherwise fall back to the copy packaged
+    in ``lsst.ts.rubintv.models`` so the app works from any CWD once installed
     (pip, conda, or EUPS) — not just from a checkout where ``config/`` happens
     to sit next to the process.
     """
     if configured is not None:
         return configured
     resource = files("lsst.ts.rubintv.models").joinpath("models_data.yaml")
-    # The packaged file is a real file on disk for wheel/conda installs; as_file
-    # also covers the zipped-import case by materialising a temp copy.
+    # The packaged file is a real file on disk for wheel/conda installs;
+    # as_file also covers the zipped-import case by materialising a temp copy.
     with as_file(resource) as path:
         return path
 

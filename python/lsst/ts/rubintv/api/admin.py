@@ -29,8 +29,9 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# Cluster-set restart keys are derived from the set's status key by swapping the
-# CLUSTER_STATUS_ prefix for RUBINTV_CONTROL_RESET_ (matches the original app).
+# Cluster-set restart keys are derived from the set's status key by swapping
+# the CLUSTER_STATUS_ prefix for RUBINTV_CONTROL_RESET_ (matches the original
+# app).
 _STATUS_PREFIX = "CLUSTER_STATUS_"
 _RESET_PREFIX = "RUBINTV_CONTROL_RESET_"
 
@@ -240,7 +241,8 @@ async def flush_historical(
     state: AppState = Depends(get_app_state),
     _user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
-    """Clear the disk + in-memory historical cache and trigger a cold rescan."""
+    """Clear the disk + in-memory historical cache and trigger a cold
+    rescan."""
     if state.flush_historical is None:  # pragma: no cover - always wired
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "flush not available")
     removed = await state.flush_historical()

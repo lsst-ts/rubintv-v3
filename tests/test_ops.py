@@ -33,7 +33,8 @@ def test_status_endpoint_reports_loading() -> None:
         body = client.get("/api/health/status").json()
         assert "ready" in body
         assert "historical_loading" in body
-        # S3 connectivity is reported and healthy (fast) on a freshly-polled app.
+        # S3 connectivity is reported and healthy (fast) on a
+        # freshly-polled app.
         assert body["s3_healthy"] is True
         assert body["s3_slow"] is False
         # Per-camera readiness is present and well-formed for each camera.

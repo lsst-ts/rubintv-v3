@@ -67,7 +67,8 @@ class NightReportRef:
 
 
 def parse_seq(raw: str) -> SeqNum:
-    """Coerce a seq segment to int, or keep the sentinel string (e.g. final)."""
+    """Coerce a seq segment to int, or keep the sentinel string
+    (e.g. final)."""
     return int(raw) if raw.isdigit() else raw
 
 

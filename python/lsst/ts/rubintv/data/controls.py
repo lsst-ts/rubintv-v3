@@ -28,9 +28,9 @@ class DetectorStore:
     """Latest cluster-status payload per detector set.
 
     Detector status is site-wide (the Redis ``redis_detectors`` streams are
-    not scoped to a location), so this is a ``set_name -> payload`` map keyed by
-    the config ``name`` (e.g. ``sfmSet0``, ``otherQueues``). Each payload mirrors
-    what the Cluster Status page renders per set::
+    not scoped to a location), so this is a ``set_name -> payload`` map keyed
+    by the config ``name`` (e.g. ``sfmSet0``, ``otherQueues``). Each payload
+    mirrors what the Cluster Status page renders per set::
 
         {"workers": {"0": {"status": "busy"}, ...},  # worker_status entries
          "numWorkers": 8,                              # worker_count entry
