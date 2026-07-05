@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
+import { LiveProvider } from "../lib/LiveContext";
 import { Status } from "./Status";
 import type { StatusResponse } from "../lib/types";
 
@@ -26,9 +27,13 @@ function renderWith(
     })) as unknown as typeof fetch;
   return render(
     <QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter>
-        <Status />
-      </MemoryRouter>
+      {/* The page now carries the WebSocket-status pill, which reads the
+          LiveProvider context (backed by the StubWebSocket in test-setup). */}
+      <LiveProvider>
+        <MemoryRouter>
+          <Status />
+        </MemoryRouter>
+      </LiveProvider>
     </QueryClientProvider>,
   );
 }
@@ -81,4 +86,14 @@ test("notes a warm start when the cache populated the calendar", async () => {
 test("notes a cold start when no snapshot was loaded", async () => {
   renderWith([cam({})], { cache_enabled: true, warm_start: false });
   expect(await screen.findByText(/Cold start:/)).toBeDefined();
+});
+
+test("shows the WebSocket-connection pill (moved here from the topbar)", async () => {
+  renderWith([cam({})]);
+  expect(await screen.findByText(/WebSocket/)).toBeDefined();
+});
+
+test("surfaces the S3 pill here when the bucket is unreachable", async () => {
+  renderWith([cam({})], { s3_healthy: false });
+  expect(await screen.findByText(/S3 unreachable/)).toBeDefined();
 });

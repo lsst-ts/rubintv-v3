@@ -518,11 +518,11 @@ export interface paths {
          * App Config
          * @description Deployment bootstrap the SPA reads at startup.
          *
-         *     ``site`` is the deployment site name (``RUBINTV_SITE``: ``summit``,
-         *     ``usdf-k8s``, ``local`` …). The frontend uses it to label the header —
-         *     which processing banner to show and whether to flag a non-prod
-         *     instance — since where the *pod* runs is distinct from which location's
-         *     bucket is being viewed.
+         *     ``site`` is the deployment site name (``RAPID_ANALYSIS_LOCATION``:
+         *     ``summit``, ``usdf-k8s``, ``local`` …). The frontend uses it to label
+         *     the header — which processing banner to show and whether to flag a
+         *     non-prod instance — since where the *pod* runs is distinct from which
+         *     location's bucket is being viewed.
          */
         get: operations["app_config_api_config_get"];
         put?: never;

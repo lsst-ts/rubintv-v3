@@ -557,6 +557,13 @@ h1, h2 {
   font-size: 0.85rem;
 }
 
+/* Live-connection pills at the top of the Status page: the WebSocket
+   indicator (always shown) and the S3 pill (only when slow/unreachable). */
+.status-connections {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0.25rem 0 1rem;
+}
+
 /* ── Small action buttons (share / copy / download) ────────────────────── */
 /* Toolbar action buttons (share link, download metadata) — framed like
    .tb-btn, with a leading icon. */

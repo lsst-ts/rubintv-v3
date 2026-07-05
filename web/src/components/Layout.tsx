@@ -7,7 +7,6 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { ConnectionStatus } from "./ConnectionStatus";
 import { S3Status } from "./S3Status";
 import { LoadingBanner } from "./LoadingBanner";
 import { Sidebar } from "./Sidebar";
@@ -18,7 +17,7 @@ import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
 
-// The deployment site (RUBINTV_SITE) from /api/config, used to label the
+// The deployment site (RAPID_ANALYSIS_LOCATION) from /api/config, used to label the
 // header. Undefined until it resolves — the env strip falls back to the
 // hostname heuristic meanwhile, so a non-prod host still flags immediately.
 function useSite(): string | undefined {
@@ -227,11 +226,14 @@ export function Layout() {
                 </div>
               )}
               <div className="topbar-status">
-                <S3Status />
+                {/* S3 connectivity is only meaningful (and only actionable)
+                    while viewing a camera's images, so — like the historical
+                    refresh pill — it's scoped to camera pages. The WebSocket
+                    'connected' indicator now lives on the Status page. */}
+                {onCamera && <S3Status />}
                 {/* Historical-scan notice sits with the other status signals
                     as a compact inline pill, not a full-width banner. */}
                 <LoadingBanner location={location} camera={camera} />
-                <ConnectionStatus />
               </div>
             </div>
           </div>

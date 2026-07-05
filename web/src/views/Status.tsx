@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { usePageTitle } from "../lib/usePageTitle";
+import { ConnectionStatus } from "../components/ConnectionStatus";
+import { S3Status } from "../components/S3Status";
 import type { CameraStatus } from "../lib/types";
 
 // Site-wide operational view of historical-scan progress. Collection is
@@ -56,6 +58,13 @@ export function Status() {
   return (
     <section>
       <h1>Scan status</h1>
+      {/* Live connection health. The WebSocket pill always shows the tab's
+          browser↔app-server link; the S3 pill only appears when the server's
+          bucket link is slow or unreachable (it stays quiet when healthy). */}
+      <div className="status-connections">
+        <ConnectionStatus />
+        <S3Status />
+      </div>
       {isPending && <p className="skeleton">Loading status…</p>}
       {isError && <p role="alert">Could not load scan status.</p>}
       {data && !data.cache_enabled && (

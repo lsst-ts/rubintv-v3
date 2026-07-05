@@ -321,11 +321,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def app_config() -> dict[str, str]:
         """Deployment bootstrap the SPA reads at startup.
 
-        ``site`` is the deployment site name (``RUBINTV_SITE``: ``summit``,
-        ``usdf-k8s``, ``local`` …). The frontend uses it to label the header —
-        which processing banner to show and whether to flag a non-prod
-        instance — since where the *pod* runs is distinct from which location's
-        bucket is being viewed.
+        ``site`` is the deployment site name (``RAPID_ANALYSIS_LOCATION``:
+        ``summit``, ``usdf-k8s``, ``local`` …). The frontend uses it to label
+        the header — which processing banner to show and whether to flag a
+        non-prod instance — since where the *pod* runs is distinct from which
+        location's bucket is being viewed.
         """
         return {"site": settings.site}
 

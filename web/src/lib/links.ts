@@ -67,7 +67,7 @@ export function isDevInstance(): boolean {
 //   prod      — a real deployment; no strip
 export type InstanceEnv = "localhost" | "dev" | "ci" | "test" | "prod";
 
-// Backend sites (RUBINTV_SITE) that are not production. Native prod sites
+// Backend sites (RAPID_ANALYSIS_LOCATION) that are not production. Native prod sites
 // (summit, usdf-k8s, base, tucson) are absent, so they map to "prod".
 const NON_PROD_SITES: Record<string, InstanceEnv> = {
   local: "localhost",

@@ -5,7 +5,7 @@
 # an unknown reference is a startup error.
 #
 # bucket_configurations maps each *site* (deployment shape) to the locations
-# it can see. The loader filters by RUBINTV_SITE so a pod only ever holds
+# it can see. The loader filters by RAPID_ANALYSIS_LOCATION so a pod only ever holds
 # clients for buckets it can actually reach. Each location declares its own
 # bucket, AWS profile, and endpoint.
 #

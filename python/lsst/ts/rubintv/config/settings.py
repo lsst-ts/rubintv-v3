@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,17 +19,26 @@ class Settings(BaseSettings):
     """Process-level configuration, populated from the environment.
 
     Environment variables are prefixed ``RUBINTV_`` (e.g.
-    ``RUBINTV_SITE=summit``).
+    ``RUBINTV_PATH_PREFIX``). The one exception is the deployment site, which
+    the Rapid Analysis environment supplies as ``RAPID_ANALYSIS_LOCATION``.
     """
 
     model_config = SettingsConfigDict(
         env_prefix="RUBINTV_",
         env_file=".env",
         extra="ignore",
+        # Let ``site`` still be set by its field name (e.g. ``Settings(site=…)``
+        # in tests) even though it carries a validation_alias — without this,
+        # the alias would be the *only* accepted key and the field name would
+        # silently fall back to the default.
+        populate_by_name=True,
     )
 
-    site: str = "local"
-    """Deployment site name; selects which locations are visible."""
+    site: str = Field("local", validation_alias="RAPID_ANALYSIS_LOCATION")
+    """Deployment site name; selects which locations are visible. Read from
+    ``RAPID_ANALYSIS_LOCATION`` (set by the Rapid Analysis environment), not
+    the ``RUBINTV_`` prefix — a ``validation_alias`` overrides the prefix for
+    just this field."""
 
     path_prefix: str = "/rubintv"
     """URL prefix the whole app is served under (``RUBINTV_PATH_PREFIX``).

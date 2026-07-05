@@ -17,7 +17,7 @@ come from the YAML at `RUBINTV_MODELS_PATH`.
 
 | Variable                      | Default                    | Purpose                                                       |
 | ----------------------------- | -------------------------- | ------------------------------------------------------------- |
-| `RUBINTV_SITE`                | `local`                    | Deployment site name.                                         |
+| `RAPID_ANALYSIS_LOCATION`     | `local`                    | Deployment site name (set by the Rapid Analysis environment; note: **not** `RUBINTV_`-prefixed). |
 | `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
 | `RUBINTV_CACHE_DIR`           | `/scratch`                 | PVC dir for warm-start cache. Missing/unwritable dir (no PVC) disables the cache with one warning. |
 | `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = disabled.     |
@@ -84,7 +84,7 @@ Production (container serves API + SPA from one process):
 
 ```sh
 docker build -t rubintv .
-docker run -p 8080:8080 -e RUBINTV_SITE=summit rubintv   # container listens on 8080
+docker run -p 8080:8080 -e RAPID_ANALYSIS_LOCATION=summit rubintv   # container listens on 8080
 ```
 
 ## Releasing
