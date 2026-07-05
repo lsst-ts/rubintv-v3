@@ -27,10 +27,11 @@ class Settings(BaseSettings):
         env_prefix="RUBINTV_",
         env_file=".env",
         extra="ignore",
-        # Let ``site`` still be set by its field name (e.g. ``Settings(site=…)``
-        # in tests) even though it carries a validation_alias — without this,
-        # the alias would be the *only* accepted key and the field name would
-        # silently fall back to the default.
+        # Let ``site`` still be set by its field name (e.g.
+        # ``Settings(site=…)`` in tests) even though it carries a
+        # validation_alias — without this, the alias would be the *only*
+        # accepted key and the field name would silently fall back to the
+        # default.
         populate_by_name=True,
     )
 
