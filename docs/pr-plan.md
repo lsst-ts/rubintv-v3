@@ -86,6 +86,10 @@ Another iterative arc landing on the `?seq_filter` catch-all + its docs.
 
 ### PR 9 — Loading state fix + S3 connectivity indicators
 - `ec7a6ac` Fix empty-table loading state and add S3 connectivity indicators
+- `2e67340` Move the live pill to Status, scope the S3 pill, rename the site env var
+  (this-branch copy of design-port's `1a4c74e`, at the packaged
+  `python/lsst/ts/rubintv/` paths; also relocates the WebSocket/live
+  indicator to the Status page — overlaps the PR 11 liveness cues)
 
 ### PR 10 — Header, nav and chrome polish
 Small independent UI fixes to the shell chrome; low review risk.
