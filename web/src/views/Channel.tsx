@@ -221,17 +221,6 @@ export function Channel({ live = false }: { live?: boolean }) {
 
   const navigate = useNavigate();
 
-  // Arrow-key navigation between sequence numbers.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" && prev !== null) navigate(navTo(prev));
-      if (e.key === "ArrowRight" && next !== null) navigate(navTo(next));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prev, next, date]);
-
   // Preload neighbouring images for instant prev/next (skip videos).
   useEffect(() => {
     if (isVideo) return;
@@ -258,6 +247,38 @@ export function Channel({ live = false }: { live?: boolean }) {
       ),
     [cameraInfo, payload, seq],
   );
+
+  // The sibling channels either side of the current one, for shift-arrow
+  // stepping through the channels that share this exposure. Null at the ends
+  // (no wraparound), mirroring the seq nav's boundary behaviour.
+  const chanNavTo = (name: string) =>
+    `/${location}/${camera}/${name}?seq=${seq}&date=${date}`;
+  const chanIdx = siblingChannels.findIndex((c) => c.name === channel);
+  const prevChan =
+    chanIdx > 0 ? siblingChannels[chanIdx - 1].name : null;
+  const nextChan =
+    chanIdx >= 0 && chanIdx < siblingChannels.length - 1
+      ? siblingChannels[chanIdx + 1].name
+      : null;
+
+  // Arrow-key navigation. Plain arrows step the seq back/forward; shift-arrows
+  // step through the other channels available for this seq.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.shiftKey) {
+        if (e.key === "ArrowLeft" && prevChan !== null)
+          navigate(chanNavTo(prevChan));
+        if (e.key === "ArrowRight" && nextChan !== null)
+          navigate(chanNavTo(nextChan));
+        return;
+      }
+      if (e.key === "ArrowLeft" && prev !== null) navigate(navTo(prev));
+      if (e.key === "ArrowRight" && next !== null) navigate(navTo(next));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prev, next, prevChan, nextChan, date, seq]);
 
   // Sidebar rows for the displayed exposure. Mirror the table's conventions:
   //   * Drop object/array values — they're foldout-only in the table and have
@@ -331,7 +352,11 @@ export function Channel({ live = false }: { live?: boolean }) {
 
       <div className="media">
         {siblingChannels.length > 1 && (
-          <nav className="chv-chan-strip" aria-label="Channels for this exposure">
+          <nav
+            className="chv-chan-strip"
+            aria-label="Channels for this exposure"
+            title="Shift + ← / → to switch channel"
+          >
             {siblingChannels.map((c) => {
               const active = c.name === channel;
               const style = {
