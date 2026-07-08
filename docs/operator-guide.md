@@ -87,6 +87,29 @@ docker build -t rubintv .
 docker run -p 8080:8080 -e RAPID_ANALYSIS_LOCATION=summit rubintv   # container listens on 8080
 ```
 
+## Branch model
+
+Work flows through three long-lived branches, matching the TSSW
+convention:
+
+- `tickets/DM-NNNNN` — one branch per unit of work, cut from `develop`.
+  Opens a PR into `develop` for review.
+- `develop` — the integration branch. Ticket PRs merge here after review;
+  this is where features accumulate between releases.
+- `main` — the release branch and the repo default. `develop` merges into
+  `main` via a reviewed PR, and the merge commit is tagged (see Releasing
+  below) to cut a production version.
+
+`main` is protected by a GitHub *ruleset* (Settings → Rules → Rulesets),
+not the file-based config in the repo. The ruleset requires a PR with at
+least one approval, blocks force-pushes and deletion, and lets admins
+bypass in a break-glass situation. GitHub is the source of truth for the
+active rules; the `.claude/branch-protection-ruleset.json` payload is only
+the one-time input used to create it, so treat the live ruleset — not that
+file — as authoritative if the two ever disagree. Applying or changing the
+default branch and the ruleset both require repo **admin**; `maintain`
+(which most contributors have) cannot.
+
 ## Releasing
 
 The git tag is the single source of truth for the version — no files are
