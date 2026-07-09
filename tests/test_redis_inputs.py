@@ -161,6 +161,7 @@ class _LoopFakeRedis:
         ping_ok: bool = True,
         messages: list[dict[str, str]] | None = None,
         stream_batches: list[_StreamBatch] | None = None,
+        seed_entries: dict[str, list[tuple[str, dict[str, str]]]] | None = None,
     ) -> None:
         self.store: dict[str, str] = {}
         self.pubsubs: list[_FakePubSub] = []
@@ -168,6 +169,8 @@ class _LoopFakeRedis:
         self._ping_ok = ping_ok
         self._messages = messages or []
         self._batches = list(stream_batches or [])
+        # stream name -> retained entries, newest last (as XREVRANGE expects).
+        self._seed_entries = seed_entries or {}
 
     async def ping(self) -> None:
         if not self._ping_ok:
@@ -190,6 +193,12 @@ class _LoopFakeRedis:
             return self._batches.pop(0)
         await asyncio.Event().wait()  # no more entries; park until cancelled
         return []
+
+    async def xrevrange(
+        self, stream_name: str, count: int = 1
+    ) -> list[tuple[str, dict[str, str]]]:
+        entries = self._seed_entries.get(stream_name, [])
+        return list(reversed(entries))[:count]
 
     async def aclose(self) -> None:
         self.closed = True
@@ -249,6 +258,113 @@ async def test_readback_loop_publishes_control_changes(
 
     await inputs.stop()
     assert fake.closed is True
+
+
+async def test_detector_loop_seeds_from_last_retained_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The producer only writes on change, so after a restart during a quiet
+    # period the only data is each stream's retained last entry. We must seed
+    # from XREVRANGE so the Cluster Status page isn't blank until the next
+    # change. Here xread has no new batches (parks), proving the snapshot the
+    # client sees came purely from the seed.
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [RedisDetector(key="CLUSTER_STATUS_AOS_SET_0", name="aosSet0")],
+    )
+    entry = {"data": json.dumps({"4": {"status": "busy", "type": "worker_status"}})}
+    fake = _LoopFakeRedis(
+        seed_entries={"stream:CLUSTER_STATUS_AOS_SET_0": [("1-1", entry)]},
+    )
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "detectorStatus"
+    assert detectors.all() == {"aosSet0": {"workers": {"4": {"status": "busy"}}}}
+
+    await inputs.stop()
+    assert fake.closed is True
+
+
+async def test_detector_loop_no_seed_when_streams_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A stream that has never been written yields nothing from XREVRANGE; we
+    # must not publish a spurious empty snapshot. The first change the client
+    # sees comes from a later live entry instead.
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [RedisDetector(key="CLUSTER_STATUS_SFM_SET_0", name="sfmSet0")],
+    )
+    entry = {"data": json.dumps({"189": {"status": "free", "type": "worker_status"}})}
+    fake = _LoopFakeRedis(
+        stream_batches=[
+            [("stream:CLUSTER_STATUS_SFM_SET_0", [("2-1", entry)])],
+        ],
+    )
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    # Only the live entry produced a change; the empty seed published nothing.
+    assert change.type == "detectorStatus"
+    assert detectors.all() == {"sfmSet0": {"workers": {"189": {"status": "free"}}}}
+
+    await inputs.stop()
+    assert fake.closed is True
+
+
+async def test_detector_loop_emits_debug_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The DEBUG trace (enabled via log_level=DEBUG) should follow the data
+    # from seed read -> store apply -> publish so a streaming issue can be
+    # located. We capture by recording the module logger's debug() events
+    # directly, which is independent of structlog's process-wide
+    # configuration/cache.
+    events: list[str] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.redis_inputs.log.debug",
+        lambda event, **kw: events.append(event),
+    )
+
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [RedisDetector(key="CLUSTER_STATUS_AOS_SET_0", name="aosSet0")],
+    )
+    entry = {"data": json.dumps({"4": {"status": "busy", "type": "worker_status"}})}
+    fake = _LoopFakeRedis(
+        seed_entries={"stream:CLUSTER_STATUS_AOS_SET_0": [("1-1", entry)]},
+    )
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        await asyncio.wait_for(anext(stream), timeout=2)
+    await inputs.stop()
+
+    assert "redis.detector.seed_start" in events
+    assert "redis.detector.seed_entry" in events
+    assert "redis.detector.apply" in events
+    assert "redis.detector.seed_publish" in events
 
 
 async def test_detector_loop_applies_stream_entries(
