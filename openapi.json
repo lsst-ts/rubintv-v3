@@ -929,7 +929,7 @@
           "admin"
         ],
         "summary": "Flush Historical",
-        "description": "Clear the disk + in-memory historical cache and trigger a cold rescan.",
+        "description": "Clear the disk + in-memory historical cache and trigger a cold\nrescan.",
         "operationId": "flush_historical_api_admin_flush_historical_post",
         "parameters": [
           {
@@ -1351,7 +1351,7 @@
           "config"
         ],
         "summary": "App Config",
-        "description": "Deployment bootstrap the SPA reads at startup.\n\n``site`` is the deployment site name (``RUBINTV_SITE``: ``summit``,\n``usdf-k8s``, ``local`` \u2026). The frontend uses it to label the header \u2014\nwhich processing banner to show and whether to flag a non-prod\ninstance \u2014 since where the *pod* runs is distinct from which location's\nbucket is being viewed.",
+        "description": "Deployment bootstrap the SPA reads at startup.\n\n``site`` is the deployment site name (``RAPID_ANALYSIS_LOCATION``:\n``summit``, ``usdf-k8s``, ``local`` \u2026). The frontend uses it to label\nthe header \u2014 which processing banner to show and whether to flag a\nnon-prod instance \u2014 since where the *pod* runs is distinct from which\nlocation's bucket is being viewed.",
         "operationId": "app_config_api_config_get",
         "responses": {
           "200": {

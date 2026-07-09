@@ -384,7 +384,8 @@ export interface paths {
         put?: never;
         /**
          * Flush Historical
-         * @description Clear the disk + in-memory historical cache and trigger a cold rescan.
+         * @description Clear the disk + in-memory historical cache and trigger a cold
+         *     rescan.
          */
         post: operations["flush_historical_api_admin_flush_historical_post"];
         delete?: never;
