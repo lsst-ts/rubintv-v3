@@ -48,6 +48,8 @@ def test_status_endpoint_reports_loading() -> None:
         # freshly-polled app.
         assert body["s3_healthy"] is True
         assert body["s3_slow"] is False
+        # Last-cycle latency is reported as a number (0.0 if no cycle has run).
+        assert isinstance(body["s3_last_cycle_seconds"], (int, float))
         # Per-camera readiness is present and well-formed for each camera.
         assert isinstance(body["cameras"], list)
         for cam in body["cameras"]:

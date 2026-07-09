@@ -61,6 +61,11 @@ class AppState:
     """Callable returning whether the last successful poll cycle was unusually
     slow (the poll engine owns the flag; this reads it). True warns of a
     degrading link before it fails the s3_healthy check outright."""
+    s3_last_cycle_seconds: Callable[[], float] = field(default=lambda: 0.0)
+    """Callable returning the wall-clock seconds of the last successful
+    current-day poll cycle (the poll engine owns it; this reads it). Lets the
+    status view show the actual latency, not just the slow/not-slow flag; 0.0
+    before the first cycle completes."""
     camera_status: Callable[[], dict[tuple[str, str], CameraScanState]] = field(
         default=dict
     )

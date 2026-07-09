@@ -17,6 +17,7 @@ function renderWith(
     historical_loading: cameras.some((c) => !c.full_complete),
     s3_healthy: true,
     s3_slow: false,
+    s3_last_cycle_seconds: 0.8,
     cameras,
     ...over,
   };
@@ -96,4 +97,16 @@ test("shows the WebSocket-connection pill (moved here from the topbar)", async (
 test("surfaces the S3 pill here when the bucket is unreachable", async () => {
   renderWith([cam({})], { s3_healthy: false });
   expect(await screen.findByText(/S3 unreachable/)).toBeDefined();
+});
+
+test("shows the last S3 poll latency while healthy", async () => {
+  renderWith([cam({})], { s3_healthy: true, s3_last_cycle_seconds: 1.2 });
+  expect(await screen.findByText(/Last S3 poll cycle/)).toBeDefined();
+  expect(screen.getByText(/1\.2s/)).toBeDefined();
+});
+
+test("hides the latency line before the first cycle completes", async () => {
+  renderWith([cam({})], { s3_healthy: true, s3_last_cycle_seconds: 0 });
+  await screen.findByText(/Scan status/);
+  expect(screen.queryByText(/Last S3 poll cycle/)).toBeNull();
 });

@@ -65,6 +65,17 @@ export function Status() {
         <ConnectionStatus />
         <S3Status />
       </div>
+      {/* Last S3 poll latency, shown even when healthy so a link degrading
+          toward the slow threshold is visible before it crosses it. Amber
+          once flagged slow; 0.0 means no cycle has completed yet. */}
+      {data && data.s3_healthy && data.s3_last_cycle_seconds > 0 && (
+        <p className="s3-latency" role="status">
+          Last S3 poll cycle:{" "}
+          <span className={data.s3_slow ? "s3-latency--slow" : undefined}>
+            {data.s3_last_cycle_seconds.toFixed(1)}s
+          </span>
+        </p>
+      )}
       {isPending && <p className="skeleton">Loading status…</p>}
       {isError && <p role="alert">Could not load scan status.</p>}
       {data && !data.cache_enabled && (

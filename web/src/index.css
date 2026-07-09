@@ -487,6 +487,17 @@ h1, h2 {
   font-weight: 600;
 }
 
+/* Last-cycle latency on the scan-status view: quiet by default so it reads as
+   informational, going amber-bold only once the cycle is flagged slow. */
+.s3-latency { color: var(--ink-soft); }
+.s3-latency--slow { color: var(--warn); font-weight: 600; }
+
+/* When the header pill links to the Status page: inherit the pill's own colour
+   (no default link blue/underline) and just signal clickability. The wrapped
+   .s3-alert / .s3-slow span keeps its red/amber styling. */
+.s3-status-link { text-decoration: none; color: inherit; cursor: pointer; }
+.s3-status-link:hover .conn { text-decoration: underline; }
+
 .skeleton { color: var(--ink-soft); }
 
 /* ── Historical-scan pill ──────────────────────────────────────────────────

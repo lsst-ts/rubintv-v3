@@ -203,6 +203,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.camera_status = engine.camera_status
     state.s3_healthy = lambda: engine.s3_healthy
     state.s3_slow = lambda: engine.s3_slow
+    state.s3_last_cycle_seconds = lambda: engine.s3_last_cycle_seconds
 
     # Admin handles: the Redis manager (control writes / flush) and the
     # flush-historical action that clears the disk + in-memory cache and kicks
