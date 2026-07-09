@@ -57,6 +57,11 @@ class StatusResponse(BaseModel):
     """Whether the last successful poll cycle was unusually slow. True warns of
     a degrading link before it fails outright; the frontend shows an amber
     'S3 slow' warning. Ignored when s3_healthy is false."""
+    s3_last_cycle_seconds: float
+    """Wall-clock seconds of the last successful current-day poll cycle. The
+    frontend shows this in the 'S3 slow' tooltip and the status view so the
+    actual latency is visible (and can be watched trending toward the slow
+    threshold). 0.0 before the first cycle completes."""
     cameras: list[CameraStatus]
     """Per-camera cold-start scan progress, so the frontend can scope the
     'loading' affordance to the camera being viewed."""
@@ -97,5 +102,6 @@ def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse:
         historical_loading=state.historical_loading(),
         s3_healthy=state.s3_healthy(),
         s3_slow=state.s3_slow(),
+        s3_last_cycle_seconds=state.s3_last_cycle_seconds(),
         cameras=cameras,
     )

@@ -15,6 +15,7 @@ function renderWith(
     historical_loading: false,
     s3_healthy: true,
     s3_slow: false,
+    s3_last_cycle_seconds: 0.8,
     cameras: [],
     ...status,
   };

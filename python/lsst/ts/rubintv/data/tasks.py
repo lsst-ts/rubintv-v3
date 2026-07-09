@@ -155,6 +155,11 @@ class PollEngine:
         # degrading link (high latency before it fails outright) shows up here
         # as an amber 'S3 slow' warning ahead of the red 'unreachable' alert.
         self.s3_slow = False
+        # Wall-clock seconds of the most recent successful current-day cycle,
+        # so the status view can show the actual latency (and watch it trend
+        # toward SLOW_CYCLE_SECONDS) rather than just the slow/not-slow flag.
+        # 0.0 until the first cycle completes; unchanged by a failed cycle.
+        self.s3_last_cycle_seconds = 0.0
 
     def camera_status(self) -> dict[LocCam, CameraScanState]:
         """Snapshot of per-camera cold-start scan progress."""
@@ -215,6 +220,7 @@ class PollEngine:
                         threshold_seconds=SLOW_CYCLE_SECONDS,
                     )
                 self.s3_slow = slow
+                self.s3_last_cycle_seconds = elapsed
                 self.s3_healthy = True
                 self._fire_ready()
             except Exception:  # noqa: BLE001 - a bad cycle must not kill loop

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 
 // S3-connectivity indicator beside the live (WebSocket) pill. The 'live' pill
@@ -10,7 +11,16 @@ import { api } from "../lib/api";
 //   - red   'S3 unreachable' — the last cycle failed to reach S3 outright
 //                              (e.g. a botocore connect timeout).
 // 'unreachable' takes precedence over 'slow'.
-export function S3Status() {
+//
+// `linkToStatus` makes the pill a link to the Status page (its ops deep-dive:
+// per-camera scan state and last-cycle latency). Enabled in the header, where
+// the pill is the natural jumping-off point; left off inside the Status page
+// itself, where it would link to the current page.
+export function S3Status({
+  linkToStatus = false,
+}: {
+  linkToStatus?: boolean;
+}) {
   const { data } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
@@ -21,27 +31,40 @@ export function S3Status() {
 
   if (!data) return null; // nothing known yet
 
-  if (data.s3_healthy === false) {
-    return (
-      <span
-        className="conn conn-closed s3-alert"
-        role="alert"
-        title="The server could not reach the S3 bucket on its last poll. Check the server logs."
-      >
-        S3 unreachable
+  // Render the pill, optionally wrapped in a Link to the Status page. The
+  // alert/status role and title stay on the visible element so screen readers
+  // still announce the severity whether or not it's a link.
+  const pill = (className: string, role: string, title: string, label: string) => {
+    const linkHint = linkToStatus ? " (open the status page)" : "";
+    const inner = (
+      <span className={className} role={role} title={title + linkHint}>
+        {label}
       </span>
+    );
+    return linkToStatus ? (
+      <Link to="/status" className="s3-status-link">
+        {inner}
+      </Link>
+    ) : (
+      inner
+    );
+  };
+
+  if (data.s3_healthy === false) {
+    return pill(
+      "conn conn-closed s3-alert",
+      "alert",
+      "The server could not reach the S3 bucket on its last poll. Check the server logs.",
+      "S3 unreachable",
     );
   }
 
   if (data.s3_slow) {
-    return (
-      <span
-        className="conn s3-slow"
-        role="status"
-        title="The server's last S3 poll was unusually slow — the connection may be degrading."
-      >
-        S3 slow
-      </span>
+    return pill(
+      "conn s3-slow",
+      "status",
+      `The server's last S3 poll took ${data.s3_last_cycle_seconds.toFixed(1)}s — unusually slow; the connection may be degrading.`,
+      "S3 slow",
     );
   }
 

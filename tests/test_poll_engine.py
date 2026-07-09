@@ -375,8 +375,12 @@ class SlowPoller(FakePoller):
 async def test_s3_slow_starts_false_and_stays_on_fast_cycle() -> None:
     engine, _ = _engine(window=1)
     assert engine.s3_slow is False
+    assert engine.s3_last_cycle_seconds == 0.0
     await _run_one_current_cycle(engine)
     assert engine.s3_slow is False
+    # A successful cycle records its wall-clock duration for the status view.
+    assert engine.s3_last_cycle_seconds > 0.0
+    assert engine.s3_last_cycle_seconds < tasks.SLOW_CYCLE_SECONDS
 
 
 async def test_s3_slow_flips_true_when_cycle_exceeds_threshold(
@@ -395,6 +399,8 @@ async def test_s3_slow_flips_true_when_cycle_exceeds_threshold(
     # The cycle succeeded (reachable) but was slow.
     assert engine.s3_healthy is True
     assert engine.s3_slow is True
+    # The recorded latency reflects the slow cycle (past the threshold).
+    assert engine.s3_last_cycle_seconds >= tasks.SLOW_CYCLE_SECONDS
 
 
 async def test_s3_slow_cleared_when_cycle_fails() -> None:
@@ -408,7 +414,11 @@ async def test_s3_slow_cleared_when_cycle_fails() -> None:
         recent_window_days=1,  # type: ignore[arg-type]
     )
     engine.s3_slow = True  # pretend a prior slow cycle set it
+    engine.s3_last_cycle_seconds = 6.0  # ...and recorded its latency
     poller.fail = True
     await _run_one_current_cycle(engine)
     assert engine.s3_healthy is False
     assert engine.s3_slow is False
+    # A failed cycle has no meaningful duration, so the last *successful*
+    # latency is retained rather than zeroed.
+    assert engine.s3_last_cycle_seconds == 6.0

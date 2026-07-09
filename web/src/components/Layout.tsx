@@ -230,7 +230,7 @@ export function Layout() {
                     while viewing a camera's images, so — like the historical
                     refresh pill — it's scoped to camera pages. The WebSocket
                     'connected' indicator now lives on the Status page. */}
-                {onCamera && <S3Status />}
+                {onCamera && <S3Status linkToStatus />}
                 {/* Historical-scan notice sits with the other status signals
                     as a compact inline pill, not a full-width banner. */}
                 <LoadingBanner location={location} camera={camera} />

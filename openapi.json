@@ -2601,6 +2601,10 @@
             "type": "boolean",
             "title": "S3 Slow"
           },
+          "s3_last_cycle_seconds": {
+            "type": "number",
+            "title": "S3 Last Cycle Seconds"
+          },
           "cameras": {
             "items": {
               "$ref": "#/components/schemas/CameraStatus"
@@ -2617,6 +2621,7 @@
           "historical_loading",
           "s3_healthy",
           "s3_slow",
+          "s3_last_cycle_seconds",
           "cameras"
         ],
         "title": "StatusResponse"

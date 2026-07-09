@@ -987,6 +987,8 @@ export interface components {
             s3_healthy: boolean;
             /** S3 Slow */
             s3_slow: boolean;
+            /** S3 Last Cycle Seconds */
+            s3_last_cycle_seconds: number;
             /** Cameras */
             cameras: components["schemas"]["CameraStatus"][];
         };
