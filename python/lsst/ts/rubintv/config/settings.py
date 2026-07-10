@@ -11,8 +11,21 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The Rapid Analysis environment sets ``RAPID_ANALYSIS_LOCATION`` to its own
+# deployment codes (``BTS``, ``TTS``, ``SUMMIT``, ``USDF``). Our config keys
+# ``bucket_configurations`` (and the frontend's site labels) by the internal
+# site names, so translate at the boundary — otherwise a ``USDF`` pod fails
+# startup with ``unknown site 'USDF'``. Any value already in internal form
+# (``usdf-k8s``, ``local``, ``gha``, ``test`` …) passes through unchanged.
+_RAPID_ANALYSIS_SITE_ALIASES = {
+    "BTS": "base",
+    "TTS": "tucson",
+    "SUMMIT": "summit",
+    "USDF": "usdf-k8s",
+}
 
 
 class Settings(BaseSettings):
@@ -39,7 +52,22 @@ class Settings(BaseSettings):
     """Deployment site name; selects which locations are visible. Read from
     ``RAPID_ANALYSIS_LOCATION`` (set by the Rapid Analysis environment), not
     the ``RUBINTV_`` prefix — a ``validation_alias`` overrides the prefix for
-    just this field."""
+    just this field. The Rapid Analysis codes (``BTS``/``TTS``/``SUMMIT``/
+    ``USDF``) are normalised to our internal site names (see
+    ``_RAPID_ANALYSIS_SITE_ALIASES``)."""
+
+    @field_validator("site", mode="before")
+    @classmethod
+    def _normalise_site(cls, value: object) -> object:
+        """Map Rapid Analysis location codes to internal site names.
+
+        Runs before validation so it applies whether ``site`` arrives from the
+        ``RAPID_ANALYSIS_LOCATION`` env alias or is passed by field name in
+        tests. Non-string and already-internal values pass through untouched.
+        """
+        if isinstance(value, str):
+            return _RAPID_ANALYSIS_SITE_ALIASES.get(value, value)
+        return value
 
     path_prefix: str = "/rubintv"
     """URL prefix the whole app is served under (``RUBINTV_PATH_PREFIX``).
