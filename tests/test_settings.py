@@ -38,9 +38,7 @@ def test_rapid_analysis_codes_map_to_internal_site(
     assert Settings(site=raw).site == expected
 
 
-@pytest.mark.parametrize(
-    "site", ["usdf-k8s", "summit", "base", "local", "gha", "test"]
-)
+@pytest.mark.parametrize("site", ["usdf-k8s", "summit", "base", "local", "gha", "test"])
 def test_internal_site_names_pass_through(site: str) -> None:
     assert Settings(site=site).site == site
 
