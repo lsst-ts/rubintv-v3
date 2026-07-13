@@ -157,6 +157,39 @@ h1, h2 {
 }
 .env-strip .env-label { text-transform: uppercase; }
 
+/* Non-prod warning as a pill, centred in the topbar-strip on inner pages (the
+   full-width .env-strip above is used only on the Home hero, which has no
+   topbar). Same env colours as the strip so the signal is unchanged. Absolutely
+   centred so the breadcrumb and status cluster on either side don't shove it
+   off-centre. */
+.env-pill {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-family: var(--hand); font-size: 11px; font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  max-width: min(50%, 100%);
+}
+.env-pill.env-dev { background: var(--warn); }
+.env-pill.env-localhost { background: #c0392b; }
+.env-pill.env-ci,
+.env-pill.env-test { background: #556070; }
+.env-pill .env-tag {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  letter-spacing: 0.06em;
+}
+.env-pill .env-label {
+  text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
 /* ── Main column ───────────────────────────────────────────────────────── */
 .main { overflow: hidden; display: flex; flex-direction: column; position: relative; }
 /* No sidebar: the main column fills the app-root on its own. */
@@ -168,9 +201,11 @@ h1, h2 {
 }
 
 /* Utility strip across the top: breadcrumb (rooted at "home") on the left; the
-   scan/S3 status pills + the NavMenu drawer on the right. The brand lockup is
-   intentionally NOT repeated here — it lives only on the Home hero. */
+   non-prod env pill centred; the scan/S3 status pills + the NavMenu drawer on
+   the right. The brand lockup is intentionally NOT repeated here — it lives only
+   on the Home hero. position: relative anchors the absolutely-centred env pill. */
 .topbar-strip {
+  position: relative;
   display: flex; align-items: center; gap: 14px;
   min-height: 22px;
   padding: 7px 22px;
@@ -181,8 +216,11 @@ h1, h2 {
   margin-left: auto;
   display: flex; align-items: center; gap: 12px;
 }
+/* The two status pills (S3 connectivity + historical-scan) sit side by side,
+   centred on a shared midline so they line up horizontally despite any
+   difference in height. */
 .topbar-status {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
 }
 
 /* Title + tabs row below the strip. */
@@ -323,8 +361,13 @@ h1, h2 {
 
 /* ── Connection status pill ────────────────────────────────────────────── */
 .conn {
+  /* inline-flex + centred so every pill in this register (S3 alert, scan pill,
+     WS state) shares one vertical rhythm — the plain-text pills line up with the
+     scan pill whose spinner is taller than the text cap-height. */
+  display: inline-flex; align-items: center;
   font-family: var(--mono);
   font-size: 0.8rem;
+  line-height: 1;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
 }
@@ -367,7 +410,7 @@ h1, h2 {
 /* When the header pill links to the Status page: inherit the pill's own colour
    (no default link blue/underline) and just signal clickability. The wrapped
    .s3-alert / .s3-slow span keeps its red/amber styling. */
-.s3-status-link { text-decoration: none; color: inherit; cursor: pointer; }
+.s3-status-link { display: inline-flex; text-decoration: none; color: inherit; cursor: pointer; }
 .s3-status-link:hover .conn { text-decoration: underline; }
 
 .skeleton { color: var(--ink-soft); }

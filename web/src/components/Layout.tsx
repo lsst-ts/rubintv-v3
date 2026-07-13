@@ -156,20 +156,14 @@ export function Layout() {
 
   return (
     <div className="app-root">
-      {envLabel && (
-        <div className={`env-strip env-${env}`} role="status">
-          <span className="env-tag">{envTag}</span>
-          <span className="env-label">{envLabel}</span>
-        </div>
-      )}
       <div className="main main--full">
         {/* Without the tabs row the status pills would sit flush on the
             topbar's bottom border; pad the bottom in that case. */}
         <header className={"topbar" + (hasTabs ? "" : " no-tabs")}>
           {/* Utility strip: breadcrumb (rooted at a "home" link, never the brand, so
               "RubinTV" isn't repeated across the app — the big page title
-              carries the leaf) on the left; scan/S3 status + the NavMenu drawer
-              on the right. */}
+              carries the leaf) on the left; the non-prod env warning centred; and
+              scan/S3 status + the NavMenu drawer on the right. */}
           <div className="topbar-strip">
             <nav className="crumb breadcrumbs" aria-label="Breadcrumb">
               {/* "home" is never the current page here — Home has its own
@@ -212,6 +206,18 @@ export function Layout() {
                 </>
               )}
             </nav>
+
+            {/* Non-prod warning, centred in the strip. Absolutely centred so
+                it stays put regardless of how wide the breadcrumb or the
+                status/menu cluster grow. Keeps the env colour as a pill so the
+                "this isn't production" signal survives the move off the old
+                full-width bar. */}
+            {envLabel && (
+              <div className={`env-pill env-${env}`} role="status">
+                <span className="env-tag">{envTag}</span>
+                <span className="env-label">{envLabel}</span>
+              </div>
+            )}
 
             <div className="topbar-strip-right">
               <div className="topbar-status">
