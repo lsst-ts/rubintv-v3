@@ -256,26 +256,32 @@ h1, h2 {
 .breadcrumbs .here { color: var(--ink); font-weight: 600; }
 
 .title-row {
-  display: flex; align-items: baseline; gap: 14px; margin-top: 4px;
+  display: flex; align-items: center; gap: 14px; margin-top: 4px;
 }
 .title-row h2 { font-family: var(--display); font-weight: 700; font-size: 30px; margin: 0; }
 .title-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
 
 /* Processing-mode banner beside the LSSTCam title: "USDF Nightly Validation
    Processing" / "Summit Quicklook Processing". A solid muted chip so it reads
-   as an active-state label, not a passive caption. The title-row is
-   baseline-aligned, so nudge the chip's baseline down to sit optically level
-   with the big title instead of riding high on it. */
+   as an active-state label, not a passive caption. The title-row centres its
+   children, so the chip sits level with the big title with no baseline nudge.
+   The background is clipped to a right-leaning parallelogram — bottom-left and
+   top-right are the outermost corners — so extra side padding keeps the text
+   clear of the slanted edges (--skew is the horizontal offset of that slant). */
 .processing-banner {
-  align-self: baseline;
-  transform: translateY(-0.18em);
-  margin-left: 6px;
+  --skew: 12px;
   font-family: var(--display); font-size: 15px; font-weight: 600;
   letter-spacing: 0.01em;
-  padding: 8px 16px; border-radius: 8px;
+  padding: 8px calc(16px + var(--skew));
   background: #446538; color: #fff;
   white-space: nowrap;
-  box-shadow: var(--shadow-card);
+  /* No box-shadow/border-radius: clip-path would clip both away anyway. */
+  clip-path: polygon(
+    var(--skew) 0,
+    100% 0,
+    calc(100% - var(--skew)) 100%,
+    0 100%
+  );
 }
 /* Two muted hues at roughly equal brightness so the site reads at a glance
    without either shouting: Summit's live quicklook keeps the v2 olive-green;
