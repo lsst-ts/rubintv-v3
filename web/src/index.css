@@ -1802,7 +1802,14 @@ h1, h2 {
 /* Cross-card staleness cue: a live card whose latest seq trails the night's
    frontier (see STALE_SEQ_LAG) recedes so fresh cards read as current at a
    glance. The frame desaturates + dims; a quiet "−N" chip in the foot gives
-   the exact lag on inspection. Kept subtle so it informs without alarming. */
+   the exact lag on inspection. The border carries the indicative orange
+   (--warn, the same "behind/stale" tone as the camera dots and day-obs) so
+   the cue reads even on a card with no image. Kept subtle so it informs
+   without alarming. */
+.chc-card--stale { border-color: var(--warn); }
+/* Keep the stale orange on hover rather than swapping to the accent, so the
+   signal survives a pointer landing on the card. */
+.chc-card--stale:hover { border-color: var(--warn); }
 .chc-card--stale .chc-frame img,
 .chc-card--stale .chc-frame video {
   filter: saturate(0.45) opacity(0.62);
