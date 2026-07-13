@@ -7,22 +7,41 @@ import { STALE, cameraDataState } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
 
 // The camera-card thumbnail: the latest frame of the camera's primary channel
-// (CameraSummary.primary_image, resolved server-side), falling back to the ring
-// placeholder when there's no indexed frame or the image fails to load. Kept as
-// its own component so each card owns its load/error state.
+// (CameraSummary.primary_image, resolved server-side). Reuses the Channels
+// grid's image-loading logic (see ChannelBrowser's ChannelCard): the image
+// fades in once loaded rather than painting top-down, with a spinner overlay
+// meanwhile — keyed on src so a swap re-arms it and a cached image (img.complete
+// in the ref) clears without a flash. Falls back to the shared "no recent
+// frame" placeholder when there's no indexed frame or the image fails to load.
 function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
+  const [imgLoaded, setImgLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  if (offline)
-    return <span className="cam-thumb-empty">no recent data</span>;
-  if (!src || failed) return <span className="cam-thumb-ring" />;
+  const imgRef = (el: HTMLImageElement | null) => {
+    if (el?.complete) setImgLoaded(true);
+  };
+  if (offline || !src || failed)
+    return (
+      <div className="chc-empty">
+        {offline ? "no recent data" : "no recent frame"}
+      </div>
+    );
   return (
-    <img
-      className="cam-thumb-img"
-      src={src}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
+    <>
+      <img
+        ref={imgRef}
+        className={"cam-thumb-img" + (imgLoaded ? "" : " chc-img-loading")}
+        src={src}
+        alt=""
+        loading="lazy"
+        onLoad={() => setImgLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+      {!imgLoaded && (
+        <div className="chc-img-spinner" role="status" aria-label="Loading image">
+          <span className="chv-spinner" />
+        </div>
+      )}
+    </>
   );
 }
 

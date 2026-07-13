@@ -384,6 +384,7 @@ cameras:
         title: Current Movie
       - name: stills
         title: Current Image
+    primary_channel: stills
 
   - name: comcam
     title: ComCam

@@ -683,20 +683,14 @@ h1, h2 {
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
 }
-.cam-thumb-ring {
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 3px solid var(--accent-line); opacity: 0.7;
-}
 /* Primary-channel latest frame filling the card thumb. Covers the thatched
-   placeholder background so a camera with data reads as a live tile. */
+   placeholder background so a camera with data reads as a live tile. Shares
+   the Channels grid's fade-in-on-load treatment (see the .chc-img-loading /
+   .chc-img-spinner rules), so the two card grids load identically. */
 .cam-thumb-img {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   object-fit: cover; display: block;
-}
-.cam-thumb-empty {
-  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
-  letter-spacing: 0.04em;
 }
 .cam-card.off .cam-thumb {
   background:
@@ -1765,9 +1759,12 @@ h1, h2 {
 .chc-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* Loading feedback while a card image paints (shares the channel-view spinner
    keyframes/swatch). The card image fades in once loaded rather than streaming
-   in top-down. */
-.chc-frame img.chc-img-loading { opacity: 0; }
-.chc-frame img { transition: opacity 160ms ease; }
+   in top-down. The same treatment drives the location cards' primary-channel
+   thumbnails (.cam-thumb-img), so both grids load identically. */
+.chc-frame img.chc-img-loading,
+.cam-thumb-img.chc-img-loading { opacity: 0; }
+.chc-frame img,
+.cam-thumb-img { transition: opacity 160ms ease; }
 .chc-img-spinner {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
