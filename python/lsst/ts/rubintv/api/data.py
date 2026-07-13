@@ -54,6 +54,28 @@ def list_locations(models: Models = Depends(get_models)) -> list[LocationSummary
     ]
 
 
+def _primary_image_path(state: AppState, location: str, camera: Camera) -> str | None:
+    """Proxied media path for the latest frame of ``camera``'s primary channel.
+
+    Mirrors the proxy route and the frontend's ``mediaUrl`` (channel *name* in
+    the URL, seq zero-padded to 6, ``image.{ext}`` filename). Returned relative
+    to the API root — the client prefixes its base. ``None`` when the camera
+    has no primary channel or that channel has no still frame indexed.
+    """
+    if camera.primary_channel is None:
+        return None
+    latest = state.store.latest_channel_image(
+        location, camera.name, camera.primary_channel
+    )
+    if latest is None:
+        return None
+    date, seq, ext = latest
+    return (
+        f"/locations/{location}/cameras/{camera.name}/channels/"
+        f"{camera.primary_channel}/{date}/{seq:06d}/image.{ext}"
+    )
+
+
 @router.get("/locations/{location}", response_model=LocationOut)
 def get_location_detail(
     location: Location = Depends(get_location),
@@ -71,6 +93,7 @@ def get_location_detail(
                     text_colour=c.text_colour,
                     text_shadow=c.text_shadow,
                     latest_date=state.store.latest_date(location.name, c.name),
+                    primary_image=_primary_image_path(state, location.name, c),
                 )
                 for name in names
                 if (c := location.camera(name)) is not None

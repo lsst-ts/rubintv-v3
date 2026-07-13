@@ -1803,6 +1803,17 @@
               }
             ],
             "title": "Latest Date"
+          },
+          "primary_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Image"
           }
         },
         "type": "object",

@@ -39,6 +39,11 @@ class CameraSummary(BaseModel):
     """Most recent observing day with data (YYYY-MM-DD), or None if the camera
     has no data yet. The client compares it to the current day_obs to show a
     fresh/stale dot."""
+    primary_image: str | None = None
+    """Proxied media path for the latest frame of the camera's primary channel
+    (see ``Camera.primary_channel``), used as the card thumbnail. Relative to
+    the API root (``/api/...``), or None when the primary channel has no
+    still frame indexed yet."""
 
 
 class CameraGroupOut(BaseModel):

@@ -279,6 +279,31 @@ class EventStore:
                     latest[channel] = date
         return latest
 
+    def latest_channel_image(
+        self, location: str, camera: str, channel: str
+    ) -> tuple[str, int, str] | None:
+        """Newest per-seq frame for one channel, as ``(date, seq, ext)``.
+
+        Drives the camera-card thumbnail on location pages: the location
+        endpoint turns this into a proxied image URL for the camera's primary
+        channel. Walks dates newest-first and, on the first date where the
+        channel has an integer seq, returns that date's highest seq with its
+        file extension. Per-day artifacts (movies/stills, no comparable seq)
+        and word-sentinel seqs are skipped — a card thumbnail needs a concrete
+        still frame. ``None`` if the channel has no such frame anywhere.
+        """
+        dates = self._dates.get((location, camera), {})
+        for date in sorted(dates, reverse=True):
+            idx = dates[date]
+            seqs = [s for s in idx.channels.get(channel, ()) if isinstance(s, int)]
+            if not seqs:
+                continue
+            seq = max(seqs)
+            ext = idx.extensions.get(channel)
+            file_ext = (ext.for_seq(seq) if ext else None) or "png"
+            return date, seq, file_ext
+        return None
+
     def date_index(self, location: str, camera: str, date: str) -> DateIndex | None:
         """Return the index for one date, or ``None`` if absent."""
         return self._dates.get((location, camera), {}).get(date)

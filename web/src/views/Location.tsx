@@ -1,9 +1,30 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, cameraDataState } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
+
+// The camera-card thumbnail: the latest frame of the camera's primary channel
+// (CameraSummary.primary_image, resolved server-side), falling back to the ring
+// placeholder when there's no indexed frame or the image fails to load. Kept as
+// its own component so each card owns its load/error state.
+function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (offline)
+    return <span className="cam-thumb-empty">no recent data</span>;
+  if (!src || failed) return <span className="cam-thumb-ring" />;
+  return (
+    <img
+      className="cam-thumb-img"
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 const DOT_TITLE: Record<string, string> = {
   offline: "Offline — this camera is disabled in the configuration.",
@@ -54,11 +75,10 @@ export function Location() {
               const body = (
                 <>
                   <div className="cam-thumb">
-                    {offline ? (
-                      <span className="cam-thumb-empty">no recent data</span>
-                    ) : (
-                      <span className="cam-thumb-ring" />
-                    )}
+                    <CamThumb
+                      src={api.primaryImageUrl(cam.primary_image)}
+                      offline={offline}
+                    />
                   </div>
                   <div className="cam-card-body">
                     <span className="cam-card-name">{cam.title}</span>

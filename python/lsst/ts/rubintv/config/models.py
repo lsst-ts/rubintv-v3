@@ -75,6 +75,12 @@ class Camera(BaseModel):
     text_shadow: bool = False
     icon: str | None = None
     channels: list[Channel] = Field(default_factory=list)
+    primary_channel: str | None = None
+    """The channel that represents this camera at a glance — its latest image
+    is the camera's thumbnail on location pages. Defaults to the first channel
+    (see ``_default_primary_channel``); set explicitly in YAML to override when
+    the first channel isn't the most representative one. ``None`` only for a
+    camera with no channels at all."""
     metadata_columns: dict[str, str] = Field(default_factory=dict)
     """Column name -> human description, for the metadata table."""
     locked_columns: list[str] = Field(default_factory=list)
@@ -99,6 +105,21 @@ class Camera(BaseModel):
     time_since_clock: TimeSinceClock | None = None
     extra_buttons: list[ExtraButton] = Field(default_factory=list)
     mosaic_view_meta: list[MosaicViewEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _default_primary_channel(self) -> Camera:
+        """Default the primary channel to the first channel; validate an
+        explicit one exists. Runs after parsing so ``channels`` is
+        populated."""
+        if self.primary_channel is None:
+            if self.channels:
+                object.__setattr__(self, "primary_channel", self.channels[0].name)
+        elif self.channel(self.primary_channel) is None:
+            raise ValueError(
+                f"camera {self.name!r} primary_channel "
+                f"{self.primary_channel!r} is not one of its channels"
+            )
+        return self
 
     def channel(self, name: str) -> Channel | None:
         """Return the named channel, or ``None`` if this camera lacks it."""

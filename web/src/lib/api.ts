@@ -144,6 +144,13 @@ export const api = {
     `${BASE}/api/locations/${enc(loc)}/cameras/${enc(cam)}/channels/${enc(channel)}/` +
     `${enc(date)}/${enc(seq)}/${enc(filename)}`,
 
+  // Turn a server-supplied primary-image path (CameraSummary.primary_image,
+  // already `/locations/.../image.ext` relative to the API root) into a
+  // fetchable URL by prefixing the app base + `/api`. Null passes through so a
+  // camera with no indexed frame keeps its placeholder thumbnail.
+  primaryImageUrl: (path: string | null | undefined): string | null =>
+    path ? `${BASE}/api${path}` : null,
+
   // Build a proxied URL for a night-report plot. The plot key is fully known
   // ({camera}/{date}/night_report/{group}/{filename}), so the dedicated route
   // GETs it directly rather than resolving by prefix listing.

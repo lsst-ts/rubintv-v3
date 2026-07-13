@@ -697,6 +697,8 @@ export interface components {
             text_shadow: boolean;
             /** Latest Date */
             latest_date?: string | null;
+            /** Primary Image */
+            primary_image?: string | null;
         };
         /** ChannelOut */
         ChannelOut: {

@@ -687,6 +687,13 @@ h1, h2 {
   width: 34px; height: 34px; border-radius: 50%;
   border: 3px solid var(--accent-line); opacity: 0.7;
 }
+/* Primary-channel latest frame filling the card thumb. Covers the thatched
+   placeholder background so a camera with data reads as a live tile. */
+.cam-thumb-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
 .cam-thumb-empty {
   font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
   letter-spacing: 0.04em;
