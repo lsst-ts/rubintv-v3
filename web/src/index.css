@@ -336,18 +336,24 @@ h1, h2 {
    margin-left:auto), vertically centred against the big title. The stepper
    buttons need their own rule here because the shared .tb-btn styles are scoped
    to .cam-toolbar. */
+/* The date-picker cluster is enlarged for legibility but must not grow the
+   topbar: it's top-anchored (flex-start + a fixed top offset matching where it
+   sat when centred, ~4px), so the extra size extends downward into the slack
+   the 30px title already leaves in the row — the cluster's uppermost Y and the
+   row height are both unchanged. */
 .topbar-datepicker {
   margin-left: auto;
-  align-self: center;
+  align-self: flex-start;
+  margin-top: 4px;
   display: inline-flex; align-items: center; gap: 6px;
 }
 .topbar-datepicker .tb-btn.step {
   display: inline-flex; align-items: center;
-  padding: 6px 8px;
+  padding: 6px 9px;
   background: var(--paper);
   border: 1px solid var(--line-mid);
   border-radius: 6px;
-  font-family: var(--mono); font-size: 13px; line-height: 1;
+  font-family: var(--mono); font-size: 16px; line-height: 1;
   color: var(--ink);
   cursor: pointer;
 }
@@ -357,6 +363,16 @@ h1, h2 {
 .topbar-datepicker .tb-btn.step:disabled {
   opacity: 0.4; cursor: default;
   background: var(--paper); border-color: var(--line-mid);
+}
+/* Enlarge only the topbar date trigger (the shared .date-trigger base keeps its
+   size for the AllSky/table pickers). Bigger text + a larger calendar icon,
+   sized to stay within the title-row's slack so the topbar keeps its height. */
+.topbar-datepicker .date-trigger {
+  padding: 6px 12px;
+  font-size: 15px;
+}
+.topbar-datepicker .date-trigger .ui-icon {
+  width: 17px; height: 17px;
 }
 
 .app-content {
