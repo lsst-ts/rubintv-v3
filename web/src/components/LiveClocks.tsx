@@ -47,7 +47,7 @@ export function LiveClocks({ sinceLabel, lastImage }: Props) {
   const since = sinceLabel ? elapsed(now, lastMs) : null;
 
   return (
-    <span className="tag status-pill" role="status">
+    <span className="status-pill" role="status">
       <span className="clocks">
         <span className="clock-label">UTC</span>
         <span className="clock-time">{utcNow(now)}</span>

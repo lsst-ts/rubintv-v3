@@ -89,8 +89,12 @@ test("a multi-location deployment shows the grouped landing", async () => {
   }) as unknown as typeof fetch;
 
   const { router } = renderAt("/");
-  expect(await screen.findByText("Processing Locations")).toBeDefined();
-  expect(await screen.findByText("Test-stand Locations")).toBeDefined();
+  // The launcher groups the sites into "Choose a location" (processing) and
+  // "Test-stand locations", each a grid of location cards.
+  expect(await screen.findByText("Choose a location")).toBeDefined();
+  expect(await screen.findByText("Test-stand locations")).toBeDefined();
+  expect(await screen.findByText("Summit")).toBeDefined();
+  expect(await screen.findByText("Base")).toBeDefined();
   expect(router.state.location.pathname).toBe("/");
 });
 
@@ -1121,10 +1125,12 @@ test("historical All Sky date shows the final movie only, no stills", async () =
 
 test("home renders", async () => {
   renderAt("/");
-  // "RubinTV" also appears in the breadcrumb link; assert on the heading.
+  // The launcher home carries the brand as the Rubin mark (the one place it
+  // appears) plus the "RubinTV · live camera displays" tagline.
   expect(
-    await screen.findByRole("heading", { name: "RubinTV" }),
+    await screen.findByRole("img", { name: "Vera C. Rubin Observatory" }),
   ).toBeDefined();
+  expect(await screen.findByText("live camera displays")).toBeDefined();
 });
 
 test("home sets the browser tab title to the app name", async () => {

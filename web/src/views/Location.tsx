@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { logoButtonStyle } from "../lib/logoButton";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, cameraDataState } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
@@ -12,7 +11,23 @@ const DOT_TITLE: Record<string, string> = {
   stale: "Stale — no data yet for the current observing day; showing an earlier night.",
 };
 
-// Camera groups with cards and a fresh/stale/offline data indicator.
+// Freshness → the cam-card status label + modifier class.
+const STATUS_LABEL: Record<string, string> = {
+  fresh: "live",
+  stale: "stale",
+  offline: "offline",
+};
+const STATUS_CLASS: Record<string, string> = {
+  fresh: "on",
+  stale: "stale",
+  offline: "",
+};
+
+// Location landing: camera groups as a card grid, plus an Apps group for
+// Cluster status when the location advertises one. Each card carries a
+// placeholder latest-frame thumbnail and a fresh/stale/offline status; offline
+// cameras aren't navigable. Ported from the RubinTV Design System location view
+// (ui_kits/rubintv) — real title/freshness only, no camera photos.
 export function Location() {
   const { location = "" } = useParams();
   const { data, isPending, isError } = useQuery({
@@ -27,54 +42,67 @@ export function Location() {
 
   return (
     <section>
-      <h1>{data.title}</h1>
-      {data.has_cluster_status && (
-        <div className="camera-group">
-          <h2>Apps</h2>
-          <ul className="button-grid">
-            <li>
-              <Link
-                className="logo-button"
-                to="/detectors"
-                // The logo already has the title baked in, so hide the overlaid
-                // text (kept for screen readers / if the image fails to load).
-                style={logoButtonStyle({
-                  logo: "cluster-status.jpg",
-                  text_colour: "rgba(0,0,0,0)",
-                })}
-              >
-                <span className="logo-button-title">Cluster status</span>
-              </Link>
-            </li>
-          </ul>
-        </div>
-      )}
       {data.camera_groups.map((group) => (
-        <div key={group.label} className="camera-group">
-          <h2>{group.label}</h2>
-          <ul className="button-grid">
+        <div key={group.label} className="cam-group">
+          <div className="cam-group-h">{group.label}</div>
+          <div className="cam-grid">
             {group.cameras.map((cam) => {
               const state = cameraDataState(cam.online, cam.latest_date);
-              return (
-                <li key={cam.name}>
-                  <Link
-                    className={`logo-button ${state === "offline" ? "offline" : ""}`}
-                    to={`/${location}/${cam.name}`}
-                    style={logoButtonStyle(cam)}
-                  >
+              const offline = state === "offline";
+              const statusLabel = STATUS_LABEL[state] ?? "—";
+              const statusClass = STATUS_CLASS[state] ?? "";
+              const body = (
+                <>
+                  <div className="cam-thumb">
+                    {offline ? (
+                      <span className="cam-thumb-empty">no recent data</span>
+                    ) : (
+                      <span className="cam-thumb-ring" />
+                    )}
+                  </div>
+                  <div className="cam-card-body">
+                    <span className="cam-card-name">{cam.title}</span>
                     <span
-                      className={`logo-button-dot dot ${state}`}
+                      className={`cam-card-status ${statusClass}`}
                       title={DOT_TITLE[state]}
-                      aria-label={DOT_TITLE[state]}
-                    />
-                    <span className="logo-button-title">{cam.title}</span>
-                  </Link>
-                </li>
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+                </>
+              );
+              // Offline cameras aren't navigable (no live page yet).
+              return offline ? (
+                <div key={cam.name} className="cam-card off">
+                  {body}
+                </div>
+              ) : (
+                <Link
+                  key={cam.name}
+                  className="cam-card"
+                  to={`/${location}/${cam.name}`}
+                >
+                  {body}
+                </Link>
               );
             })}
-          </ul>
+          </div>
         </div>
       ))}
+
+      {data.has_cluster_status && (
+        <div className="cam-group">
+          <div className="cam-group-h">Apps</div>
+          <div className="cam-grid">
+            <Link className="cam-card cam-card--plain" to="/detectors">
+              <div className="cam-card-body">
+                <span className="cam-card-name">Cluster status</span>
+                <span className="cam-card-status on">live</span>
+              </div>
+            </Link>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -9,6 +9,7 @@ import {
   type FilterType,
 } from "../lib/filters";
 import { useDismiss } from "../lib/useDismiss";
+import { ChevronDownIcon } from "./Icons";
 
 // Highlight the matched substring of a column label.
 function highlight(label: string, q: string) {
@@ -189,7 +190,7 @@ export function FilterControl({
       >
         <span>filter</span>
         {filters.length > 0 && <span className="count">{filters.length}</span>}
-        <span className="caret">▾</span>
+        <ChevronDownIcon />
       </button>
 
       {open && (

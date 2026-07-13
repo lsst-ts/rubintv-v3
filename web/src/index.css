@@ -122,23 +122,15 @@ h1, h2 {
   50% { opacity: 0.5; transform: scale(0.8); }
 }
 
-/* ── App shell (collapsible sidebar + main column) ─────────────────────── */
-/* App root wraps the optional full-width environment strip above the shell.
-   The strip takes its natural height; the shell fills the rest of the
-   viewport. */
+/* ── App shell (single full-width main column) ─────────────────────────── */
+/* App root wraps the optional full-width environment strip above the main
+   column. The strip takes its natural height; the column fills the rest of
+   the viewport. The old collapsible sidebar is gone — wayfinding now lives in
+   the NavMenu drawer (see .navmenu below). */
 .app-root { height: 100vh; display: flex; flex-direction: column; }
 
-.shell {
-  height: 100vh;
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  transition: grid-template-columns 180ms ease;
-}
-/* Inside the app-root flex column the shell no longer owns the full viewport —
-   it flexes into whatever the env strip leaves. min-height:0 lets its
-   overflow:hidden children scroll instead of forcing the column taller. */
-.app-root .shell { height: auto; flex: 1; min-height: 0; }
-.shell.collapsed { grid-template-columns: 0 1fr; }
+/* The headerless embed shell (?headerless=true) is still a bare block. */
+.shell.headerless { display: block; }
 
 /* Full-width "this isn't production" strip across the top of the app. Amber
    for a deployed -dev instance, a louder red for a local dev server, so the
@@ -165,160 +157,39 @@ h1, h2 {
 }
 .env-strip .env-label { text-transform: uppercase; }
 
-.sidebar {
-  border-right: 1.5px solid var(--stroke);
-  background: var(--paper-2);
-  padding: 18px 14px;
-  overflow: hidden auto;
-  position: relative;
-  min-width: 0;
-  display: flex; flex-direction: column;
-}
-.shell.collapsed .sidebar { border-right: none; padding: 0; }
-.sidebar-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
-  margin-bottom: 4px;
-}
-.sidebar .brand-title { font-family: var(--display); font-weight: 700; font-size: 22px; margin: 0; }
-.sidebar .brand-mark {
-  width: auto; height: 22px;
-  display: block; margin-bottom: 4px;
-  color: var(--accent-bright);
-}
-.sidebar .site { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
-.sidebar .group-h {
-  font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
-  text-transform: uppercase; letter-spacing: 0.5px;
-  margin: 14px 6px 4px;
-}
-.sidebar .cam {
-  font-family: var(--hand); font-size: 13px;
-  padding: 5px 10px; margin-bottom: 2px;
-  border: 1.25px solid transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  color: inherit; text-decoration: none;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.sidebar .cam:hover { background: var(--paper-3); }
-.sidebar .cam.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.sidebar .cam.dim { color: var(--ink-soft); }
-.sidebar .cam .dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--good);
-}
-.sidebar .cam.dim .dot { background: var(--line-soft); }
-
-.sidebar .cam-pills {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin: 6px 6px 2px;
-}
-.sidebar .cam-pill {
-  font-family: var(--hand); font-size: 13px; line-height: 1;
-  padding: 6px 11px;
-  border: 1.25px solid var(--stroke); border-radius: 6px;
-  background: var(--paper); color: var(--ink);
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-  display: inline-flex; align-items: center; gap: 6px;
-}
-.sidebar .cam-pill:hover { background: var(--paper-3); }
-.sidebar .cam-pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.sidebar .cam-pill.dim {
-  color: var(--ink-soft); border-color: var(--line-soft);
-  cursor: default; opacity: 0.6;
-}
-.sidebar .cam-pill .pdot {
-  width: 5px; height: 5px; border-radius: 50%; background: var(--good);
-  flex-shrink: 0;
-}
-/* Amber when online but no data for the current observing day. Active/dim
-   pills override below (selected pill / offline camera). */
-.sidebar .cam-pill .pdot.stale { background: var(--warn); }
-.sidebar .cam-pill.active .pdot { background: var(--paper); }
-.sidebar .cam-pill.dim .pdot { background: var(--line-soft); }
-
-/* Sidebar footer — pinned to the bottom; home for the theme toggle. */
-.sidebar-foot {
-  margin-top: auto;
-  padding-top: 14px;
-  border-top: 1px solid var(--line-soft);
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.sidebar-foot .foot-label {
-  font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
-  text-transform: uppercase; letter-spacing: 0.08em;
-}
-
-.icon-btn {
-  width: 24px; height: 24px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1.25px solid var(--stroke);
-  border-radius: 4px;
-  background: var(--paper);
-  cursor: pointer;
-  font-family: var(--mono); font-size: 13px; line-height: 1;
-  color: var(--ink);
-  flex-shrink: 0;
-}
-.icon-btn:hover { background: var(--paper-3); }
-
 /* ── Main column ───────────────────────────────────────────────────────── */
 .main { overflow: hidden; display: flex; flex-direction: column; position: relative; }
+/* No sidebar: the main column fills the app-root on its own. */
+.app-root .main--full { flex: 1; min-height: 0; }
+
 .topbar {
-  padding: 12px 22px 0;
-  border-bottom: 1.5px solid var(--stroke);
   background: var(--paper);
   position: relative;
 }
-.shell.collapsed .topbar { padding-left: 56px; min-height: 116px; }
-/* No tabs row to fill the gap, so the status pills would otherwise sit flush
-   on the bottom border — give the topbar its own bottom padding. */
-.topbar.no-tabs { padding-bottom: 12px; }
 
-.sidebar-reopen {
-  width: 28px; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1.25px solid var(--stroke); border-radius: 4px;
+/* Utility strip across the top: breadcrumb (rooted at "home") on the left; the
+   scan/S3 status pills + the NavMenu drawer on the right. The brand lockup is
+   intentionally NOT repeated here — it lives only on the Home hero. */
+.topbar-strip {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 22px;
+  padding: 7px 22px;
   background: var(--paper-2);
-  cursor: pointer;
-  font-family: var(--mono); font-size: 14px; line-height: 1;
-  color: var(--ink);
+  border-bottom: 1px solid var(--line-soft);
 }
-.sidebar-reopen:hover { background: var(--paper-3); }
-
-.topbar-leftgutter {
-  position: absolute; top: 13px; left: 10px; z-index: 10;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-}
-
-/* Right-hand header stack: logo, brand row, then the status pills. A tighter
-   gap binds the logo to the brand; a wider one sets the status row apart. */
-.topbar-right {
-  display: flex; flex-direction: column; align-items: flex-end;
-  gap: 6px;
-}
-
-.topbar-logo {
-  height: 30px; width: auto; display: block;
-  color: var(--accent-bright);
-}
-
-.topbar-brand {
-  display: flex; flex-direction: row; align-items: center;
-  gap: 7px; line-height: 1;
-}
-
-.topbar-status {
+.topbar-strip-right {
+  margin-left: auto;
   display: flex; align-items: center; gap: 12px;
-  margin-top: 10px;
 }
-.topbar-brand .brand-mark { height: 13px; }
-.topbar-brand .brand { font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
-.topbar-brand .site {
-  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
-  padding-left: 7px; border-left: 1px solid var(--line-mid);
+.topbar-status {
+  display: flex; align-items: center; gap: 10px;
 }
+
+/* Title + tabs row below the strip. */
+.topbar-main { padding: 12px 22px 0; }
+/* No tabs row to fill the gap, so the title/date would otherwise sit flush on
+   the bottom border — give it its own bottom padding. */
+.topbar.no-tabs .topbar-main { padding-bottom: 12px; }
 
 /* Breadcrumbs */
 .crumb,
@@ -416,14 +287,15 @@ h1, h2 {
 .tabs .tab.active .count { background: var(--accent-soft); color: var(--accent); }
 
 /* The date picker + prev/next steppers, hoisted from the table toolbar into the
-   tabs row so the selected day persists across the Table / Channels tabs. It
-   sits to the left of the tabs, lifted off the row's bottom border so the
-   trigger chip isn't clipped. The stepper buttons need their own rule here
-   because the shared .tb-btn styles are scoped to .cam-toolbar. */
+   camera page's title row so the selected day persists across the Table /
+   Channels tabs. It sits at the far right of the title row (pushed by
+   margin-left:auto), vertically centred against the big title. The stepper
+   buttons need their own rule here because the shared .tb-btn styles are scoped
+   to .cam-toolbar. */
 .topbar-datepicker {
+  margin-left: auto;
   align-self: center;
-  margin-right: 14px;
-  margin-bottom: 6px;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .topbar-datepicker .tb-btn.step {
   display: inline-flex; align-items: center;
@@ -575,10 +447,9 @@ h1, h2 {
   margin: 0.25rem 0 1rem;
 }
 
-/* ── Small action buttons (share / copy / download) ────────────────────── */
-/* Toolbar action buttons (share link, download metadata) — framed like
-   .tb-btn, with a leading icon. */
-.share-link,
+/* ── Small action buttons (copy / download) ────────────────────────────── */
+/* Toolbar action buttons (download metadata) — framed like .tb-btn, with a
+   leading icon. */
 .download-metadata {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 10px;
@@ -590,7 +461,6 @@ h1, h2 {
   color: var(--ink);
   cursor: pointer;
 }
-.share-link:hover,
 .download-metadata:hover { background: var(--paper-3); border-color: var(--ink-soft); }
 .download-metadata:disabled { cursor: default; opacity: 0.5; }
 .download-metadata:disabled:hover { background: var(--paper); border-color: var(--line-mid); }
@@ -603,65 +473,175 @@ h1, h2 {
   cursor: pointer;
 }
 
-/* Grouped landing sections (Home's Processing/Apps/Test-stand groups and the
-   Location page's camera groups): space each heading + its button row apart. */
-.camera-group { margin-bottom: 1.75rem; }
-.camera-group h2 { margin-bottom: 0.75rem; }
+/* ── NavMenu: single hamburger button → drawer (wayfinding + appearance) ───
+   Replaces the app-shell sidebar. Rendered top-right on the Home hero and in
+   the topbar strip on every inner page. Ported from the RubinTV Design System
+   (ui_kits/rubintv/NavMenu.jsx). */
+.navmenu { position: relative; display: inline-flex; }
+.navmenu-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2); cursor: pointer; color: var(--ink-soft);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.navmenu-trigger:hover { background: var(--paper-3); color: var(--ink); border-color: var(--ink-soft); }
+.navmenu-glyph { display: block; color: var(--ink); }
+.navmenu-caret { flex: none; }
 
-/* ── Logo buttons (Home locations + location camera landing) ───────────────
-   Full-bleed photo buttons ported from the original RubinTV: the camera/
-   location logo fills the button as a background image (set inline via
-   logoButtonStyle) with the title overlaid at the bottom-left. A button with
-   no configured logo falls back to the themed paper background below. */
-.button-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.9rem;
-  list-style: none;
-  padding: 0;
+.navmenu-pop {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 210px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+  z-index: 40;
+  padding: 6px;
+  display: flex; flex-direction: column; gap: 1px;
 }
-.logo-button {
+.navmenu-sec {
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 9px 8px 3px;
+}
+.navmenu-link {
+  font-family: var(--hand); font-size: 13.5px; color: var(--ink);
+  text-decoration: none; padding: 6px 8px; border-radius: 5px; display: block;
+}
+.navmenu-link:hover { background: var(--paper-3); color: var(--accent); }
+.navmenu-appearance {
+  margin-top: 5px; padding: 9px 8px 3px;
+  border-top: 1px solid var(--line-soft);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.navmenu-appearance-label {
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+/* ── Home landing (the ONLY page that carries the brand) ────────────────── */
+.landing {
+  height: 100%;
+  overflow: auto;
+  background: var(--paper);
   position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  width: 160px;
-  height: 110px;
-  padding: 0.5rem 0.7rem;
-  border-radius: 12px;
-  background-color: var(--paper-2);
-  background-position: center;
-  background-repeat: no-repeat;
-  color: var(--ink);
-  text-decoration: none;
+}
+.landing-inner { max-width: 1080px; margin: 0 auto; padding: 44px 48px 72px; }
+/* The NavMenu drawer floats over the hero, top-right. */
+.home-toggle { position: absolute; top: 22px; right: 26px; z-index: 5; }
+.home-hero { margin-bottom: 2px; }
+/* The inline Rubin mark as the hero lockup — the one place the brand appears.
+   It follows the accent via currentColor, so it needs no dark-mode filter. */
+.brand-logo {
+  height: 104px; width: auto; display: block;
+  color: var(--accent-bright);
+}
+.home-tagline {
+  display: flex; align-items: center; gap: 11px;
+  font-family: var(--mono); font-size: 13px; color: var(--ink-soft);
+  margin-top: 14px; margin-bottom: 34px;
+}
+.home-tagline b {
+  font-family: var(--display); font-weight: 700; font-size: 16px;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+.home-tagline .sep { width: 1px; height: 14px; background: var(--line-mid); display: inline-block; }
+
+/* Section heads on the landing + location pages: uppercase mono-ish label. */
+.landing-h {
+  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin: 32px 0 14px;
+}
+.landing-inner .landing-h:first-of-type { margin-top: 6px; }
+
+/* Home location/app cards: text cards with the display face for names, mono for
+   ids, hairline + soft shadow lifting to the accent line on hover. */
+.loc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.loc-card {
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2); padding: 18px 18px 14px;
   box-shadow: var(--shadow-card);
-  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  display: flex; flex-direction: column; gap: 6px;
+  text-decoration: none; color: var(--ink);
 }
-.logo-button:hover {
-  transform: scale(0.99);
-  box-shadow: none;
+.loc-card:hover {
+  background: var(--paper-3); transform: translateY(-2px);
+  border-color: var(--accent-line); box-shadow: var(--shadow-pop);
 }
-.logo-button.offline {
-  opacity: 0.55;
+.loc-card-top { display: flex; align-items: center; justify-content: space-between; }
+.loc-name { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -0.012em; white-space: nowrap; }
+.loc-arrow { font-family: var(--mono); font-size: 18px; color: var(--ink-soft); }
+.loc-card:hover .loc-arrow { color: var(--accent); }
+.loc-label { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+/* Location page: camera groups as a card grid. */
+.cam-group { margin-bottom: 22px; }
+.cam-group-h {
+  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
 }
-.logo-button-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1.1;
-  /* Colour + text-shadow come from logoButtonStyle (per-camera config); this is
-     just the layout. */
+.cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.cam-card {
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper); padding: 0; overflow: hidden;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  display: flex; flex-direction: column;
+  text-decoration: none; color: var(--ink);
 }
-/* Freshness dot, pinned to the button's top-right corner so it reads over the
-   photo. A subtle outline keeps it visible on both light and dark logos. */
-.logo-button-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  margin: 0;
-  width: 0.6rem;
-  height: 0.6rem;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+.cam-card:hover:not(.off) {
+  transform: translateY(-2px);
+  border-color: var(--accent-line); box-shadow: var(--shadow-pop);
 }
+.cam-card.off { opacity: 0.55; cursor: not-allowed; }
+.cam-card.off:hover { transform: none; }
+.cam-card-body { padding: 11px 13px 12px; display: flex; flex-direction: column; gap: 6px; }
+.cam-card:hover:not(.off) .cam-card-body { background: var(--paper-2); }
+.cam-card--plain .cam-card-body { padding: 14px 14px 13px; }
+
+/* Latest-frame preview thumbnail — a plot-style placeholder standing in for
+   the camera's main-channel image. Diagonal hatch + soft vignette reads as an
+   image tile. */
+.cam-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--line-soft);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--ink) 3%, transparent) 10px 20px),
+    radial-gradient(circle at 50% 44%, var(--paper) 0 50%, var(--paper-3) 74%, var(--paper-2) 100%);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.cam-thumb-ring {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid var(--accent-line); opacity: 0.7;
+}
+.cam-thumb-empty {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.cam-card.off .cam-thumb {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--ink) 4%, transparent) 10px 20px),
+    var(--paper-2);
+}
+.cam-card-name { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.cam-card-status {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft);
+}
+.cam-card-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--line-soft); }
+.cam-card-status.on { color: var(--good); }
+.cam-card-status.on::before { background: var(--accent-bright); }
+.cam-card-status.stale { color: var(--warn); }
+.cam-card-status.stale::before { background: var(--warn); }
+
 .dot {
   display: inline-block;
   width: 0.5rem;
@@ -741,7 +721,7 @@ h1, h2 {
 .cam-toolbar .tb-btn .ui-icon.chevron { margin-left: 1px; }
 
 /* Date picker: a trigger button + a two-month calendar popover. */
-/* Header clocks (UTC + time-since-last). */
+/* Header clocks (UTC + time-since-last) — borderless, just the readouts. */
 .status-pill {
   display: inline-flex; align-items: center;
   padding: 4px 12px 5px;
@@ -749,20 +729,20 @@ h1, h2 {
 .status-pill .clocks {
   display: grid;
   grid-template-columns: auto auto;
-  column-gap: 8px;
-  row-gap: 1px;
+  column-gap: 10px;
+  row-gap: 2px;
   align-items: baseline;
 }
 .status-pill .clock-label {
   font-family: var(--hand);
-  font-size: 10px; color: var(--ink-soft);
+  font-size: 12px; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: 0.5px;
   text-align: right; line-height: 1.1;
 }
 .status-pill .clock-time {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-size: 12px; color: var(--ink);
+  font-size: 16px; color: var(--ink);
   font-weight: 600; line-height: 1.1; letter-spacing: 0.1px;
 }
 
@@ -807,7 +787,7 @@ h1, h2 {
 
 .date-pop {
   position: absolute;
-  top: calc(100% + 6px); left: 0;
+  top: calc(100% + 6px); right: 0;
   width: max-content; max-width: calc(100vw - 24px);
   background: var(--paper);
   border: 1.5px solid var(--stroke);
@@ -999,24 +979,29 @@ h1, h2 {
 .dh-legend .dh-day { cursor: default; }
 .dh-hint { margin-left: auto; font-style: italic; }
 
-/* Density segmented control. */
-.density-seg {
-  display: inline-flex; gap: 2px; padding: 2px;
-  border: 1px solid var(--line-mid); border-radius: 8px;
-  background: var(--paper-2);
+/* Row-density picker: a toolbar button opening a small option popover. */
+.density-cluster { position: relative; display: inline-flex; }
+.density-pop {
+  position: absolute;
+  top: calc(100% + 6px); right: 0;
+  min-width: 130px;
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  display: flex; flex-direction: column;
+  padding: 4px;
 }
-.density-seg button {
+.density-pop button {
   border: none; background: transparent;
-  font-family: var(--hand); font-size: 12px;
-  color: var(--ink-soft);
-  padding: 4px 10px; border-radius: 6px;
+  font-family: var(--hand); font-size: 13px;
+  color: var(--ink); text-align: left;
+  padding: 6px 10px; border-radius: 4px;
   cursor: pointer;
 }
-.density-seg button.active {
-  background: var(--paper); color: var(--accent);
-  box-shadow: var(--shadow-card);
-}
-[data-theme="dark"] .density-seg button.active { background: var(--paper-3); }
+.density-pop button:hover { background: var(--paper-3); }
+.density-pop button.active { color: var(--accent); font-weight: 600; }
 
 /* Column-picker popover. */
 .cols-cluster { position: relative; display: inline-flex; }
@@ -1122,8 +1107,6 @@ h1, h2 {
   padding: 1px 5px; border-radius: 10px;
   background: var(--accent); color: var(--paper);
 }
-.filter-btn .caret { font-size: 9px; margin-left: 1px; color: var(--ink-soft); }
-
 /* Add-filter popover. */
 .filter-pop {
   position: absolute;

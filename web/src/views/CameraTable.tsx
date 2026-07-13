@@ -10,7 +10,6 @@ import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
 import { isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
-import { ShareLink } from "../components/ShareLink";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { FilterControl, FilterBar } from "../components/FilterControl";
@@ -149,6 +148,11 @@ export function CameraTable() {
   // Dismiss the column picker on an outside click or Escape.
   const colsRef = useRef<HTMLDivElement | null>(null);
   useDismiss(colsOpen, colsRef, () => setColsOpen(false));
+
+  // The density picker popover, dismissed like the column picker.
+  const [densityOpen, setDensityOpen] = useState(false);
+  const densityRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(densityOpen, densityRef, () => setDensityOpen(false));
 
   // Per-row action links/buttons, driven by per-camera config. Each is shown
   // only when its template is configured. {dev} and {siteLoc} are fixed for the
@@ -331,14 +335,12 @@ export function CameraTable() {
 
   return (
     <section className="cam-table">
-      {/* Toolbar: share, columns, filter, download · density, night report.
+      {/* Toolbar: columns, filter, download · clocks, density, night report.
           The date picker + prev/next steppers now live in the shell topbar
           (see Layout), so the selected date persists across the Table /
           Channels / single-channel tabs rather than resetting to the newest
           day on every tab switch. */}
       <div className="cam-toolbar">
-        <ShareLink date={date || undefined} />
-
         <div className="cols-cluster" ref={colsRef}>
           <button
             type="button"
@@ -445,18 +447,36 @@ export function CameraTable() {
 
         <LiveClocks sinceLabel={sinceLabel} lastImage={lastImageTime} />
 
-        <div className="density-seg" role="group" aria-label="Row density">
-          {(["compact", "regular"] as Density[]).map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={density === d ? "active" : ""}
-              aria-pressed={density === d}
-              onClick={() => pickDensity(d)}
-            >
-              {d}
-            </button>
-          ))}
+        <div className="density-cluster" ref={densityRef}>
+          <button
+            type="button"
+            className="tb-btn"
+            aria-expanded={densityOpen}
+            title="Row density"
+            onClick={() => setDensityOpen((o) => !o)}
+          >
+            <span>Density</span>
+            <ChevronDownIcon />
+          </button>
+          {densityOpen && (
+            <div className="density-pop" role="menu" aria-label="Row density">
+              {(["compact", "regular"] as Density[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={density === d}
+                  className={density === d ? "active" : ""}
+                  onClick={() => {
+                    pickDensity(d);
+                    setDensityOpen(false);
+                  }}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {payload?.has_night_report && (
