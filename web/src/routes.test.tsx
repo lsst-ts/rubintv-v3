@@ -239,11 +239,12 @@ test("channel /current route follows the newest exposure", async () => {
   );
   // Live badge present; no "jump to current" link in live mode.
   expect(screen.getByText("LIVE")).toBeDefined();
+  expect(screen.queryByRole("link", { name: "Jump to current" })).toBeNull();
   // Back arrow steps to the older seq (251); there is no newer arrow at the
   // latest exposure, so it never links to the image on screen.
-  const back = screen.getByRole("link", { name: /← 251/ });
+  const back = screen.getByRole("link", { name: /Previous \(251\)/ });
   expect(back.getAttribute("href")).toContain("seq=251");
-  expect(screen.queryByRole("link", { name: /→/ })).toBeNull();
+  expect(screen.queryByRole("link", { name: /^Next/ })).toBeNull();
   // The image viewer link no longer lives in the channel sidebar — it moved to
   // the camera table as a per-row link (covered separately below).
   expect(
@@ -524,14 +525,15 @@ test("single-channel sidebar colours values, strips objects, and offers a downlo
   // The "_Filter" indicator and the object value are not rendered as rows.
   expect(screen.queryByText("_Filter")).toBeNull();
   expect(screen.queryByText("Detail")).toBeNull();
-  // A download link points at the image with a sensible filename.
-  const download = screen.getByRole("link", { name: /Download/ });
-  expect(download.getAttribute("href")).toContain(
+  // The "open image in new tab" link points at the image and opens in a new tab.
+  const openImage = screen.getByRole("link", {
+    name: "Open image in new tab",
+  });
+  expect(openImage.getAttribute("href")).toContain(
     "/channels/monitor/2026-04-10/000007/image.png",
   );
-  expect(download.getAttribute("download")).toBe(
-    "auxtel_monitor_2026-04-10_000007.png",
-  );
+  expect(openImage.getAttribute("target")).toBe("_blank");
+  expect(openImage.getAttribute("download")).toBeNull();
 });
 
 test("single-channel metadata folds away and remembers its state globally", async () => {

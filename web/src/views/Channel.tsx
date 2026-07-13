@@ -9,7 +9,13 @@ import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { cellFlagClass } from "../lib/metaCells";
 import { usePersistentToggle } from "../lib/usePersistentToggle";
-import { DownloadIcon, ChevronDownIcon } from "../components/Icons";
+import {
+  ViewerIcon,
+  JumpToCurrentIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ChevronDownIcon,
+} from "../components/Icons";
 
 // Single-channel image/video view with prev/next seq navigation and a
 // metadata sidebar. Subscribes to the camera topic for live updates.
@@ -312,41 +318,56 @@ export function Channel({ live = false }: { live?: boolean }) {
         <h3>
           {cameraInfo?.title ?? camera} / {channel}
         </h3>
-        {live ? (
+        {live && (
           <span className="tag live live-badge" role="status">
             LIVE
           </span>
-        ) : (
-          <Link
-            className="live-link"
-            to={`/${location}/${camera}/${channel}/current`}
-          >
-            Jump to current
-          </Link>
         )}
         {src && !isVideo && (
           <a
-            className="chv-download"
+            className="chv-iconlink"
             href={src}
-            download={`${camera}_${channel}_${date}_${String(seq).padStart(
-              6,
-              "0",
-            )}.${fileExtFor(seq)}`}
-            title="Download this image"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open image in new tab"
+            aria-label="Open image in new tab"
           >
-            <DownloadIcon />
-            <span>Download</span>
+            <ViewerIcon />
           </a>
         )}
         <span style={{ flex: 1 }} />
         <nav className="seq-nav">
           {prev !== null ? (
-            <Link to={navTo(prev)}>← {prev}</Link>
+            <Link className="seq-arrow" to={navTo(prev)} aria-label={`Previous (${prev})`}>
+              <ArrowLeftIcon />
+              {prev}
+            </Link>
           ) : (
-            <span>←</span>
+            <span className="seq-arrow seq-arrow-off" aria-hidden="true">
+              <ArrowLeftIcon />
+            </span>
           )}
           <span className="seq-current">{seq}</span>
-          {next !== null ? <Link to={navTo(next)}>{next} →</Link> : <span>→</span>}
+          {next !== null ? (
+            <Link className="seq-arrow" to={navTo(next)} aria-label={`Next (${next})`}>
+              {next}
+              <ArrowRightIcon />
+            </Link>
+          ) : (
+            <span className="seq-arrow seq-arrow-off" aria-hidden="true">
+              <ArrowRightIcon />
+            </span>
+          )}
+          {!live && (
+            <Link
+              className="seq-arrow seq-jump"
+              to={`/${location}/${camera}/${channel}/current`}
+              title="Jump to current"
+              aria-label="Jump to current"
+            >
+              <JumpToCurrentIcon />
+            </Link>
+          )}
         </nav>
       </header>
 

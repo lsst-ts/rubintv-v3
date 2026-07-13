@@ -14,6 +14,7 @@ replaced. Range requests are passed through for video scrubbing.
 
 from __future__ import annotations
 
+import mimetypes
 from typing import TYPE_CHECKING, TypedDict
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -151,6 +152,24 @@ def proxy_night_report_plot(
     return _stream_object(result, filename, range_header is not None)
 
 
+def _media_type_for(obj: GetObjectResult, download_name: str) -> str:
+    """Pick the response content type.
+
+    S3 objects are often stored with a generic ``application/octet-stream``
+    ContentType (the uploader didn't set one), which makes browsers *download*
+    an image rather than render it inline. Prefer a type guessed from the
+    filename extension so images/videos open in a new tab; fall back to S3's
+    stored type only when the extension is unknown.
+    """
+    guessed, _ = mimetypes.guess_type(download_name)
+    stored = obj.get("ContentType", "")
+    # S3/moto report an unset type as "application/octet-stream" or
+    # "binary/octet-stream"; both make browsers download rather than render.
+    if stored and not stored.endswith("octet-stream"):
+        return stored
+    return guessed or stored or "application/octet-stream"
+
+
 def _stream_object(
     obj: GetObjectResult, download_name: str, is_range: bool
 ) -> StreamingResponse:
@@ -171,7 +190,7 @@ def _stream_object(
     return StreamingResponse(
         obj["Body"].iter_chunks(),
         status_code=status_code,
-        media_type=obj.get("ContentType", "application/octet-stream"),
+        media_type=_media_type_for(obj, download_name),
         headers=headers,
     )
 

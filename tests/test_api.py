@@ -412,6 +412,11 @@ def test_proxy_streams_object(seeded_client: TestClient) -> None:
         resp.headers["Content-Disposition"]
         == f'inline; filename="lsstcam_witness_detector_{DATE}_000001.png"'
     )
+    # The seeded object has no stored ContentType (moto defaults it to a
+    # generic octet-stream), which would make a browser download rather than
+    # render it. The proxy guesses image/png from the .png name so it opens
+    # inline.
+    assert resp.headers["Content-Type"] == "image/png"
 
 
 def test_proxy_fast_path_skips_listing(

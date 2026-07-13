@@ -48,6 +48,33 @@ export function ChevronDownIcon() {
   );
 }
 
+// Seq nav — previous exposure (chevron pointing left).
+export function ArrowLeftIcon() {
+  return (
+    <svg {...base}>
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
+  );
+}
+
+// Seq nav — next exposure (chevron pointing right).
+export function ArrowRightIcon() {
+  return (
+    <svg {...base}>
+      <path d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+// Jump to current — right arrow into a bar (media "seek to latest").
+export function JumpToCurrentIcon() {
+  return (
+    <svg {...base}>
+      <path d="M5 12h11M11 6l6 6-6 6M20 5v14" />
+    </svg>
+  );
+}
+
 // Image viewer — an external-link "open image" glyph.
 export function ViewerIcon() {
   return (

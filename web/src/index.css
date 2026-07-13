@@ -1853,35 +1853,37 @@ a.chv-chan:hover { filter: brightness(1.08); }
 .metadata-sidebar { grid-area: sidebar; }
 .seq-nav {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: center;
   font-family: var(--mono);
   font-size: 12px;
 }
-.seq-nav a {
+.seq-arrow {
+  display: inline-flex; align-items: center; gap: 3px;
   color: var(--accent);
   text-decoration: none;
+  border-radius: 6px;
+  padding: 2px 5px;
 }
-.seq-nav a:hover { text-decoration: underline; }
+a.seq-arrow:hover { background: var(--line-soft); }
+.seq-arrow svg { width: 15px; height: 15px; }
+.seq-arrow-off { color: var(--ink-soft); opacity: 0.4; }
+/* Jump-to-current sits a touch apart from the prev/next pair. */
+.seq-jump { margin-left: 0.25rem; }
 .seq-current { font-weight: 700; color: var(--ink); }
 .live-badge { letter-spacing: 0.04em; }
-.live-link {
-  font-weight: 600;
-  font-family: var(--hand);
-  color: var(--accent);
-  text-decoration: none;
-}
-.live-link:hover { text-decoration: underline; }
 
-/* Download-image link in the single-channel head, next to the live indicator. */
-.chv-download {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-family: var(--hand); font-weight: 600; font-size: 12px;
+/* Icon-only action links in the single-channel head (jump-to-current,
+   open-in-new-tab), next to the live indicator. */
+.chv-iconlink {
+  display: inline-flex; align-items: center; justify-content: center;
   color: var(--accent);
   text-decoration: none;
+  border-radius: 6px;
+  padding: 3px;
 }
-.chv-download:hover { text-decoration: underline; }
-.chv-download svg { width: 15px; height: 15px; }
+.chv-iconlink:hover { background: var(--line-soft); }
+.chv-iconlink svg { width: 16px; height: 16px; }
 
 /* ── All Sky feed ──────────────────────────────────────────────────────── */
 .allsky-wrap {
