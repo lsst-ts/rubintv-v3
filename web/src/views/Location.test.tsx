@@ -37,15 +37,21 @@ function locationPayload() {
   };
 }
 
-beforeEach(() => {
+// Point the location endpoint at a custom camera list (defaults to the two
+// image-loading cameras above).
+function stubLocation(cameras?: unknown[]) {
+  const payload = locationPayload();
+  if (cameras) payload.camera_groups[0].cameras = cameras as never;
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     const body = url.endsWith("/api/locations/local")
-      ? locationPayload()
+      ? payload
       : { camera_groups: [] };
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
-});
+}
+
+beforeEach(() => stubLocation());
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -79,4 +85,38 @@ test("a camera with no primary image shows the placeholder, not a broken image",
   const imgs = screen.getAllByAltText("");
   // Only lsstcam (with an image) contributes an <img>; auxtel does not.
   await waitFor(() => expect(imgs.length).toBe(1));
+});
+
+test("distinguishes a stale camera from one that has never had data", async () => {
+  stubLocation([
+    // A fixed past date is reliably before the current observing day → stale.
+    {
+      name: "cam_stale",
+      title: "Stale Cam",
+      online: true,
+      latest_date: "2020-01-01",
+      primary_image: null,
+    },
+    // No data ever → nodata.
+    {
+      name: "cam_nodata",
+      title: "Nodata Cam",
+      online: true,
+      latest_date: null,
+      primary_image: null,
+    },
+  ]);
+  renderAt("/local");
+
+  // The two states read differently: "stale" vs "no data".
+  const stale = await screen.findByText("stale");
+  const nodata = await screen.findByText("no data");
+  // Stale carries the amber modifier; nodata falls through to the neutral dot.
+  expect(stale.className).toContain("stale");
+  expect(nodata.className).not.toContain("stale");
+
+  // Both remain navigable (only config-offline cameras aren't) — each card is
+  // a link to its camera.
+  expect(screen.getByRole("link", { name: /Stale Cam/ })).toBeDefined();
+  expect(screen.getByRole("link", { name: /Nodata Cam/ })).toBeDefined();
 });

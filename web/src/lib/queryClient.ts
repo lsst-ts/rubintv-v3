@@ -26,12 +26,18 @@ export function currentDayObs(now: Date = new Date()): string {
  * Freshness of a camera, for the location/sidebar status dot:
  *   - "offline" — the camera is disabled in config (online === false).
  *   - "fresh"   — online and has data for the current observing day.
- *   - "stale"   — online but its newest data is from an earlier day (or none).
+ *   - "stale"   — online, has data, but its newest is from an earlier day.
+ *   - "nodata"  — online but has never had any data (latest_date is null).
+ *
+ * "stale" and "nodata" are kept distinct: a stale camera has fallen behind
+ * but has history to show, whereas a nodata camera has nothing at all. The
+ * API already tells them apart — `latest_date` is a concrete YYYY-MM-DD for
+ * the former and null for the latter.
  *
  * `latestDate` is the camera's most recent day with data (YYYY-MM-DD) from the
  * location payload, or null/undefined when it has none.
  */
-export type CameraDataState = "offline" | "fresh" | "stale";
+export type CameraDataState = "offline" | "fresh" | "stale" | "nodata";
 
 export function cameraDataState(
   online: boolean,
@@ -39,6 +45,7 @@ export function cameraDataState(
   now: Date = new Date(),
 ): CameraDataState {
   if (!online) return "offline";
+  if (!latestDate) return "nodata";
   return latestDate === currentDayObs(now) ? "fresh" : "stale";
 }
 

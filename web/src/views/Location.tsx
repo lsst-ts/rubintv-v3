@@ -49,18 +49,24 @@ const DOT_TITLE: Record<string, string> = {
   offline: "Offline — this camera is disabled in the configuration.",
   fresh: "Live — this camera has data for the current observing day.",
   stale: "Stale — no data yet for the current observing day; showing an earlier night.",
+  nodata: "No data — this camera has never produced any data.",
 };
 
-// Freshness → the cam-card status label + modifier class.
+// Freshness → the cam-card status label + modifier class. "nodata" (a camera
+// that has never produced anything) maps to an empty class so it falls through
+// to the neutral grey dot, keeping it visually distinct from the amber "stale"
+// (a camera with history that's merely behind).
 const STATUS_LABEL: Record<string, string> = {
   fresh: "live",
   stale: "stale",
   offline: "offline",
+  nodata: "no data",
 };
 const STATUS_CLASS: Record<string, string> = {
   fresh: "on",
   stale: "stale",
   offline: "",
+  nodata: "",
 };
 
 // Location landing: camera groups as a card grid, plus an Apps group for
