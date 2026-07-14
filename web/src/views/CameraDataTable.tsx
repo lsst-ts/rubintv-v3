@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import type { DatePayload, Metadata } from "../lib/types";
@@ -318,6 +318,22 @@ function CameraDataTableInner({
     density,
   ]);
 
+  // Vertical-stripe parity by metadata-column order: every other metadata
+  // column (the 2nd, 4th, …) is tinted via a striped <col> in the colgroup.
+  // Parity is counted among metadata columns only — NOT with CSS :nth-child,
+  // which would count from the variable-count structural columns (seq + channel
+  // chips + action links) ahead of the metadata block and misalign per camera.
+  const metaAltKeys = useMemo(() => {
+    const alt = new Set<string>();
+    let i = 0;
+    for (const c of columns) {
+      if (!c.key.startsWith("meta:")) continue;
+      if (i % 2 === 1) alt.add(c.key);
+      i++;
+    }
+    return alt;
+  }, [columns]);
+
   // The currently open object-cell modal (foldout), or null when none. Holds
   // the dialog header and the object/array to display.
   const [modal, setModal] = useState<{
@@ -454,7 +470,11 @@ function CameraDataTableInner({
       >
         <colgroup>
           {columns.map((c) => (
-            <col key={c.key} style={{ width: widthFor(c.key, density) }} />
+            <col
+              key={c.key}
+              className={metaAltKeys.has(c.key) ? "col-stripe" : undefined}
+              style={{ width: widthFor(c.key, density) }}
+            />
           ))}
         </colgroup>
         <thead ref={headRef}>

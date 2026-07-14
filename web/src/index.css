@@ -19,6 +19,10 @@
   --paper: #ffffff;
   --paper-2: #f5f8f9;
   --paper-3: #ebeff1;
+  /* Vertical stripe for alternate metadata columns — a hair off --paper so it
+     reads as a faint band, not a colour. Kept its own token so tuning it never
+     disturbs --paper-2 (headers, sticky seq column). */
+  --col-stripe: #f7fafb;
 
   --accent: #0a8d93;          /* readable teal — links, focus, selection */
   --accent-bright: #00bbc6;   /* constellation cyan — live, bars, dots */
@@ -50,6 +54,9 @@
   --paper: #14181b;
   --paper-2: #1a2024;
   --paper-3: #232b30;
+  /* Slightly lighter than --paper; the faint lift reads as a band on the dark
+     table without lifting to the --paper-2 header tone. */
+  --col-stripe: #191e22;
 
   --accent: #2cc6cd;
   --accent-bright: #19d3da;
@@ -1489,6 +1496,19 @@ h1, h2 {
   .copy-row.action-link.copied .ui-icon,
   .copy-row.action-link.copied .ui-icon path { animation: none; }
   .copy-row.action-link.copied .ui-icon path { stroke-dashoffset: 0; }
+}
+
+/* Vertical striping for the metadata columns. A very subtle tint on alternate
+   metadata columns to keep long rows readable, especially in compact density.
+   Painted on the <col> (colgroup) rather than the cells: under
+   border-collapse a column background sits UNDER the cell backgrounds, so the
+   structural columns stay plain (no .col-stripe <col>), a special "_<col>" flag
+   cell paints its own colour over the stripe for free, and the newest-row
+   accent-soft cells likewise win — no per-cell class or :not() guard needed.
+   Only alternate METADATA <col>s carry .col-stripe (see metaAltKeys), so the
+   stripe never counts from the variable-width structural columns. */
+.data-table col.col-stripe {
+  background: var(--col-stripe);
 }
 
 /* Newest-row highlight (top row). */
