@@ -309,18 +309,31 @@ export function Channel({ live = false }: { live?: boolean }) {
       : null;
 
   // Arrow-key navigation. Plain arrows step the seq back/forward; shift-arrows
-  // step through the other channels available for this seq.
+  // step through the other channels available for this seq. We preventDefault
+  // on any arrow we actually act on — Shift+Arrow is the browser's
+  // extend-selection shortcut, so without this stepping channels would drag a
+  // text selection across the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.shiftKey) {
-        if (e.key === "ArrowLeft" && prevChan !== null)
+        if (e.key === "ArrowLeft" && prevChan !== null) {
+          e.preventDefault();
           navigate(chanNavTo(prevChan));
-        if (e.key === "ArrowRight" && nextChan !== null)
+        }
+        if (e.key === "ArrowRight" && nextChan !== null) {
+          e.preventDefault();
           navigate(chanNavTo(nextChan));
+        }
         return;
       }
-      if (e.key === "ArrowLeft" && prev !== null) navigate(navTo(prev));
-      if (e.key === "ArrowRight" && next !== null) navigate(navTo(next));
+      if (e.key === "ArrowLeft" && prev !== null) {
+        e.preventDefault();
+        navigate(navTo(prev));
+      }
+      if (e.key === "ArrowRight" && next !== null) {
+        e.preventDefault();
+        navigate(navTo(next));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
