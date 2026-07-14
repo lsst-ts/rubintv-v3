@@ -1235,3 +1235,41 @@ test("clicking the Channels tab records the preference for the next camera", asy
   expect(localStorage.getItem("rubintv.cameraTab")).toBe("channels");
   localStorage.removeItem("rubintv.cameraTab");
 });
+
+test("stepping the date from Channels stores Table as the wanted tab", async () => {
+  // A date action (here the prev-day stepper) is inherently a Table action, so
+  // it flips the remembered tab to Table and takes the user to that date's
+  // Table — the next camera then opens on its Table too. Two dates so the
+  // stepper is enabled.
+  localStorage.setItem("rubintv.cameraTab", "channels");
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/lsstcam\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10", "2026-04-08"] };
+    } else if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { router } = renderAt("/local/lsstcam/channels?date=2026-04-10");
+  const prev = await screen.findByRole("button", {
+    name: /Previous day with data/,
+  });
+  await waitFor(() => expect((prev as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(prev);
+
+  // Navigated to that date's Table, and Table is now the stored preference.
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/lsstcam"),
+  );
+  expect(localStorage.getItem("rubintv.cameraTab")).toBe("table");
+  localStorage.removeItem("rubintv.cameraTab");
+});

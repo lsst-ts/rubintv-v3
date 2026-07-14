@@ -89,7 +89,13 @@ export function Layout() {
   // Channels/single-channel view — where a historical date has no meaning (the
   // grid always shows the newest frame per channel) — picking a date takes the
   // user to that date's Table, which is where the date applies.
+  //
+  // Picking a date (via the picker or the prev/next-day steppers, which both
+  // call this) is an inherently Table action, so remember Table as the wanted
+  // tab: the next camera the user opens then lands on its Table too, matching
+  // where this date actually applies.
   const applyDate = (d: string) => {
+    setCameraTabPref("table");
     if (nav.activeTab === "table") {
       setParams(
         (prev) => {
