@@ -116,8 +116,15 @@ export function CameraTable() {
     [streamedMeta, restMeta],
   );
 
+  // Guard `channels` like the rest of the shell (useShellNav, columns): the
+  // OpenAPI type says it's always an array, but a fetch stub or a backend
+  // mid-deploy can return a camera object without it, and a bare `.filter`
+  // would crash the whole view rather than degrade to "no channels".
   const liveChannels = useMemo(
-    () => cameraInfo?.channels.filter((c) => !c.per_day) ?? [],
+    () =>
+      (Array.isArray(cameraInfo?.channels) ? cameraInfo.channels : []).filter(
+        (c) => !c.per_day,
+      ),
     [cameraInfo],
   );
   const channelColour = useMemo(() => {
