@@ -56,26 +56,26 @@ export function Status() {
   const remaining = cameras.filter((c) => !c.full_complete).length;
 
   return (
-    <section>
+    <section className="scan-status">
       <h1>Scan status</h1>
-      {/* Live connection health. The WebSocket pill always shows the tab's
-          browser↔app-server link; the S3 pill only appears when the server's
-          bucket link is slow or unreachable (it stays quiet when healthy). */}
+      {/* One meta row for connection health: the WebSocket pill always shows
+          the tab's browser↔app-server link; the S3 pill only appears when the
+          server's bucket link is slow or unreachable (quiet when healthy);
+          the last poll latency rides alongside even when healthy so a link
+          degrading toward the slow threshold is visible before it crosses it
+          (amber once flagged slow; hidden until a first cycle completes). */}
       <div className="status-connections">
         <ConnectionStatus />
         <S3Status />
-      </div>
-      {/* Last S3 poll latency, shown even when healthy so a link degrading
-          toward the slow threshold is visible before it crosses it. Amber
-          once flagged slow; 0.0 means no cycle has completed yet. */}
-      {data && data.s3_healthy && data.s3_last_cycle_seconds > 0 && (
-        <p className="s3-latency" role="status">
-          Last S3 poll cycle:{" "}
-          <span className={data.s3_slow ? "s3-latency--slow" : undefined}>
-            {data.s3_last_cycle_seconds.toFixed(1)}s
+        {data && data.s3_healthy && data.s3_last_cycle_seconds > 0 && (
+          <span className="s3-latency" role="status">
+            Last S3 poll cycle:{" "}
+            <span className={data.s3_slow ? "s3-latency--slow" : undefined}>
+              {data.s3_last_cycle_seconds.toFixed(1)}s
+            </span>
           </span>
-        </p>
-      )}
+        )}
+      </div>
       {isPending && <p className="skeleton">Loading status…</p>}
       {isError && <p role="alert">Could not load scan status.</p>}
       {data && !data.cache_enabled && (
@@ -92,42 +92,43 @@ export function Status() {
         </p>
       )}
       {data && (
-        <p role="status">
+        <p className="scan-summary" role="status">
           {remaining === 0
             ? "All cameras fully loaded."
             : `${remaining} camera${remaining === 1 ? "" : "s"} still loading…`}
         </p>
       )}
-      {[...groups.entries()].map(([location, cams]) => (
-        <div key={location}>
-          <h2>{location}</h2>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Camera</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cams.map((c) => {
-                const stage = stageOf(c);
-                return (
-                  <tr key={c.camera}>
-                    <td>
+      {/* One card per location, flowing side by side like the Admin page's
+          boxes, each with its own done-count so per-site progress reads at a
+          glance without scanning badge colours. */}
+      <div className="scan-groups">
+        {[...groups.entries()].map(([location, cams]) => {
+          const done = cams.filter((c) => c.full_complete).length;
+          return (
+            <div key={location} className="scan-loc">
+              <div className="scan-loc-head">
+                <h2>{location}</h2>
+                <span className="scan-loc-count">
+                  {done}/{cams.length} complete
+                </span>
+              </div>
+              <ul className="scan-cams">
+                {cams.map((c) => {
+                  const stage = stageOf(c);
+                  return (
+                    <li key={c.camera}>
                       <Link to={`/${c.location}/${c.camera}`}>{c.camera}</Link>
-                    </td>
-                    <td>
                       <span className={`scan-stage scan-stage--${stage}`}>
                         {STAGE_LABEL[stage]}
                       </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ))}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

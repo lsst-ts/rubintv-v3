@@ -513,11 +513,72 @@ h1, h2 {
 }
 
 /* Live-connection pills at the top of the Status page: the WebSocket
-   indicator (always shown) and the S3 pill (only when slow/unreachable). */
+   indicator (always shown), the S3 pill (only when slow/unreachable) and the
+   last-cycle latency, together on one meta row. */
 .status-connections {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
   margin: 0.25rem 0 1rem;
+  font-size: 0.85rem;
 }
+
+/* ── Scan-status page ──────────────────────────────────────────────────────
+   Per-location cards in the Admin page's box register, flowing side by side
+   instead of full-width stacked tables (two columns across 1280px left the
+   status badges floating mid-page). */
+.scan-summary { font-weight: 600; }
+.scan-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.scan-loc {
+  flex: 1 1 18rem;
+  max-width: 24rem;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-card);
+}
+.scan-loc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.scan-loc-head h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+.scan-loc-count {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.scan-cams {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.scan-cams li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--line-soft);
+}
+.scan-cams a {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.scan-cams a:hover { text-decoration: underline; }
+.scan-cams .scan-stage { white-space: nowrap; }
 
 /* ── Small action buttons (copy / download) ────────────────────────────── */
 /* Toolbar action buttons (download metadata) — framed like .tb-btn, with a
