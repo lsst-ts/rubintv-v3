@@ -230,13 +230,11 @@ export function Channel({ live = false }: { live?: boolean }) {
   //     so the entire frame is visible with no scrolling.
   // Clicking toggles between them; on the way back to "fill" we restore the
   // scroll so the point the user clicked stays under the cursor (see below).
+  // The choice persists across src changes (prev/next nav and live advances):
+  // once you've zoomed out to take in the whole frame, a new exposure landing
+  // shouldn't yank you back to fill.
   const [zoom, setZoom] = useState<"fill" | "fit">("fill");
   const chvScrollRef = useRef<HTMLDivElement | null>(null);
-  // A tall image's src changing (prev/next) shouldn't strand us zoomed-out on a
-  // frame the user is stepping through — reset to the enlarged default.
-  useEffect(() => {
-    setZoom("fill");
-  }, [src]);
 
   const onImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const box = chvScrollRef.current;
