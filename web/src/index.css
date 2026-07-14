@@ -1860,8 +1860,13 @@ h1, h2 {
      the rendered frame. Let the sidebar take a flexible share (min 16rem) so it
      grows into that slack rather than leaving the metadata pinned narrow. */
   grid-template-columns: minmax(0, 1fr) minmax(16rem, 28rem);
+  /* Header sizes to content; the media/sidebar row fills the rest so the image
+     frame can own a bounded vertical scroll box instead of growing the page. */
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas: "header header" "media sidebar";
   gap: 1rem;
+  height: 100%;
+  min-height: 0;
 }
 /* Collapsed: the sidebar shrinks to just its reopen rail, handing the freed
    width to the media column. */
@@ -1875,26 +1880,62 @@ h1, h2 {
 .channel-view .metadata-sidebar { min-width: 0; }
 .channel-view .table-header,
 .channel-view .channel-head { grid-area: header; margin-bottom: 0; }
-.media { grid-area: media; }
+/* The media column fills the view height so the image frame below can own a
+   bounded vertical scroll region (rather than growing the whole page). */
+.media {
+  grid-area: media;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .media img,
 .media video {
   max-width: 100%;
   border: 1.5px solid var(--line-mid);
   border-radius: 5px;
 }
-/* Positioning context for the loading spinner; shrinks to the image so the
-   spinner centres over the frame rather than the whole media column. */
-.chv-frame { position: relative; display: inline-block; line-height: 0; }
+/* Positioning context for the loading spinner AND the vertical scroll box for
+   the enlarged image. Fills the media column's remaining height; the image
+   inside scrolls up/down when it's taller (the "fill" zoom state below). */
+.chv-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  line-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+/* Zoom states (click toggles). "fill": image at full column width, aspect
+   preserved, so a tall frame overflows the box and scrolls vertically — cursor
+   invites zooming out. "fit": whole image scaled to the box height so it's
+   fully visible with no scroll — cursor invites zooming back in. */
+.chv-zoom-fill img { width: 100%; height: auto; cursor: zoom-out; }
+.chv-zoom-fit {
+  /* Nothing overflows when fitted, so centre the shrunk image in the box. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.chv-zoom-fit img {
+  width: auto;
+  max-height: 100%;
+  max-width: 100%;
+  cursor: zoom-in;
+}
 /* While the image is hidden it has no intrinsic size, so the frame would
-   collapse. During loading make it a full-width 1:1 placeholder surface so the
-   spinner sits centred in a stable square; once the image reveals the frame
-   shrinks back to it (below), so a non-square plot isn't forced square. */
+   collapse. During loading show a full-width 1:1 placeholder surface so the
+   spinner sits centred in a stable square; once the image reveals, the flex
+   box holds its own height so nothing jumps. */
 .chv-frame:has(img.chv-img-loading) {
+  background: var(--paper-2);
+  border-radius: 5px;
+}
+.chv-frame:has(img.chv-img-loading)::before {
+  content: "";
   display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: 5px;
-  background: var(--paper-2);
 }
 
 /* While a newly-selected image is still loading, hide it and float a spinner in
@@ -1946,7 +1987,11 @@ a.chv-chan:hover { filter: brightness(1.08); }
   outline-offset: 1px;
   cursor: default;
 }
-.metadata-sidebar { grid-area: sidebar; }
+.metadata-sidebar {
+  grid-area: sidebar;
+  min-height: 0;
+  overflow-y: auto;
+}
 .seq-nav {
   display: flex;
   gap: 0.5rem;
@@ -2174,8 +2219,15 @@ a.seq-arrow:hover { background: var(--line-soft); }
 @media (max-width: 700px) {
   .channel-view {
     grid-template-columns: 1fr;
+    /* Stack and let the page scroll on narrow screens; the bounded media scroll
+       box (and its fill/fit zoom) is a desktop affordance, so release the
+       height cap and per-area scrolling here. */
+    grid-template-rows: none;
     grid-template-areas: "header" "media" "sidebar";
+    height: auto;
   }
+  .channel-view .chv-frame { overflow: visible; }
+  .channel-view .metadata-sidebar { overflow: visible; }
 }
 
 /* ── Cluster Status (detectors) ────────────────────────────────────────── */

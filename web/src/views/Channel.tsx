@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -222,6 +222,49 @@ export function Channel({ live = false }: { live?: boolean }) {
   };
   const showSpinner = !isVideo && src !== "" && !imgLoaded;
 
+  // Click-to-zoom for the still image. Two states:
+  //   * "fill" (default, enlarged): the image is width:100% of the media column
+  //     and, aspect preserved, usually taller than the frame — so it scrolls
+  //     up/down inside its own box (chvScrollRef).
+  //   * "fit" (shrunk): the whole image is scaled down to fit the frame height,
+  //     so the entire frame is visible with no scrolling.
+  // Clicking toggles between them; on the way back to "fill" we restore the
+  // scroll so the point the user clicked stays under the cursor (see below).
+  const [zoom, setZoom] = useState<"fill" | "fit">("fill");
+  const chvScrollRef = useRef<HTMLDivElement | null>(null);
+  // A tall image's src changing (prev/next) shouldn't strand us zoomed-out on a
+  // frame the user is stepping through — reset to the enlarged default.
+  useEffect(() => {
+    setZoom("fill");
+  }, [src]);
+
+  const onImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    const box = chvScrollRef.current;
+    if (!box) return;
+    if (zoom === "fill") {
+      // Enlarged → shrink to fit. Nothing to restore; the fit image has no
+      // scroll. (We remember nothing here; the enlarge step recomputes.)
+      setZoom("fit");
+      return;
+    }
+    // Shrunk → enlarge. Map the clicked point (its fraction down the currently
+    // rendered image) onto the taller "fill" image, then scroll so that same
+    // point sits back under the cursor's position within the box.
+    const imgRect = e.currentTarget.getBoundingClientRect();
+    const clickedFrac =
+      imgRect.height > 0 ? (e.clientY - imgRect.top) / imgRect.height : 0;
+    const cursorInBox = e.clientY - box.getBoundingClientRect().top;
+    setZoom("fill");
+    // After the layout flips to the taller image, place the clicked fraction of
+    // its new height back under the cursor. Done post-paint so scrollHeight is
+    // the enlarged image's.
+    requestAnimationFrame(() => {
+      const b = chvScrollRef.current;
+      if (!b) return;
+      b.scrollTop = clickedFrac * b.scrollHeight - cursorInBox;
+    });
+  };
+
   const navTo = (s: number) =>
     `/${location}/${camera}/${channel}?seq=${s}&date=${date}`;
 
@@ -412,16 +455,21 @@ export function Channel({ live = false }: { live?: boolean }) {
           ) : (
             // Wrap so the loading spinner can centre over the image itself, not
             // the whole media column (which also holds the channel strip above).
-            <div className="chv-frame">
+            // The wrapper is also the vertical scroll box for the enlarged image.
+            <div
+              ref={chvScrollRef}
+              className={`chv-frame chv-zoom-${zoom}`}
+            >
               {/* src is the latched seq, decoded before promotion (see
                   loadedSeq), so the image, seq label, and prev/next links all
-                  change together. */}
+                  change together. Click toggles fill/fit zoom. */}
               <img
                 ref={imgRef}
                 src={src}
                 alt={`${channel} ${seq}`}
                 onLoad={() => setImgLoaded(true)}
                 onError={() => setImgLoaded(true)}
+                onClick={onImageClick}
                 className={imgLoaded ? undefined : "chv-img-loading"}
               />
               {showSpinner && (
