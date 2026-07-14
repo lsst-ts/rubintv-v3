@@ -216,8 +216,11 @@ export function Channel({ live = false }: { live?: boolean }) {
     setImgLoaded(false);
   }, [src]);
   // Cached images can already be complete before React attaches onLoad, which
-  // would then never fire — mark loaded immediately in that case.
+  // would then never fire — mark loaded immediately in that case. Also stash
+  // the element so the zoom-overflow measurement can read its natural size.
+  const imgElRef = useRef<HTMLImageElement | null>(null);
   const imgRef = (el: HTMLImageElement | null) => {
+    imgElRef.current = el;
     if (el?.complete) setImgLoaded(true);
   };
   const showSpinner = !isVideo && src !== "" && !imgLoaded;
@@ -236,9 +239,48 @@ export function Channel({ live = false }: { live?: boolean }) {
   const [zoom, setZoom] = useState<"fill" | "fit">("fill");
   const chvScrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Zoom is only meaningful when the image, at full column width (the "fill"
+  // state), is taller than its frame — i.e. it actually overflows and could be
+  // shrunk to fit. A frame-width plot that already fits vertically has nothing
+  // to zoom, so we disable the click and the zoom cursor for it. We compute the
+  // fill height from the natural aspect (naturalHeight/naturalWidth × frame
+  // width) rather than reading the current rendered height, so the answer is
+  // the same whether we're currently in fill or fit.
+  const [canZoom, setCanZoom] = useState(false);
+  useEffect(() => {
+    const box = chvScrollRef.current;
+    const img = imgElRef.current;
+    if (!box || !img) return;
+    const measure = () => {
+      const nW = img.naturalWidth;
+      const nH = img.naturalHeight;
+      if (!nW || !nH) return;
+      const fillHeight = (nH / nW) * box.clientWidth;
+      // 1px slack so a frame that lands a hair over doesn't flicker zoomable.
+      const overflows = fillHeight > box.clientHeight + 1;
+      setCanZoom(overflows);
+      // If it no longer overflows (e.g. the sidebar collapsed and widened the
+      // frame past the point of overflow), a lingering "fit" has nothing to fit
+      // — return to the plain fill view.
+      if (!overflows) setZoom("fill");
+    };
+    measure();
+    // Re-measure as the frame resizes (window resize, sidebar collapse) and
+    // once the image's natural size is known (load fires after a src swap).
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    img.addEventListener("load", measure);
+    return () => {
+      ro.disconnect();
+      img.removeEventListener("load", measure);
+    };
+    // Re-run when the source changes (a differently-shaped image may now
+    // over/underflow) and when imgLoaded flips (natural size becomes known).
+  }, [src, imgLoaded]);
+
   const onImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const box = chvScrollRef.current;
-    if (!box) return;
+    if (!box || !canZoom) return;
     if (zoom === "fill") {
       // Enlarged → shrink to fit. Nothing to restore; the fit image has no
       // scroll. (We remember nothing here; the enlarge step recomputes.)
@@ -469,7 +511,9 @@ export function Channel({ live = false }: { live?: boolean }) {
             // The wrapper is also the vertical scroll box for the enlarged image.
             <div
               ref={chvScrollRef}
-              className={`chv-frame chv-zoom-${zoom}`}
+              className={
+                `chv-frame chv-zoom-${zoom}` + (canZoom ? " chv-zoomable" : "")
+              }
             >
               {/* src is the latched seq, decoded before promotion (see
                   loadedSeq), so the image, seq label, and prev/next links all

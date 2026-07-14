@@ -1906,10 +1906,9 @@ h1, h2 {
   overflow-x: hidden;
 }
 /* Zoom states (click toggles). "fill": image at full column width, aspect
-   preserved, so a tall frame overflows the box and scrolls vertically — cursor
-   invites zooming out. "fit": whole image scaled to the box height so it's
-   fully visible with no scroll — cursor invites zooming back in. */
-.chv-zoom-fill img { width: 100%; height: auto; cursor: zoom-out; }
+   preserved, so a tall frame overflows the box and scrolls vertically. "fit":
+   whole image scaled to the box height so it's fully visible with no scroll. */
+.chv-zoom-fill img { width: 100%; height: auto; }
 .chv-zoom-fit {
   /* Nothing overflows when fitted, so centre the shrunk image in the box. */
   display: flex;
@@ -1921,8 +1920,12 @@ h1, h2 {
   width: auto;
   max-height: 100%;
   max-width: 100%;
-  cursor: zoom-in;
 }
+/* The zoom cursor (and thus the click affordance) only appears when the image
+   actually overflows and can be zoomed — .chv-zoomable is set by the overflow
+   measurement. A frame-width plot that already fits vertically gets neither. */
+.chv-zoomable.chv-zoom-fill img { cursor: zoom-out; }
+.chv-zoomable.chv-zoom-fit img { cursor: zoom-in; }
 /* While the image is hidden it has no intrinsic size, so the frame would
    collapse. During loading show a full-width 1:1 placeholder surface so the
    spinner sits centred in a stable square; once the image reveals, the flex
