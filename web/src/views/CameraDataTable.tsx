@@ -16,7 +16,10 @@ import { ViewerIcon, QuicklookIcon, DetailsIcon } from "../components/Icons";
 
 export type Density = "compact" | "regular";
 const ROW_PAD: Record<Density, string> = {
-  compact: "3px 8px",
+  // Compact trims the horizontal cell padding too (5px vs the regular 8px), so
+  // values sit closer to their column edges — the vertical 3px already sets the
+  // row height.
+  compact: "3px 5px",
   regular: "6px 8px",
 };
 
@@ -42,8 +45,11 @@ function widthFor(key: string, density: Density): string {
   if (key.startsWith("ch:")) return "44px"; // one chip + padding
   if (key === "viewer" || key === "quicklook" || key === "copy") return "34px";
   // Metadata columns: values are short, so compact trims the padded default
-  // width that regular keeps for breathing room.
-  return density === "compact" ? "64px" : "92px";
+  // width that regular keeps for breathing room. The column is table-layout:
+  // fixed, so any surplus over the value pools as empty space on the right of
+  // the left-aligned text — dropping 64px→52px is what actually removes the
+  // "gap to the right of the value", which isn't padding but unused column.
+  return density === "compact" ? "52px" : "92px";
 }
 
 // Truncate float-like metadata to 3dp for display, keeping the full value for a
