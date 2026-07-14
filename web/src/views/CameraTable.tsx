@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
 import type { Metadata } from "../lib/types";
@@ -10,6 +10,8 @@ import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
 import { isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
+import { tabsForCamera } from "../lib/useShellNav";
+import { getCameraTabPref } from "../lib/cameraTabPref";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { FilterControl, FilterBar } from "../components/FilterControl";
@@ -38,7 +40,7 @@ export function CameraTable() {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
 
-  const { data: cameraInfo } = useQuery({
+  const { data: cameraInfo, isPending: cameraPending } = useQuery({
     queryKey: queryKeys.camera(location, camera),
     queryFn: () => api.camera(location, camera),
     staleTime: STALE.config,
@@ -331,6 +333,22 @@ export function CameraTable() {
   // Placed after all hooks above so the rules-of-hooks order is unconditional.
   if (cameraInfo?.live_view) {
     return <AllSky />;
+  }
+
+  // Honour the user's remembered tab choice: if they were last on Channels,
+  // open a newly-visited camera on its Channels tab too (the tab is otherwise
+  // URL-derived, so the base route always lands on Table). Only from the bare
+  // base route — never a deep link that already carries a seq filter or other
+  // params the redirect would drop.
+  const wantsChannels = getCameraTabPref() === "channels" && !params.toString();
+  if (wantsChannels) {
+    // Hold the table render until the config resolves rather than flashing it
+    // and then navigating away: only the config tells us whether this camera
+    // actually offers a Channels tab to redirect to.
+    if (cameraPending) return null;
+    if (tabsForCamera(cameraInfo).some((t) => t.id === "channels")) {
+      return <Navigate to={`/${location}/${camera}/channels`} replace />;
+    }
   }
 
   return (

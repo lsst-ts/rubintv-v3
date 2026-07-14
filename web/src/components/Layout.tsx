@@ -14,6 +14,7 @@ import { STALE } from "../lib/queryClient";
 import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
+import { setCameraTabPref } from "../lib/cameraTabPref";
 
 // The deployment site (RAPID_ANALYSIS_LOCATION) from /api/config, used to label the
 // header. Undefined until it resolves — the env strip falls back to the
@@ -299,6 +300,10 @@ export function Layout() {
                       to={to}
                       className={"tab" + (active ? " active" : "")}
                       aria-current={active ? "page" : undefined}
+                      // Remember the Table/Channels choice so the next camera
+                      // opens on the same tab (setCameraTabPref ignores the
+                      // others). CameraTable reads this to redirect on arrival.
+                      onClick={() => setCameraTabPref(tab.id)}
                     >
                       {tab.label}
                       {tab.count != null && (

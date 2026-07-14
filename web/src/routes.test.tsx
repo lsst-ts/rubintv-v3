@@ -1165,3 +1165,73 @@ test("camera table shows an empty-state notice, not the table, when a date has n
   expect(await screen.findByText(/No data for 2026-04-10/)).toBeDefined();
   expect(container.querySelector("table.data-table")).toBeNull();
 });
+
+// The remembered camera-tab preference (rubintv.cameraTab) carries a user's
+// Table/Channels choice to the next camera they open. A camera with a real
+// (non-per-day) channel offers the Channels tab; the default stub's other
+// endpoints stay empty.
+function stubChannelCamera() {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/lsstcam\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+}
+
+test("a remembered Channels choice opens the next camera on its Channels tab", async () => {
+  localStorage.setItem("rubintv.cameraTab", "channels");
+  stubChannelCamera();
+  // Landing on the bare base (Table) route: with the preference set and this
+  // camera offering Channels, we redirect to the Channels tab.
+  const { router } = renderAt("/local/lsstcam");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/lsstcam/channels"),
+  );
+  expect(await screen.findByText("Image channels")).toBeDefined();
+  localStorage.removeItem("rubintv.cameraTab");
+});
+
+test("the default (Table) preference leaves the base route on the Table view", async () => {
+  localStorage.removeItem("rubintv.cameraTab");
+  stubChannelCamera();
+  const { router } = renderAt("/local/lsstcam");
+  // No stored preference → the table stays put (no redirect to /channels).
+  expect(await screen.findByRole("link", { name: /^Channels/ })).toBeDefined();
+  expect(router.state.location.pathname).toBe("/local/lsstcam");
+});
+
+test("a stored Channels preference does not hijack a deep link with params", async () => {
+  localStorage.setItem("rubintv.cameraTab", "channels");
+  stubChannelCamera();
+  // A base route that already carries params (e.g. a shared ?date= link) must
+  // render the table, not be redirected — the redirect only fires from a bare
+  // camera visit so it never drops a deep link's query string.
+  const { router } = renderAt("/local/lsstcam?date=2026-04-10");
+  expect(await screen.findByRole("link", { name: /^Channels/ })).toBeDefined();
+  expect(router.state.location.pathname).toBe("/local/lsstcam");
+  localStorage.removeItem("rubintv.cameraTab");
+});
+
+test("clicking the Channels tab records the preference for the next camera", async () => {
+  localStorage.removeItem("rubintv.cameraTab");
+  stubChannelCamera();
+  const { router } = renderAt("/local/lsstcam?date=2026-04-10");
+  const channels = await screen.findByRole("link", { name: /^Channels/ });
+  fireEvent.click(channels);
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/lsstcam/channels"),
+  );
+  expect(localStorage.getItem("rubintv.cameraTab")).toBe("channels");
+  localStorage.removeItem("rubintv.cameraTab");
+});
