@@ -213,8 +213,21 @@ class MetadataCache:
             self._entries.move_to_end(cache_key)
             return cached.etag, cached.data
 
-        obj = client.get_object(Bucket=bucket, Key=s3_key)
-        data: Metadata = json.loads(obj["Body"].read())
+        # The GET and parse are guarded like the HEAD above: today's
+        # metadata.json is rewritten continuously by the producer, so it can
+        # be deleted/replaced between the HEAD and the GET (TOCTOU) or briefly
+        # hold partial/invalid JSON. Degrade to the cached-or-empty payload
+        # rather than 500 — the WS stream and the next fetch will fill it in.
+        try:
+            obj = client.get_object(Bucket=bucket, Key=s3_key)
+            data: Metadata = json.loads(obj["Body"].read())
+        except Exception:  # noqa: BLE001 - best-effort: any S3/parse failure
+            log.warning(
+                "metadata.fetch.failed", location=location, camera=camera, date=date
+            )
+            if cached is not None:
+                return cached.etag, cached.data
+            return None, {}
         self._entries[cache_key] = _Entry(etag=etag, data=data)
         self._entries.move_to_end(cache_key)
         while len(self._entries) > _MAX_ENTRIES:

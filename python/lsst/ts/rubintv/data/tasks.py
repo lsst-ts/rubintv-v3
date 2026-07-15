@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -77,6 +78,16 @@ LocCam = tuple[str, str]
 # this is well clear of normal jitter while still well under the 5-10s the
 # poller client now waits before a hung connection raises outright.
 SLOW_CYCLE_SECONDS = 5.0
+
+# Ceiling on concurrent on-demand (deep-link) date scans. Deep-link backfill is
+# reachable from any authenticated request, so this caps its S3 fan-out well
+# below the ~4-worker endpoint ceiling to keep the live poller responsive.
+_ON_DEMAND_MAX_CONCURRENCY = 3
+
+# How many distinct (location, camera, date) empty results to remember, so a
+# client repeatedly requesting valid-but-nonexistent dates doesn't re-scan S3
+# every time. Bounded (FIFO eviction) so the memo itself can't grow unbounded.
+_ON_DEMAND_EMPTY_MAX = 4096
 
 
 @dataclass(slots=True)
@@ -133,6 +144,14 @@ class PollEngine:
         # In-flight on-demand date scans, keyed (location, camera, date), so
         # concurrent requests for the same missing date share one S3 listing.
         self._on_demand: dict[tuple[str, str, str], asyncio.Task[int]] = {}
+        # On-demand backfill is reachable from any authenticated request; bound
+        # its S3 fan-out so a flood of distinct dates can't saturate the thread
+        # pool / S3 connection pool and starve the live poller.
+        self._on_demand_sem = asyncio.Semaphore(_ON_DEMAND_MAX_CONCURRENCY)
+        # Dates a recent on-demand scan found empty, so a client hammering a
+        # valid-but-nonexistent date doesn't buy one S3 listing per request.
+        # A later real change is still picked up by the periodic sweep.
+        self._on_demand_empty: OrderedDict[tuple[str, str, str], None] = OrderedDict()
         self._ready_fired = False
         # Per-camera cold-start progress. Mutated only from the historical
         # loop (single task), read by the status endpoint — coarse booleans,
@@ -362,7 +381,13 @@ class PollEngine:
         total = 0
         for camera in location.cameras:
             prefix = f"{camera.name}/"
-            events = await asyncio.to_thread(self._poller.scan, location.name, prefix)
+            # scan_full returns the dates from *this* listing, so the prune
+            # below can't be poisoned by a concurrent reset()/on-demand scan
+            # mutating the poller's shared _seen between the listing and the
+            # prune.
+            events, observed = await asyncio.to_thread(
+                self._poller.scan_full, location.name, prefix
+            )
             total += len(events)
             log.info(
                 "poll.scan",
@@ -377,10 +402,15 @@ class PollEngine:
             # The full {camera}/ listing is authoritative for which dates
             # exist: prune any indexed date it didn't observe (stale warm-start
             # cache slices whose keys were deleted while we were down — the
-            # poller diff can't emit REMOVED for keys it never saw).
-            observed = self._poller.observed_dates(location.name, prefix)
+            # poller diff can't emit REMOVED for keys it never saw). Protect
+            # the current observing day: the fast current-day loop may have
+            # inserted today's first keys after this sweep listed the prefix,
+            # so the listing wouldn't include them and prune would wrongly drop
+            # today.
             pruned = await self._store.prune_dates(
-                (location.name, camera.name), observed
+                (location.name, camera.name),
+                observed,
+                protect={get_current_day_obs()},
             )
             await self._evict_slices(location.name, camera.name, pruned)
             # Recent may not have run (window=0); the full sweep also makes
@@ -406,10 +436,19 @@ class PollEngine:
 
         Best-effort like the loops: an S3 failure is logged and reported as
         zero events so callers degrade to an empty payload rather than 500.
+
+        A date a recent scan found empty is remembered and answered 0 without
+        re-listing S3, so a client hammering a nonexistent date can't amplify
+        into one listing per request. The scan is also concurrency-capped
+        (``_ON_DEMAND_MAX_CONCURRENCY``) so a burst of distinct dates can't
+        saturate the S3/thread pools and starve the live poller.
         """
         if date == get_current_day_obs():
             return 0
         key = (location, camera, date)
+        if key in self._on_demand_empty:
+            log.debug("poll.scan.empty_cached", location=location, prefix=key)
+            return 0
         task = self._on_demand.get(key)
         if task is None:
             task = asyncio.create_task(
@@ -423,7 +462,8 @@ class PollEngine:
     async def _scan_date_once(self, location: str, camera: str, date: str) -> int:
         prefix = f"{camera}/{date}/"
         try:
-            events = await asyncio.to_thread(self._poller.scan, location, prefix)
+            async with self._on_demand_sem:
+                events = await asyncio.to_thread(self._poller.scan, location, prefix)
             if events:
                 touched = await self._store.apply(events)
                 await self._persist_slices(touched)
@@ -432,6 +472,8 @@ class PollEngine:
                 "poll.scan.error", scope="on-demand", location=location, prefix=prefix
             )
             return 0
+        if not events:
+            self._remember_empty((location, camera, date))
         log.info(
             "poll.scan",
             scope="on-demand",
@@ -440,6 +482,13 @@ class PollEngine:
             events=len(events),
         )
         return len(events)
+
+    def _remember_empty(self, key: tuple[str, str, str]) -> None:
+        """Record a date that scanned empty (bounded FIFO)."""
+        self._on_demand_empty[key] = None
+        self._on_demand_empty.move_to_end(key)
+        while len(self._on_demand_empty) > _ON_DEMAND_EMPTY_MAX:
+            self._on_demand_empty.popitem(last=False)
 
     def _mark(self, location: str, camera: str, flag: str) -> None:
         """Flip a per-camera scan-progress flag (idempotent)."""
@@ -527,4 +576,7 @@ class PollEngine:
         recent-window and full-history sweeps. Used after the admin flushes
         the cache, so the emptied store cold-rebuilds from S3 right away.
         """
+        # Drop the negative memo: a flush means the world may have changed, so
+        # a date previously seen empty must be re-scannable on demand again.
+        self._on_demand_empty.clear()
         self._rescan.set()

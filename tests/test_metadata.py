@@ -148,6 +148,47 @@ async def test_stream_propagates_worker_errors(
             pass
 
 
+async def test_get_degrades_to_empty_when_get_object_fails_after_head(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # TOCTOU / corrupt JSON: the HEAD succeeds but the GET then fails (object
+    # deleted between HEAD and GET, or partial/invalid JSON uploaded). The REST
+    # path must degrade to an empty payload, never 500.
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("gone between head and get")
+
+    monkeypatch.setattr(client, "get_object", _boom)
+    etag, data = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert data == {}
+    assert etag is None
+
+
+async def test_get_serves_cached_when_get_object_fails_after_head(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # If a good copy is cached, a later failed refresh serves the cached data
+    # rather than an empty payload or a 500.
+    first_etag, first = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert len(first) == 5
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+    # Change the object so the ETag differs (forces a refresh), then break GET.
+    client.put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps({"1": {"Exposure time": 1.0}, "2": {"Exposure time": 2.0}}),
+    )
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("refresh failed")
+
+    monkeypatch.setattr(client, "get_object", _boom)
+    etag, data = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert data == first
+    assert etag == first_etag
+
+
 async def test_cache_evicts_oldest_entries(
     cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:

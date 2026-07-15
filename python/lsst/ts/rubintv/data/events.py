@@ -68,7 +68,7 @@ ChangeType = Literal[
     "metadata",  # metadata.json for a (loc, cam, date)
     "perDay",  # per-day channel artifact for a (loc, cam, date)
     "nightReport",  # night-report content for a (loc, cam, date)
-    "calendar",  # calendar gained/lost a date for a (loc, cam)
+    "calendarUpdate",  # calendar gained/lost a date for a (loc, cam)
     "dayChange",  # the current day_obs rolled over
     "detectorStatus",  # cluster-worker status changed (site-wide, from Redis)
     "controlReadback",  # admin control readback value changed (site-wide)

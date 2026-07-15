@@ -6,6 +6,7 @@ pieces (EventStore, pollers, WebSocket bus) into a known sequence.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.resources import as_file, files
@@ -70,7 +71,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("startup.begin", site=settings.site, version=__version__)
 
     models_path = _resolve_models_path(settings.models_path)
-    models = load_models(models_path, site=settings.site)
+    models = load_models(
+        models_path,
+        site=settings.site,
+        allow_admin_wildcard=settings.allow_admin_wildcard,
+    )
     s3 = S3ClientPool(models.locations)
     # Cold-init every client up front in parallel so the first poll cycle
     # (and the first API request that lands during it) doesn't pay the
@@ -141,11 +146,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         models.redis_detectors,
     )
 
+    # Cache writes are blocking file I/O (json.dumps + write per slice). The
+    # full-snapshot rewrite is thousands of files (~45MB / 5.5k slices on the
+    # PVC); running it inline would stall the event loop — every HTTP request,
+    # WS send and the 1s poll cycle — for its whole multi-second duration. Each
+    # batch runs in one worker thread (one hop, not one per file) so the loop
+    # stays responsive.
+    def _write_snapshot() -> None:
+        for (location, camera), dates in store.snapshot().items():
+            for date, index in dates.items():
+                cache.write(location, camera, date, index)
+
     async def write_cache() -> None:
         if not cache.enabled:
             return
-        for (location, camera), dates in store.snapshot().items():
-            for date, index in dates.items():
+        await asyncio.to_thread(_write_snapshot)
+
+    def _write_touched(touched: set[tuple[str, str, str]]) -> None:
+        for location, camera, date in touched:
+            index = store.date_index(location, camera, date)
+            if index is not None:
                 cache.write(location, camera, date, index)
 
     async def write_slices(touched: set[tuple[str, str, str]]) -> None:
@@ -153,18 +173,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # as history is discovered rather than only every 12h / at shutdown.
         if not cache.enabled:
             return
-        for location, camera, date in touched:
-            index = store.date_index(location, camera, date)
-            if index is not None:
-                cache.write(location, camera, date, index)
+        await asyncio.to_thread(_write_touched, touched)
+
+    def _delete_slices(pruned: set[tuple[str, str, str]]) -> None:
+        for location, camera, date in pruned:
+            cache.delete(location, camera, date)
 
     async def delete_slices(pruned: set[tuple[str, str, str]]) -> None:
         # Evict cache slices for dates the full sweep pruned as stale, so a
         # vanished date doesn't reseed the calendar on the next warm start.
         if not cache.enabled:
             return
-        for location, camera, date in pruned:
-            cache.delete(location, camera, date)
+        await asyncio.to_thread(_delete_slices, pruned)
 
     async def warm_metadata(location: str, camera: str) -> None:
         # Pre-fetch the most recent dates' metadata into the LRU after the
@@ -211,7 +231,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.redis = redis_inputs
 
     async def flush_historical() -> int:
-        removed = cache.clear()
+        # cache.clear() unlinks thousands of files; run it off the loop so the
+        # admin request (and everything else) isn't stalled for its duration.
+        removed = await asyncio.to_thread(cache.clear)
         store.clear()
         # Drop the poller's diff state with the store it described — without
         # this the rescan diffs against the retained listings, emits nothing,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 import pytest
 from lsst.ts.rubintv.config.models import RedisDetector
@@ -139,6 +140,7 @@ class _FakePubSub:
     def __init__(self, messages: list[dict[str, str]]) -> None:
         self.messages = messages
         self.patterns: list[str] = []
+        self.closed = False
 
     async def psubscribe(self, pattern: str) -> None:
         self.patterns.append(pattern)
@@ -147,6 +149,9 @@ class _FakePubSub:
         for message in self.messages:
             yield message
         await asyncio.Event().wait()  # park; the reader task is cancelled
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 _StreamBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
@@ -159,6 +164,7 @@ class _LoopFakeRedis:
         self,
         *,
         ping_ok: bool = True,
+        db: int = 0,
         messages: list[dict[str, str]] | None = None,
         stream_batches: list[_StreamBatch] | None = None,
         seed_entries: dict[str, list[tuple[str, dict[str, str]]]] | None = None,
@@ -166,6 +172,9 @@ class _LoopFakeRedis:
         self.store: dict[str, str] = {}
         self.pubsubs: list[_FakePubSub] = []
         self.closed = False
+        # Mirror redis-py's connection_pool.connection_kwargs["db"] so the
+        # reader can derive the keyspace-notification DB.
+        self.connection_pool = SimpleNamespace(connection_kwargs={"db": db})
         self._ping_ok = ping_ok
         self._messages = messages or []
         self._batches = list(stream_batches or [])
@@ -258,6 +267,132 @@ async def test_readback_loop_publishes_control_changes(
 
     await inputs.stop()
     assert fake.closed is True
+
+
+async def test_readback_loop_reconnects_after_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A Redis blip must not permanently kill the reader: the supervisor
+    # restarts it (after backoff) and it re-subscribes on a fresh pubsub, then
+    # keeps delivering. Without the supervisor the first raise ended live
+    # readback forever. We shrink the backoff so the test doesn't wait a real
+    # second.
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.redis_inputs._RECONNECT_BACKOFF_MIN", 0.01
+    )
+    bus = EventBus()
+    controls = ControlStore()
+    inputs = RedisInputs("redis://x", bus, controls, DetectorStore(), [])
+
+    # First pubsub's listen() raises (connection dropped); the second delivers.
+    class _FlakyPubSub:
+        def __init__(self, raise_first: bool) -> None:
+            self.patterns: list[str] = []
+            self.closed = False
+            self._raise = raise_first
+
+        async def psubscribe(self, pattern: str) -> None:
+            self.patterns.append(pattern)
+
+        async def listen(self):  # type: ignore[no-untyped-def]
+            if self._raise:
+                raise ConnectionError("dropped")
+            yield {"type": "pmessage", "channel": "__keyspace@0__:AOS_READBACK"}
+            await asyncio.Event().wait()
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    pubsubs = [_FlakyPubSub(raise_first=True), _FlakyPubSub(raise_first=False)]
+    made: list[_FlakyPubSub] = []
+
+    class _ReconnectFake(_LoopFakeRedis):
+        def pubsub(self):  # type: ignore[no-untyped-def]
+            ps = pubsubs[len(made)]
+            made.append(ps)
+            return ps
+
+    fake = _ReconnectFake()
+    fake.store["AOS_READBACK"] = "danish"
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        # The change only arrives after the loop restarts on the second pubsub.
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "controlReadback"
+    assert controls.all("*") == {"AOS_READBACK": "danish"}
+    assert len(made) == 2  # reconnected
+    assert made[0].closed is True  # the broken pubsub was released
+
+    await inputs.stop()
+
+
+async def test_readback_keyspace_pattern_uses_configured_db(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keyspace notifications are published on __keyspace@{db}__; a non-zero DB
+    # in the URL must be reflected in the psubscribe pattern or every readback
+    # is silently missed.
+    bus = EventBus()
+    inputs = RedisInputs("redis://x/2", bus, ControlStore(), DetectorStore(), [])
+    fake = _LoopFakeRedis(db=2, messages=[])
+    _patch_from_url(monkeypatch, fake)
+
+    await inputs.start()
+    # Give the reader a tick to subscribe.
+    await asyncio.sleep(0.05)
+    assert fake.pubsubs[0].patterns == ["__keyspace@2__:*_READBACK"]
+
+    await inputs.stop()
+
+
+async def test_detector_loop_resumes_from_seed_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The live XREAD must resume from the seeded entry id, not "$": an entry
+    # written between the seed and the first read (id "1-2" here, newer than
+    # the seed's "1-1") must still be delivered. Anchoring at "$" would skip
+    # it.
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [RedisDetector(key="CLUSTER_STATUS_AOS_SET_0", name="aosSet0")],
+    )
+    seed = {"data": json.dumps({"4": {"status": "idle", "type": "worker_status"}})}
+    live = {"data": json.dumps({"4": {"status": "busy", "type": "worker_status"}})}
+    stream_name = "stream:CLUSTER_STATUS_AOS_SET_0"
+    captured_last_ids: list[dict[str, str]] = []
+
+    class _ResumeFake(_LoopFakeRedis):
+        async def xread(self, last_ids, block=0):  # type: ignore[no-untyped-def]
+            captured_last_ids.append(dict(last_ids))
+            if self._batches:
+                return self._batches.pop(0)
+            await asyncio.Event().wait()
+            return []
+
+    fake = _ResumeFake(
+        seed_entries={stream_name: [("1-1", seed)]},
+        stream_batches=[[(stream_name, [("1-2", live)])]],
+    )
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        # First change is the seed snapshot; second is the live "1-2" entry.
+        await asyncio.wait_for(anext(stream), timeout=2)
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "detectorStatus"
+    assert detectors.all() == {"aosSet0": {"workers": {"4": {"status": "busy"}}}}
+    # The first XREAD resumed from the seed id, not "$".
+    assert captured_last_ids[0] == {stream_name: "1-1"}
+
+    await inputs.stop()
 
 
 async def test_detector_loop_seeds_from_last_retained_entry(

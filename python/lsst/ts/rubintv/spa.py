@@ -39,13 +39,22 @@ def mount_spa(app: FastAPI, dist_dir: Path | None, prefix: str = "") -> bool:
     if assets.is_dir():
         app.mount(f"{prefix}/assets", StaticFiles(directory=assets), name="assets")
 
+    # index.html must NOT be heuristically cached by the browser: the :deploy
+    # image tag is mutable, so after a repush the hashed bundle filenames
+    # change. A stale cached index would request the previous build's bundles
+    # (now 404) and the page would break until a hard refresh. no-cache forces
+    # revalidation so a new deploy is picked up. (The hashed /assets are
+    # content-addressed and safe for the browser to keep.)
+    def _index_response() -> FileResponse:
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
     # A visit to the bare prefix (e.g. /rubintv) must also serve the SPA; the
     # catch-all below only matches paths *under* the prefix.
     if prefix:
 
         @app.get(prefix, include_in_schema=False)
         def spa_root() -> FileResponse:
-            return FileResponse(index)
+            return _index_response()
 
     @app.get(f"{prefix}/{{full_path:path}}", include_in_schema=False)
     def spa_catch_all(full_path: str) -> FileResponse:
@@ -61,7 +70,7 @@ def mount_spa(app: FastAPI, dist_dir: Path | None, prefix: str = "") -> bool:
         candidate = (dist_dir / full_path).resolve()
         if candidate.is_file() and candidate.is_relative_to(dist_dir.resolve()):
             return FileResponse(candidate)
-        return FileResponse(index)
+        return _index_response()
 
     log.info("spa.mounted", dir=str(dist_dir), prefix=prefix)
     return True

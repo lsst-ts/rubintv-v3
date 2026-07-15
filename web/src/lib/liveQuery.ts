@@ -127,6 +127,17 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
     case "dayChange":
       qc.invalidateQueries({ queryKey: queryKeys.calendar(location, camera) });
       break;
+    case "calendarUpdate":
+      // A date was added or pruned by the store (e.g. the full sweep dropped a
+      // stale warm-start date). Refresh the calendar so the picker reflects it;
+      // also drop the (now possibly gone) date's payload so a stale grid clears.
+      qc.invalidateQueries({ queryKey: queryKeys.calendar(location, camera) });
+      if (date) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.datePayload(location, camera, date),
+        });
+      }
+      break;
   }
 }
 

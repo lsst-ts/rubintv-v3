@@ -13,6 +13,24 @@ from lsst.ts.rubintv.config.models import Camera, Location, Models
 from lsst.ts.rubintv.state import AppState
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# A conservative allow-list for path segments that flow into S3 keys/prefixes
+# and response headers (channel, seq, night-report group/filename). Permit
+# only characters that appear in real keys — no "/", no "..", no control
+# chars — so a crafted segment can't traverse to another prefix or corrupt a
+# header.
+_SAFE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def safe_segment(value: str, *, field: str) -> str:
+    """Validate one path segment against the safe allow-list, 422 if not.
+
+    ``..`` is rejected explicitly (it matches the char class) so a segment can
+    never walk up a prefix, and control/quote characters that would break the
+    ``Content-Disposition`` header can't reach it.
+    """
+    if value == ".." or not _SAFE_SEGMENT_RE.match(value):
+        raise HTTPException(422, f"invalid {field}: {value!r}")
+    return value
 
 
 def get_app_state(request: Request) -> AppState:

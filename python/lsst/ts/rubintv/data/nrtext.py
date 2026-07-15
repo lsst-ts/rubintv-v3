@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from typing import Annotated, Literal
 
 from lsst.ts.rubintv.logging import get_logger
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 log = get_logger(__name__)
 
@@ -38,10 +38,26 @@ log = get_logger(__name__)
 # typed-array format.
 NEW_FORMAT_CUTOFF = "2026-01-08"
 
+# Link URL schemes the frontend may safely put in an <a href>. Night-report
+# text is operator-written and read from the bucket (a source distinct from the
+# app's own auth boundary), so a link like ``javascript:...`` would otherwise
+# run script in the RubinTV origin on click. Anything else is rejected here so
+# the invalid item is dropped rather than rendered.
+_SAFE_URL_SCHEMES = ("http://", "https://", "/")
+
 
 class LinkItem(BaseModel):
     text: str
     url: str
+
+    @field_validator("url")
+    @classmethod
+    def _safe_url(cls, value: str) -> str:
+        """Reject any URL scheme that isn't http(s) or a site-relative path."""
+        stripped = value.strip()
+        if not stripped.lower().startswith(_SAFE_URL_SCHEMES):
+            raise ValueError(f"unsafe link url scheme: {value!r}")
+        return value
 
 
 class MultilineText(BaseModel):

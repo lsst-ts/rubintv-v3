@@ -174,12 +174,26 @@ async def test_prune_dates_publishes_calendar_change_per_dropped_date() -> None:
         # Drain the apply's channelData, then the prune's calendar change.
         received.append(await stream.__anext__())
         received.append(await stream.__anext__())
-    assert StoreChange("calendar", "local", "auxtel", "1970-01-01") in received
+    assert StoreChange("calendarUpdate", "local", "auxtel", "1970-01-01") in received
 
 
 async def test_prune_dates_noop_for_unknown_camera() -> None:
     store = EventStore()
     assert await store.prune_dates(("local", "nope"), {"2026-04-10"}) == set()
+
+
+async def test_prune_dates_keeps_protected_dates() -> None:
+    # A protected date (e.g. today, just added by the current-day loop after
+    # the sweep listed the prefix) must survive even when the sweep's observed
+    # set doesn't include it.
+    store = EventStore()
+    await store.apply([created("auxtel/1970-01-01/monitor/000001/a.png")])
+    await store.apply([created("auxtel/2026-04-10/monitor/000001/b.png")])
+    pruned = await store.prune_dates(
+        ("local", "auxtel"), set(), protect={"2026-04-10"}
+    )
+    assert pruned == {"1970-01-01"}
+    assert store.calendar("local", "auxtel") == ["2026-04-10"]
 
 
 @pytest.mark.asyncio

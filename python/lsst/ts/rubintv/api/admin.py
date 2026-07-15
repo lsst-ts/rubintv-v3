@@ -24,8 +24,11 @@ from lsst.ts.rubintv.api.schemas import (
 from lsst.ts.rubintv.build_info import commit_date, git_sha, is_release
 from lsst.ts.rubintv.config.models import Location
 from lsst.ts.rubintv.data.redis_inputs import RedisUnavailable
+from lsst.ts.rubintv.logging import get_logger
 from lsst.ts.rubintv.state import AppState
 from pydantic import BaseModel
+
+log = get_logger(__name__)
 
 router = APIRouter()
 
@@ -79,8 +82,14 @@ def set_control(
     body: ControlValue,
     location: Location = Depends(get_location),
     state: AppState = Depends(get_app_state),
-    _user: str = Depends(require_admin),
+    user: str = Depends(require_admin),
 ) -> ControlValue:
+    log.info(
+        "admin.control.set_local",
+        user=user or "?",
+        location=location.name,
+        key=body.key,
+    )
     state.controls.set(location.name, body.key, body.value)
     return body
 
@@ -160,6 +169,26 @@ def require_site_admin(
     return x_auth_user or ""
 
 
+def allowed_control_keys(state: AppState) -> set[str]:
+    """The exact Redis keys the admin UI is allowed to write.
+
+    The ``controls/set`` endpoint accepts a caller-supplied key; without a
+    bound, an admin (or anything that reached the pod past the auth proxy)
+    could ``SET`` any key the analysis cluster consumes, turning the control
+    channel into an arbitrary command surface. Constrain writes to the keys
+    the config actually defines: the admin menu keys, the witness-detector
+    key, the head-node reset key, and the per-set cluster reset keys derived
+    from the ``redis_detectors`` status keys (the same derivation
+    ``restart_workers`` uses).
+    """
+    keys = {menu.key for menu in state.models.admin_redis_menus}
+    keys.add(state.settings.witness_detector_key)
+    keys.add(state.settings.reset_head_node_key)
+    for detector in state.models.redis_detectors:
+        keys.add(detector.key.replace(_STATUS_PREFIX, _RESET_PREFIX, 1))
+    return keys
+
+
 async def _set_redis(state: AppState, key: str, value: str) -> AdminActionOut:
     """Write one control key, mapping a missing Redis to a 503."""
     if state.redis is None or not state.redis.enabled:
@@ -194,9 +223,21 @@ def get_admin_status(
 async def set_site_control(
     body: ControlValue,
     state: AppState = Depends(get_app_state),
-    _user: str = Depends(require_site_admin),
+    user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
-    """Write an arbitrary control key/value (also used by the menu boxes)."""
+    """Write a control key/value from the admin menu boxes.
+
+    The key must be one the config defines (see ``allowed_control_keys``): an
+    unknown key is rejected 400 rather than blindly SET, so this endpoint can't
+    be used to write arbitrary keys into the cluster's control namespace.
+    """
+    allowed = allowed_control_keys(state)
+    if body.key not in allowed:
+        log.warning("admin.control.rejected", user=user or "?", key=body.key)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"control key not permitted: {body.key}"
+        )
+    log.info("admin.control.set", user=user or "?", key=body.key)
     return await _set_redis(state, body.key, body.value)
 
 
@@ -213,9 +254,10 @@ async def set_witness_detector(
 @router.post("/admin/reset-head-node", response_model=AdminActionOut)
 async def reset_head_node(
     state: AppState = Depends(get_app_state),
-    _user: str = Depends(require_site_admin),
+    user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
     """Trigger a head-node reset by writing its sentinel control value."""
+    log.warning("admin.reset_head_node", user=user or "?")
     return await _set_redis(
         state,
         state.settings.reset_head_node_key,
@@ -227,7 +269,7 @@ async def reset_head_node(
 async def restart_workers(
     set_name: str,
     state: AppState = Depends(get_app_state),
-    _user: str = Depends(require_site_admin),
+    user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
     """Restart a cluster set's workers.
 
@@ -243,18 +285,20 @@ async def restart_workers(
             status.HTTP_404_NOT_FOUND, f"unknown detector set: {set_name}"
         )
     reset_key = detector.key.replace(_STATUS_PREFIX, _RESET_PREFIX, 1)
+    log.warning("admin.restart_workers", user=user or "?", set=set_name)
     return await _set_redis(state, reset_key, "reset")
 
 
 @router.post("/admin/flush-historical", response_model=AdminActionOut)
 async def flush_historical(
     state: AppState = Depends(get_app_state),
-    _user: str = Depends(require_site_admin),
+    user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
     """Clear the disk + in-memory historical cache and trigger a cold
     rescan."""
     if state.flush_historical is None:  # pragma: no cover - always wired
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "flush not available")
+    log.warning("admin.flush_historical.request", user=user or "?")
     removed = await state.flush_historical()
     return AdminActionOut(ok=True, detail=f"cleared {removed} cached slices")
 
@@ -262,9 +306,10 @@ async def flush_historical(
 @router.post("/admin/flush-redis", response_model=AdminActionOut)
 async def flush_redis(
     state: AppState = Depends(get_app_state),
-    _user: str = Depends(require_site_admin),
+    user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
     """Danger zone: flush the entire Redis database."""
+    log.warning("admin.flush_redis.request", user=user or "?")
     if state.redis is None or not state.redis.enabled:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "redis is not configured"

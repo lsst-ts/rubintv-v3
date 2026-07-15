@@ -103,13 +103,19 @@ def aws_profiles() -> Iterator[None]:
 
 @pytest.fixture
 def settings() -> Settings:
-    """Settings pointed at the repo's sample config, no Redis, no cache."""
+    """Settings pointed at the repo's sample config, no Redis, no cache.
+
+    The ``test`` site's ``admin_for`` is the ``["*"]`` wildcard, which is now
+    fail-closed by default; enable it here so admin-path tests exercise the
+    open-admin behaviour they mean to.
+    """
     return Settings(
         site=TEST_SITE,
         models_path=CONFIG_PATH,
         cache_dir=None,
         redis_url=None,
         poll_interval_seconds=0.05,
+        allow_admin_wildcard=True,
     )
 
 

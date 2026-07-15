@@ -63,10 +63,15 @@ def commit_date() -> str:
 def is_release() -> bool:
     """Whether this is a built/deployed image rather than a live checkout.
 
-    The Dockerfile bakes ``RUBINTV_GIT_SHA`` in at image-build time, so its
-    presence marks a deployed build. Local development leaves it unset (the
+    The Dockerfile bakes ``RUBINTV_GIT_SHA`` in at image-build time, so a
+    *real* value marks a deployed build. Local development leaves it unset (the
     sha/date come from live ``git`` instead). The Admin header uses this to
     show the full setuptools-scm version only where it's meaningful — a
     release image — and to drop the noisy ``dev+g<sha>`` string locally.
+
+    A build-arg-less ``docker build`` leaves ``RUBINTV_GIT_SHA`` at its
+    ``"unknown"`` default; that is *not* a release (it would otherwise show a
+    "release" with sha "unknown" in Admin), so the sentinel is excluded.
     """
-    return bool(os.environ.get("RUBINTV_GIT_SHA"))
+    sha = os.environ.get("RUBINTV_GIT_SHA")
+    return bool(sha) and sha != _UNKNOWN

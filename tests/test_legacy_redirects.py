@@ -23,8 +23,14 @@ def _location(client: TestClient, path: str) -> str:
     return resp.headers["location"]
 
 
-def test_admin_passthrough(client: TestClient) -> None:
-    assert _location(client, "/admin") == f"{TEST_PREFIX}/admin"
+def test_admin_is_not_a_redirect(client: TestClient) -> None:
+    # /admin must NOT be a legacy redirect: the old and new URLs are
+    # identical, so a redirect would loop (ERR_TOO_MANY_REDIRECTS). It is
+    # served by the SPA catch-all instead — so the response is anything but a
+    # self-redirect 301.
+    resp = client.get("/admin", follow_redirects=False)
+    if resp.status_code == 301:
+        assert resp.headers.get("location") != f"{TEST_PREFIX}/admin"
 
 
 def test_slac_aliases_to_usdf(client: TestClient) -> None:

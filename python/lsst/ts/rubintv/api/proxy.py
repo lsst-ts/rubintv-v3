@@ -19,10 +19,17 @@ from typing import TYPE_CHECKING, TypedDict
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
-from lsst.ts.rubintv.api.deps import get_app_state, get_camera, get_location, valid_date
+from lsst.ts.rubintv.api.deps import (
+    get_app_state,
+    get_camera,
+    get_location,
+    safe_segment,
+    valid_date,
+)
 from lsst.ts.rubintv.config.models import Camera, Location
 from lsst.ts.rubintv.logging import get_logger
 from lsst.ts.rubintv.state import AppState
+from starlette.background import BackgroundTask
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -58,6 +65,14 @@ def proxy_object(
     if_none_match: str | None = Header(default=None),
     range_header: str | None = Header(default=None, alias="Range"),
 ) -> Response:
+    # Validate the free-form path segments before they flow into S3 key/prefix
+    # construction and the Content-Disposition header: reject "/", "..", quotes
+    # and control chars so a crafted URL can't traverse prefixes or corrupt the
+    # response header (date/location/camera are already validated by deps).
+    safe_segment(channel, field="channel")
+    safe_segment(seq, field="seq")
+    safe_segment(filename, field="filename")
+
     # Channels may override the path segment used in S3 keys (Channel.prefix);
     # the URL uses the channel *name*, but the bucket may store under a
     # different prefix.
@@ -130,6 +145,12 @@ def proxy_night_report_plot(
     if_none_match: str | None = Header(default=None),
     range_header: str | None = Header(default=None, alias="Range"),
 ) -> Response:
+    # Validate the free-form segments before building the key — otherwise a
+    # crafted group/filename (encoded "/", "..") could read arbitrary objects
+    # under the bucket rather than just night-report plots.
+    safe_segment(group, field="group")
+    safe_segment(filename, field="filename")
+
     # Night-report plot keys are fully known (no resolution by listing): the
     # key shape is {camera}/{date}/night_report/{group}/{filename} (parser §3).
     # We GET that exact key directly.
@@ -176,7 +197,11 @@ def _stream_object(
     """Stream a fetched S3 object to the browser with caching headers.
 
     ``download_name`` is offered via ``Content-Disposition`` so saved files
-    have a meaningful name; ``is_range`` selects 206 vs 200.
+    have a meaningful name. The status is 206 only when S3 actually honoured
+    the range (it returned a ``ContentRange``); a request that carried a Range
+    header S3 ignored — e.g. a syntactically-odd range on a full-body reply —
+    must be a plain 200, not a 206 with no ``Content-Range`` (which is
+    protocol-invalid and breaks range-aware clients).
     """
     headers = {
         "Cache-Control": _CACHE_CONTROL,
@@ -184,14 +209,27 @@ def _stream_object(
         "Accept-Ranges": "bytes",
         "Content-Disposition": f'inline; filename="{download_name}"',
     }
-    if "ContentRange" in obj:
+    served_partial = "ContentRange" in obj
+    if served_partial:
         headers["Content-Range"] = obj["ContentRange"]
-    status_code = status.HTTP_206_PARTIAL_CONTENT if is_range else status.HTTP_200_OK
+    status_code = (
+        status.HTTP_206_PARTIAL_CONTENT
+        if is_range and served_partial
+        else status.HTTP_200_OK
+    )
+    body = obj["Body"]
     return StreamingResponse(
-        obj["Body"].iter_chunks(),
+        body.iter_chunks(),
         status_code=status_code,
         media_type=_media_type_for(obj, download_name),
         headers=headers,
+        # Explicitly release the S3 streaming body when the response
+        # finishes — including when the browser aborts (video scrub / tab
+        # close, the common case for movies). Without this the connection
+        # stays checked out of the per-location client pool (shared with
+        # interactive metadata fetches) until GC finalises it, so heavy
+        # scrubbing can transiently exhaust it.
+        background=BackgroundTask(body.close),
     )
 
 
@@ -202,7 +240,9 @@ def _get_object(
 
     Returns the object on success, ``None`` if the key is absent (caller may
     fall back to listing), or a 304 ``Response`` when the client's
-    ``If-None-Match`` matched. Any other S3 error becomes a 502.
+    ``If-None-Match`` matched. An unsatisfiable Range maps to 416 (so a player
+    scrubbing past EOF gets a clamp signal, not a 502). Any other S3 error
+    becomes a 502.
     """
     try:
         return client.get_object(Bucket=bucket, Key=key, **conditional)
@@ -214,6 +254,12 @@ def _get_object(
             return Response(status_code=status.HTTP_304_NOT_MODIFIED)
         if code in ("NoSuchKey", "404"):
             return None
+        if code in ("InvalidRange", "416"):
+            # Range past EOF (e.g. the object was replaced by a shorter file):
+            # a proper 416 lets the client re-request, unlike an opaque 502.
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE
+            )
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "upstream S3 error") from exc
 
 

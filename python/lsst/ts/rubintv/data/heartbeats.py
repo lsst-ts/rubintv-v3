@@ -14,7 +14,15 @@ transition so the UI updates without a client poll.
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
+
+# Cap on distinct tracked services. The heartbeat endpoint records an arbitrary
+# service name per beat; without a bound, anything able to reach it (the
+# endpoint relies on the ingress keeping /internal private) could inject
+# unlimited names and grow the store without limit. At the cap the
+# least-recently-seen service is evicted.
+_MAX_SERVICES = 1024
 
 
 @dataclass(slots=True)
@@ -33,13 +41,18 @@ class HeartbeatStore:
     """
 
     def __init__(self) -> None:
-        self._beats: dict[str, _Beat] = {}
+        # OrderedDict so we can evict the least-recently-seen service when the
+        # distinct-service cap is hit.
+        self._beats: OrderedDict[str, _Beat] = OrderedDict()
 
     def beat(self, service: str, ttl: float, location: str | None = None) -> bool:
         """Record a beat. Returns True if this revived a previously-stale
         service."""
         was_live = self._is_live(self._beats.get(service))
         self._beats[service] = _Beat(time.monotonic(), ttl, location)
+        self._beats.move_to_end(service)
+        while len(self._beats) > _MAX_SERVICES:
+            self._beats.popitem(last=False)
         return not was_live
 
     def all(self) -> dict[str, dict[str, object]]:

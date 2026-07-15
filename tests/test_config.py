@@ -136,9 +136,26 @@ def test_locked_columns_must_be_a_list(tmp_path: Path) -> None:
 def test_admin_users_picked_up_from_admin_for() -> None:
     """admin_users on each location come from the global admin_for[site]
     list."""
-    models = load_models(CONFIG_PATH, site="test")
+    models = load_models(CONFIG_PATH, site="test", allow_admin_wildcard=True)
     assert "testadmin" in models.location("test").admin_users  # type: ignore[union-attr]
     assert "*" in models.location("test").admin_users  # type: ignore[union-attr]
+
+
+def test_admin_wildcard_disabled_by_default_fails_closed() -> None:
+    # The ["*"] wildcard must NOT take effect unless explicitly allowed, so a
+    # pod that booted with a wrong/defaulted site can't grant admin to
+    # everyone. The non-wildcard admins on the site are still honoured.
+    models = load_models(CONFIG_PATH, site="test")  # allow_admin_wildcard=False
+    admins = models.location("test").admin_users  # type: ignore[union-attr]
+    assert "*" not in admins
+    assert "testadmin" in admins
+
+
+def test_admin_wildcard_only_site_becomes_no_admins_when_disabled() -> None:
+    # A site whose admin_for is purely ["*"] (e.g. base) fails fully closed.
+    models = load_models(CONFIG_PATH, site="base")  # allow_admin_wildcard=False
+    for loc in models.locations:
+        assert loc.admin_users == []
 
 
 def test_redis_detectors_and_admin_menus_parsed() -> None:

@@ -15,7 +15,7 @@ route) and after ``/api``/``/ws``, so they intercept only the legacy shapes.
 
 Mapping (paths shown relative to the shared prefix P, e.g. P=/rubintv):
 
-    P/admin                                -> P/admin (passthrough)
+    P/admin                                (served by the SPA; no redirect)
     P/slac[/...]                           -> P/usdf[/...] (alias, 1st hop)
     P/{loc}/cluster-status                 -> P/detectors (loc dropped)
     P/{loc}/{cam}/date/{date}              -> P/{loc}/{cam}?date={date}
@@ -78,9 +78,9 @@ def build_router(prefix: str) -> APIRouter:
                 url = f"{url}?{urlencode(pairs)}"
         return RedirectResponse(url=url, status_code=301)
 
-    @router.get("/admin")
-    async def legacy_admin() -> RedirectResponse:
-        return to("/admin")
+    # NOTE: no /admin route here. The old and new /admin URLs are identical, so
+    # a redirect would target the same path and loop (ERR_TOO_MANY_REDIRECTS);
+    # the SPA catch-all serves /admin directly.
 
     @router.get("/slac")
     async def legacy_slac_root() -> RedirectResponse:

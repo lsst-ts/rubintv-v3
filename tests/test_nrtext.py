@@ -16,7 +16,11 @@ def test_new_format_all_three_types() -> None:
     raw = [
         {"type": "multiline", "title": "M", "content": "text"},
         {"type": "keyvalues", "title": "K", "content": {"a": "1"}},
-        {"type": "links", "title": "L", "content": [{"text": "t", "url": "u"}]},
+        {
+            "type": "links",
+            "title": "L",
+            "content": [{"text": "t", "url": "https://x/t"}],
+        },
     ]
     items = parse_text_items(raw, day_obs=NEW, source=_src(NEW))
     assert [i.type for i in items] == ["multiline", "keyvalues", "links"]
@@ -66,6 +70,42 @@ def test_old_format_links_require_label_and_url() -> None:
     raw = {"bad": [{"text": "t", "url": "u"}]}
     items = parse_text_items(raw, day_obs=OLD, source=_src(OLD))
     assert items == []
+
+
+def test_links_with_unsafe_url_scheme_are_rejected() -> None:
+    # Night-report text is operator-authored; a javascript: (or data:) URL
+    # must not survive parsing, or it would reach an <a href> and run in this
+    # origin.
+    raw = [
+        {
+            "type": "links",
+            "title": "L",
+            "content": [{"text": "x", "url": "javascript:alert(1)"}],
+        },
+    ]
+    # The whole links item fails validation (one bad url) and is dropped.
+    assert parse_text_items(raw, day_obs=NEW, source=_src(NEW)) == []
+
+
+def test_links_allow_http_https_and_relative() -> None:
+    raw = [
+        {
+            "type": "links",
+            "title": "L",
+            "content": [
+                {"text": "a", "url": "https://example.org/x"},
+                {"text": "b", "url": "http://example.org/y"},
+                {"text": "c", "url": "/rubintv/local/lsstcam"},
+            ],
+        },
+    ]
+    items = parse_text_items(raw, day_obs=NEW, source=_src(NEW))
+    assert len(items) == 1
+    assert [link.url for link in items[0].content] == [
+        "https://example.org/x",
+        "http://example.org/y",
+        "/rubintv/local/lsstcam",
+    ]
 
 
 def test_unsupported_top_level_returns_empty() -> None:

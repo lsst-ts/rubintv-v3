@@ -34,7 +34,7 @@ _CHANGE_TO_TOPIC = {
     "perDay": "camera",
     "nightReport": "nightReport",
     "dayChange": "camera",
-    "calendar": "camera",
+    "calendarUpdate": "camera",
     "detectorStatus": "detectors",
     "controlReadback": "admin",
     "serviceStatus": "services",
@@ -69,10 +69,19 @@ class WsService:
             await asyncio.gather(self._pump_task, return_exceptions=True)
 
     async def _pump(self) -> None:
-        """Translate bus changes into client messages."""
+        """Translate bus changes into client messages.
+
+        Each change is fanned out under its own guard: a malformed change (e.g.
+        a StoreChange whose type has no ServerMessage counterpart) must degrade
+        to a dropped message, never escape and kill the pump — a dead pump
+        silently stops *all* live updates process-wide until restart.
+        """
         async with self._store.bus.subscribe() as stream:
             async for change in stream:
-                self._fan_out(change)
+                try:
+                    self._fan_out(change)
+                except Exception:  # noqa: BLE001 - one bad change must not kill the pump
+                    log.exception("ws.pump.fan_out.error", change_type=change.type)
 
     def _fan_out(self, change: StoreChange) -> None:
         topic_kind = _CHANGE_TO_TOPIC.get(change.type)

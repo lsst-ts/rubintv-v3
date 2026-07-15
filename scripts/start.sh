@@ -14,8 +14,21 @@ if [ -n "$DDV_DEPLOY_BRANCH" ]; then
     script_dir=$(cd "$(dirname "$0")" && pwd)
     rm -rf "$DDV_BUILD_DIR"
     mkdir -p "$DDV_BUILD_DIR"
-    (cd "$DDV_BUILD_DIR" && bash "$script_dir/build-ddv.sh") ||
-        echo "DDV build failed; continuing without /ddv" >&2
+    # Bound the build: it does network clones + an fvm/Flutter SDK fetch, any
+    # of which can *stall* (not just fail) if GitHub/pub.dev blackholes a
+    # connection. Unbounded, that hang would keep uvicorn from ever binding
+    # 8080 -> the chart's probe fails -> CrashLoopBackOff with no app logs. A
+    # timeout turns a stalled build into the same non-fatal "continue without
+    # /ddv" path a failed build already takes. Override via DDV_BUILD_TIMEOUT.
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${DDV_BUILD_TIMEOUT:-600}" \
+            bash -c 'cd "$1" && bash "$2/build-ddv.sh"' _ \
+            "$DDV_BUILD_DIR" "$script_dir" ||
+            echo "DDV build failed or timed out; continuing without /ddv" >&2
+    else
+        (cd "$DDV_BUILD_DIR" && bash "$script_dir/build-ddv.sh") ||
+            echo "DDV build failed; continuing without /ddv" >&2
+    fi
 else
     echo "DDV_DEPLOY_BRANCH not set; skipping the DDV build" >&2
 fi

@@ -157,6 +157,38 @@ def test_ws_admin_snapshot(ws_client) -> None:  # type: ignore[no-untyped-def]
         assert snap["data"]["controls"] == {"AOS_READBACK": "danish"}
 
 
+def test_ws_calendar_update_delivered_and_pump_survives(ws_client) -> None:  # type: ignore[no-untyped-def]
+    # Regression: prune_dates publishes StoreChange("calendarUpdate", ...). The
+    # type must exist in ServerMessageType (a "calendar"/"calendarUpdate"
+    # mismatch made _fan_out raise ValidationError, which killed the bus pump
+    # and silently stopped ALL live updates process-wide). Assert the change is
+    # delivered AND a following change still arrives (the pump did not die).
+    client, _ = ws_client
+    state = client.app.state.app_state
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "action": "subscribe",
+                "topic": "camera",
+                "location": "test",
+                "camera": "lsstcam",
+            }
+        )
+        assert ws.receive_json()["type"] == "channelData"  # subscribe snapshot
+
+        state.store.bus.publish(
+            StoreChange("calendarUpdate", "test", "lsstcam", DATE)
+        )
+        upd = ws.receive_json()
+        assert upd["type"] == "calendarUpdate"
+        assert upd["camera"] == "lsstcam"
+        assert upd["date"] == DATE
+
+        # The pump is still alive: a subsequent change is delivered.
+        state.store.bus.publish(StoreChange("dayChange", "test", "lsstcam", DATE))
+        assert ws.receive_json()["type"] == "dayChange"
+
+
 def test_ws_bad_frame_gets_error(ws_client) -> None:  # type: ignore[no-untyped-def]
     client, _ = ws_client
     with client.websocket_connect("/ws") as ws:

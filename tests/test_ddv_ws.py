@@ -6,8 +6,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import boto3
+import pytest
+from fastapi import WebSocketDisconnect
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.ws import ddv as ddv_mod
 from moto import mock_aws
 
 from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
@@ -99,3 +102,61 @@ def test_client_gone_sentinel_is_not_relayed() -> None:
             worker.send_text("Client disconnected")
             client.send_text("job-2")
             assert worker.receive_text() == "job-2"
+
+
+# --- Unit tests on DdvBridge internals (fake sockets) -----------------------
+
+
+class _FakeSocket:
+    """Minimal WebSocket stand-in: records sent frames; feeds queued inbound
+    frames then raises the configured error (default WebSocketDisconnect)."""
+
+    def __init__(
+        self, inbound: list[str] | None = None, error: Exception | None = None
+    ):
+        self.sent: list[str] = []
+        self._inbound = list(inbound or [])
+        self._error = error or WebSocketDisconnect()
+        self.accepted = False
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def receive_text(self) -> str:
+        if self._inbound:
+            return self._inbound.pop(0)
+        raise self._error
+
+    async def send_text(self, text: str) -> None:
+        self.sent.append(text)
+
+
+async def test_dispatch_bounds_the_queue() -> None:
+    # The public client endpoint must not let a flood of jobs (no idle worker)
+    # grow the queue without bound. At the cap the oldest job is dropped.
+    bridge = ddv_mod.DdvBridge()
+    client = ddv_mod._Client("c", _FakeSocket())
+    for i in range(ddv_mod._MAX_QUEUE_DEPTH + 5):
+        await bridge._dispatch(f"job-{i}", client)
+    assert len(bridge._queue) == ddv_mod._MAX_QUEUE_DEPTH
+    # Oldest were dropped; newest retained.
+    assert bridge._queue[-1].message == f"job-{ddv_mod._MAX_QUEUE_DEPTH + 4}"
+
+
+async def test_handle_client_cleans_up_on_non_disconnect_error() -> None:
+    # A binary frame makes Starlette's receive_text raise KeyError (not
+    # WebSocketDisconnect). Cleanup must still run (finally) even though the
+    # error then propagates, or the client leaks into the registry forever.
+    bridge = ddv_mod.DdvBridge()
+    sock = _FakeSocket(inbound=[], error=KeyError("bytes"))
+    with pytest.raises(KeyError):
+        await bridge.handle_client(sock)
+    assert bridge._clients == {}
+
+
+async def test_handle_worker_cleans_up_on_non_disconnect_error() -> None:
+    bridge = ddv_mod.DdvBridge()
+    sock = _FakeSocket(inbound=[], error=RuntimeError("teardown"))
+    with pytest.raises(RuntimeError):
+        await bridge.handle_worker(sock)
+    assert bridge._workers == {}

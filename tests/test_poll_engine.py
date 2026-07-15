@@ -30,6 +30,12 @@ class FakePoller:
         self._seen: dict[tuple[str, str], set[str]] = {}
 
     def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
+        events, _ = self.scan_full(location, prefix)
+        return events
+
+    def scan_full(
+        self, location: str, prefix: str
+    ) -> tuple[list[ObjectEvent], set[str]]:
         self.scanned.append((location, prefix))
         # A conforming channel-event key under the scanned prefix, so the
         # store classifies and applies it. day_obs is taken from the prefix
@@ -37,9 +43,10 @@ class FakePoller:
         date = prefix.split("/")[1] if prefix.count("/") >= 2 else "2026-01-01"
         key = f"{prefix.split('/')[0]}/{date}/c/000001/a.png"
         self._seen[(location, prefix)] = {date}
-        return [
+        events = [
             ObjectEvent(kind=ObjectKind.CREATED, location=location, key=key, etag="e")
         ]
+        return events, {date}
 
     def observed_dates(self, location: str, prefix: str) -> set[str]:
         return set(self._seen.get((location, prefix), set()))
@@ -133,6 +140,32 @@ async def test_full_sweep_prunes_stale_warm_start_date() -> None:
     # is gone from the calendar and its cache file was evicted.
     assert store.calendar("loc", "cam") == ["2026-01-01"]
     assert evicted == [{("loc", "cam", "1970-01-01")}]
+
+
+async def test_full_sweep_never_prunes_the_current_day() -> None:
+    # Race guard: the fast current-day loop may have inserted today's first
+    # keys *after* the historical sweep listed the {camera}/ prefix, so the
+    # sweep's listing wouldn't include today. Today must be protected from the
+    # prune, or it would be deleted the instant it appeared (and, because the
+    # poller's _seen still held its keys, not re-emitted until the next sweep).
+    today = get_current_day_obs()
+    poller = FakePoller()
+    store = EventStore()
+    # Today is present in the store (from the current-day loop) but the fake
+    # sweep listing only ever reports its own historical date, never today.
+    await store.apply(
+        [ObjectEvent(ObjectKind.CREATED, "loc", f"cam/{today}/c/000001/x.png", "e")]
+    )
+    engine = PollEngine(
+        _models(),
+        store,
+        poller,  # type: ignore[arg-type]
+        recent_window_days=0,
+    )
+    assert today in store.calendar("loc", "cam")
+    await engine._scan_all_history()
+    # Today survived even though the sweep listing didn't observe it.
+    assert today in store.calendar("loc", "cam")
 
 
 async def test_full_sweep_keeps_observed_dates() -> None:

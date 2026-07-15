@@ -192,13 +192,24 @@ def test_admin_write_requires_auth(seeded_client: TestClient) -> None:
 
 
 def test_admin_control_set_503_without_redis(seeded_client: TestClient) -> None:
-    # Authed (test site admin_for is "*"), but no Redis -> 503.
+    # Authed (test site admin_for is "*"), permitted key, but no Redis -> 503.
     resp = seeded_client.post(
         "/api/admin/controls/set",
-        json={"key": "K", "value": "V"},
+        json={"key": "RUBINTV_CONTROL_AOS_PIPELINE", "value": "V"},
         headers={"X-Auth-User": "tester"},
     )
     assert resp.status_code == 503
+
+
+def test_admin_control_set_rejects_unknown_key(seeded_client: TestClient) -> None:
+    # An arbitrary (non-config) control key is rejected 400 before any Redis
+    # write, so the endpoint can't set keys outside the configured namespace.
+    resp = seeded_client.post(
+        "/api/admin/controls/set",
+        json={"key": "RUBINTV_CONTROL_ARBITRARY_INJECTED", "value": "x"},
+        headers={"X-Auth-User": "tester"},
+    )
+    assert resp.status_code == 400
 
 
 def test_admin_reset_head_node_503_without_redis(seeded_client: TestClient) -> None:
@@ -544,6 +555,42 @@ def test_proxy_range_request_returns_partial_content(
     assert resp.headers["Content-Range"] == "bytes 0-3/10"
 
 
+def test_proxy_unsatisfiable_range_returns_416(seeded_client: TestClient) -> None:
+    # A Range past EOF must clamp to 416, not surface as an opaque 502.
+    s3 = boto3.client("s3", region_name="us-east-1")
+    conv_key = (
+        f"lsstcam/{DATE}/witness_detector/000005/"
+        f"lsstcam_witness_detector_{DATE}_000005.mp4"
+    )
+    s3.put_object(Bucket=TEST_BUCKET, Key=conv_key, Body=b"0123456789")
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000005/video.mp4",
+        headers={"Range": "bytes=9999-10000"},
+    )
+    assert resp.status_code == 416
+
+
+def test_proxy_rejects_unsafe_seq_segment(seeded_client: TestClient) -> None:
+    # A seq segment carrying a quote (header-injection attempt) reaches the
+    # handler and is rejected 422 before any S3 key or Content-Disposition is
+    # built. (A "/"-bearing traversal is already stopped earlier by routing.)
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f'{DATE}/0%2200/x.jpg'
+    )
+    assert resp.status_code == 422
+
+
+def test_night_report_plot_rejects_unsafe_segment(seeded_client: TestClient) -> None:
+    # group flows into the S3 key directly; a quote-bearing group is 422.
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}/plot/"
+        f"gr%22oup/x.png"
+    )
+    assert resp.status_code == 422
+
+
 def test_proxy_no_extension_resolves_by_listing(
     seeded_client: TestClient,
 ) -> None:
@@ -641,11 +688,11 @@ def test_admin_actions_write_through_redis(seeded_client: TestClient) -> None:
 
     resp = seeded_client.post(
         "/api/admin/controls/set",
-        json={"key": "RUBINTV_CONTROL_AOS", "value": "danish"},
+        json={"key": "RUBINTV_CONTROL_AOS_PIPELINE", "value": "danish"},
         headers=headers,
     )
     assert resp.status_code == 200
-    assert fake.store["RUBINTV_CONTROL_AOS"] == "danish"
+    assert fake.store["RUBINTV_CONTROL_AOS_PIPELINE"] == "danish"
 
     resp = seeded_client.post(
         "/api/admin/witness-detector",
@@ -674,7 +721,7 @@ def test_admin_action_503_when_redis_drops_mid_request(
     monkeypatch.setattr(state.redis, "set_value", _gone)
     resp = seeded_client.post(
         "/api/admin/controls/set",
-        json={"key": "K", "value": "V"},
+        json={"key": "RUBINTV_CONTROL_AOS_PIPELINE", "value": "V"},
         headers={"X-Auth-User": "testadmin"},
     )
     assert resp.status_code == 503

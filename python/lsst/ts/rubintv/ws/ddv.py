@@ -34,6 +34,12 @@ log = get_logger(__name__)
 # relayed.
 _CLIENT_GONE = "Client disconnected"
 
+# Cap the pending-job backlog. The client endpoint is public; without a bound a
+# client flooding jobs while no worker is idle would grow the deque until the
+# process runs out of memory. At the cap, the oldest queued job is dropped (its
+# client can retry) so newer work still gets through.
+_MAX_QUEUE_DEPTH = 512
+
 
 @dataclass
 class _Client:
@@ -82,6 +88,13 @@ class DdvBridge:
                 message = await socket.receive_text()
                 await self._dispatch(message, client)
         except WebSocketDisconnect:
+            pass
+        finally:
+            # Clean up on *any* exit, not just a clean disconnect: a binary
+            # frame makes receive_text() raise KeyError (not
+            # WebSocketDisconnect), and other teardowns raise RuntimeError.
+            # Without the finally the client would leak into _clients forever
+            # and its queued jobs would be relayed into a dead socket.
             self._drop_client(client)
 
     async def handle_worker(self, socket: WebSocket) -> None:
@@ -98,12 +111,26 @@ class DdvBridge:
                 message = await socket.receive_text()
                 await self._finish(worker, message)
         except WebSocketDisconnect:
+            pass
+        finally:
+            # Same rationale as handle_client: a non-WebSocketDisconnect exit
+            # (binary frame → KeyError, teardown → RuntimeError) must still
+            # deregister the worker, or it lingers as a phantom idle worker
+            # that future jobs are dispatched to and fail against.
             self._drop_worker(worker)
 
     async def _dispatch(self, message: str, client: _Client) -> None:
         """Send a client's job to an idle worker, or queue it."""
         idle = next((w for w in self._workers.values() if w.client is None), None)
         if idle is None:
+            if len(self._queue) >= _MAX_QUEUE_DEPTH:
+                dropped = self._queue.popleft()
+                log.warning(
+                    "ddv.job.dropped",
+                    client_id=dropped.client.conn_id,
+                    depth=len(self._queue),
+                    reason="queue_full",
+                )
             self._queue.append(_Job(message, client))
             log.info("ddv.job.queued", client_id=client.conn_id, depth=len(self._queue))
             return

@@ -122,6 +122,14 @@ class Settings(BaseSettings):
     cache's own LRU size and by the dates actually present. ``0`` disables
     preloading (metadata stays purely on-demand)."""
 
+    allow_admin_wildcard: bool = False
+    """Allow the ``admin_for: ["*"]`` wildcard (any authenticated user is
+    admin) to take effect. Off by default so a pod that boots with the *wrong*
+    (or defaulted) ``RAPID_ANALYSIS_LOCATION`` — which maps ``local`` to the
+    real USDF locations with ``admin_for: local: ["*"]`` — grants admin to
+    *nobody* rather than everybody. Open dev/test deployments that genuinely
+    want the wildcard set ``RUBINTV_ALLOW_ADMIN_WILDCARD=true`` explicitly."""
+
     witness_detector_key: str = "RUBINTV_CONTROL_WITNESS_DETECTOR"
     """Redis control key the admin 'Witness Detector' box writes to."""
 

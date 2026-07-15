@@ -77,6 +77,31 @@ class S3Poller:
 
     def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
         """List ``prefix`` and return changes vs. the previous scan."""
+        changes, _ = self._scan(location, prefix)
+        return changes
+
+    def scan_full(
+        self, location: str, prefix: str
+    ) -> tuple[list[ObjectEvent], set[str]]:
+        """Scan ``prefix`` and also return the dates present in *this* listing.
+
+        The dates come from the listing this call actually performed — not from
+        the shared ``_seen`` snapshot, which a concurrent ``reset()`` (admin
+        flush) or an on-demand date scan may have cleared or overwritten
+        between this scan and the caller reading it. A full-sweep caller uses
+        these dates to prune stale ones; deriving them from the live listing
+        prevents the prune from ever deleting dates this scan didn't examine
+        (which would otherwise wipe freshly-added dates and, because ``_seen``
+        still held their keys, leave them unrecoverable until the next full
+        sweep).
+        """
+        changes, current = self._scan(location, prefix)
+        dates = {date for key in current if (date := _date_of(key)) is not None}
+        return changes, dates
+
+    def _scan(
+        self, location: str, prefix: str
+    ) -> tuple[list[ObjectEvent], dict[str, str]]:
         bucket = self._buckets.get(location)
         if bucket is None:
             raise KeyError(f"no bucket registered for location {location!r}")
@@ -87,7 +112,7 @@ class S3Poller:
         changes = _diff(location, previous, current)
         if generation == self._generation:
             self._seen[(location, prefix)] = current
-        return changes
+        return changes, current
 
     def observed_dates(self, location: str, prefix: str) -> set[str]:
         """Dates present in the most recent listing of ``prefix``.
@@ -97,6 +122,10 @@ class S3Poller:
         which dates exist in the bucket (and prune the rest). Keys that don't
         parse to a day_obs are ignored, matching the store's ingestion. An
         unscanned prefix yields the empty set.
+
+        Prefer ``scan_full`` for prune decisions: this reads shared ``_seen``,
+        which a concurrent reset/on-demand scan can have changed since the
+        sweep listed the prefix.
         """
         seen = self._seen.get((location, prefix), {})
         return {date for key in seen if (date := _date_of(key)) is not None}

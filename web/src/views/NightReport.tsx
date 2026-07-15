@@ -19,6 +19,17 @@ function slug(s: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
+// Only http(s) or site-relative link targets may reach an <a href>. Night
+// report text is operator-authored (read from the bucket), so a `javascript:`
+// URL would run script in this origin on click. The server already rejects
+// these, but guard on the client too so a bad value renders inert rather than
+// dangerous. Returns a safe href, or undefined to render the link disabled.
+function safeHref(url: string): string | undefined {
+  const u = url.trim();
+  if (/^https?:\/\//i.test(u) || u.startsWith("/")) return url;
+  return undefined;
+}
+
 // One text section's body. Discriminated on `type` (paragraph / key-values /
 // link list).
 function TextPanel({ item }: { item: NightReportText }) {
@@ -39,19 +50,23 @@ function TextPanel({ item }: { item: NightReportText }) {
   }
   return (
     <div className="nr-links">
-      {item.content.map((link) => (
-        <a
-          key={link.url}
-          className="nr-link"
-          href={link.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="lk">{link.text}</span>
-          <span className="ld">{link.url}</span>
-          <span className="arr">↗</span>
-        </a>
-      ))}
+      {item.content.map((link) => {
+        const href = safeHref(link.url);
+        return (
+          <a
+            key={link.url}
+            className="nr-link"
+            href={href}
+            aria-disabled={href === undefined}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className="lk">{link.text}</span>
+            <span className="ld">{link.url}</span>
+            <span className="arr">↗</span>
+          </a>
+        );
+      })}
     </div>
   );
 }

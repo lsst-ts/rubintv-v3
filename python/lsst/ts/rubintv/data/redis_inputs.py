@@ -23,7 +23,7 @@ from lsst.ts.rubintv.data.events import StoreChange
 from lsst.ts.rubintv.logging import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
+    from collections.abc import Awaitable, Callable
 
     from lsst.ts.rubintv.config.models import RedisDetector
     from lsst.ts.rubintv.data.bus import EventBus
@@ -36,6 +36,15 @@ log = get_logger(__name__)
 # ``stream:CLUSTER_STATUS_SFM_SET_0``). We subscribe with the prefix but index
 # under the bare key the frontend config uses.
 STREAM_PREFIX = "stream:"
+
+# Reader-loop reconnect backoff (seconds): a Redis blip restarts the loop after
+# _MIN, doubling up to _MAX so a flapping server doesn't hammer reconnects.
+_RECONNECT_BACKOFF_MIN = 1.0
+_RECONNECT_BACKOFF_MAX = 30.0
+
+# Bound the initial connect so a firewalled/DROP-ing Redis URL fails fast in
+# the lifespan instead of hanging on the kernel TCP timeout.
+_CONNECT_TIMEOUT = 5.0
 
 
 class RedisUnavailable(RuntimeError):
@@ -150,6 +159,7 @@ class RedisInputs:
         self._detector_streams = detector_streams
         self._redis: Redis | None = None
         self._tasks: list[asyncio.Task[None]] = []
+        self._stop = asyncio.Event()
 
     @property
     def enabled(self) -> bool:
@@ -184,7 +194,18 @@ class RedisInputs:
         try:
             from redis.asyncio import Redis
 
-            self._redis = Redis.from_url(self._url, decode_responses=True)
+            # Bound the *connect* so a blackholed (DROP-ing) URL can't hang the
+            # lifespan for the kernel TCP timeout (minutes) — uvicorn won't
+            # accept traffic until the lifespan returns, so an unbounded ping
+            # would fail the probe and restart-loop the pod. The "degrade,
+            # don't crash" intent only holds if the ping can actually time out.
+            # Note: only socket_connect_timeout — a socket_timeout would also
+            # fire on the detector loop's intentionally-blocking XREAD (block).
+            self._redis = Redis.from_url(
+                self._url,
+                decode_responses=True,
+                socket_connect_timeout=_CONNECT_TIMEOUT,
+            )
             # redis-py types ping() as returning ResponseT (Awaitable[bool] |
             # bool) for the shared sync/async signature; on the asyncio client
             # it's always awaitable, so cast to satisfy the checker.
@@ -203,19 +224,71 @@ class RedisInputs:
         except Exception as exc:  # noqa: BLE001 - non-fatal
             log.warning("redis.config_set.failed", error=str(exc))
         self._tasks.append(
-            asyncio.create_task(self._readback_loop(), name="redis-readback")
+            asyncio.create_task(
+                self._supervise("readback", self._readback_loop),
+                name="redis-readback",
+            )
         )
         if self._detector_streams:
             self._tasks.append(
-                asyncio.create_task(self._detector_loop(), name="redis-detectors")
+                asyncio.create_task(
+                    self._supervise("detectors", self._detector_loop),
+                    name="redis-detectors",
+                )
             )
 
     async def stop(self) -> None:
+        self._stop.set()
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         if self._redis is not None:
             await self._redis.aclose()
+
+    async def _supervise(
+        self, name: str, loop: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Run a reader loop, restarting it after any error with backoff.
+
+        The reader loops block indefinitely on Redis (``pubsub.listen`` /
+        ``xread(block=0)``); a Redis restart or network blip raises out of
+        them. Without this, the task would die once and the Cluster Status /
+        control readback views would freeze on stale data forever with nothing
+        logged. Here each failure is logged and the loop is restarted after a
+        bounded backoff, mirroring the S3 poll loops' per-cycle resilience.
+        Exits cleanly only when ``stop()`` sets the stop event (or the task is
+        cancelled).
+        """
+        backoff = _RECONNECT_BACKOFF_MIN
+        while not self._stop.is_set():
+            try:
+                await loop()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - a dead reader must self-heal
+                log.exception("redis.reader.error", reader=name)
+            if self._stop.is_set():
+                return
+            log.warning(
+                "redis.reader.reconnect", reader=name, backoff_seconds=backoff
+            )
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=backoff)
+            except TimeoutError:
+                pass
+            backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX)
+
+    def _keyspace_pattern(self) -> str:
+        """Keyspace-notification pattern for the configured Redis DB.
+
+        Keyspace events are published on ``__keyspace@{db}__:*``; hardcoding DB
+        0 silently drops every readback when ``RUBINTV_REDIS_URL`` selects
+        another DB (e.g. ``redis://host/1``). Derive the DB from the live
+        connection instead.
+        """
+        assert self._redis is not None
+        db = self._redis.connection_pool.connection_kwargs.get("db", 0)
+        return f"__keyspace@{db}__:*_READBACK"
 
     async def _readback_loop(self) -> None:
         """Subscribe to keyspace events for *_READBACK keys and republish.
@@ -227,22 +300,29 @@ class RedisInputs:
         """
         assert self._redis is not None
         pubsub = self._redis.pubsub()
-        # Pattern covers keyspace notifications for any *_READBACK key.
-        await pubsub.psubscribe("__keyspace@0__:*_READBACK")
-        async for message in pubsub.listen():
-            if message.get("type") != "pmessage":
-                continue
-            channel = str(message["channel"])
-            key = channel.split(":", 1)[-1]
-            value = await self._redis.get(key)
-            if value is None:
-                continue
-            # Location is encoded in deployment config; readback is global to
-            # the site here, so publish without a camera scope.
-            self._controls.set("*", key, str(value))
-            self._bus.publish(StoreChange("controlReadback", "*", ""))
+        # Pattern covers keyspace notifications for any *_READBACK key on the
+        # connection's DB (not just DB 0).
+        await pubsub.psubscribe(self._keyspace_pattern())
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "pmessage":
+                    continue
+                channel = str(message["channel"])
+                key = channel.split(":", 1)[-1]
+                value = await self._redis.get(key)
+                if value is None:
+                    continue
+                # Location is encoded in deployment config; readback is global
+                # to the site here, so publish without a camera scope.
+                self._controls.set("*", key, str(value))
+                self._bus.publish(StoreChange("controlReadback", "*", ""))
+        finally:
+            # Release the pubsub connection so a supervised restart
+            # re-subscribes on a fresh one rather than leaking the old
+            # (possibly broken) one. redis-py's PubSub.aclose is untyped.
+            await pubsub.aclose()  # type: ignore[no-untyped-call]
 
-    async def _seed_detectors(self, name_for_stream: dict[str, str]) -> None:
+    async def _seed_detectors(self, name_for_stream: dict[str, str]) -> dict[str, str]:
         """Prime the store from each stream's latest retained entry on startup.
 
         Covers the gap between this app starting and the producer's next change
@@ -251,12 +331,21 @@ class RedisInputs:
         nothing for a stream that has never been written). Best-effort per
         stream; one missing stream must not stop the others, and we publish a
         single ``detectorStatus`` change only if anything was actually seeded.
+
+        Returns the newest entry id seen per stream, so the live ``XREAD`` can
+        resume from exactly there. Anchoring the tail at the seeded id (rather
+        than ``"$"``) closes two gaps: an entry written between the seed and
+        the first XREAD is not skipped, and a stream that stayed at ``"$"`` no
+        longer re-anchors to "now" on every XREAD call (which would drop
+        entries written to a still-``"$"`` stream while the loop serviced
+        another).
         """
         assert self._redis is not None
         # Set log_level=DEBUG to trace the cluster-status data flow end to end
         # (seed reads, live entries, store applies, publishes).
         log.debug("redis.detector.seed_start", streams=list(name_for_stream))
         seeded = False
+        seed_ids: dict[str, str] = {}
         for stream_name, set_name in name_for_stream.items():
             try:
                 entries = await self._redis.xrevrange(stream_name, count=1)
@@ -271,6 +360,7 @@ class RedisInputs:
                 log.debug("redis.detector.seed_empty", stream=stream_name)
                 continue
             entry_id, fields = entries[0]
+            seed_ids[stream_name] = entry_id
             log.debug(
                 "redis.detector.seed_entry",
                 stream=stream_name,
@@ -284,6 +374,7 @@ class RedisInputs:
             self._bus.publish(StoreChange("detectorStatus", "*", ""))
         else:
             log.debug("redis.detector.seed_nothing")
+        return seed_ids
 
     async def _detector_loop(self) -> None:
         """Tail the configured cluster-status streams and republish updates.
@@ -311,10 +402,14 @@ class RedisInputs:
         name_for_stream = {
             f"{STREAM_PREFIX}{d.key}": d.name for d in self._detector_streams
         }
-        await self._seed_detectors(name_for_stream)
-        # Start from new entries only ("$"); we don't replay history.
-        last_ids = dict.fromkeys(name_for_stream, "$")
-        while True:
+        seed_ids = await self._seed_detectors(name_for_stream)
+        # Resume each stream from its seeded id so no entry is missed between
+        # the seed and the first XREAD; streams empty at seed time start from
+        # "$" (new entries only — we don't replay history for those).
+        last_ids = {
+            name: seed_ids.get(name, "$") for name in name_for_stream
+        }
+        while not self._stop.is_set():
             # The redis-py stub types the streams map narrowly; our str->str
             # last-id map is correct at runtime.
             streams = await self._redis.xread(last_ids, block=0)  # type: ignore[arg-type]

@@ -32,13 +32,18 @@ from lsst.ts.rubintv.config.models import (
     ServiceItem,
     TimeSinceClock,
 )
+from lsst.ts.rubintv.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class ConfigError(ValueError):
     """Raised when the YAML config is structurally invalid."""
 
 
-def load_models(path: Path, *, site: str | None = None) -> Models:
+def load_models(
+    path: Path, *, site: str | None = None, allow_admin_wildcard: bool = False
+) -> Models:
     """Parse and validate the config YAML at ``path`` into :class:`Models`.
 
     Args:
@@ -49,6 +54,13 @@ def load_models(path: Path, *, site: str | None = None) -> Models:
             (every location in the YAML is loaded); for back-compat with
             configs that don't declare ``bucket_configurations`` this is
             also a no-op.
+        allow_admin_wildcard: Whether the ``admin_for: ["*"]`` wildcard (any
+            authenticated user is admin) is permitted to take effect. When
+            False (the default) a resolved ``["*"]`` admin list is downgraded
+            to *no admins* and a warning is logged — so a pod that booted with
+            the wrong/defaulted site (``local`` maps to the real USDF
+            locations with ``admin_for: local: ["*"]``) fails closed instead of
+            granting admin to everyone.
 
     Raises:
         ConfigError: If the file is missing, malformed, or references a
@@ -75,7 +87,14 @@ def load_models(path: Path, *, site: str | None = None) -> Models:
     allowed = _site_locations(bucket_configurations, site)
     location_rows = _filter_location_rows(raw.get("locations", []), allowed)
 
-    locations = _parse_locations(location_rows, cameras, services, admin_for, site)
+    locations = _parse_locations(
+        location_rows,
+        cameras,
+        services,
+        admin_for,
+        site,
+        allow_admin_wildcard=allow_admin_wildcard,
+    )
 
     redis_detectors = [
         RedisDetector.model_validate(r) for r in raw.get("redis_detectors", [])
@@ -274,9 +293,27 @@ def _parse_locations(
     services: dict[str, Service],
     admin_for: dict[str, list[str]],
     site: str | None,
+    *,
+    allow_admin_wildcard: bool = False,
 ) -> list[Location]:
     locations: list[Location] = []
     site_admins = admin_for.get(site, []) if site else []
+    # Fail closed on the "any authenticated user is admin" wildcard unless it
+    # was explicitly allowed: a pod that booted with the wrong/defaulted site
+    # (local -> real USDF locations, admin_for: ["*"]) must not silently grant
+    # admin to everyone. Strip only the wildcard entry — any explicitly named
+    # admins for the site are still honoured — and warn loudly.
+    if "*" in site_admins and not allow_admin_wildcard:
+        log.warning(
+            "config.admin_wildcard_disabled",
+            site=site,
+            detail=(
+                "admin_for contains '*' but RUBINTV_ALLOW_ADMIN_WILDCARD is "
+                "not set; the wildcard is ignored (named admins still apply). "
+                "Set the flag to enable open admin, or set the correct site."
+            ),
+        )
+        site_admins = [u for u in site_admins if u != "*"]
     for row in rows:
         body = _normalise_location(row)
         groups: dict[str, list[str]] = body.get("camera_groups", {}) or {}
