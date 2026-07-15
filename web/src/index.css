@@ -1205,8 +1205,32 @@ h1, h2 {
   font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
 }
 .cols-pop .picker-head .count b { color: var(--ink); }
+/* Select / Reorder segmented toggle. */
+.cols-pop .picker-mode {
+  display: inline-flex;
+  border: 1.25px solid var(--stroke); border-radius: 4px;
+  overflow: hidden;
+}
+.cols-pop .picker-mode button {
+  font-family: var(--hand); font-size: 12px;
+  padding: 4px 12px;
+  border: none; background: var(--paper); color: var(--ink-soft);
+  cursor: pointer;
+}
+.cols-pop .picker-mode button + button { border-left: 1.25px solid var(--stroke); }
+.cols-pop .picker-mode button:hover { background: var(--paper-3); }
+.cols-pop .picker-mode button.active {
+  background: var(--accent-soft); color: var(--ink); font-weight: 600;
+}
+/* Search + bulk share the remaining header width on one line: the group grows
+   to fill it, the search shrinks (min-width:0) so the bulk buttons never wrap
+   to a second row. */
+.cols-pop .picker-head .picker-tools {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
+}
 .cols-pop .picker-head .search {
-  flex: 1; min-width: 140px;
+  flex: 1; min-width: 60px;
   font-family: var(--mono); font-size: 12px;
   padding: 5px 8px;
   border: 1.25px solid var(--stroke); border-radius: 3px;
@@ -1215,7 +1239,7 @@ h1, h2 {
 .cols-pop .picker-head .search:focus {
   outline: 2px solid var(--accent-soft); outline-offset: -1px;
 }
-.cols-pop .picker-head .bulk { display: inline-flex; gap: 6px; }
+.cols-pop .picker-head .bulk { display: inline-flex; gap: 6px; flex-shrink: 0; }
 .cols-pop .picker-head .bulk button {
   font-family: var(--hand); font-size: 12px;
   padding: 4px 10px;
@@ -1284,24 +1308,32 @@ h1, h2 {
   padding: 3px 4px; border-radius: 3px;
   background: var(--paper);
   font-family: var(--hand); font-size: 13px;
+  /* The whole row is the drag handle. */
+  cursor: grab;
+  touch-action: none; /* let dnd-kit's pointer sensor own touch gestures */
   /* Sit above sibling rows while dragging so the lifted row isn't clipped. */
   position: relative;
 }
 .cols-pop .order-item:hover { background: var(--paper-3); }
+.cols-pop .order-item:active { cursor: grabbing; }
+.cols-pop .order-item:focus-visible {
+  outline: 2px solid var(--accent-soft); outline-offset: -1px;
+}
 .cols-pop .order-item.dragging {
   background: var(--paper-3);
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  cursor: grabbing;
   z-index: 1;
 }
+/* Decorative grip; the whole row carries the drag listeners. */
 .cols-pop .order-grip {
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; background: transparent; padding: 2px;
-  color: var(--ink-soft); cursor: grab; flex-shrink: 0;
-  touch-action: none; /* let dnd-kit's pointer sensor own touch gestures */
+  color: var(--ink-soft); flex-shrink: 0;
 }
-.cols-pop .order-grip:hover { color: var(--ink); }
-.cols-pop .order-grip:active { cursor: grabbing; }
+.cols-pop .order-item:hover .order-grip { color: var(--ink); }
 .cols-pop .order-grip .ui-icon { width: 15px; height: 15px; }
+/* The nudge buttons keep their normal pointer even though the row is grab. */
+.cols-pop .order-nudge button { cursor: pointer; }
 .cols-pop .order-label {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

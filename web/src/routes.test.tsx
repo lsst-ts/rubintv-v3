@@ -423,10 +423,11 @@ test("column picker defaults to configured columns and reset restores them", asy
 
   renderAt("/local/auxtel?date=2026-04-10");
 
-  // Default: 1 of 2 shown (only the configured Exposure column).
+  // Default: 1 of 2 shown (only the configured Exposure column). The popover
+  // count reads "<b>1</b> of 2" (the "of N" node sits beside the bold count).
   const toggle = await screen.findByRole("button", { name: /Columns 1\/2/ });
   fireEvent.click(toggle);
-  expect(screen.getByText("of 2 shown")).toBeDefined();
+  expect(screen.getByText(/of 2/)).toBeDefined();
 
   // The search box filters the picker rows: "sky" matches the data-only column.
   const search = screen.getByLabelText("Search columns");

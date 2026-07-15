@@ -155,6 +155,27 @@ export function CameraTable() {
 
   const [colsOpen, setColsOpen] = useState(false);
   const [colsQuery, setColsQuery] = useState("");
+  // Which picker view is showing: "select" (show/hide catalogue) or "reorder"
+  // (drag list). Split so a camera with many chosen columns isn't a wall of
+  // both at once. Persisted per browser so the picker reopens where you left
+  // it (like density).
+  const [colsMode, setColsMode] = useState<"select" | "reorder">(() => {
+    try {
+      const m = localStorage.getItem("rubintv.colsMode");
+      if (m === "select" || m === "reorder") return m;
+    } catch {
+      // ignore
+    }
+    return "select";
+  });
+  const pickColsMode = (m: "select" | "reorder") => {
+    try {
+      localStorage.setItem("rubintv.colsMode", m);
+    } catch {
+      // ignore
+    }
+    setColsMode(m);
+  };
   // Dismiss the column picker on an outside click or Escape.
   const colsRef = useRef<HTMLDivElement | null>(null);
   useDismiss(colsOpen, colsRef, () => setColsOpen(false));
@@ -395,48 +416,67 @@ export function CameraTable() {
           <div className="cols-pop" hidden={!colsOpen}>
             <div className="picker-head">
               <span className="title">Metadata columns</span>
-              <span className="count">
-                <b>{visible.length}</b> of {metaColumns.length} shown
+              <span className="count" title="columns shown">
+                <b>{visible.length}</b> of {metaColumns.length}
               </span>
-              <input
-                className="search"
-                type="text"
-                placeholder="search columns…"
-                value={colsQuery}
-                onChange={(e) => setColsQuery(e.target.value)}
-                aria-label="Search columns"
-              />
-              <div className="bulk">
-                <button type="button" onClick={showAll} title="Show all metadata columns">
-                  all
-                </button>
-                <button type="button" onClick={hideAll} title="Hide all metadata columns">
-                  none
-                </button>
-                <button type="button" onClick={reset} title="Restore default columns">
-                  reset
-                </button>
+              {/* Switch the body between the show/hide catalogue and the
+                  drag-to-reorder list. */}
+              <div
+                className="picker-mode"
+                role="tablist"
+                aria-label="Column picker view"
+              >
+                {(["select", "reorder"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    aria-selected={colsMode === m}
+                    className={colsMode === m ? "active" : ""}
+                    onClick={() => pickColsMode(m)}
+                  >
+                    {m === "select" ? "Select" : "Reorder"}
+                  </button>
+                ))}
               </div>
-            </div>
-            <div className="picker-body">
-              {/* Shown columns, in table order, draggable to re-sequence. Hidden
-                  while searching: the search targets the show/hide catalogue
-                  below, and a filtered order list would be misleading. */}
-              {!colsQuery.trim() && reorderable.length > 0 && (
-                <div className="order-section">
-                  <div className="order-head">
-                    <span className="sub">Shown — drag to reorder</span>
-                  </div>
-                  <ColumnOrderList
-                    columns={reorderable}
-                    onReorder={reorder}
+              {/* Search + bulk actions only make sense for the catalogue. They
+                  share one flex row (search shrinks; bulk stays fixed) so the
+                  bulk buttons stay on the header line rather than wrapping. */}
+              {colsMode === "select" && (
+                <div className="picker-tools">
+                  <input
+                    className="search"
+                    type="text"
+                    placeholder="search columns…"
+                    value={colsQuery}
+                    onChange={(e) => setColsQuery(e.target.value)}
+                    aria-label="Search columns"
                   />
+                  <div className="bulk">
+                    <button type="button" onClick={showAll} title="Show all metadata columns">
+                      all
+                    </button>
+                    <button type="button" onClick={hideAll} title="Hide all metadata columns">
+                      none
+                    </button>
+                    <button type="button" onClick={reset} title="Restore default columns">
+                      reset
+                    </button>
+                  </div>
                 </div>
               )}
-              {colsQuery.trim() ? null : (
-                <div className="picker-subhead">All columns</div>
-              )}
-              {colsMatches.length === 0 ? (
+            </div>
+            <div className="picker-body">
+              {colsMode === "reorder" ? (
+                /* Reorder view: just the shown columns, in table order, dragged
+                   to re-sequence. */
+                <div className="order-section">
+                  <div className="order-head">
+                    <span className="sub">Drag to reorder the shown columns</span>
+                  </div>
+                  <ColumnOrderList columns={reorderable} onReorder={reorder} />
+                </div>
+              ) : colsMatches.length === 0 ? (
                 <div className="picker-empty">no columns match “{colsQuery}”</div>
               ) : (
                 <div className="cols-grid">

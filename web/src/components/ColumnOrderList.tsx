@@ -44,28 +44,31 @@ function SortableRow({ col, index, count, onMove }: RowProps) {
     isDragging,
   } = useSortable({ id: col });
   return (
+    // The whole row is the drag handle: dnd-kit's listeners live on the <li> so
+    // grabbing anywhere (grip or label) starts a drag. `attributes` also make
+    // the row the keyboard-draggable element (role/tabIndex/aria). The nudge
+    // buttons stop pointer-down from reaching the row so a click on them never
+    // begins drag tracking.
     <li
       ref={setNodeRef}
       className={"order-item" + (isDragging ? " dragging" : "")}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      aria-label={`Reorder ${col}`}
+      {...attributes}
+      {...listeners}
     >
-      {/* The grip is the drag handle: dnd-kit's listeners live here so a click
-          elsewhere on the row (e.g. the nudge buttons) isn't swallowed. */}
-      <button
-        type="button"
-        className="order-grip"
-        aria-label={`Reorder ${col}`}
-        {...attributes}
-        {...listeners}
-      >
+      <span className="order-grip" aria-hidden="true">
         <DragHandleIcon />
-      </button>
+      </span>
       <span className="order-label" title={col}>
         {col}
       </span>
       {/* Keyboard/click fallback for reordering without a drag — also the
           accessible path on touch devices. Disabled at the ends. */}
-      <span className="order-nudge">
+      <span
+        className="order-nudge"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           aria-label={`Move ${col} up`}
