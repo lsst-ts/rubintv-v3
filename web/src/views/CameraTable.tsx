@@ -15,6 +15,7 @@ import { getCameraTabPref } from "../lib/cameraTabPref";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { FilterControl, FilterBar } from "../components/FilterControl";
+import { ColumnOrderList } from "../components/ColumnOrderList";
 import { LiveClocks } from "../components/LiveClocks";
 import {
   matchRow,
@@ -214,7 +215,7 @@ export function CameraTable() {
       (name) => name[0] !== "_" && name[0] !== "@",
     );
   }, [cameraInfo, metadata]);
-  const { visible, hidden, locked, toggle, showAll, hideAll, reset } =
+  const { visible, hidden, locked, toggle, reorder, showAll, hideAll, reset } =
     useColumnPrefs(
       location,
       camera,
@@ -276,6 +277,14 @@ export function CameraTable() {
       ? metaColumns.filter((c) => c.toLowerCase().includes(q))
       : metaColumns;
   }, [colsQuery, metaColumns]);
+
+  // The visible columns the user can reorder (drag list): the shown metadata
+  // columns minus locked ones, which are fixed and never move. This mirrors the
+  // table's metadata-column order; dragging within it re-sequences the table.
+  const reorderable = useMemo(
+    () => visible.filter((c) => !locked.has(c)),
+    [visible, locked],
+  );
 
   // Union of seq_nums across channels and metadata, descending (newest
   // first). Including metadata keys means streamed rows appear immediately,
@@ -410,6 +419,23 @@ export function CameraTable() {
               </div>
             </div>
             <div className="picker-body">
+              {/* Shown columns, in table order, draggable to re-sequence. Hidden
+                  while searching: the search targets the show/hide catalogue
+                  below, and a filtered order list would be misleading. */}
+              {!colsQuery.trim() && reorderable.length > 0 && (
+                <div className="order-section">
+                  <div className="order-head">
+                    <span className="sub">Shown — drag to reorder</span>
+                  </div>
+                  <ColumnOrderList
+                    columns={reorderable}
+                    onReorder={reorder}
+                  />
+                </div>
+              )}
+              {colsQuery.trim() ? null : (
+                <div className="picker-subhead">All columns</div>
+              )}
               {colsMatches.length === 0 ? (
                 <div className="picker-empty">no columns match “{colsQuery}”</div>
               ) : (

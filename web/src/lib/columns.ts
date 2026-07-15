@@ -20,10 +20,13 @@ function orderKey(location: string, camera: string): string {
   return `rubintv.columns.${location}.${camera}.order`;
 }
 
-// Order the visible columns: any the user has explicitly turned on (present in
-// `order`) come last, in pick order; columns never toggled keep their position
-// in `all`. Locked and default columns that the user hasn't picked stay up
-// front in their configured order.
+// Order the visible columns. Columns present in `order` (either turned on via
+// the picker or placed by a drag) come in that explicit sequence; columns not
+// yet in `order` — config defaults/locked columns the user hasn't touched, or a
+// column that only just streamed in — keep their config/data position in `all`,
+// ahead of the explicitly-ordered set. After a full drag-reorder every visible
+// column is in `order`, so the whole list follows the dragged sequence and only
+// a newly-appearing column would (briefly) sort to the front until dragged.
 function orderVisible(
   all: string[],
   hidden: Set<string>,
@@ -192,6 +195,27 @@ export function useColumnPrefs(
     persistOrder([]);
   }, [all, defaults, persist, persistOrder, locked]);
 
+  // Reorder the visible columns to `next` (a full ordered list of the currently
+  // visible column names, e.g. after a drag). This pins the whole visible set
+  // into an explicit order — including config-default columns that until now
+  // floated at the front in config order — so a drag anywhere sticks. Only
+  // names that are actually known (`all`) and visible are kept; the persisted
+  // `order` becomes exactly that list. Locked columns aren't reorderable, so
+  // they stay out of `order` and keep their up-front config position.
+  const reorder = useCallback(
+    (next: string[]) => {
+      const cleaned = next.filter(
+        (c) => all.includes(c) && !hidden.has(c) && !locked.has(c),
+      );
+      setOrder(cleaned);
+      persistOrder(cleaned);
+      // A drag is an explicit customisation; make sure the visibility pref is
+      // persisted too so a later default-tracking effect doesn't override it.
+      hasSaved.current = true;
+    },
+    [all, hidden, locked, persistOrder],
+  );
+
   // Memoize so `visible`'s identity only changes when the column set, the
   // hidden set, or the pick order actually change — not on every parent
   // render. A fresh array here cascades into the camera table's `columns` memo
@@ -201,5 +225,5 @@ export function useColumnPrefs(
     () => orderVisible(all, hidden, order),
     [all, hidden, order],
   );
-  return { visible, hidden, locked, toggle, showAll, hideAll, reset };
+  return { visible, hidden, locked, toggle, reorder, showAll, hideAll, reset };
 }

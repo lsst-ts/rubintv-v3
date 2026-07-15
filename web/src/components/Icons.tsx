@@ -125,3 +125,18 @@ export function CheckIcon() {
     </svg>
   );
 }
+
+// Six-dot grip for a drag handle. Filled dots (not stroked) so the small grab
+// target reads clearly at icon size; overrides the shared outline style.
+export function DragHandleIcon() {
+  return (
+    <svg {...base} fill="currentColor" stroke="none">
+      <circle cx="9" cy="6" r="1.6" />
+      <circle cx="15" cy="6" r="1.6" />
+      <circle cx="9" cy="12" r="1.6" />
+      <circle cx="15" cy="12" r="1.6" />
+      <circle cx="9" cy="18" r="1.6" />
+      <circle cx="15" cy="18" r="1.6" />
+    </svg>
+  );
+}

@@ -1260,6 +1260,61 @@ h1, h2 {
 }
 .cols-pop input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
 
+/* ── Column order (drag-to-reorder) list ───────────────────────────────── */
+/* The "Shown" section above the show/hide catalogue. Reorders the visible
+   metadata columns; the table follows. */
+.cols-pop .order-section { margin-bottom: 12px; }
+.cols-pop .order-head { margin-bottom: 6px; }
+.cols-pop .order-head .sub,
+.cols-pop .picker-subhead {
+  font-family: var(--hand); font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-soft);
+}
+.cols-pop .picker-subhead { margin: 4px 0 6px; }
+.cols-pop .order-empty {
+  font-family: var(--hand); font-style: italic; color: var(--ink-soft);
+  font-size: 13px; padding: 4px;
+}
+.cols-pop .order-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.cols-pop .order-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 4px; border-radius: 3px;
+  background: var(--paper);
+  font-family: var(--hand); font-size: 13px;
+  /* Sit above sibling rows while dragging so the lifted row isn't clipped. */
+  position: relative;
+}
+.cols-pop .order-item:hover { background: var(--paper-3); }
+.cols-pop .order-item.dragging {
+  background: var(--paper-3);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  z-index: 1;
+}
+.cols-pop .order-grip {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; padding: 2px;
+  color: var(--ink-soft); cursor: grab; flex-shrink: 0;
+  touch-action: none; /* let dnd-kit's pointer sensor own touch gestures */
+}
+.cols-pop .order-grip:hover { color: var(--ink); }
+.cols-pop .order-grip:active { cursor: grabbing; }
+.cols-pop .order-grip .ui-icon { width: 15px; height: 15px; }
+.cols-pop .order-label {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cols-pop .order-nudge { display: inline-flex; gap: 2px; flex-shrink: 0; }
+.cols-pop .order-nudge button {
+  border: 1px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+  font-size: 11px; line-height: 1; width: 20px; height: 20px;
+  cursor: pointer; padding: 0;
+}
+.cols-pop .order-nudge button:hover:not(:disabled) { background: var(--paper-3); }
+.cols-pop .order-nudge button:disabled { opacity: 0.35; cursor: default; }
+
 /* ── Table filters ─────────────────────────────────────────────────────── */
 .filter-cluster { position: relative; display: inline-flex; align-items: center; }
 .filter-btn {

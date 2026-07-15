@@ -126,3 +126,49 @@ test("a saved hidden pref with no order key keeps config order", () => {
   const { result } = wide();
   expect(result.current.visible).toEqual(["B", "C", "D"]);
 });
+
+test("reorder pins the visible columns into the given order", () => {
+  const { result } = wide(); // defaults show [B, C]
+  // Drag C before B.
+  act(() => result.current.reorder(["C", "B"]));
+  expect(result.current.visible).toEqual(["C", "B"]);
+});
+
+test("reorder can move a config-default column past a picked one", () => {
+  const { result } = wide(); // [B, C]
+  act(() => result.current.toggle("D")); // [B, C, D]
+  // Drag the default column B to the end, after the picked D.
+  act(() => result.current.reorder(["C", "D", "B"]));
+  expect(result.current.visible).toEqual(["C", "D", "B"]);
+});
+
+test("reorder ignores unknown or hidden names", () => {
+  const { result } = wide(); // [B, C]
+  // "ZZ" isn't a real column and A is hidden — both are dropped; order sticks
+  // for the valid, visible ones.
+  act(() => result.current.reorder(["C", "ZZ", "A", "B"]));
+  expect(result.current.visible).toEqual(["C", "B"]);
+});
+
+test("a reordered layout persists across remounts", () => {
+  const { result, unmount } = wide();
+  act(() => result.current.reorder(["C", "B"]));
+  unmount();
+  const { result: r2 } = wide();
+  expect(r2.current.visible).toEqual(["C", "B"]);
+});
+
+test("reset clears a drag-reordered layout", () => {
+  const { result } = wide();
+  act(() => result.current.reorder(["C", "B"]));
+  act(() => result.current.reset());
+  expect(result.current.visible).toEqual(["B", "C"]); // back to config order
+});
+
+test("a column shown after a reorder sorts ahead of the pinned set", () => {
+  const { result } = wide(); // [B, C]
+  act(() => result.current.reorder(["C", "B"])); // pin [C, B]
+  act(() => result.current.toggle("A")); // turn on A (a fresh pick)
+  // A is picked → appended after the pinned set; the pinned pair keeps order.
+  expect(result.current.visible).toEqual(["C", "B", "A"]);
+});
