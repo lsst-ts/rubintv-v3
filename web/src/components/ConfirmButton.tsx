@@ -32,20 +32,32 @@ export function ConfirmButton({
   };
 
   if (armed) {
+    const cancel = () => setArmed(false);
     return (
-      <span className="confirm-group">
+      <span
+        className="confirm-group"
+        // Esc cancels the pending confirm (ignored while the action is firing).
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !busy) {
+            e.stopPropagation();
+            cancel();
+          }
+        }}
+      >
         <button
           type="button"
           className={danger ? "confirm-yes danger" : "confirm-yes"}
           onClick={fire}
           disabled={busy}
+          // Focus the confirm on arm so Esc reaches this group's handler.
+          autoFocus
         >
           {busy ? "Working…" : confirmLabel}
         </button>
         <button
           type="button"
           className="confirm-no"
-          onClick={() => setArmed(false)}
+          onClick={cancel}
           disabled={busy}
         >
           Cancel

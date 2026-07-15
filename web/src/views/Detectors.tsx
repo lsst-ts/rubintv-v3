@@ -67,6 +67,14 @@ export function Detectors() {
   const sets = data ?? {};
   const hasAny = Object.keys(sets).length > 0;
 
+  // Whether to offer the (site-admin gated) restart controls. The endpoint is
+  // server-gated regardless; this just hides buttons a non-admin can't use.
+  const { data: adminStatus } = useQuery({
+    queryKey: ["adminStatus"],
+    queryFn: api.adminStatus,
+  });
+  const admin = adminStatus?.is_admin ?? false;
+
   const restart = async (name: string, title: string) => {
     try {
       const res = await api.restartWorkers(name);
@@ -105,6 +113,7 @@ export function Detectors() {
           payload={sets.sfmSet0}
           size="large"
           onRestart={restart}
+          admin={admin}
         />
         <CanvasSection
           name="sfmSet1"
@@ -113,6 +122,7 @@ export function Detectors() {
           payload={sets.sfmSet1}
           size="large"
           onRestart={restart}
+          admin={admin}
         />
         <CellsSection
           name="sfmStep1b"
@@ -120,6 +130,7 @@ export function Detectors() {
           payload={sets.sfmStep1b}
           fallbackCount={8}
           onRestart={restart}
+          admin={admin}
         />
       </div>
 
@@ -131,6 +142,7 @@ export function Detectors() {
           payload={sets.aosSet0}
           size="small"
           onRestart={restart}
+          admin={admin}
         />
         <CanvasSection
           name="aosSet1"
@@ -139,6 +151,7 @@ export function Detectors() {
           payload={sets.aosSet1}
           size="small"
           onRestart={restart}
+          admin={admin}
         />
         <CanvasSection
           name="aosSet2"
@@ -147,6 +160,7 @@ export function Detectors() {
           payload={sets.aosSet2}
           size="small"
           onRestart={restart}
+          admin={admin}
         />
         <CanvasSection
           name="aosSet3"
@@ -155,6 +169,7 @@ export function Detectors() {
           payload={sets.aosSet3}
           size="small"
           onRestart={restart}
+          admin={admin}
         />
         <CellsSection
           name="aosStep1b"
@@ -162,6 +177,7 @@ export function Detectors() {
           payload={sets.aosStep1b}
           fallbackCount={8}
           onRestart={restart}
+          admin={admin}
         />
       </div>
 
@@ -169,7 +185,7 @@ export function Detectors() {
         <div className="spareworkers-section">
           <h3>Backlog Workers</h3>
           <Cells payload={sets.spareWorkers} fallbackCount={4} prefix="spareworkers" />
-          <RestartButton name="spareWorkers" title="Backlog Workers" onRestart={restart} />
+          <RestartButton name="spareWorkers" title="Backlog Workers" onRestart={restart} admin={admin} />
         </div>
         <OtherQueues payload={sets.otherQueues} />
       </div>
@@ -216,6 +232,7 @@ interface SectionProps {
   title: string;
   payload: SetPayload | undefined;
   onRestart: (name: string, title: string) => void | Promise<void>;
+  admin: boolean;
 }
 
 function CanvasSection({
@@ -225,12 +242,13 @@ function CanvasSection({
   payload,
   size,
   onRestart,
+  admin,
 }: SectionProps & { map: DetectorMap; size: "large" | "small" }) {
   return (
     <div className={`detector-section detector-section-${size}`}>
       <h2 className="detector-title">{title}</h2>
       <DetectorCanvas map={map} workers={workersOf(payload)} />
-      <RestartButton name={name} title={title} onRestart={onRestart} />
+      <RestartButton name={name} title={title} onRestart={onRestart} admin={admin} />
     </div>
   );
 }
@@ -241,6 +259,7 @@ function CellsSection({
   payload,
   fallbackCount,
   onRestart,
+  admin,
 }: SectionProps & { fallbackCount: number }) {
   return (
     <div className="step1b-section">
@@ -248,7 +267,7 @@ function CellsSection({
       <div className="step1b-canvas">
         <Cells payload={payload} fallbackCount={fallbackCount} prefix="step1b" />
       </div>
-      <RestartButton name={name} title={title} onRestart={onRestart} />
+      <RestartButton name={name} title={title} onRestart={onRestart} admin={admin} />
     </div>
   );
 }
@@ -289,11 +308,16 @@ function RestartButton({
   name,
   title,
   onRestart,
+  admin,
 }: {
   name: string;
   title: string;
   onRestart: (name: string, title: string) => void | Promise<void>;
+  admin: boolean;
 }) {
+  // The restart endpoint is site-admin gated server-side; hide the control from
+  // non-admins so they aren't offered an action that would only 403.
+  if (!admin) return null;
   return (
     <ConfirmButton
       label="Restart Workers"

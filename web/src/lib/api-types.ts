@@ -587,6 +587,8 @@ export interface components {
             cache_enabled: boolean;
             /** Witness Detector Key */
             witness_detector_key: string;
+            /** Is Admin */
+            is_admin: boolean;
         };
         /** CalendarOut */
         CalendarOut: {
@@ -1466,7 +1468,9 @@ export interface operations {
     get_admin_status_api_admin_status_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-auth-user"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1479,6 +1483,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

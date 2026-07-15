@@ -209,6 +209,11 @@ class AdminStatusOut(BaseModel):
     redis_enabled: bool
     cache_enabled: bool
     witness_detector_key: str
+    is_admin: bool
+    """Whether the requesting user is a site admin (from ``X-Auth-User`` vs
+    the deployment's ``admin_users`` list). The frontend uses this to hide
+    admin-only controls; the endpoints themselves stay server-gated
+    regardless."""
 
 
 class AdminActionOut(BaseModel):

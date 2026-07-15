@@ -2665,23 +2665,27 @@ a.seq-arrow:hover { background: var(--line-soft); }
 .admin-danger-zone .admin-box { border-color: var(--warn); margin-bottom: 0.75rem; }
 
 /* ── Confirm button (destructive actions) ──────────────────────────────── */
+/* Confirm/Cancel share one box model so they line up: identical padding, and a
+   1px border on all three (transparent where there's no visible stroke) so the
+   bordered Cancel isn't 2px taller than the borderless Confirm. */
 button.danger,
 .confirm-yes.danger {
   background: var(--warn);
   color: #fff;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 0.25rem;
   padding: 0.3rem 0.7rem;
   cursor: pointer;
 }
 .confirm-group {
   display: inline-flex;
+  align-items: stretch;
   gap: 0.4rem;
 }
 .confirm-yes {
   background: var(--accent);
   color: var(--paper);
-  border: none;
+  border: 1px solid transparent;
   border-radius: 0.25rem;
   padding: 0.3rem 0.7rem;
   cursor: pointer;

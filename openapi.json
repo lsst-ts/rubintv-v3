@@ -680,6 +680,24 @@
         ],
         "summary": "Get Admin Status",
         "operationId": "get_admin_status_api_admin_status_get",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -687,6 +705,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1473,6 +1501,10 @@
           "witness_detector_key": {
             "type": "string",
             "title": "Witness Detector Key"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin"
           }
         },
         "type": "object",
@@ -1482,7 +1514,8 @@
           "commit_date",
           "redis_enabled",
           "cache_enabled",
-          "witness_detector_key"
+          "witness_detector_key",
+          "is_admin"
         ],
         "title": "AdminStatusOut",
         "description": "Site-wide admin panel header info."

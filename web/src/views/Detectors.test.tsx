@@ -8,7 +8,9 @@ import { Detectors } from "./Detectors";
 
 let posts: string[] = [];
 
-function stub() {
+// `admin` controls what /admin/status reports for is_admin — the Restart
+// controls are hidden unless the user is a site admin.
+function stub({ admin = true }: { admin?: boolean } = {}) {
   posts = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -17,6 +19,12 @@ function stub() {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ ok: true, detail: "restarted" }),
+      });
+    }
+    if (url.includes("/admin/status")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ is_admin: admin }),
       });
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -136,8 +144,9 @@ test("restart requires a confirm click, then POSTs the set's restart", async () 
   renderDetectors(qc);
   await screen.findByText("Imaging Worker Set 1");
 
-  // First Restart Workers button (Imaging Worker Set 1 -> sfmSet0).
-  const buttons = screen.getAllByRole("button", { name: "Restart Workers" });
+  // First Restart Workers button (Imaging Worker Set 1 -> sfmSet0). The buttons
+  // appear once /admin/status resolves is_admin=true, so wait for them.
+  const buttons = await screen.findAllByRole("button", { name: "Restart Workers" });
   buttons[0].click(); // arms confirm
   expect(posts.length).toBe(0);
 
@@ -145,4 +154,15 @@ test("restart requires a confirm click, then POSTs the set's restart", async () 
   confirm[0].click();
   await waitFor(() => expect(posts.length).toBe(1));
   expect(posts[0]).toContain("/api/detectors/sfmSet0/restart");
+});
+
+test("non-admins get no restart controls (server-gated action is hidden)", async () => {
+  stub({ admin: false });
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  // The page renders fully; only the admin-only Restart buttons are absent.
+  await screen.findByText("Imaging Worker Set 1");
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Restart Workers" })).toBeNull(),
+  );
 });

@@ -145,6 +145,20 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     assert body["redis_enabled"] is False
     assert body["cache_enabled"] is False
     assert body["witness_detector_key"]
+    # No X-Auth-User header -> not an admin (the frontend hides admin controls).
+    assert body["is_admin"] is False
+
+
+def test_admin_status_reports_is_admin_for_authed_user(
+    seeded_client: TestClient,
+) -> None:
+    # The test site's admin_for is "*", so any authenticated user is a site
+    # admin; is_admin should flip true once the reverse-proxy header is present.
+    resp = seeded_client.get(
+        "/api/admin/status", headers={"X-Auth-User": "tester"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_admin"] is True
 
 
 def test_admin_write_requires_auth(seeded_client: TestClient) -> None:
@@ -562,7 +576,7 @@ def test_site_admin_gate_rejects_unlisted_user() -> None:
     from typing import cast
 
     from fastapi import HTTPException
-    from lsst.ts.rubintv.api.admin import require_site_admin
+    from lsst.ts.rubintv.api.admin import is_site_admin, require_site_admin
     from lsst.ts.rubintv.config.models import Location
     from lsst.ts.rubintv.state import AppState
 
@@ -572,6 +586,10 @@ def test_site_admin_gate_rejects_unlisted_user() -> None:
     with pytest.raises(HTTPException) as excinfo:
         require_site_admin(state=state, x_auth_user="bob")
     assert excinfo.value.status_code == 403
+    # The non-raising helper backing /admin/status agrees with the gate.
+    assert is_site_admin(state, "alice") is True
+    assert is_site_admin(state, "bob") is False
+    assert is_site_admin(state, None) is False
 
 
 class _FakeAdminRedis:
