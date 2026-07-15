@@ -257,9 +257,7 @@ def _get_object(
         if code in ("InvalidRange", "416"):
             # Range past EOF (e.g. the object was replaced by a shorter file):
             # a proper 416 lets the client re-request, unlike an opaque 502.
-            return Response(
-                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE
-            )
+            return Response(status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "upstream S3 error") from exc
 
 
