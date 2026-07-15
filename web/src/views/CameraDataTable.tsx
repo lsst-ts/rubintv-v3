@@ -457,7 +457,7 @@ function CameraDataTableInner({
                 maxWidth: room > 0 ? `min(var(--hdr-rise), ${room}px)` : undefined,
               }}
             >
-              {c.label}
+              <span className="label-text">{c.label}</span>
               {dir && <span className="sort-arrow">{dir === "asc" ? "▲" : "▼"}</span>}
             </div>
           );

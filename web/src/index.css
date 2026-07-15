@@ -1804,20 +1804,32 @@ h1, h2 {
   transform: rotate(-45deg);
   transform-origin: left bottom;
   white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-  max-width: var(--hdr-rise);
   font-family: var(--hand); font-size: 12px; font-weight: 500;
   line-height: 1; color: var(--ink);
   padding: 2px 6px 2px 4px;
   pointer-events: auto; cursor: help;
 }
+/* The title text truncates; the sort arrow is pulled out of this flow (see
+   below) so it stays visible at the label's anchored bottom end. */
+.header-overlay .hdr-label .label-text {
+  display: block;
+  max-width: var(--hdr-rise);
+  overflow: hidden; text-overflow: ellipsis;
+}
 /* Orderable metadata labels: clickable, with a sort arrow when active. */
 .header-overlay .hdr-label.sortable { cursor: pointer; }
 .header-overlay .hdr-label.sortable:hover { color: var(--accent); }
 .header-overlay .hdr-label.sorted { color: var(--accent); font-weight: 600; }
+/* The arrow sits at the label's left-bottom origin — the near end of the
+   diagonal, right at the column edge — so it stays on screen even when the
+   title text is truncated by an ellipsis. Reserve room for it with the label's
+   left padding, and keep it out of the truncating text flow. */
 .header-overlay .hdr-label .sort-arrow {
-  font-size: 9px; margin-left: 3px; vertical-align: middle;
+  position: absolute;
+  left: 2px; bottom: 2px;
+  font-size: 9px; line-height: 1;
 }
+.header-overlay .hdr-label.sorted { padding-left: 13px; }
 
 /* Seq.No header sort button (label lives in its own <th>, not the overlay). */
 .data-table thead th.seq .th-sort {
