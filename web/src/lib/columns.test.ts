@@ -62,3 +62,67 @@ test("with no locked columns, every column is hideable", () => {
   act(() => result.current.toggle("Retrieval fails"));
   expect(result.current.hidden.has("Retrieval fails")).toBe(true);
 });
+
+// A wider column universe to exercise pick-order without the locked column
+// clouding the sequence. Defaults show B and C; A and D start hidden.
+const WIDE = ["A", "B", "C", "D"];
+const WIDE_DEFAULTS = ["B", "C"];
+function wide() {
+  return renderHook(() => useColumnPrefs(LOC, CAM, WIDE, WIDE_DEFAULTS));
+}
+
+test("newly-shown columns append in the order they were checked", () => {
+  const { result } = wide();
+  expect(result.current.visible).toEqual(["B", "C"]);
+  act(() => result.current.toggle("D")); // turn D on
+  act(() => result.current.toggle("A")); // then A
+  // Untouched defaults keep their order; picked columns follow in pick order.
+  expect(result.current.visible).toEqual(["B", "C", "D", "A"]);
+});
+
+test("re-checking a column moves it to the end", () => {
+  const { result } = wide();
+  act(() => result.current.toggle("A")); // on: [B, C, A]
+  act(() => result.current.toggle("D")); // on: [B, C, A, D]
+  act(() => result.current.toggle("A")); // off: [B, C, D]
+  act(() => result.current.toggle("A")); // on again → to the end
+  expect(result.current.visible).toEqual(["B", "C", "D", "A"]);
+});
+
+test("hiding a picked column removes it from the order", () => {
+  const { result } = wide();
+  act(() => result.current.toggle("A")); // [B, C, A]
+  act(() => result.current.toggle("A")); // hide A → [B, C]
+  expect(result.current.visible).toEqual(["B", "C"]);
+});
+
+test("pick order persists across remounts", () => {
+  const { result, unmount } = wide();
+  act(() => result.current.toggle("D"));
+  act(() => result.current.toggle("A"));
+  unmount();
+  const { result: r2 } = wide();
+  expect(r2.current.visible).toEqual(["B", "C", "D", "A"]);
+});
+
+test("reset restores config order and clears the pick order", () => {
+  const { result } = wide();
+  act(() => result.current.toggle("D"));
+  act(() => result.current.toggle("A"));
+  act(() => result.current.reset());
+  expect(result.current.visible).toEqual(["B", "C"]);
+});
+
+test("showAll orders every column by the config/data order", () => {
+  const { result } = wide();
+  act(() => result.current.toggle("D")); // establish a stale pick order
+  act(() => result.current.showAll());
+  expect(result.current.visible).toEqual(["A", "B", "C", "D"]);
+});
+
+test("a saved hidden pref with no order key keeps config order", () => {
+  // Migration case: a pref that predates ordering has only the hidden-set key.
+  localStorage.setItem(KEY, JSON.stringify(["A"])); // hide A, show B/C/D
+  const { result } = wide();
+  expect(result.current.visible).toEqual(["B", "C", "D"]);
+});

@@ -1,12 +1,38 @@
-// Per-camera metadata column visibility, persisted to localStorage. The
-// per-camera `metadata_columns` config is the default-visible set; every other
-// key seen in the metadata is a column too but hidden until added. Returns the
-// selected set, a toggle, and bulk actions.
+// Per-camera metadata column visibility and order, persisted to localStorage.
+// The per-camera `metadata_columns` config is the default-visible set; every
+// other key seen in the metadata is a column too but hidden until added.
+// Returns the ordered visible set, a toggle, and bulk actions.
+//
+// Ordering: columns the user turns on in the picker are appended to the table
+// in the order they were checked (re-checking moves a column to the end).
+// Columns the user has never touched keep their config/data order at the front.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function storageKey(location: string, camera: string): string {
   return `rubintv.columns.${location}.${camera}`;
+}
+
+// Sibling key holding the pick order (an array of column names in the sequence
+// the user checked them). Kept separate from the hidden-set key so old prefs
+// that predate ordering still load unchanged (they just have no saved order).
+function orderKey(location: string, camera: string): string {
+  return `rubintv.columns.${location}.${camera}.order`;
+}
+
+// Order the visible columns: any the user has explicitly turned on (present in
+// `order`) come last, in pick order; columns never toggled keep their position
+// in `all`. Locked and default columns that the user hasn't picked stay up
+// front in their configured order.
+function orderVisible(
+  all: string[],
+  hidden: Set<string>,
+  order: string[],
+): string[] {
+  const picked = new Set(order);
+  const untouched = all.filter((c) => !hidden.has(c) && !picked.has(c));
+  const inOrder = order.filter((c) => all.includes(c) && !hidden.has(c));
+  return [...untouched, ...inOrder];
 }
 
 // The hidden set that shows only `defaults` out of `all`. Locked columns —
@@ -32,6 +58,7 @@ export function useColumnPrefs(
   lockedColumns: string[] = [],
 ) {
   const key = storageKey(location, camera);
+  const okey = orderKey(location, camera);
   // Memoize the lookup set so its identity is stable across renders (the array
   // arrives fresh from the API payload each time).
   const locked = useMemo(
@@ -59,6 +86,19 @@ export function useColumnPrefs(
     return defaultHidden(all, defaults, locked);
   });
 
+  // The pick order (columns the user has turned on, in check sequence). Loaded
+  // from its sibling key; absent for prefs that predate ordering, in which case
+  // it stays empty and every visible column keeps its config/data order.
+  const [order, setOrder] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(okey);
+      if (raw) return JSON.parse(raw) as string[];
+    } catch {
+      // fall through to empty
+    }
+    return [];
+  });
+
   // Until the user customises, keep hidden = (all − defaults) as both lists
   // settle (config + streamed metadata arrive after mount).
   useEffect(() => {
@@ -80,10 +120,25 @@ export function useColumnPrefs(
     },
     [key],
   );
+  const persistOrder = useCallback(
+    (next: string[]) => {
+      try {
+        localStorage.setItem(okey, JSON.stringify(next));
+      } catch {
+        // ignore quota / disabled storage
+      }
+    },
+    [okey],
+  );
 
   const toggle = useCallback(
     (col: string) => {
       if (locked.has(col)) return; // can't hide locked columns
+      // A column currently in `hidden` is being turned ON; otherwise OFF.
+      // Derive this from the current set (not from inside the updater, which
+      // must stay pure and can run twice in Strict Mode) so the order update
+      // agrees with the visibility update.
+      const turningOn = hidden.has(col);
       setHidden((prev) => {
         const next = new Set(prev);
         if (next.has(col)) next.delete(col);
@@ -91,11 +146,22 @@ export function useColumnPrefs(
         persist(next);
         return next;
       });
+      // Turning a column on appends it to the pick order (moving it to the end
+      // if it was already there); turning it off drops it. This is what makes
+      // the table order follow the sequence the user checked columns in.
+      setOrder((prev) => {
+        const rest = prev.filter((c) => c !== col);
+        const next = turningOn ? [...rest, col] : rest;
+        persistOrder(next);
+        return next;
+      });
     },
-    [persist, locked],
+    [hidden, persist, persistOrder, locked],
   );
 
-  // Bulk actions over the known column set.
+  // Bulk actions over the known column set. Each also resets the pick order so
+  // the table falls back to config/data order — a bulk op expresses no per-
+  // column sequence, so keeping a stale order would scatter the result.
   const showAll = useCallback(() => {
     setHidden((prev) => {
       const next = new Set(prev);
@@ -103,7 +169,9 @@ export function useColumnPrefs(
       persist(next);
       return next;
     });
-  }, [all, persist]);
+    setOrder([]);
+    persistOrder([]);
+  }, [all, persist, persistOrder]);
   const hideAll = useCallback(() => {
     setHidden((prev) => {
       const next = new Set(prev);
@@ -111,19 +179,27 @@ export function useColumnPrefs(
       persist(next);
       return next;
     });
-  }, [all, persist, locked]);
-  // Reset restores the configured defaults (show metadata_columns, hide rest).
+    setOrder([]);
+    persistOrder([]);
+  }, [all, persist, persistOrder, locked]);
+  // Reset restores the configured defaults (show metadata_columns, hide rest)
+  // in their config order.
   const reset = useCallback(() => {
     const next = defaultHidden(all, defaults, locked);
     persist(next);
     setHidden(next);
-  }, [all, defaults, persist, locked]);
+    setOrder([]);
+    persistOrder([]);
+  }, [all, defaults, persist, persistOrder, locked]);
 
-  // Memoize so `visible`'s identity only changes when the column set or the
-  // hidden set actually change — not on every parent render. A fresh array
-  // here cascades into the camera table's `columns` memo and re-runs the
-  // angled-header measurement (a full reflow over every <th>) on unrelated
-  // state changes, e.g. opening the column picker.
-  const visible = useMemo(() => all.filter((c) => !hidden.has(c)), [all, hidden]);
+  // Memoize so `visible`'s identity only changes when the column set, the
+  // hidden set, or the pick order actually change — not on every parent
+  // render. A fresh array here cascades into the camera table's `columns` memo
+  // and re-runs the angled-header measurement (a full reflow over every <th>)
+  // on unrelated state changes, e.g. opening the column picker.
+  const visible = useMemo(
+    () => orderVisible(all, hidden, order),
+    [all, hidden, order],
+  );
   return { visible, hidden, locked, toggle, showAll, hideAll, reset };
 }
