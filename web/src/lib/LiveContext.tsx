@@ -2,7 +2,13 @@
 // TanStack Query cache. Views call useLiveTopic(...) to subscribe to the
 // data their route needs; subscriptions are released on unmount/navigation.
 
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWebSocket, type Subscription } from "./ws";
 import { applyLiveMessage, type ServerMessage } from "./liveQuery";
@@ -16,7 +22,17 @@ const LiveContext = createContext<LiveValue | null>(null);
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const { status, subscribe, onMessage } = useWebSocket();
+  // After the socket reconnects, refetch everything: live updates are deltas,
+  // so any change during the outage (e.g. exposures that landed while the
+  // backend redeployed) is otherwise lost until the next event for that topic —
+  // which at end of night may never come. Invalidate active queries so the
+  // views resync to REST truth; the resubscribe (in the hook) resumes deltas.
+  const onReconnect = useCallback(() => {
+    qc.invalidateQueries();
+  }, [qc]);
+  const { status, subscribe, onMessage } = useWebSocket(undefined, {
+    onReconnect,
+  });
 
   useEffect(
     () => onMessage((msg) => applyLiveMessage(qc, msg as ServerMessage)),

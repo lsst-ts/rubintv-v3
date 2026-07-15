@@ -13,6 +13,24 @@ function storageKey(location: string, camera: string): string {
   return `rubintv.columns.${location}.${camera}`;
 }
 
+// Read a stored array-of-strings, tolerating corruption. A parse error OR a
+// value that parsed to a non-array (schema drift, another tool writing the key)
+// both return null — without the isArray guard a parsed object would later blow
+// up `new Set(order)` / `.filter(...)` and crash the whole table on every
+// render for that camera until localStorage is cleared by hand.
+function readStringArray(storageKey: string): string[] | null {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === "string")
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 // Sibling key holding the pick order (an array of column names in the sequence
 // the user checked them). Kept separate from the hidden-set key so old prefs
 // that predate ordering still load unchanged (they just have no saved order).
@@ -75,16 +93,11 @@ export function useColumnPrefs(
   // and non-default columns stay hidden) rather than a frozen snapshot.
   const hasSaved = useRef<boolean>(false);
   const [hidden, setHidden] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        hasSaved.current = true;
-        // Drop any locked columns a stale pref may carry — they're never hidden.
-        const saved = (JSON.parse(raw) as string[]).filter((c) => !locked.has(c));
-        return new Set(saved);
-      }
-    } catch {
-      // fall through to defaults
+    const saved = readStringArray(key);
+    if (saved !== null) {
+      hasSaved.current = true;
+      // Drop any locked columns a stale pref may carry — never hidden.
+      return new Set(saved.filter((c) => !locked.has(c)));
     }
     return defaultHidden(all, defaults, locked);
   });
@@ -92,15 +105,31 @@ export function useColumnPrefs(
   // The pick order (columns the user has turned on, in check sequence). Loaded
   // from its sibling key; absent for prefs that predate ordering, in which case
   // it stays empty and every visible column keeps its config/data order.
-  const [order, setOrder] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(okey);
-      if (raw) return JSON.parse(raw) as string[];
-    } catch {
-      // fall through to empty
+  const [order, setOrder] = useState<string[]>(() => readStringArray(okey) ?? []);
+
+  // Reload prefs from storage when the camera changes. The :location/:camera
+  // route does NOT remount this component on a param-only navigation, so
+  // without this the next camera would inherit the previous camera's hidden set
+  // and order — and its first toggle/drag would persist THAT data under the new
+  // camera's key, corrupting it. Keyed on the storage keys so it fires exactly
+  // when the camera (or location) changes.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      // The initializers already loaded the mount camera; don't redo it.
+      firstRun.current = false;
+      return;
     }
-    return [];
-  });
+    const savedHidden = readStringArray(key);
+    hasSaved.current = savedHidden !== null;
+    setHidden(
+      savedHidden !== null
+        ? new Set(savedHidden.filter((c) => !locked.has(c)))
+        : defaultHidden(all, defaults, locked),
+    );
+    setOrder(readStringArray(okey) ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, okey]);
 
   // Until the user customises, keep hidden = (all − defaults) as both lists
   // settle (config + streamed metadata arrive after mount).

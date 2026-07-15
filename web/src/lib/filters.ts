@@ -56,6 +56,36 @@ export function inferType(metadata: Metadata, col: string): FilterType {
   return sawValue ? "number" : "string";
 }
 
+// Parse into a finite number, or null if the string isn't fully numeric.
+function asNumber(s: string): number | null {
+  const t = s.trim();
+  if (t === "" || !numeric.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Parse a "between" range into [lo, hi], or null if it isn't two numbers.
+// Tries the unambiguous separators first (comma / en-dash / spaced hyphen),
+// which preserve negative bounds; only if none is present does it accept a bare
+// "1-10" hyphen range — and that path can't produce a negative bound (a leading
+// "-" would have been consumed by the split), which is the intended behaviour.
+function parseRange(target: string): [number, number] | null {
+  const parts = target.split(/\s*,\s*|\s*–\s*|\s+-\s+/);
+  if (parts.length === 2) {
+    const lo = asNumber(parts[0]);
+    const hi = asNumber(parts[1]);
+    if (lo !== null && hi !== null) return [lo, hi];
+    return null;
+  }
+  const hyphen = target.split("-");
+  if (hyphen.length === 2) {
+    const lo = asNumber(hyphen[0]);
+    const hi = asNumber(hyphen[1]);
+    if (lo !== null && hi !== null) return [lo, hi];
+  }
+  return null;
+}
+
 // Does a single cell value satisfy one filter clause?
 function matchOne(cellVal: unknown, op: string, value: string): boolean {
   const s = String(cellVal ?? "");
@@ -64,9 +94,15 @@ function matchOne(cellVal: unknown, op: string, value: string): boolean {
   const tl = target.toLowerCase();
   switch (op) {
     case "=":
-      return sl === tl;
-    case "!=":
-      return sl !== tl;
+    case "!=": {
+      // Compare numerically when BOTH sides are numeric, so `= 30` matches a
+      // cell of "30.0" (string equality would miss it); fall back to
+      // case-insensitive string equality otherwise.
+      const a = asNumber(s);
+      const b = asNumber(target);
+      const equal = a !== null && b !== null ? a === b : sl === tl;
+      return op === "=" ? equal : !equal;
+    }
     case "~":
       return sl.includes(tl);
     case "starts":
@@ -80,9 +116,16 @@ function matchOne(cellVal: unknown, op: string, value: string): boolean {
         .filter(Boolean)
         .includes(sl);
     case "between": {
-      const [lo, hi] = target.split(/\s*[,–-]\s*/).map(parseFloat);
+      // Splitting on "-" broke negative bounds ("-5, 10" -> ["", "5", "10"] ->
+      // NaN, matching nothing). Prefer an unambiguous separator (comma,
+      // en-dash, or a *spaced* hyphen) so a leading minus stays part of its
+      // bound; only fall back to a bare "1-10" hyphen range when neither bound
+      // is itself negative.
+      const bounds = parseRange(target);
+      if (bounds === null) return false;
+      const [lo, hi] = bounds;
       const a = parseFloat(s);
-      if ([a, lo, hi].some(Number.isNaN)) return false;
+      if (Number.isNaN(a)) return false;
       return a >= Math.min(lo, hi) && a <= Math.max(lo, hi);
     }
     case ">":

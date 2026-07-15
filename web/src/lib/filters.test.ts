@@ -48,6 +48,32 @@ test("matchRow: number operators incl. between", () => {
   ).toBe(false);
 });
 
+test("matchRow: numeric = / != compare by value, not string", () => {
+  // Regression: "= 30" must match a cell of "30.0" (string equality missed it).
+  const m: Metadata = { "1": { exp: "30.0" }, "2": { exp: "31" } };
+  expect(matchRow(0, m["1"], [{ col: "exp", op: "=", value: "30" }])).toBe(true);
+  expect(matchRow(0, m["2"], [{ col: "exp", op: "=", value: "30" }])).toBe(false);
+  // != is the negation, so the "30.0" row is excluded by "!= 30".
+  expect(matchRow(0, m["1"], [{ col: "exp", op: "!=", value: "30" }])).toBe(false);
+  expect(matchRow(0, m["2"], [{ col: "exp", op: "!=", value: "30" }])).toBe(true);
+  // Non-numeric values still compare as strings, case-insensitively.
+  expect(matchRow(0, { c: "Abc" }, [{ col: "c", op: "=", value: "abc" }])).toBe(true);
+});
+
+test("matchRow: between with negative bounds", () => {
+  // Regression: "-5, 10" split on "-" to NaN and matched nothing.
+  const f = (v: string) => [{ col: "t", op: "between", value: v }];
+  expect(matchRow(0, { t: "3" }, f("-5, 10"))).toBe(true);
+  expect(matchRow(0, { t: "-2" }, f("-5, 10"))).toBe(true);
+  expect(matchRow(0, { t: "-9" }, f("-5, 10"))).toBe(false);
+  // Separator variants still work: bare hyphen, spaced hyphen, en-dash.
+  expect(matchRow(0, { t: "5" }, f("1-10"))).toBe(true);
+  expect(matchRow(0, { t: "5" }, f("1 - 10"))).toBe(true);
+  expect(matchRow(0, { t: "5" }, f("1–10"))).toBe(true);
+  // Two negatives separated by a spaced hyphen.
+  expect(matchRow(0, { t: "-7" }, f("-10 - -5"))).toBe(true);
+});
+
 test("matchRow: every filter must match (AND)", () => {
   const f = [
     { col: "filter", op: "=", value: "z_20" },

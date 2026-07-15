@@ -172,3 +172,44 @@ test("a column shown after a reorder sorts ahead of the pinned set", () => {
   // A is picked → appended after the pinned set; the pinned pair keeps order.
   expect(result.current.visible).toEqual(["C", "B", "A"]);
 });
+
+test("a corrupt order-key value does not crash the hook", () => {
+  // Regression: a non-array JSON value (schema drift / another tool) parsed OK
+  // but then blew up new Set(order)/order.filter on every render. It must be
+  // ignored, falling back to config order.
+  localStorage.setItem(`${KEY}.order`, JSON.stringify({ not: "an array" }));
+  const { result } = wide();
+  expect(result.current.visible).toEqual(["B", "C"]);
+});
+
+test("a corrupt hidden-key value falls back to defaults", () => {
+  localStorage.setItem(KEY, '"totally not an array"');
+  const { result } = wide();
+  // Defaults (B, C) shown; A and D hidden — as if there were no saved pref.
+  expect(result.current.visible).toEqual(["B", "C"]);
+});
+
+test("navigating to another camera loads that camera's prefs, not the first's", () => {
+  // Regression: the :location/:camera route doesn't remount, so the hook must
+  // reload prefs when the camera arg changes — otherwise camera B inherits A's
+  // hidden set/order and its first edit corrupts B's stored prefs.
+  localStorage.setItem(
+    `rubintv.columns.${LOC}.camA`,
+    JSON.stringify(["B"]), // camA hides B
+  );
+  localStorage.setItem(
+    `rubintv.columns.${LOC}.camB`,
+    JSON.stringify(["C"]), // camB hides C
+  );
+  const { result, rerender } = renderHook(
+    ({ cam }) => useColumnPrefs(LOC, cam, WIDE, WIDE_DEFAULTS),
+    { initialProps: { cam: "camA" } },
+  );
+  expect(result.current.hidden.has("B")).toBe(true);
+  expect(result.current.hidden.has("C")).toBe(false);
+
+  // Navigate to camB (same component, param change).
+  rerender({ cam: "camB" });
+  expect(result.current.hidden.has("C")).toBe(true);
+  expect(result.current.hidden.has("B")).toBe(false);
+});

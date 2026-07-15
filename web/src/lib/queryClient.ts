@@ -49,9 +49,27 @@ export function cameraDataState(
   return latestDate === currentDayObs(now) ? "fresh" : "stale";
 }
 
-/** staleTime for camera/metadata data, by how many days ago the date is. */
+/** staleTime for camera/metadata data, by how many days ago the date is.
+ *
+ * "days ago" is measured in OBSERVING-day (day_obs) space, not calendar-UTC:
+ * the observing day rolls at noon UTC, so the live day_obs must map to
+ * daysAgo 0 for the whole night. Comparing the raw UTC-midnight timestamps
+ * against wall-clock `now` put the live night (00:00Z onward) at daysAgo 1 —
+ * the "yesterday" tier — for the bulk of observing. Both sides are converted
+ * to a day_obs date (`now − 12h`, and the passed date treated as its day_obs)
+ * before differencing, so the boundary lines up. `date` is a UTC-midnight Date
+ * parsed from a YYYY-MM-DD day_obs string (how every caller builds it). */
 export function staleTimeForDate(date: Date, now: Date = new Date()): number {
-  const daysAgo = Math.floor((now.getTime() - date.getTime()) / (24 * 60 * MINUTE));
+  // The date arg is already a day_obs (UTC midnight of the observing day); the
+  // current day_obs is now shifted back 12h. Difference their UTC-midnight
+  // timestamps to get whole observing-days elapsed.
+  const nowObs = new Date(now.getTime() - 12 * 60 * MINUTE);
+  const nowMidnight = Date.UTC(
+    nowObs.getUTCFullYear(),
+    nowObs.getUTCMonth(),
+    nowObs.getUTCDate(),
+  );
+  const daysAgo = Math.round((nowMidnight - date.getTime()) / (24 * 60 * MINUTE));
   if (daysAgo <= 0) return 0; // today: WebSocket-driven
   if (daysAgo <= 1) return 30 * SECOND; // yesterday: churns
   if (daysAgo <= 7) return 2 * MINUTE; // last week

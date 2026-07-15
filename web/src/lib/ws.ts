@@ -39,12 +39,31 @@ const MAX_BACKOFF_MS = 10_000;
  * subscribe frame and re-sends it after any reconnect), and an `onMessage`
  * registrar.
  */
-export function useWebSocket(url = `${BASE}/ws`) {
+export interface WebSocketOptions {
+  // Called after the socket re-opens following a drop (NOT the first connect).
+  // The caller uses it to refetch data that may have changed while the socket
+  // was down — live updates are delta-driven, so anything missed during the
+  // outage would otherwise never appear until the next event for that topic.
+  onReconnect?: () => void;
+}
+
+export function useWebSocket(
+  url = `${BASE}/ws`,
+  { onReconnect }: WebSocketOptions = {},
+) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const socketRef = useRef<WebSocket | null>(null);
   const subscriptionsRef = useRef<Map<string, Subscription>>(new Map());
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
   const backoffRef = useRef(500);
+  // True once the first connection has opened, so we can distinguish the
+  // initial open (no refetch needed — queries load themselves) from a
+  // reconnect after a drop (refetch what was missed).
+  const hasConnectedRef = useRef(false);
+  // Keep the latest callback without making the connect effect depend on it
+  // (which would tear down and rebuild the socket whenever it changes).
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   const send = useCallback((data: unknown) => {
     const sock = socketRef.current;
@@ -77,6 +96,12 @@ export function useWebSocket(url = `${BASE}/ws`) {
         for (const sub of subscriptionsRef.current.values()) {
           send({ action: "subscribe", ...sub });
         }
+        // On a *re*connect (not the first open), refetch: data may have
+        // changed while the socket was down and live deltas for it are gone.
+        if (hasConnectedRef.current) {
+          onReconnectRef.current?.();
+        }
+        hasConnectedRef.current = true;
       };
 
       sock.onmessage = (ev) => {
