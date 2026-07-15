@@ -2577,13 +2577,32 @@ a.seq-arrow:hover { background: var(--line-soft); }
   overflow: auto;
 }
 
-/* Per-section Restart Workers button uses the danger ConfirmButton styling. */
+/* Per-section Restart Workers button uses the danger ConfirmButton styling.
+   Size the whole confirm-group's buttons (not just the .danger Confirm) so
+   Confirm and Cancel share one font — otherwise only Confirm got the 0.8rem
+   shrink and Cancel rendered a step taller. */
 .detector-section .danger,
 .step1b-section .danger,
-.spareworkers-section .danger {
-  margin-top: 0.6rem;
+.spareworkers-section .danger,
+.detector-section .confirm-group button,
+.step1b-section .confirm-group button,
+.spareworkers-section .confirm-group button {
   font-size: 0.8rem;
 }
+/* The 0.6rem gap that lifts the control off the grid goes on the OUTER element
+   only — the standalone armed-able button, or the confirm-group. Putting it on
+   the Confirm button inside the group would give it a top margin Cancel lacks,
+   which (under align-items: stretch) stretched Cancel a step taller. So zero
+   any margin on the grouped buttons and space the group as a whole. */
+.detector-section > .danger,
+.step1b-section > .danger,
+.spareworkers-section > .danger,
+.detector-section .confirm-group,
+.step1b-section .confirm-group,
+.spareworkers-section .confirm-group {
+  margin-top: 0.6rem;
+}
+.confirm-group button { margin-top: 0; }
 .other-queues { max-width: 30rem; }
 .other-queues-section { flex: 1 1 18rem; }
 .other-queues .data-table { margin-top: 0; }
@@ -2665,9 +2684,12 @@ a.seq-arrow:hover { background: var(--line-soft); }
 .admin-danger-zone .admin-box { border-color: var(--warn); margin-bottom: 0.75rem; }
 
 /* ── Confirm button (destructive actions) ──────────────────────────────── */
-/* Confirm/Cancel share one box model so they line up: identical padding, and a
-   1px border on all three (transparent where there's no visible stroke) so the
-   bordered Cancel isn't 2px taller than the borderless Confirm. */
+/* Confirm/Cancel share ONE box model so they line up regardless of card width:
+   same padding, a 1px border on all three (transparent where there's no
+   visible stroke, so the bordered Cancel isn't 2px taller), and no per-button
+   text wrap — the label stays on one line so both buttons keep an identical
+   single-line height. In a narrow card (e.g. the 9rem Step 1b) the group wraps
+   and the buttons stack full-width instead of overflowing the card. */
 button.danger,
 .confirm-yes.danger {
   background: var(--warn);
@@ -2678,25 +2700,30 @@ button.danger,
   cursor: pointer;
 }
 .confirm-group {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: 0.4rem;
 }
-.confirm-yes {
-  background: var(--accent);
-  color: var(--paper);
+.confirm-yes,
+.confirm-no {
   border: 1px solid transparent;
   border-radius: 0.25rem;
   padding: 0.3rem 0.7rem;
   cursor: pointer;
+  /* Keep each label on one line so both buttons share an identical single-line
+     height; they size to content and wrap to a stack only when the card can't
+     hold them side by side. */
+  white-space: nowrap;
+}
+.confirm-yes {
+  background: var(--accent);
+  color: var(--paper);
 }
 .confirm-no {
   background: transparent;
   color: var(--ink-soft);
-  border: 1px solid var(--line-mid);
-  border-radius: 0.25rem;
-  padding: 0.3rem 0.7rem;
-  cursor: pointer;
+  border-color: var(--line-mid);
 }
 
 /* ── Theme switcher (light / dark / system segmented control) ───────────── */

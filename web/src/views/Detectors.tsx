@@ -321,7 +321,7 @@ function RestartButton({
   return (
     <ConfirmButton
       label="Restart Workers"
-      confirmLabel="Restart — confirm?"
+      confirmLabel="Confirm restart"
       danger
       onConfirm={() => onRestart(name, title)}
     />

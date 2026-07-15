@@ -150,7 +150,7 @@ test("restart requires a confirm click, then POSTs the set's restart", async () 
   buttons[0].click(); // arms confirm
   expect(posts.length).toBe(0);
 
-  const confirm = await screen.findAllByRole("button", { name: /Restart — confirm/ });
+  const confirm = await screen.findAllByRole("button", { name: /Confirm restart/ });
   confirm[0].click();
   await waitFor(() => expect(posts.length).toBe(1));
   expect(posts[0]).toContain("/api/detectors/sfmSet0/restart");
