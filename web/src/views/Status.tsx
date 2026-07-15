@@ -69,10 +69,6 @@ export function Status() {
         <section className="status-section">
           <h2>WebSocket</h2>
           <ConnectionStatus />
-          <p className="status-section-note">
-            This tab's live link to the app server — new images and metadata
-            arrive without reloading.
-          </p>
         </section>
         <section className="status-section">
           <h2>S3</h2>
@@ -85,64 +81,68 @@ export function Status() {
               </span>
             </p>
           )}
-          <p className="status-section-note">
-            The server's link to the image bucket it polls for new data.
-          </p>
         </section>
       </div>
       {isPending && <p className="skeleton">Loading status…</p>}
       {isError && <p role="alert">Could not load scan status.</p>}
-      {data && !data.cache_enabled && (
-        <p role="alert" className="scan-cache-warning">
-          ⚠ Disk cache disabled — every restart reloads all history from S3.
-          Set <code>cache_dir</code> to enable warm starts.
-        </p>
-      )}
-      {data && data.cache_enabled && (
-        <p role="note" className="scan-cache-mode">
-          {data.warm_start
-            ? "Warm start: calendar restored from cache; scans below are refreshing it against S3."
-            : "Cold start: no cached snapshot loaded; older dates appear as the sweep below completes."}
-        </p>
-      )}
+      {/* Scan progress, all in one section: the headline count, the start-up
+          mode (warm/cold — or the no-cache warning in its place), then the
+          per-location cards, each with its own done-count so per-site
+          progress reads at a glance without scanning badge colours. */}
       {data && (
-        <p className="scan-summary" role="status">
-          {remaining === 0
-            ? "All cameras fully loaded."
-            : `${remaining} camera${remaining === 1 ? "" : "s"} still loading…`}
-        </p>
+        <section className="scan-progress">
+          <div className="scan-progress-head">
+            <h2>Scan progress</h2>
+            <span className="scan-summary" role="status">
+              {remaining === 0
+                ? "All cameras fully loaded."
+                : `${remaining} camera${remaining === 1 ? "" : "s"} still loading…`}
+            </span>
+          </div>
+          {data.cache_enabled ? (
+            <p role="note" className="scan-cache-mode">
+              {data.warm_start
+                ? "Warm start: calendar restored from cache; scans below are refreshing it against S3."
+                : "Cold start: no cached snapshot loaded; older dates appear as the sweep below completes."}
+            </p>
+          ) : (
+            <p role="alert" className="scan-cache-warning">
+              ⚠ Disk cache disabled — every restart reloads all history from
+              S3. Set <code>cache_dir</code> to enable warm starts.
+            </p>
+          )}
+          <div className="scan-groups">
+            {[...groups.entries()].map(([location, cams]) => {
+              const done = cams.filter((c) => c.full_complete).length;
+              return (
+                <div key={location} className="scan-loc">
+                  <div className="scan-loc-head">
+                    <h3>{location}</h3>
+                    <span className="scan-loc-count">
+                      {done}/{cams.length} complete
+                    </span>
+                  </div>
+                  <ul className="scan-cams">
+                    {cams.map((c) => {
+                      const stage = stageOf(c);
+                      return (
+                        <li key={c.camera}>
+                          <Link to={`/${c.location}/${c.camera}`}>
+                            {c.camera}
+                          </Link>
+                          <span className={`scan-stage scan-stage--${stage}`}>
+                            {STAGE_LABEL[stage]}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
-      {/* One card per location, flowing side by side like the Admin page's
-          boxes, each with its own done-count so per-site progress reads at a
-          glance without scanning badge colours. */}
-      <div className="scan-groups">
-        {[...groups.entries()].map(([location, cams]) => {
-          const done = cams.filter((c) => c.full_complete).length;
-          return (
-            <div key={location} className="scan-loc">
-              <div className="scan-loc-head">
-                <h2>{location}</h2>
-                <span className="scan-loc-count">
-                  {done}/{cams.length} complete
-                </span>
-              </div>
-              <ul className="scan-cams">
-                {cams.map((c) => {
-                  const stage = stageOf(c);
-                  return (
-                    <li key={c.camera}>
-                      <Link to={`/${c.location}/${c.camera}`}>{c.camera}</Link>
-                      <span className={`scan-stage scan-stage--${stage}`}>
-                        {STAGE_LABEL[stage]}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
-      </div>
     </section>
   );
 }

@@ -539,10 +539,23 @@ h1, h2 {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
 }
-.status-section-note {
+
+/* Scan progress: headline count + start-up mode + the location cards,
+   consolidated under one heading. */
+.scan-progress { margin-top: 1.25rem; }
+.scan-progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.scan-progress-head h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.scan-progress .scan-cache-mode,
+.scan-progress .scan-cache-warning {
   margin: 0.5rem 0 0;
-  font-size: 0.8rem;
-  color: var(--ink-soft);
 }
 
 /* ── Scan-status page ──────────────────────────────────────────────────────
@@ -555,7 +568,7 @@ h1, h2 {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.75rem;
-  margin: 1rem 0;
+  margin: 0.75rem 0 0;
 }
 .scan-loc {
   flex: 1 1 18rem;
@@ -572,7 +585,7 @@ h1, h2 {
   justify-content: space-between;
   gap: 0.75rem;
 }
-.scan-loc-head h2 {
+.scan-loc-head h3 {
   font-size: 1rem;
   margin: 0;
 }
