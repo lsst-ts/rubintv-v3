@@ -117,7 +117,7 @@ test("flush redis requires a confirm click before firing", async () => {
   expect(posts[0].url).toContain("/admin/flush-redis");
 });
 
-test("flush redis is disabled when redis is not configured", async () => {
+test("all redis-writing actions are disabled when redis is not configured", async () => {
   stub(false);
   const qc = createQueryClient();
   renderAdmin(qc);
@@ -125,8 +125,22 @@ test("flush redis is disabled when redis is not configured", async () => {
   // the redis-gated disabled state, which depends on it. The version line now
   // also carries the git sha and commit date, so match a substring.
   await screen.findByText(/v3\.0\.0/);
+
+  const isDisabled = (name: string | RegExp) =>
+    (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
+
   await waitFor(() => {
-    const flush = screen.getByRole("button", { name: "Flush Redis" });
-    expect((flush as HTMLButtonElement).disabled).toBe(true);
+    // Every action that writes to Redis is greyed together — not just Flush
+    // Redis; Reset Head Node and the control Send buttons too.
+    expect(isDisabled("Flush Redis")).toBe(true);
+    expect(isDisabled("Reset Head Node")).toBe(true);
+    // The AOS Pipeline menu's Send, the arbitrary key/value Send, and the
+    // witness Send are all disabled (there are several "Send" buttons).
+    const sends = screen.getAllByRole("button", { name: "Send" });
+    expect(sends.length).toBeGreaterThan(0);
+    expect(sends.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   });
+
+  // Flush historical cache does NOT touch Redis, so it stays clickable.
+  expect(isDisabled("Flush historical cache")).toBe(false);
 });

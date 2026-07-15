@@ -31,6 +31,13 @@ export function Admin() {
     staleTime: STALE.config,
   });
 
+  // Every control action except "Flush historical cache" writes to Redis and
+  // 503s when it isn't configured, so disable them all together (rather than
+  // letting some fire into an error and others sit inert). The header's "Redis
+  // not configured" warning says why they're greyed. Until /admin/status
+  // resolves we optimistically leave them enabled.
+  const redisDown = status ? !status.redis_enabled : false;
+
   const { data: menus } = useQuery({
     queryKey: ["adminMenus"],
     queryFn: api.adminMenus,
@@ -95,6 +102,7 @@ export function Admin() {
             key={menu.key}
             menu={menu}
             value={readback[menu.key]}
+            disabled={redisDown}
             onSend={(value) =>
               run(menu.title, () => api.setControl(menu.key, value))
             }
@@ -102,6 +110,7 @@ export function Admin() {
         ))}
 
         <ArbitraryBox
+          disabled={redisDown}
           onSend={(key, value) =>
             run(`set ${key}`, () => api.setControl(key, value))
           }
@@ -111,6 +120,7 @@ export function Admin() {
           value={
             status ? readback[status.witness_detector_key] : undefined
           }
+          disabled={redisDown}
           onSend={(value) =>
             run("Witness Detector", () => api.setWitnessDetector(value))
           }
@@ -122,6 +132,7 @@ export function Admin() {
             label="Reset Head Node"
             confirmLabel="Reset — confirm?"
             danger
+            disabled={redisDown}
             onConfirm={() => run("Reset Head Node", api.resetHeadNode)}
           />
         </div>
@@ -153,7 +164,7 @@ export function Admin() {
             label="Flush Redis"
             confirmLabel="Flush Redis — confirm?"
             danger
-            disabled={status ? !status.redis_enabled : false}
+            disabled={redisDown}
             onConfirm={() => run("Flush Redis", api.flushRedis)}
           />
         </div>
@@ -168,10 +179,12 @@ function MenuBox({
   menu,
   value,
   onSend,
+  disabled = false,
 }: {
   menu: AdminMenuOut;
   value: string | undefined;
   onSend: (value: string) => void;
+  disabled?: boolean;
 }) {
   const [choice, setChoice] = useState(menu.items[0]?.label ?? "");
   return (
@@ -188,7 +201,11 @@ function MenuBox({
             </option>
           ))}
         </select>
-        <button type="button" onClick={() => onSend(choice)} disabled={!choice}>
+        <button
+          type="button"
+          onClick={() => onSend(choice)}
+          disabled={disabled || !choice}
+        >
           Send
         </button>
       </div>
@@ -199,8 +216,10 @@ function MenuBox({
 // Send any control key/value pair.
 function ArbitraryBox({
   onSend,
+  disabled = false,
 }: {
   onSend: (key: string, value: string) => void;
+  disabled?: boolean;
 }) {
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
@@ -223,7 +242,7 @@ function ArbitraryBox({
         <button
           type="button"
           onClick={() => onSend(key, value)}
-          disabled={key === ""}
+          disabled={disabled || key === ""}
         >
           Send
         </button>
@@ -236,9 +255,11 @@ function ArbitraryBox({
 function WitnessBox({
   value,
   onSend,
+  disabled = false,
 }: {
   value: string | undefined;
   onSend: (value: string) => void;
+  disabled?: boolean;
 }) {
   const [v, setV] = useState("");
   return (
@@ -254,7 +275,11 @@ function WitnessBox({
           value={v}
           onChange={(e) => setV(e.target.value)}
         />
-        <button type="button" onClick={() => onSend(v)} disabled={v === ""}>
+        <button
+          type="button"
+          onClick={() => onSend(v)}
+          disabled={disabled || v === ""}
+        >
           Send
         </button>
       </div>

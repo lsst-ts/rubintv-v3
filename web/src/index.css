@@ -2699,6 +2699,13 @@ button.danger,
   padding: 0.3rem 0.7rem;
   cursor: pointer;
 }
+/* Disabled danger buttons (e.g. Redis actions when Redis is off) must read as
+   inert — without this the full-strength orange looks clickable but swallows
+   clicks. Matches the app's other :disabled controls (opacity 0.5). */
+button.danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .confirm-group {
   display: flex;
   flex-wrap: wrap;
