@@ -241,6 +241,10 @@ export function Layout() {
             </div>
           </div>
 
+          {/* System pages (status/detectors/admin) have no title and no tabs —
+              they render their own <h1> in the view body — so this row would be
+              an empty padded strip. Only mount it when it has content. */}
+          {(title || hasTabs) && (
           <div className="topbar-main">
             {title && (
               <div className="title-row">
@@ -321,6 +325,7 @@ export function Layout() {
               </div>
             )}
           </div>
+          )}
         </header>
 
         <main className="app-content">
