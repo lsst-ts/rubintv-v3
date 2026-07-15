@@ -75,8 +75,13 @@ export function Admin() {
       <header className="admin-header">
         <h1>Admin</h1>
         <span className="admin-version">
+          {/* Deployed images show the full setuptools-scm version; a local
+              checkout drops the noisy `dev+g<sha>` string and shows just the
+              sha and date. */}
           {status
-            ? `v${status.version} · ${status.git_sha} · ${status.commit_date}`
+            ? status.is_release
+              ? `v${status.version} · ${status.git_sha} · ${status.commit_date}`
+              : `${status.git_sha} · ${status.commit_date}`
             : ""}
           {status && !status.redis_enabled && (
             <span className="admin-warn" role="alert">

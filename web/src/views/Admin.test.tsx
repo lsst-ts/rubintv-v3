@@ -9,7 +9,7 @@ import { Admin } from "./Admin";
 // Records POST bodies so we can assert what each control box sends.
 let posts: { url: string; body: unknown }[] = [];
 
-function stub(redisEnabled = true) {
+function stub(redisEnabled = true, isRelease = true) {
   posts = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -26,6 +26,7 @@ function stub(redisEnabled = true) {
         version: "3.0.0",
         git_sha: "abc1234",
         commit_date: "2026-07-02",
+        is_release: isRelease,
         redis_enabled: redisEnabled,
         cache_enabled: true,
         witness_detector_key: "RUBINTV_CONTROL_WITNESS_DETECTOR",
@@ -82,6 +83,17 @@ test("shows version, renders menu box, and sends the chosen value", async () => 
     key: "RUBINTV_CONTROL_AOS_PIPELINE",
     value: "DANISH",
   });
+});
+
+test("local dev drops the version, showing just sha and date", async () => {
+  stub(true, false);
+  const qc = createQueryClient();
+  renderAdmin(qc);
+
+  // Non-release build: the noisy setuptools-scm version is dropped; only the
+  // sha and commit date remain.
+  expect(await screen.findByText("abc1234 · 2026-07-02")).toBeDefined();
+  expect(screen.queryByText(/v3\.0\.0/)).toBeNull();
 });
 
 test("live readback updates the menu's current value", async () => {

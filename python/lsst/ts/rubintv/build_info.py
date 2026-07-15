@@ -57,3 +57,16 @@ def commit_date() -> str:
         or _git("log", "-1", "--format=%cd", "--date=format:%Y-%m-%d")
         or _UNKNOWN
     )
+
+
+@lru_cache(maxsize=1)
+def is_release() -> bool:
+    """Whether this is a built/deployed image rather than a live checkout.
+
+    The Dockerfile bakes ``RUBINTV_GIT_SHA`` in at image-build time, so its
+    presence marks a deployed build. Local development leaves it unset (the
+    sha/date come from live ``git`` instead). The Admin header uses this to
+    show the full setuptools-scm version only where it's meaningful — a
+    release image — and to drop the noisy ``dev+g<sha>`` string locally.
+    """
+    return bool(os.environ.get("RUBINTV_GIT_SHA"))

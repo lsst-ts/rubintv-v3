@@ -206,6 +206,10 @@ class AdminStatusOut(BaseModel):
     commit_date: str
     """Commit date of the built commit as YYYY-MM-DD ("unknown" if
     unavailable)."""
+    is_release: bool
+    """Whether the running code is a built/deployed image (True) rather than a
+    live local checkout (False). The frontend shows the full setuptools-scm
+    ``version`` only when True; locally it shows just the sha and date."""
     redis_enabled: bool
     cache_enabled: bool
     witness_detector_key: str

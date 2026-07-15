@@ -141,6 +141,10 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     # both are non-empty (real value or the "unknown" fallback), never blank.
     assert body["git_sha"]
     assert body["commit_date"]
+    # Tests run in a live checkout, not a built image (RUBINTV_GIT_SHA unset),
+    # so this is not a release build. The Admin header uses this to drop the
+    # noisy setuptools-scm version locally.
+    assert body["is_release"] is False
     # The seeded client has no Redis and no cache dir configured.
     assert body["redis_enabled"] is False
     assert body["cache_enabled"] is False
@@ -148,6 +152,24 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     # No X-Auth-User header -> not an admin (the frontend hides admin
     # controls).
     assert body["is_admin"] is False
+
+
+def test_is_release_tracks_baked_in_git_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # is_release() keys off RUBINTV_GIT_SHA, which the Dockerfile bakes into
+    # deployed images and a local checkout leaves unset. The lru_cache must be
+    # cleared around each read since other tests resolve it live.
+    from lsst.ts.rubintv import build_info
+
+    build_info.is_release.cache_clear()
+    monkeypatch.setenv("RUBINTV_GIT_SHA", "deadbeef")
+    assert build_info.is_release() is True
+
+    build_info.is_release.cache_clear()
+    monkeypatch.delenv("RUBINTV_GIT_SHA", raising=False)
+    assert build_info.is_release() is False
+    build_info.is_release.cache_clear()
 
 
 def test_admin_status_reports_is_admin_for_authed_user(

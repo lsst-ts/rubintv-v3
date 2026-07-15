@@ -21,7 +21,7 @@ from lsst.ts.rubintv.api.schemas import (
     DetectorOut,
     DetectorsConfigOut,
 )
-from lsst.ts.rubintv.build_info import commit_date, git_sha
+from lsst.ts.rubintv.build_info import commit_date, git_sha, is_release
 from lsst.ts.rubintv.config.models import Location
 from lsst.ts.rubintv.data.redis_inputs import RedisUnavailable
 from lsst.ts.rubintv.state import AppState
@@ -182,6 +182,7 @@ def get_admin_status(
         version=__version__,
         git_sha=git_sha(),
         commit_date=commit_date(),
+        is_release=is_release(),
         redis_enabled=state.redis is not None and state.redis.enabled,
         cache_enabled=state.cache_enabled,
         witness_detector_key=state.settings.witness_detector_key,

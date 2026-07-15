@@ -581,6 +581,8 @@ export interface components {
             git_sha: string;
             /** Commit Date */
             commit_date: string;
+            /** Is Release */
+            is_release: boolean;
             /** Redis Enabled */
             redis_enabled: boolean;
             /** Cache Enabled */
