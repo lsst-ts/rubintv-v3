@@ -81,7 +81,7 @@ export function Admin() {
           {status && !status.redis_enabled && (
             <span className="admin-warn" role="alert">
               {" "}
-              · Redis not configured — control writes will fail
+              · Redis not configured — control writes are not possible
             </span>
           )}
         </span>
