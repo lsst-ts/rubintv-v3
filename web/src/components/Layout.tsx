@@ -246,83 +246,92 @@ export function Layout() {
               an empty padded strip. Only mount it when it has content. */}
           {(title || hasTabs) && (
           <div className="topbar-main">
-            {title && (
-              <div className="title-row">
-                <h2>{title}</h2>
-                {banner && (
-                  <span
-                    className={`processing-banner site-${location}`}
-                    role="status"
-                  >
-                    {banner}
-                  </span>
-                )}
-                {showDatePicker && (
-                  <span className="topbar-datepicker date-stepper">
-                    <button
-                      type="button"
-                      className="tb-btn step"
-                      aria-label="Previous day with data"
-                      title="Previous day with data"
-                      disabled={!nav.olderDate}
-                      onClick={() => nav.olderDate && applyDate(nav.olderDate)}
+            {/* Title + tabs stack in a left column that shrinks to its content
+                so the date picker can sit at the far right of the row, level
+                with the tabs (rather than spanning the full width and pushing
+                the picker up onto the title line). */}
+            <div className="topbar-main-lead">
+              {title && (
+                <div className="title-row">
+                  <h2>{title}</h2>
+                  {banner && (
+                    <span
+                      className={`processing-banner site-${location}`}
+                      role="status"
                     >
-                      ‹
-                    </button>
-                    <DatePicker
-                      dates={nav.pickerDates}
-                      counts={nav.calendar?.counts ?? {}}
-                      maxSeq={nav.calendar?.max_seq ?? {}}
-                      value={nav.date}
-                      isCurrentDayObs={nav.isCurrentDayObs}
-                      onChange={applyDate}
-                    />
-                    <button
-                      type="button"
-                      className="tb-btn step"
-                      aria-label="Next day with data"
-                      title="Next day with data"
-                      disabled={!nav.newerDate}
-                      onClick={() => nav.newerDate && applyDate(nav.newerDate)}
-                    >
-                      ›
-                    </button>
-                  </span>
-                )}
-              </div>
-            )}
+                      {banner}
+                    </span>
+                  )}
+                </div>
+              )}
 
-            {hasTabs && (
-              <div className="tabs">
-                {tabs.map((tab) => {
-                  const base =
-                    `/${location}/${camera}` +
-                    (tab.suffix ? `/${tab.suffix}` : "");
-                  // Carry the resolved date into every tab link so switching
-                  // views keeps the day in view — the fix for returning to the
-                  // Table and seeing the newest day instead of the one you left.
-                  // The night-report link already takes ?date= too.
-                  const to = nav.date ? `${base}?date=${nav.date}` : base;
-                  const active = nav.activeTab === tab.id;
-                  return (
-                    <Link
-                      key={tab.id}
-                      to={to}
-                      className={"tab" + (active ? " active" : "")}
-                      aria-current={active ? "page" : undefined}
-                      // Remember the Table/Channels choice so the next camera
-                      // opens on the same tab (setCameraTabPref ignores the
-                      // others). CameraTable reads this to redirect on arrival.
-                      onClick={() => setCameraTabPref(tab.id)}
-                    >
-                      {tab.label}
-                      {tab.count != null && (
-                        <span className="count">{tab.count}</span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
+              {hasTabs && (
+                <div className="tabs">
+                  {tabs.map((tab) => {
+                    const base =
+                      `/${location}/${camera}` +
+                      (tab.suffix ? `/${tab.suffix}` : "");
+                    // Carry the resolved date into every tab link so switching
+                    // views keeps the day in view — the fix for returning to the
+                    // Table and seeing the newest day instead of the one you
+                    // left. The night-report link already takes ?date= too.
+                    const to = nav.date ? `${base}?date=${nav.date}` : base;
+                    const active = nav.activeTab === tab.id;
+                    return (
+                      <Link
+                        key={tab.id}
+                        to={to}
+                        className={"tab" + (active ? " active" : "")}
+                        aria-current={active ? "page" : undefined}
+                        // Remember the Table/Channels choice so the next camera
+                        // opens on the same tab (setCameraTabPref ignores the
+                        // others). CameraTable reads this to redirect on arrival.
+                        onClick={() => setCameraTabPref(tab.id)}
+                      >
+                        {tab.label}
+                        {tab.count != null && (
+                          <span className="count">{tab.count}</span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Date picker sits at the end of topbar-main, pushed right and
+                aligned to the bottom so it reads in line with the tabs. */}
+            {showDatePicker && (
+              <span className="topbar-datepicker date-stepper">
+                <button
+                  type="button"
+                  className="tb-btn step"
+                  aria-label="Previous day with data"
+                  title="Previous day with data"
+                  disabled={!nav.olderDate}
+                  onClick={() => nav.olderDate && applyDate(nav.olderDate)}
+                >
+                  ‹
+                </button>
+                <DatePicker
+                  dates={nav.pickerDates}
+                  counts={nav.calendar?.counts ?? {}}
+                  maxSeq={nav.calendar?.max_seq ?? {}}
+                  value={nav.date}
+                  isCurrentDayObs={nav.isCurrentDayObs}
+                  onChange={applyDate}
+                />
+                <button
+                  type="button"
+                  className="tb-btn step"
+                  aria-label="Next day with data"
+                  title="Next day with data"
+                  disabled={!nav.newerDate}
+                  onClick={() => nav.newerDate && applyDate(nav.newerDate)}
+                >
+                  ›
+                </button>
+              </span>
             )}
           </div>
           )}

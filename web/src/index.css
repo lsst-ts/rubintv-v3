@@ -230,11 +230,20 @@ h1, h2 {
   display: flex; flex-direction: row; align-items: center; gap: 10px;
 }
 
-/* Title + tabs row below the strip. */
-.topbar-main { padding: 12px 22px 0; }
+/* Title + tabs below the strip, laid out as a row: the title/tabs stack in a
+   left column (topbar-main-lead) that fills the width, with the date picker
+   sitting at the end, in line with the tabs. */
+.topbar-main {
+  padding: 12px 22px 0;
+  display: flex; align-items: flex-end; gap: 14px;
+}
 /* No tabs row to fill the gap, so the title/date would otherwise sit flush on
    the bottom border — give it its own bottom padding. */
 .topbar.no-tabs .topbar-main { padding-bottom: 12px; }
+/* The title + tabs column takes the available space so it — not the date
+   picker — owns the empty stretch of the row (the picker just sits at the end).
+   The tabs' bottom border then spans the full width up to the picker. */
+.topbar-main-lead { flex: 1; min-width: 0; }
 
 /* Breadcrumbs */
 .crumb,
@@ -338,20 +347,15 @@ h1, h2 {
 .tabs .tab.active .count { background: var(--accent-soft); color: var(--accent); }
 
 /* The date picker + prev/next steppers, hoisted from the table toolbar into the
-   camera page's title row so the selected day persists across the Table /
-   Channels tabs. It sits at the far right of the title row (pushed by
-   margin-left:auto), vertically centred against the big title. The stepper
-   buttons need their own rule here because the shared .tb-btn styles are scoped
-   to .cam-toolbar. */
-/* The date-picker cluster is enlarged for legibility but must not grow the
-   topbar: it's top-anchored (flex-start + a fixed top offset matching where it
-   sat when centred, ~4px), so the extra size extends downward into the slack
-   the 30px title already leaves in the row — the cluster's uppermost Y and the
-   row height are both unchanged. */
+   camera page's topbar so the selected day persists across the Table / Channels
+   tabs. It sits at the end of topbar-main — the flex:1 lead column takes the
+   free space and pushes it there — and, since topbar-main aligns its children to
+   flex-end, it lands in line with the tabs rather than up on the title. The
+   small bottom margin lifts it off the tabs' bottom border so the trigger sits
+   level with the tab labels. The stepper buttons need their own rule here because
+   the shared .tb-btn styles are scoped to .cam-toolbar. */
 .topbar-datepicker {
-  margin-left: auto;
-  align-self: flex-start;
-  margin-top: 4px;
+  margin-bottom: 6px;
   display: inline-flex; align-items: center; gap: 6px;
 }
 .topbar-datepicker .tb-btn.step {
