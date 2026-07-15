@@ -2474,15 +2474,21 @@ a.seq-arrow:hover { background: var(--line-soft); }
 }
 :not(.table-wrap) > .data-table thead th { position: static; }
 
-/* Section rows. */
+/* Section rows. Both rows share the SAME track model so the CWFS group lines
+   up edge-to-edge with the Imaging group and shrinks at the same rate: the
+   worker sets sit in equal `1fr` columns that share one "main area", and the
+   step1b card takes a fixed trailing column identical in both rows. Two 1fr
+   (imaging) vs four 1fr (CWFS) divide the identical main area, so their outer
+   edges align and they scale together with the container. */
 .main-detectors,
 .aos-detectors {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 1rem;
-  align-items: flex-start;
+  align-items: start;
   margin-bottom: 1rem;
 }
+.main-detectors { grid-template-columns: 1fr 1fr var(--step1b-col, 9rem); }
+.aos-detectors { grid-template-columns: 1fr 1fr 1fr 1fr var(--step1b-col, 9rem); }
 
 /* Each worker set is a framed card (design's .wf box). */
 .detector-section,
@@ -2503,12 +2509,11 @@ a.seq-arrow:hover { background: var(--line-soft); }
   margin: 0 0 0.6rem;
   font-weight: 600;
 }
-.detector-section-large {
-  flex: 1 1 24rem;
-  max-width: 32rem;
-}
-.detector-section-small { flex: 0 1 14rem; }
-.step1b-section { flex: 0 1 9rem; }
+/* Grid items now size via the row templates above; the old flex hints are
+   kept only as harmless fallbacks. */
+.detector-section-large { max-width: none; }
+.detector-section-small { min-width: 0; }
+.step1b-section { min-width: 0; }
 
 /* Canvas keeps a square aspect; the polygons are drawn to fit. */
 .detector-canvas {
@@ -2537,7 +2542,8 @@ a.seq-arrow:hover { background: var(--line-soft); }
   padding: 6px;
   min-height: 6rem;
 }
-.spareworkers-cells { grid-template-columns: repeat(4, 1fr); }
+/* Backlog reflows to fill its (resizable) card, never below 3 columns. */
+.spareworkers-cells { grid-template-columns: repeat(auto-fill, minmax(1.9rem, 1fr)); }
 .detector-cell {
   aspect-ratio: 1 / 1;
   border: 1px solid var(--line-mid);
@@ -2553,8 +2559,23 @@ a.seq-arrow:hover { background: var(--line-soft); }
   font-size: 0.8rem;
 }
 
-.spareworkers-row { margin-bottom: 1rem; }
-.spareworkers-section { max-width: 12rem; }
+/* Backlog Workers + Other Queues share one row. */
+.bottom-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+/* Backlog card is user-resizable; min-width holds ≥ 3 cells
+   (3 × 1.9rem + 2 gaps + grid padding + card padding/border). */
+.spareworkers-section {
+  width: 12rem;
+  min-width: 9.5rem;
+  max-width: 28rem;
+  resize: horizontal;
+  overflow: auto;
+}
 
 /* Per-section Restart Workers button uses the danger ConfirmButton styling. */
 .detector-section .danger,
@@ -2564,6 +2585,7 @@ a.seq-arrow:hover { background: var(--line-soft); }
   font-size: 0.8rem;
 }
 .other-queues { max-width: 30rem; }
+.other-queues-section { flex: 1 1 18rem; }
 .other-queues .data-table { margin-top: 0; }
 
 /* ── Admin panel ───────────────────────────────────────────────────────── */

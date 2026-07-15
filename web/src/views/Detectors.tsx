@@ -165,15 +165,14 @@ export function Detectors() {
         />
       </div>
 
-      <div className="spareworkers-row">
+      <div className="bottom-row">
         <div className="spareworkers-section">
           <h3>Backlog Workers</h3>
           <Cells payload={sets.spareWorkers} fallbackCount={4} prefix="spareworkers" />
           <RestartButton name="spareWorkers" title="Backlog Workers" onRestart={restart} />
         </div>
+        <OtherQueues payload={sets.otherQueues} />
       </div>
-
-      <OtherQueues payload={sets.otherQueues} />
     </section>
   );
 }
