@@ -88,7 +88,7 @@ function foldoutLabel(data: Record<string, unknown> | unknown[]): string | null 
 // (not all 1000+). The cell logic is unchanged from the inline version.
 interface RowProps {
   seq: number;
-  rowIdx: number;
+  isNewest: boolean;
   columns: Column[];
   meta: Record<string, unknown>;
   payload: DatePayload | undefined;
@@ -112,7 +112,7 @@ interface RowProps {
 
 const Row = memo(function Row({
   seq,
-  rowIdx,
+  isNewest,
   columns,
   meta,
   payload,
@@ -132,7 +132,7 @@ const Row = memo(function Row({
     <tr
       ref={measureRef}
       data-index={dataIndex}
-      className={rowIdx === 0 ? "newest" : undefined}
+      className={isNewest ? "newest" : undefined}
     >
       {columns.map((c) => {
         if (c.key === "seq") {
@@ -368,6 +368,15 @@ function CameraDataTableInner({
     return () => wrap.removeEventListener("scroll", onScroll);
   }, [wrapRef]);
 
+  // The "newest" highlight tracks the largest seq, not the visually-first row:
+  // sorting ascending (or by any metadata column) can put the oldest exposure
+  // at the top, and marking row 0 "newest" would then mislabel it. seqNums may
+  // be in any order, so take the max explicitly.
+  const maxSeq = useMemo(
+    () => (seqNums.length ? Math.max(...seqNums) : -1),
+    [seqNums],
+  );
+
   const rowVirtualizer = useVirtualizer({
     count: seqNums.length,
     getScrollElement: () => wrapRef.current,
@@ -539,7 +548,7 @@ function CameraDataTableInner({
               <Row
                 key={seq}
                 seq={seq}
-                rowIdx={vr.index}
+                isNewest={seq === maxSeq}
                 dataIndex={vr.index}
                 measureRef={rowVirtualizer.measureElement}
                 columns={columns}

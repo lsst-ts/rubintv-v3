@@ -25,6 +25,17 @@ test("per-seq camera: month cell shows max seq, no has-data dot", () => {
   expect(cell.className).not.toContain("has-data");
 });
 
+test("month-view selectable day is a keyboard-operable button", () => {
+  const onChange = vi.fn();
+  const dialog = open({ onChange });
+  // The day with data renders as a <button> (was a mouse-only <div onClick>),
+  // so it's reachable by keyboard and activatable with Enter/Space.
+  const cell = within(dialog).getByTitle("2026-04-10 · max seq 174");
+  expect(cell.tagName).toBe("BUTTON");
+  fireEvent.click(cell);
+  expect(onChange).toHaveBeenCalledWith("2026-04-10");
+});
+
 test("per-seq camera: heatmap tints by exposure count", () => {
   const dialog = open();
   fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));

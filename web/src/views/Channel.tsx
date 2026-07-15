@@ -143,6 +143,14 @@ export function Channel({ live = false }: { live?: boolean }) {
   // so they promote as soon as the target changes.
   const [loadedSeq, setLoadedSeq] = useState<number | null>(null);
 
+  // Reset the latch when the date or channel changes (day_obs rollover in live
+  // mode, or a channel switch). Otherwise loadedSeq would hold the previous
+  // day's/channel's seq against the new date's media URL — a 404 frame and lost
+  // prev/next (seqs.indexOf(seq) === -1) until the new target decodes.
+  useEffect(() => {
+    setLoadedSeq(null);
+  }, [date, channel]);
+
   useEffect(() => {
     if (!live || targetSeq === 0) return;
     if (loadedSeq === targetSeq) return;
@@ -180,7 +188,16 @@ export function Channel({ live = false }: { live?: boolean }) {
     : targetSeq;
 
   const idx = seqs.indexOf(seq);
-  const prev = idx > 0 ? seqs[idx - 1] : null;
+  // When the displayed seq isn't in the payload (a stale bookmark, or an
+  // exposure that vanished on a rescan — historical payloads are mutable),
+  // idx === -1 would leave prev AND next null, dead-ending the viewer with no
+  // way to step off the missing frame. Fall back to the sorted insertion point
+  // so the neighbouring real exposures are still reachable.
+  const insertAt =
+    idx >= 0 ? idx : seqs.findIndex((s) => s > seq); // -1 if seq is past the end
+  const prevIdx = idx >= 0 ? idx - 1 : insertAt === -1 ? seqs.length - 1 : insertAt - 1;
+  const nextIdx = idx >= 0 ? idx + 1 : insertAt; // insertAt already points past seq
+  const prev = prevIdx >= 0 && prevIdx < seqs.length ? seqs[prevIdx] : null;
   // The payload (and so seqs) grows the instant a new exposure lands, but in
   // live mode the displayed seq is held back until its image decodes. Navigate
   // against the *displayed* frontier, not the raw payload, so a "next" link
@@ -191,14 +208,14 @@ export function Channel({ live = false }: { live?: boolean }) {
   // decoding), suppress "next" so it can't reveal the not-yet-shown frame.
   // Once the latch promotes seq to targetSeq, this is the newest seq and there
   // is no next anyway — so the link only ever appears after a manual step back.
-  const hasNewer = idx >= 0 && idx < seqs.length - 1;
+  const hasNewer = nextIdx >= 0 && nextIdx < seqs.length;
   const catchingUp = live && seq !== targetSeq;
 
   usePageTitle(
     `${cameraInfo?.title ?? camera} / ${channel}`,
     live ? "LIVE" : seq ? `#${seq}` : undefined,
   );
-  const next = hasNewer && !catchingUp ? seqs[idx + 1] : null;
+  const next = hasNewer && !catchingUp ? seqs[nextIdx] : null;
 
   const isVideo = isVideoFor(seq);
   const src = date && seq ? mediaFor(seq) : "";

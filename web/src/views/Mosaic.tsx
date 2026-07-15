@@ -77,7 +77,9 @@ export function Mosaic() {
 
   const tiles = useMemo<Tile[]>(() => {
     if (!cameraInfo || !payload) return [];
-    return cameraInfo.mosaic_view_meta.flatMap((entry): Tile[] => {
+    // Guard mosaic_view_meta: a camera config lacking it (mid-deploy / stub)
+    // must render empty, not throw on .flatMap.
+    return (cameraInfo.mosaic_view_meta ?? []).flatMap((entry): Tile[] => {
       const isVideo = entry.media_type === "video";
       const seqs = (payload.channels[entry.channel] ?? []).filter(
         (n): n is number => typeof n === "number",

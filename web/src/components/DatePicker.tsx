@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDismiss } from "../lib/useDismiss";
+import { currentDayObs } from "../lib/queryClient";
 import { CalendarIcon } from "./Icons";
 
 // Date picker with two views that share one popover:
@@ -38,9 +39,27 @@ function viewFromKey(k: string | undefined): ViewMonth {
   return { y: now.getUTCFullYear(), m: now.getUTCMonth() };
 }
 
+// "Today" for the picker is the current *observing day* (day_obs, noon-UTC
+// rollover) — the calendar cells are day_obs dates, so comparing against a
+// plain calendar-UTC date would mismatch. Returned as a YYYY-MM-DD key to match
+// the cells' `key(...)` format.
 function todayKey(): string {
-  const now = new Date();
-  return key(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return currentDayObs();
+}
+
+// Re-read the current day_obs on an interval so an always-on display (open
+// across the noon-UTC rollover) doesn't keep yesterday frozen as "today",
+// which would render the new observing day disabled/future and unselectable.
+function useCurrentDayObsKey(): string {
+  const [today, setToday] = useState(todayKey);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const next = todayKey();
+      setToday((prev) => (prev === next ? prev : next));
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return today;
 }
 
 // ── Two-month view ──────────────────────────────────────────────────────────
@@ -137,15 +156,28 @@ function MonthGrid({
                 ? `${c.key} · max seq ${seq}`
                 : `${c.key} · has data`
               : c.key;
-          return (
-            <div
-              key={i}
-              className={classes.join(" ")}
-              title={title}
-              onClick={() => selectable && onPick(c.key)}
-            >
+          // Selectable days are real <button>s so they're keyboard-operable
+          // (the grid was mouse-only — a <div onClick> can't be tabbed to or
+          // activated with Enter/Space). Non-selectable cells stay inert divs.
+          const inner = (
+            <>
               <span className="num">{c.d}</span>
               {seq !== undefined && <span className="ct">{seq}</span>}
+            </>
+          );
+          return selectable ? (
+            <button
+              key={i}
+              type="button"
+              className={classes.join(" ")}
+              title={title}
+              onClick={() => onPick(c.key)}
+            >
+              {inner}
+            </button>
+          ) : (
+            <div key={i} className={classes.join(" ")} title={title}>
+              {inner}
             </div>
           );
         })}
@@ -387,7 +419,7 @@ export function DatePicker({
     return [...ys].sort((a, b) => b - a);
   }, [dates]);
 
-  const today = useMemo(todayKey, []);
+  const today = useCurrentDayObsKey();
   const latest = dates[0] ?? "";
 
   const setModePersisted = (next: Mode) => {
@@ -482,7 +514,11 @@ export function DatePicker({
                 tabIndex={0}
                 onClick={() => pickDay(latest)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") pickDay(latest);
+                  if (e.key === "Enter" || e.key === " ") {
+                    // Space would otherwise scroll the page as well as activate.
+                    e.preventDefault();
+                    pickDay(latest);
+                  }
                 }}
               >
                 jump to latest

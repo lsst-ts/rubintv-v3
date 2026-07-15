@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -95,9 +95,12 @@ function ChannelCard({
   const stale = lag !== null && lag > STALE_SEQ_LAG;
   // While the card's image is still loading the browser paints it top-down; dim
   // it and show a spinner until it's done so the card reads as "loading" rather
-  // than half-drawn. Keyed on src so a live frame swap re-arms it; an already
-  // cached image (img.complete in the ref) clears it without a flash.
+  // than half-drawn. The card is keyed by channel name (not src), so it does
+  // NOT remount on a live frame swap — re-arm the loading state whenever
+  // media.src changes; an already cached image (img.complete in the ref) clears
+  // it without a flash.
   const [imgLoaded, setImgLoaded] = useState(false);
+  useEffect(() => setImgLoaded(false), [media.src]);
   const imgRef = (el: HTMLImageElement | null) => {
     if (el?.complete) setImgLoaded(true);
   };

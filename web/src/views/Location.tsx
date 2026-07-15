@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -16,6 +16,14 @@ import { usePageTitle } from "../lib/usePageTitle";
 function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The card doesn't remount on a live frame swap, so re-arm loading and clear
+  // a prior failure whenever src changes. Without this a single transient 404
+  // pinned the card to "no recent frame" permanently, and a new frame painted
+  // top-down with no spinner.
+  useEffect(() => {
+    setImgLoaded(false);
+    setFailed(false);
+  }, [src]);
   const imgRef = (el: HTMLImageElement | null) => {
     if (el?.complete) setImgLoaded(true);
   };

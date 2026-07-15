@@ -64,9 +64,12 @@ export function AllSky() {
   const videoChannels = useMemo(
     () =>
       new Set(
-        cameraInfo?.mosaic_view_meta
+        // Optional-chain through mosaic_view_meta too: a camera config without
+        // it (backend mid-deploy, or a fetch stub) would otherwise throw on
+        // .filter and white-screen the view.
+        (cameraInfo?.mosaic_view_meta ?? [])
           .filter((m) => m.media_type === "video")
-          .map((m) => m.channel) ?? [],
+          .map((m) => m.channel),
       ),
     [cameraInfo],
   );
@@ -74,7 +77,7 @@ export function AllSky() {
   const tiles = useMemo<Tile[]>(() => {
     if (!cameraInfo) return [];
 
-    return cameraInfo.channels.flatMap((ch): Tile[] => {
+    return (cameraInfo.channels ?? []).flatMap((ch): Tile[] => {
       const isVideo = videoChannels.has(ch.name);
 
       // Historical: movie channels resolve to the "final" sentinel directly,

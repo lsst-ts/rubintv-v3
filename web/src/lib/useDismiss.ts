@@ -1,5 +1,11 @@
 import { useEffect, type RefObject } from "react";
 
+// A stack of the currently-active Escape dismissers, most-recently-activated
+// last. Escape dismisses only the top one, so stacked overlays (e.g. a
+// CellModal opened above the column picker) close one at a time instead of all
+// at once. Module-level so every useDismiss instance shares it.
+const escapeStack: Array<() => void> = [];
+
 // Calls `onDismiss` when the user clicks/taps outside `ref` or presses Escape,
 // while `active` is true. For popovers (column picker, date picker, filters)
 // that should close on an outside interaction. Listens in the capture phase so
@@ -18,12 +24,22 @@ export function useDismiss(
         onDismiss();
       }
     };
+    // Register on a stack; Escape only fires the topmost dismisser so nested
+    // overlays close one level per keypress.
+    const entry = () => onDismiss();
+    escapeStack.push(entry);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onDismiss();
+      if (e.key !== "Escape") return;
+      if (escapeStack[escapeStack.length - 1] === entry) {
+        e.stopPropagation();
+        onDismiss();
+      }
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKey);
     return () => {
+      const i = escapeStack.indexOf(entry);
+      if (i !== -1) escapeStack.splice(i, 1);
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKey);
     };
