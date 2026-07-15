@@ -512,13 +512,37 @@ h1, h2 {
   font-size: 0.85rem;
 }
 
-/* Live-connection pills at the top of the Status page: the WebSocket
-   indicator (always shown), the S3 pill (only when slow/unreachable) and the
-   last-cycle latency, together on one meta row. */
-.status-connections {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+/* Connection sections at the top of the Status page — one box each for the
+   browser↔server WebSocket and the server↔bucket S3 link, in the same box
+   register as the location cards below. */
+.status-sections {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.75rem;
   margin: 0.25rem 0 1rem;
+}
+.status-section {
+  flex: 1 1 16rem;
+  max-width: 24rem;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-card);
+}
+.status-section h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+.status-section .s3-latency {
+  margin: 0.5rem 0 0;
   font-size: 0.85rem;
+}
+.status-section-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
 }
 
 /* ── Scan-status page ──────────────────────────────────────────────────────

@@ -16,10 +16,16 @@ import { api } from "../lib/api";
 // per-camera scan state and last-cycle latency). Enabled in the header, where
 // the pill is the natural jumping-off point; left off inside the Status page
 // itself, where it would link to the current page.
+//
+// `verbose` renders the healthy state too (a green "S3 connected" pill) for
+// contexts that dedicate space to S3 health — the Status page's S3 section —
+// where staying quiet would read as "unknown" rather than "fine".
 export function S3Status({
   linkToStatus = false,
+  verbose = false,
 }: {
   linkToStatus?: boolean;
+  verbose?: boolean;
 }) {
   const { data } = useQuery({
     queryKey: ["status"],
@@ -65,6 +71,15 @@ export function S3Status({
       "status",
       `The server's last S3 poll took ${data.s3_last_cycle_seconds.toFixed(1)}s — unusually slow; the connection may be degrading.`,
       "S3 slow",
+    );
+  }
+
+  if (verbose) {
+    return pill(
+      "conn conn-open",
+      "status",
+      "The server reached the S3 bucket on its last poll.",
+      "S3 connected",
     );
   }
 

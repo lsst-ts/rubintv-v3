@@ -91,7 +91,14 @@ test("notes a cold start when no snapshot was loaded", async () => {
 
 test("shows the WebSocket-connection pill (moved here from the topbar)", async () => {
   renderWith([cam({})]);
-  expect(await screen.findByText(/WebSocket/)).toBeDefined();
+  expect(
+    await screen.findByText(/WebSocket (connected|connecting|disconnected)/),
+  ).toBeDefined();
+});
+
+test("the S3 section shows an explicit healthy pill", async () => {
+  renderWith([cam({})], { s3_healthy: true });
+  expect(await screen.findByText(/S3 connected/)).toBeDefined();
 });
 
 test("surfaces the S3 pill here when the bucket is unreachable", async () => {

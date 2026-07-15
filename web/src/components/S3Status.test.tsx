@@ -5,7 +5,11 @@ import { createQueryClient } from "../lib/queryClient";
 import { S3Status } from "./S3Status";
 import type { StatusResponse } from "../lib/types";
 
-function renderWith(status: Partial<StatusResponse>, linkToStatus = false) {
+function renderWith(
+  status: Partial<StatusResponse>,
+  linkToStatus = false,
+  verbose = false,
+) {
   const payload: StatusResponse = {
     ready: true,
     cache_enabled: true,
@@ -25,7 +29,7 @@ function renderWith(status: Partial<StatusResponse>, linkToStatus = false) {
   return render(
     <MemoryRouter>
       <QueryClientProvider client={createQueryClient()}>
-        <S3Status linkToStatus={linkToStatus} />
+        <S3Status linkToStatus={linkToStatus} verbose={verbose} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -35,6 +39,11 @@ test("renders nothing while S3 is healthy", async () => {
   renderWith({ s3_healthy: true });
   await new Promise((r) => setTimeout(r, 0));
   expect(screen.queryByText(/S3 unreachable/)).toBeNull();
+});
+
+test("verbose mode shows an explicit healthy pill (Status-page sections)", async () => {
+  renderWith({ s3_healthy: true }, false, true);
+  expect(await screen.findByText(/S3 connected/)).toBeDefined();
 });
 
 test("shows an alert when the last poll could not reach S3", async () => {

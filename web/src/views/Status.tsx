@@ -58,23 +58,37 @@ export function Status() {
   return (
     <section className="scan-status">
       <h1>Scan status</h1>
-      {/* One meta row for connection health: the WebSocket pill always shows
-          the tab's browser↔app-server link; the S3 pill only appears when the
-          server's bucket link is slow or unreachable (quiet when healthy);
-          the last poll latency rides alongside even when healthy so a link
-          degrading toward the slow threshold is visible before it crosses it
-          (amber once flagged slow; hidden until a first cycle completes). */}
-      <div className="status-connections">
-        <ConnectionStatus />
-        <S3Status />
-        {data && data.s3_healthy && data.s3_last_cycle_seconds > 0 && (
-          <span className="s3-latency" role="status">
-            Last S3 poll cycle:{" "}
-            <span className={data.s3_slow ? "s3-latency--slow" : undefined}>
-              {data.s3_last_cycle_seconds.toFixed(1)}s
-            </span>
-          </span>
-        )}
+      {/* The two links the page reports on, each in its own section: the
+          tab's browser↔app-server WebSocket, and the server↔bucket S3 poll.
+          S3 gets the verbose pill (explicit green when healthy — quiet here
+          would read as "unknown") plus the last-cycle latency, shown even
+          when healthy so a link degrading toward the slow threshold is
+          visible before it crosses it (amber once flagged slow; hidden until
+          a first cycle completes). */}
+      <div className="status-sections">
+        <section className="status-section">
+          <h2>WebSocket</h2>
+          <ConnectionStatus />
+          <p className="status-section-note">
+            This tab's live link to the app server — new images and metadata
+            arrive without reloading.
+          </p>
+        </section>
+        <section className="status-section">
+          <h2>S3</h2>
+          <S3Status verbose />
+          {data && data.s3_healthy && data.s3_last_cycle_seconds > 0 && (
+            <p className="s3-latency" role="status">
+              Last S3 poll cycle:{" "}
+              <span className={data.s3_slow ? "s3-latency--slow" : undefined}>
+                {data.s3_last_cycle_seconds.toFixed(1)}s
+              </span>
+            </p>
+          )}
+          <p className="status-section-note">
+            The server's link to the image bucket it polls for new data.
+          </p>
+        </section>
       </div>
       {isPending && <p className="skeleton">Loading status…</p>}
       {isError && <p role="alert">Could not load scan status.</p>}
