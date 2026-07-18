@@ -176,9 +176,7 @@ def test_ws_calendar_update_delivered_and_pump_survives(ws_client) -> None:  # t
         )
         assert ws.receive_json()["type"] == "channelData"  # subscribe snapshot
 
-        state.store.bus.publish(
-            StoreChange("calendarUpdate", "test", "lsstcam", DATE)
-        )
+        state.store.bus.publish(StoreChange("calendarUpdate", "test", "lsstcam", DATE))
         upd = ws.receive_json()
         assert upd["type"] == "calendarUpdate"
         assert upd["camera"] == "lsstcam"

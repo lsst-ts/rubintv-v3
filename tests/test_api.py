@@ -577,7 +577,7 @@ def test_proxy_rejects_unsafe_seq_segment(seeded_client: TestClient) -> None:
     # built. (A "/"-bearing traversal is already stopped earlier by routing.)
     resp = seeded_client.get(
         f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
-        f'{DATE}/0%2200/x.jpg'
+        f"{DATE}/0%2200/x.jpg"
     )
     assert resp.status_code == 422
 
@@ -585,8 +585,7 @@ def test_proxy_rejects_unsafe_seq_segment(seeded_client: TestClient) -> None:
 def test_night_report_plot_rejects_unsafe_segment(seeded_client: TestClient) -> None:
     # group flows into the S3 key directly; a quote-bearing group is 422.
     resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}/plot/"
-        f"gr%22oup/x.png"
+        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}/plot/gr%22oup/x.png"
     )
     assert resp.status_code == 422
 

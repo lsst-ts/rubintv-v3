@@ -245,9 +245,7 @@ class RedisInputs:
         if self._redis is not None:
             await self._redis.aclose()
 
-    async def _supervise(
-        self, name: str, loop: Callable[[], Awaitable[None]]
-    ) -> None:
+    async def _supervise(self, name: str, loop: Callable[[], Awaitable[None]]) -> None:
         """Run a reader loop, restarting it after any error with backoff.
 
         The reader loops block indefinitely on Redis (``pubsub.listen`` /
@@ -269,9 +267,7 @@ class RedisInputs:
                 log.exception("redis.reader.error", reader=name)
             if self._stop.is_set():
                 return
-            log.warning(
-                "redis.reader.reconnect", reader=name, backoff_seconds=backoff
-            )
+            log.warning("redis.reader.reconnect", reader=name, backoff_seconds=backoff)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=backoff)
             except TimeoutError:
@@ -406,9 +402,7 @@ class RedisInputs:
         # Resume each stream from its seeded id so no entry is missed between
         # the seed and the first XREAD; streams empty at seed time start from
         # "$" (new entries only — we don't replay history for those).
-        last_ids = {
-            name: seed_ids.get(name, "$") for name in name_for_stream
-        }
+        last_ids = {name: seed_ids.get(name, "$") for name in name_for_stream}
         while not self._stop.is_set():
             # The redis-py stub types the streams map narrowly; our str->str
             # last-id map is correct at runtime.

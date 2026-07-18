@@ -164,8 +164,14 @@ export function useShellNav(): ShellNav {
   // Defensive like the rest of the shell: a fetch stub or a backend mid-deploy
   // can return a calendar object with a missing/non-array `dates`, and this
   // hook runs on every camera route — so guard the access rather than let
-  // `calendar.dates[0]` throw and blank the whole app.
-  const calendarDates = Array.isArray(calendar?.dates) ? calendar.dates : [];
+  // `calendar.dates[0]` throw and blank the whole app. Memoized so its identity
+  // is stable across renders (the guard's `[]` fallback and each refetch would
+  // otherwise be a fresh array), which keeps the downstream pickerDates memo
+  // from recomputing on every render.
+  const calendarDates = useMemo(
+    () => (Array.isArray(calendar?.dates) ? calendar.dates : []),
+    [calendar?.dates],
+  );
 
   // Resolve the shell date exactly as the Table view does: an explicit ?date=
   // in the URL, else the newest date with data, else "". Keeping this in one

@@ -189,9 +189,7 @@ async def test_prune_dates_keeps_protected_dates() -> None:
     store = EventStore()
     await store.apply([created("auxtel/1970-01-01/monitor/000001/a.png")])
     await store.apply([created("auxtel/2026-04-10/monitor/000001/b.png")])
-    pruned = await store.prune_dates(
-        ("local", "auxtel"), set(), protect={"2026-04-10"}
-    )
+    pruned = await store.prune_dates(("local", "auxtel"), set(), protect={"2026-04-10"})
     assert pruned == {"1970-01-01"}
     assert store.calendar("local", "auxtel") == ["2026-04-10"]
 
