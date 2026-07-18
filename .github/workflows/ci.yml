@@ -18,7 +18,11 @@ jobs:
           # setuptools_scm derives the version from git history/tags.
           fetch-depth: 0
       - name: Install uv
-        uses: astral-sh/setup-uv@v8
+        # Pinned to a full version: astral-sh/setup-uv publishes specific
+        # v8.x.y tags but does not maintain a floating `v8` major tag (they
+        # dropped their major-tag-update workflow in v8), so `@v8` is
+        # unresolvable. Bump this explicitly on new releases.
+        uses: astral-sh/setup-uv@v8.3.2
       - name: Sync deps
         run: uv sync --locked --extra dev
       - name: Ruff lint
