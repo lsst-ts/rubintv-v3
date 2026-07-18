@@ -1,11 +1,20 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 187 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — ~230 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
 later commits revisit files introduced earlier, so the diff of a group
 is not always self-contained.
+
+**Reviewers, start with Part V (group 32).** The four newest commits fix
+critical bugs found by a post-implementation adversarial review. They are
+small, self-contained, each carries regression tests, and every commit message
+states the failure and the fix — so they are the fastest-to-review and
+highest-value part of this PR. Because `main`/`develop` are stubs (the whole
+project lands in this one merge), these fixes could not be split into a separate
+earlier PR: the code they fix exists only inside this branch. They are folded in
+here deliberately, not by oversight.
 
 Groups 10–25 are carried over from the retired stacked-PR plan
 (`docs/pr-plan.md`, deleted in `2c87f6b`; this document preserves its
@@ -370,6 +379,62 @@ Safe to skim.
   `48ddd62`, `8364a93`, `fba07b6`, `540eebc`, `64cb792`, `7636242`,
   `8e5c46f`, `fab1a92`, `025f747`, `37c97a1`, `6184241`, `32f23cf`,
   `7e88159`
+
+---
+
+## Part V — Post-review fixes
+
+### 32. Fixes from a post-implementation adversarial review
+An adversarial review of the finished branch (backend concurrency, HTTP/WS
+API, security, both frontend layers, build/deploy) surfaced a set of real
+bugs — two of them silent and process-wide. Each commit is self-contained
+and adds regression tests for what it fixes; review these commits directly
+(their diffs are small and standalone, unlike the feature groups above).
+Highest-risk items to scrutinise: the WebSocket-pump death and the
+`site="local"` admin default in `3f82ac5`.
+
+- `3f82ac5` Fix backend runtime, security, and API robustness bugs. The
+  load-bearing ones:
+  - **WS bus pump death**: `prune_dates` published a `StoreChange` whose
+    type (`"calendar"`) had no `ServerMessage` counterpart, so `_fan_out`
+    raised `ValidationError` and killed the pump task — silently stopping
+    *all* live updates process-wide until restart. Renamed the type end to
+    end (`calendarUpdate`) and wrapped `_fan_out` in a per-change guard so
+    no future mismatch can kill the pump. (Verify: `ServerMessageType` in
+    `ws/protocol.py` vs `_CHANGE_TO_TOPIC` in `ws/handler.py`; the pump loop
+    in `_pump`.)
+  - **Redis readers die on a blip**: both reader loops had no reconnect and
+    no error handling, so a Redis restart froze Cluster Status / control
+    readback forever with nothing logged. Now supervised with backoff.
+  - **`site="local"` grants everyone admin**: the default site maps to the
+    real USDF locations with `admin_for: ["*"]`, so a pod that booted with a
+    missing/wrong `RAPID_ANALYSIS_LOCATION` granted admin to any
+    authenticated user. The wildcard is now fail-closed behind
+    `RUBINTV_ALLOW_ADMIN_WILDCARD` (named admins still apply). Also:
+    `controls/set` restricted to config-defined keys; night-report link
+    URLs scheme-validated (XSS); proxy path segments validated; on-demand
+    backfill capped + memoised; `prune_dates` race fixed; blocking cache I/O
+    moved off the event loop; `/admin` redirect loop removed; Range→416.
+- `ac58000` Fix frontend data-layer bugs: column prefs no longer leak/corrupt
+  across cameras (the route doesn't remount on a param change); corrupt
+  localStorage no longer crashes the table; numeric `=`/`between` filters
+  compare by value (a leading `-` no longer breaks a range); WS reconnect
+  refetches missed data; `staleTimeForDate` uses day_obs space; integers
+  render without a spurious `.000`.
+- `f2bd515` Fix frontend UI bugs: DatePicker "today" tracks the live
+  observing day (was frozen at mount); selectable day cells are keyboard-
+  operable; the newest-row highlight tracks max seq not visual row 0; image
+  cards re-arm on a live frame swap; the Channel viewer resets its latch on
+  rollover and no longer dead-ends on a missing seq; AllSky/Mosaic guard
+  partial configs; stacked overlays close one Escape at a time.
+- `58748a8` Use the non-deprecated `HTTP_416_RANGE_NOT_SATISFIABLE`
+  constant (silences a Starlette deprecation warning from the Range fix).
+
+Kept separate on purpose: `53d0b46` (ignore the `.vite` prebundled-dependency
+cache in eslint) is a generated-cache config tidy, not a bug fix, so it is its
+own commit and the fix commits stay pure. A handful of lower-severity review
+findings were judged already-safe on closer inspection (SPA traversal guard,
+legacy redirect, sort comparator).
 
 ---
 
