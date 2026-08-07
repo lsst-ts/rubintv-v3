@@ -13,14 +13,16 @@ import os
 
 import uvicorn
 
+_LOG_LEVELS = ["critical", "error", "warning", "info", "debug", "trace"]
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the RubinTV application.")
     parser.add_argument(
         "-l",
         "--log-level",
-        default=os.environ.get("RUBINTV_LOG_LEVEL", "info").lower(),
-        choices=["critical", "error", "warning", "info", "debug", "trace"],
+        default=None,
+        choices=_LOG_LEVELS,
         help="uvicorn log level (default: info, or $RUBINTV_LOG_LEVEL).",
     )
     # Host and port are flags only, never environment variables. A
@@ -39,7 +41,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=8000,
         help="Bind port (default: 8000).",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    # argparse never validates a default against choices, so an env-provided
+    # level is applied (and checked) only when no -l flag was given —
+    # otherwise a typo'd RUBINTV_LOG_LEVEL sails through and crashes deep
+    # inside uvicorn.run instead of erroring here with usage.
+    if args.log_level is None:
+        env_level = os.environ.get("RUBINTV_LOG_LEVEL", "info").lower()
+        if env_level not in _LOG_LEVELS:
+            parser.error(
+                f"$RUBINTV_LOG_LEVEL: invalid level {env_level!r} "
+                f"(choose from {', '.join(_LOG_LEVELS)})"
+            )
+        args.log_level = env_level
+    return args
 
 
 def run_rubintv(

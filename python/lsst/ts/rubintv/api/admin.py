@@ -84,6 +84,20 @@ def set_control(
     state: AppState = Depends(get_app_state),
     user: str = Depends(require_admin),
 ) -> ControlValue:
+    # Same key bound as the site-wide ``controls/set`` below: the readback
+    # store is served to any client, so an unconstrained key would let an
+    # admin (or anything past the auth proxy) park arbitrary key/values in a
+    # publicly readable namespace.
+    if body.key not in allowed_control_keys(state):
+        log.warning(
+            "admin.control.rejected",
+            user=user or "?",
+            location=location.name,
+            key=body.key,
+        )
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"control key not permitted: {body.key}"
+        )
     log.info(
         "admin.control.set_local",
         user=user or "?",

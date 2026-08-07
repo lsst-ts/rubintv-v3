@@ -17,9 +17,12 @@ from typing import TYPE_CHECKING
 
 from lsst.ts.rubintv.data.nrtext import NightReportTextItem, parse_text_items
 from lsst.ts.rubintv.data.parser import parse_night_report
+from lsst.ts.rubintv.logging import get_logger
 
 if TYPE_CHECKING:
     from lsst.ts.rubintv.s3.client import S3ClientPool
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -45,7 +48,14 @@ class NightReportFetcher:
         self._buckets = buckets
 
     def fetch(self, location: str, keys: set[str]) -> NightReport:
-        """Assemble a NightReport from the given object keys."""
+        """Assemble a NightReport from the given object keys.
+
+        Per-key best-effort: today's report is rewritten through the night, so
+        a ``*_md.json`` can vanish or hold partial JSON between the store's
+        index and this fetch (the same TOCTOU the metadata cache guards). One
+        bad text object must degrade to a report missing that section, not
+        500 the endpoint and discard every valid plot.
+        """
         report = NightReport()
         client = self._pool.client_for(location)
         bucket = self._buckets[location]
@@ -54,8 +64,12 @@ class NightReportFetcher:
             if ref is None:
                 continue
             if ref.is_text:
-                obj = client.get_object(Bucket=bucket, Key=key)
-                raw = json.loads(obj["Body"].read())
+                try:
+                    obj = client.get_object(Bucket=bucket, Key=key)
+                    raw = json.loads(obj["Body"].read())
+                except Exception:  # noqa: BLE001 - any S3/parse failure
+                    log.warning("nightreport.fetch.skip", location=location, key=key)
+                    continue
                 report.text.extend(
                     parse_text_items(raw, day_obs=ref.day_obs, source=key)
                 )

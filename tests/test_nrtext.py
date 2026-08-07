@@ -123,3 +123,16 @@ def test_shape_date_mismatch_still_parses() -> None:
     items2 = parse_text_items({"S": "v"}, day_obs=NEW, source=_src(NEW))
     assert items2[0].type == "multiline"
     assert items2[0].content == "v"
+
+
+def test_links_reject_protocol_relative_urls() -> None:
+    # "//host/path" passes the "/" prefix check textually but browsers
+    # resolve it to an *external* origin — it must not pass as site-relative.
+    raw = [
+        {
+            "type": "links",
+            "title": "L",
+            "content": [{"text": "x", "url": "//evil.example/login"}],
+        },
+    ]
+    assert parse_text_items(raw, day_obs=NEW, source=_src(NEW)) == []

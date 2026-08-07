@@ -32,3 +32,36 @@ def test_port_and_host_flags_win(monkeypatch: pytest.MonkeyPatch) -> None:
     args = parse_args(["--port", "8080", "--host", "127.0.0.1"])
     assert args.port == 8080
     assert args.host == "127.0.0.1"
+
+
+def test_env_log_level_trace_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    # "trace" is an advertised choice (uvicorn accepts it); it must parse.
+    monkeypatch.setenv("RUBINTV_LOG_LEVEL", "trace")
+    assert parse_args([]).log_level == "trace"
+
+
+def test_env_log_level_invalid_errors_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # argparse never validates defaults against choices, so a typo'd env
+    # level must be caught explicitly — a clean usage error, not a KeyError
+    # deep inside uvicorn.
+    monkeypatch.setenv("RUBINTV_LOG_LEVEL", "verbose")
+    with pytest.raises(SystemExit):
+        parse_args([])
+
+
+def test_log_level_flag_beats_bad_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUBINTV_LOG_LEVEL", "verbose")
+    assert parse_args(["-l", "debug"]).log_level == "debug"
+
+
+def test_configure_logging_accepts_trace() -> None:
+    # The stdlib has no TRACE level; configure_logging must map it to DEBUG
+    # rather than KeyError-ing app startup (CrashLoopBackOff when an operator
+    # turns logging up).
+    from lsst.ts.rubintv.logging import configure_logging
+
+    configure_logging(json_logs=False, level="trace")
+    configure_logging(json_logs=False, level="unknown-level")  # degrades to INFO
+    configure_logging(json_logs=False, level="INFO")  # restore default

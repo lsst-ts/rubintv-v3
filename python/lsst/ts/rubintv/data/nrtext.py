@@ -57,6 +57,10 @@ class LinkItem(BaseModel):
         stripped = value.strip()
         if not stripped.lower().startswith(_SAFE_URL_SCHEMES):
             raise ValueError(f"unsafe link url scheme: {value!r}")
+        # "//host/path" is protocol-relative: browsers resolve it to an
+        # *external* origin, so it must not pass as a site-relative path.
+        if stripped.startswith("//"):
+            raise ValueError(f"protocol-relative link url: {value!r}")
         return value
 
 

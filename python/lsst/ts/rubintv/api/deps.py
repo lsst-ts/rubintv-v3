@@ -6,6 +6,7 @@ directly, so the wiring is typed and mockable in tests.
 
 from __future__ import annotations
 
+import datetime
 import re
 
 from fastapi import Depends, HTTPException, Request, status
@@ -64,9 +65,19 @@ def get_camera(camera: str, location: Location = Depends(get_location)) -> Camer
 
 
 def valid_date(date: str) -> str:
-    """Validate a YYYY-MM-DD path param, 422 if malformed."""
+    """Validate a YYYY-MM-DD path param, 422 if malformed.
+
+    The shape check alone would admit calendar-impossible dates like
+    2026-99-99 — and every *distinct* unindexed date can trigger an on-demand
+    S3 listing (see ``PollEngine.scan_date``), so enumeration of impossible
+    dates would amplify cheap requests into S3 load. Require a real date.
+    """
     if not _DATE_RE.match(date):
         # 422 Unprocessable Content (the status constant name varies across
         # Starlette versions, so use the code directly).
         raise HTTPException(422, f"date must be YYYY-MM-DD, got: {date}")
+    try:
+        datetime.date(int(date[0:4]), int(date[5:7]), int(date[8:10]))
+    except ValueError:
+        raise HTTPException(422, f"not a real calendar date: {date}") from None
     return date

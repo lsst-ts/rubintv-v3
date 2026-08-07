@@ -341,6 +341,14 @@ def test_bad_date_422(seeded_client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_impossible_date_422(seeded_client: TestClient) -> None:
+    # Shape-valid but calendar-impossible: every distinct unindexed date can
+    # trigger an on-demand S3 listing, so 2026-99-99 (and its 9800 siblings)
+    # must be rejected before reaching the backfill path.
+    resp = seeded_client.get("/api/locations/test/cameras/lsstcam/dates/2026-99-99")
+    assert resp.status_code == 422
+
+
 def test_night_report(seeded_client: TestClient) -> None:
     resp = seeded_client.get(f"/api/locations/test/cameras/lsstcam/night-report/{DATE}")
     body = resp.json()
@@ -432,14 +440,28 @@ def test_admin_requires_user(seeded_client: TestClient) -> None:
 
 
 def test_admin_set_and_get(seeded_client: TestClient) -> None:
+    # The witness-detector key is always in the configured allow-list.
+    key = "RUBINTV_CONTROL_WITNESS_DETECTOR"
+    resp = seeded_client.post(
+        "/api/locations/test/admin/controls",
+        json={"key": key, "value": "default"},
+        headers={"X-Auth-User": "testadmin"},
+    )
+    assert resp.status_code == 200
+    got = seeded_client.get("/api/locations/test/admin/controls").json()
+    assert got["values"][key] == "default"
+
+
+def test_admin_set_rejects_unlisted_key(seeded_client: TestClient) -> None:
+    # The per-location write is bounded by the same allow-list as the
+    # site-wide one: an arbitrary key must not be parkable in the readback
+    # store (it is served unauthenticated).
     resp = seeded_client.post(
         "/api/locations/test/admin/controls",
         json={"key": "AOS_PIPELINE", "value": "default"},
         headers={"X-Auth-User": "testadmin"},
     )
-    assert resp.status_code == 200
-    got = seeded_client.get("/api/locations/test/admin/controls").json()
-    assert got["values"]["AOS_PIPELINE"] == "default"
+    assert resp.status_code == 400
 
 
 def test_proxy_streams_object(seeded_client: TestClient) -> None:
