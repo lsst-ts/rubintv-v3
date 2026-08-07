@@ -89,6 +89,14 @@ _ON_DEMAND_MAX_CONCURRENCY = 3
 # every time. Bounded (FIFO eviction) so the memo itself can't grow unbounded.
 _ON_DEMAND_EMPTY_MAX = 4096
 
+# Retry delay after a failed historical sweep. A transient S3 blip during the
+# cold scan must not hide the back-catalogue for the full refresh cadence —
+# the current-day loop retries every second; history retries on this backoff.
+_HISTORICAL_RETRY_SECONDS = 60.0
+
+# Cadence of the periodic historical refresh after a successful sweep.
+_HISTORICAL_REFRESH_SECONDS = 12 * 60 * 60
+
 
 @dataclass(slots=True)
 class CameraScanState:
@@ -273,30 +281,59 @@ class PollEngine:
                     await self._cache_writer()
                     log.info("cache.written")
             except Exception:  # noqa: BLE001
+                # A failed sweep leaves history incomplete: keep the loading
+                # flag honest (still True on a cold start, so the frontend
+                # keeps showing its affordance) and retry on a short backoff
+                # rather than sleeping the full refresh cadence with a gap.
                 log.exception("poll.historical.error")
-            finally:
-                if self.historical_loading:
-                    self.historical_loading = False
-                    log.info("poll.historical.idle")
-            # Sleep until the next 12h cycle, an explicit rescan trigger, or
-            # shutdown. A triggered rescan clears the flag and loops at once.
-            await self._sleep_or_rescan(12 * 60 * 60)
-            if self._rescan.is_set():
-                self._rescan.clear()
-                self.historical_loading = True
-                log.info("poll.historical.rescan")
+                await self._pause(_HISTORICAL_RETRY_SECONDS)
+                continue
+            if self.historical_loading:
+                self.historical_loading = False
+                log.info("poll.historical.idle")
+            # Sleep until the next refresh cycle, an explicit rescan trigger,
+            # or shutdown. A triggered rescan clears the flag and loops at
+            # once.
+            await self._pause(_HISTORICAL_REFRESH_SECONDS)
+
+    async def _pause(self, seconds: float) -> None:
+        """Historical-loop sleep that also honours a triggered rescan."""
+        await self._sleep_or_rescan(seconds)
+        if self._rescan.is_set():
+            self._rescan.clear()
+            self.historical_loading = True
+            log.info("poll.historical.rescan")
 
     # -- scanning --------------------------------------------------------
+
+    @staticmethod
+    async def _gather_locations(coros: list[Awaitable[int]]) -> int:
+        """Run per-location workers to completion, then raise any failure.
+
+        A bare ``gather`` raises as soon as one location fails, leaving the
+        others running detached — the next cycle would then scan the same
+        prefixes concurrently with the abandoned workers, racing on the
+        poller's diff state and doubling S3 load. Barrier first (so every
+        worker has finished), then propagate.
+        """
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        errors = [r for r in results if isinstance(r, BaseException)]
+        for extra in errors[1:]:
+            # Only the first failure propagates (and gets a traceback from
+            # the loop's handler); don't let the rest vanish silently.
+            log.error("poll.scan.location_error", error=repr(extra))
+        if errors:
+            raise errors[0]
+        return sum(r for r in results if isinstance(r, int))
 
     async def _scan_day(self, day: str) -> int:
         # Per-location workers run concurrently; each location stays serial
         # internally so it doesn't fan-out onto its single boto3 client's
         # connection pool. With N locations each holding the slowest camera
         # ~10s, this cuts the cycle from sum() to max().
-        per_location = await asyncio.gather(
-            *(self._scan_day_for_location(loc, day) for loc in self._models.locations)
+        return await self._gather_locations(
+            [self._scan_day_for_location(loc, day) for loc in self._models.locations]
         )
-        return sum(per_location)
 
     async def _scan_day_for_location(self, location: Location, day: str) -> int:
         total = 0
@@ -329,13 +366,12 @@ class PollEngine:
         # sweep runs. Locations parallel, cameras serial (same client-pool
         # reasoning as the full sweep).
         days = recent_day_obs(self._recent_window_days)
-        per_location = await asyncio.gather(
-            *(
+        return await self._gather_locations(
+            [
                 self._scan_recent_for_location(loc, days)
                 for loc in self._models.locations
-            )
+            ]
         )
-        return sum(per_location)
 
     async def _scan_recent_for_location(
         self, location: Location, days: list[str]
@@ -366,10 +402,9 @@ class PollEngine:
         # Same shape as _scan_day: locations in parallel, cameras serial
         # within a location so a single S3 client's connection pool isn't
         # fanned out across cameras.
-        per_location = await asyncio.gather(
-            *(self._scan_history_for_location(loc) for loc in self._models.locations)
+        return await self._gather_locations(
+            [self._scan_history_for_location(loc) for loc in self._models.locations]
         )
-        return sum(per_location)
 
     async def _scan_history_for_location(self, location: Location) -> int:
         # Scan each camera's whole prefix; the poller diffs against last time

@@ -31,10 +31,16 @@ class ServicesResponse(BaseModel):
     status_code=status.HTTP_202_ACCEPTED,
     tags=["internal"],
 )
-def post_heartbeat(
+async def post_heartbeat(
     beat: Heartbeat, state: AppState = Depends(get_app_state)
 ) -> dict[str, str]:
-    """Record one liveness beat (fire-and-forget)."""
+    """Record one liveness beat (fire-and-forget).
+
+    ``async`` on purpose (despite no awaits): the HeartbeatStore and the bus
+    queues it publishes to are event-loop-confined — a sync ``def`` would run
+    on the threadpool and race the reaper's iteration over the same
+    OrderedDict.
+    """
     state.heartbeat_svc.record(beat)
     return {"status": "accepted"}
 
@@ -44,6 +50,9 @@ def post_heartbeat(
     response_model=ServicesResponse,
     tags=["health"],
 )
-def services(state: AppState = Depends(get_app_state)) -> ServicesResponse:
-    """Current liveness of every reporting RA service."""
+async def services(state: AppState = Depends(get_app_state)) -> ServicesResponse:
+    """Current liveness of every reporting RA service.
+
+    ``async`` for loop confinement, same as :func:`post_heartbeat`.
+    """
     return ServicesResponse(services=state.heartbeats.all())

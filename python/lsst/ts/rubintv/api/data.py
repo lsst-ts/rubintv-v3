@@ -77,10 +77,15 @@ def _primary_image_path(state: AppState, location: str, camera: Camera) -> str |
 
 
 @router.get("/locations/{location}", response_model=LocationOut)
-def get_location_detail(
+async def get_location_detail(
     location: Location = Depends(get_location),
     state: AppState = Depends(get_app_state),
 ) -> LocationOut:
+    # ``async`` on purpose (despite no awaits): the store reads below iterate
+    # live index dicts that the pollers mutate on the event loop. A sync
+    # ``def`` runs on the threadpool, where a mid-iteration mutation raises
+    # "dict changed size during iteration"; loop confinement makes the reads
+    # atomic with respect to ``store.apply``.
     groups = [
         CameraGroupOut(
             label=label,
@@ -172,11 +177,13 @@ def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
 @router.get(
     "/locations/{location}/cameras/{camera}/calendar", response_model=CalendarOut
 )
-def get_calendar(
+async def get_calendar(
     location: Location = Depends(get_location),
     camera: Camera = Depends(get_camera),
     state: AppState = Depends(get_app_state),
 ) -> CalendarOut:
+    # ``async`` for loop confinement, same as ``get_location_detail``: the
+    # calendar_* reads iterate live index dicts the pollers mutate.
     return CalendarOut(
         dates=state.store.calendar(location.name, camera.name),
         counts=state.store.calendar_counts(location.name, camera.name),

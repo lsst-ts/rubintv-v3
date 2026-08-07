@@ -118,20 +118,21 @@ class WsService:
     async def handle(self, socket: WebSocket) -> None:
         conn = await self.manager.connect(socket)
         sender = asyncio.create_task(self._send_loop(conn))
-        stream_tasks: set[asyncio.Task[None]] = set()
+        streams: dict[str, asyncio.Task[None]] = {}
         try:
-            await self._recv_loop(conn, stream_tasks)
+            await self._recv_loop(conn, streams)
         except WebSocketDisconnect:
             pass
         finally:
             sender.cancel()
+            stream_tasks = list(streams.values())
             for task in stream_tasks:
                 task.cancel()
             await asyncio.gather(sender, *stream_tasks, return_exceptions=True)
             self.manager.disconnect(conn)
 
     async def _recv_loop(
-        self, conn: Connection, stream_tasks: set[asyncio.Task[None]]
+        self, conn: Connection, streams: dict[str, asyncio.Task[None]]
     ) -> None:
         while True:
             raw = await conn.socket.receive_text()
@@ -161,7 +162,7 @@ class WsService:
                         camera=req.camera,
                         date=req.date,
                     )
-                    self._start_metadata_stream(conn, req, stream_tasks)
+                    self._start_metadata_stream(conn, req, streams)
                 elif req.topic == "camera" and req.camera and not req.date:
                     log.debug(
                         "ws.metadata.stream.skip",
@@ -171,20 +172,41 @@ class WsService:
                     )
             else:
                 self.manager.unsubscribe(conn, req.topic_key())
+                # A leaving subscriber's in-flight metadata stream would
+                # otherwise run its whole (possibly minutes-long) transfer
+                # for nobody, holding an executor slot the whole time.
+                self._cancel_stream(streams, req.topic_key())
 
     def _start_metadata_stream(
         self,
         conn: Connection,
         req: SubscribeRequest,
-        stream_tasks: set[asyncio.Task[None]],
+        streams: dict[str, asyncio.Task[None]],
     ) -> None:
-        """Launch a background task streaming a date's metadata to one
-        client."""
+        """Launch a background task streaming a date's metadata to one client.
+
+        One stream per topic key per connection: a re-subscribe (the client
+        flipped to another date) supersedes the previous stream, so flipping
+        through dates can't pile up transfers.
+        """
+        key = req.topic_key()
+        self._cancel_stream(streams, key)
         task = asyncio.create_task(
             self._stream_metadata(conn, req.location, req.camera or "", req.date or "")
         )
-        stream_tasks.add(task)
-        task.add_done_callback(stream_tasks.discard)
+        streams[key] = task
+
+        def _cleanup(t: asyncio.Task[None]) -> None:
+            if streams.get(key) is t:
+                del streams[key]
+
+        task.add_done_callback(_cleanup)
+
+    @staticmethod
+    def _cancel_stream(streams: dict[str, asyncio.Task[None]], key: str) -> None:
+        task = streams.pop(key, None)
+        if task is not None:
+            task.cancel()
 
     async def _stream_metadata(
         self, conn: Connection, location: str, camera: str, date: str

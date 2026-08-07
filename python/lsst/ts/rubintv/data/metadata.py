@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
@@ -37,6 +38,13 @@ _MAX_ENTRIES = 60
 # measured ~80 KB/s), so emitting every N parsed rows lets the table fill
 # progressively instead of after the whole transfer.
 _STREAM_BATCH_ROWS = 100
+
+# Ceiling on concurrent stream download workers. Each stream holds one
+# default-executor thread for its whole transfer (minutes on a slow link),
+# and that executor is shared with the live pollers' scan calls — unbounded
+# per-subscribe workers could occupy every thread and starve the 1s poll
+# loop (the same hazard _ON_DEMAND_MAX_CONCURRENCY guards in the engine).
+_STREAM_MAX_CONCURRENCY = 4
 
 
 @dataclass(slots=True)
@@ -67,6 +75,7 @@ class MetadataCache:
         self._buckets = buckets
         self._entries: OrderedDict[tuple[str, str, str], _Entry] = OrderedDict()
         self._locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+        self._stream_sem = asyncio.Semaphore(_STREAM_MAX_CONCURRENCY)
 
     async def get(self, location: str, camera: str, date: str) -> Metadata:
         """Return metadata for a date, fetching/refreshing if needed."""
@@ -99,18 +108,24 @@ class MetadataCache:
         the whole (slow) transfer finishes, and the assembled dict is stored
         in the cache so the REST path and later streams are fast.
 
-        Deduped per key by the same lock as :meth:`get_with_etag`.
+        Deduped per key by the same lock as :meth:`get_with_etag`. Download
+        concurrency is capped process-wide (``_STREAM_MAX_CONCURRENCY``) so a
+        crowd of subscribers can't occupy every executor thread and starve
+        the pollers. Cancellation (client unsubscribed/disconnected) sets the
+        abort flag so the worker thread exits at its next batch boundary
+        instead of running the whole transfer to completion.
         """
         cache_key = (location, camera, date)
         lock = self._locks.setdefault(cache_key, asyncio.Lock())
-        async with lock:
+        async with lock, self._stream_sem:
             loop = asyncio.get_running_loop()
             queue: asyncio.Queue[MetadataBatch | Exception] = asyncio.Queue()
+            abort = threading.Event()
 
             def produce() -> None:
                 # Runs on a worker thread; hand each batch back to the loop.
                 try:
-                    for batch in self._stream_blocking(location, camera, date):
+                    for batch in self._stream_blocking(location, camera, date, abort):
                         loop.call_soon_threadsafe(queue.put_nowait, batch)
                 except Exception as exc:  # noqa: BLE001 - surfaced to consumer
                     loop.call_soon_threadsafe(queue.put_nowait, exc)
@@ -125,18 +140,21 @@ class MetadataCache:
                     if item.done:
                         break
             finally:
+                abort.set()
                 await worker
         existing = self._locks.get(cache_key)
         if existing is not None and not existing.locked():
             self._locks.pop(cache_key, None)
 
     def _stream_blocking(
-        self, location: str, camera: str, date: str
+        self, location: str, camera: str, date: str, abort: threading.Event
     ) -> Iterator[MetadataBatch]:
         """Head-check, then ijson-parse the body in batches (blocking).
 
         Lives on a worker thread (see :meth:`stream`). Accumulates the full
-        dict to seed the cache on completion.
+        dict to seed the cache on completion. Checks ``abort`` between
+        batches so a cancelled stream releases its thread promptly; an
+        aborted transfer never seeds the cache (the dict is incomplete).
         """
         cache_key = (location, camera, date)
         s3_key = f"{camera}/{date}/metadata.json"
@@ -150,14 +168,14 @@ class MetadataCache:
             # No object: serve a cached copy if we have one, else nothing.
             data = cached.data if cached is not None else {}
             etag = cached.etag if cached is not None else None
-            yield from self._batches(data)
+            yield from self._batches(data, abort)
             yield MetadataBatch(rows={}, done=True, etag=etag)
             return
 
         etag = head.get("ETag")
         if cached is not None and cached.etag == etag:
             self._entries.move_to_end(cache_key)
-            yield from self._batches(cached.data)
+            yield from self._batches(cached.data, abort)
             yield MetadataBatch(rows={}, done=True, etag=etag)
             return
 
@@ -172,8 +190,12 @@ class MetadataCache:
             assembled[seq_num] = row
             batch[seq_num] = row
             if len(batch) >= _STREAM_BATCH_ROWS:
+                if abort.is_set():
+                    return
                 yield MetadataBatch(rows=batch, done=False)
                 batch = {}
+        if abort.is_set():
+            return
         if batch:
             yield MetadataBatch(rows=batch, done=False)
 
@@ -184,10 +206,12 @@ class MetadataCache:
         yield MetadataBatch(rows={}, done=True, etag=etag)
 
     @staticmethod
-    def _batches(data: Metadata) -> Iterator[MetadataBatch]:
+    def _batches(data: Metadata, abort: threading.Event) -> Iterator[MetadataBatch]:
         """Slice an already-loaded dict into non-terminal batches."""
         items = list(data.items())
         for i in range(0, len(items), _STREAM_BATCH_ROWS):
+            if abort.is_set():
+                return
             yield MetadataBatch(
                 rows=dict(items[i : i + _STREAM_BATCH_ROWS]), done=False
             )

@@ -63,12 +63,20 @@ class HeartbeatService:
         self._bus.publish(StoreChange("serviceStatus", location or "*", ""))
 
     async def _reap_loop(self) -> None:
-        """Publish a change whenever a service lapses from live to stale."""
+        """Publish a change whenever a service lapses from live to stale.
+
+        Guarded like every other background loop: an escaped exception would
+        kill the reaper silently (``stop`` gathers with return_exceptions) and
+        live→stale transitions would never be pushed again.
+        """
         while True:
             await asyncio.sleep(_REAP_INTERVAL_SECONDS)
-            for service in self._store.newly_stale():
-                log.info("heartbeat.stale", service=service)
-                self._publish(None)
+            try:
+                for service in self._store.newly_stale():
+                    log.info("heartbeat.stale", service=service)
+                    self._publish(None)
+            except Exception:  # noqa: BLE001 - one bad sweep must not kill it
+                log.exception("heartbeat.reap.error")
 
     async def handle(self, socket: WebSocket) -> None:
         """One RA service socket: accept and apply each beat frame it sends."""
