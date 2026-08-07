@@ -321,3 +321,37 @@ async def test_clear_empties_store_and_calendar() -> None:
     assert store.calendar("local", "auxtel") == []
     assert store.date_index("local", "lsstcam", "2026-04-10") is None
     assert store.snapshot() == {}
+
+
+async def test_rename_within_seq_keeps_the_seq() -> None:
+    # A rename is put-new + delete-old under the same seq directory, and the
+    # poller's diff emits CREATED before REMOVED within a batch. The seq must
+    # survive the REMOVED for the old filename — dropping it by coarse
+    # (channel, seq) would permanently erase live data (no later diff
+    # re-emits an unchanged key).
+    store = EventStore()
+    old = "lsstcam/2026-04-10/witness_detector/000001/old.png"
+    new = "lsstcam/2026-04-10/witness_detector/000001/new.png"
+    await store.apply([created(old)])
+    await store.apply([created(new), removed(old)])
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels["witness_detector"] == {1}
+    # Removing the last backing file does drop the seq (and the empty date).
+    await store.apply([removed(new)])
+    assert store.date_index("local", "lsstcam", "2026-04-10") is None
+
+
+async def test_rename_per_day_artifact_keeps_the_channel() -> None:
+    # Same rename scenario for a per-day artifact: the channel entry must
+    # survive and repoint to the surviving key.
+    store = EventStore()
+    old = "auxtel/2026-04-10/movies/final/old.mp4"
+    new = "auxtel/2026-04-10/movies/final/new.mp4"
+    await store.apply([created(old)])
+    await store.apply([created(new), removed(old)])
+    idx = store.date_index("local", "auxtel", "2026-04-10")
+    assert idx is not None
+    assert idx.per_day["movies"] == new
+    await store.apply([removed(new)])
+    assert store.date_index("local", "auxtel", "2026-04-10") is None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lsst.ts.rubintv.data.cache import DiskCache
+from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
 from lsst.ts.rubintv.data.index import DateIndex, ExtInfo
 
 
@@ -14,6 +14,8 @@ def sample_index() -> DateIndex:
         extensions={"witness_detector": ExtInfo(default="png", exceptions={2: "jpg"})},
         per_day={"movies": "auxtel/2026-04-10/movies/final/m.mp4"},
         night_report_keys={"lsstcam/2026-04-10/night_report/s_md.json"},
+        seq_files={"witness_detector": {1: {"a.png"}, 2: {"b.jpg"}, 5: {"c.png"}}},
+        per_day_keys={"movies": {"auxtel/2026-04-10/movies/final/m.mp4"}},
     )
 
 
@@ -47,13 +49,18 @@ def test_round_trip(tmp_path: Path) -> None:
     assert idx.extensions["witness_detector"].for_seq(1) == "png"
     assert idx.per_day["movies"].endswith("m.mp4")
     assert idx.night_report_keys == {"lsstcam/2026-04-10/night_report/s_md.json"}
+    # The backing-file maps must survive the round trip: a warm-started slice
+    # without them would lose its rename protection (a REMOVED for a renamed
+    # file would drop a still-live seq).
+    assert idx.seq_files["witness_detector"][2] == {"b.jpg"}
+    assert idx.per_day_keys["movies"] == {"auxtel/2026-04-10/movies/final/m.mp4"}
 
 
 def test_corrupt_file_is_skipped(tmp_path: Path) -> None:
     cache = DiskCache(tmp_path)
     cache.write("local", "lsstcam", "2026-04-10", sample_index())
     # Corrupt the slice.
-    bad = next((tmp_path / "v1").glob("*/*/*.json"))
+    bad = next((tmp_path / CACHE_VERSION).glob("*/*/*.json"))
     bad.write_text("{not json")
     # Loading skips the bad slice without raising.
     assert cache.load_all() == {}
@@ -62,8 +69,23 @@ def test_corrupt_file_is_skipped(tmp_path: Path) -> None:
 def test_version_mismatch_skipped(tmp_path: Path) -> None:
     cache = DiskCache(tmp_path)
     cache.write("local", "lsstcam", "2026-04-10", sample_index())
-    slice_path = next((tmp_path / "v1").glob("*/*/*.json"))
+    slice_path = next((tmp_path / CACHE_VERSION).glob("*/*/*.json"))
     slice_path.write_text('{"version": "v0", "channels": {}}')
+    assert cache.load_all() == {}
+
+
+def test_wrong_shape_file_is_skipped(tmp_path: Path) -> None:
+    # Version-valid JSON of the wrong shape (here "channels" values are ints,
+    # not lists) raises TypeError inside _decode. load_all runs unguarded in
+    # the lifespan, so a bad slice must cost a cold rescan, never a
+    # crash-looping pod.
+    cache = DiskCache(tmp_path)
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    bad = next((tmp_path / CACHE_VERSION).glob("*/*/*.json"))
+    bad.write_text(
+        f'{{"version": "{CACHE_VERSION}", "channels": {{"c": 5}}, '
+        '"extensions": {}, "per_day": {}, "night_report_keys": []}'
+    )
     assert cache.load_all() == {}
 
 

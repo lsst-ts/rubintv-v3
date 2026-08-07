@@ -9,6 +9,7 @@ from pathlib import Path
 import boto3
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.data.cache import CACHE_VERSION
 from moto import mock_aws
 
 from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
@@ -65,13 +66,14 @@ def test_status_reports_cold_start_when_cache_disabled() -> None:
 
 
 def test_status_reports_warm_start_from_cached_snapshot(tmp_path: Path) -> None:
-    # A populated cache directory: the v1 layout is {cache_dir}/v1/{loc}/{cam}/
-    # {date}.json, and the store warm-starts from it, flipping warm_start.
-    slice_dir = tmp_path / "v1" / "test" / "auxtel"
+    # A populated cache directory: the layout is {cache_dir}/{version}/{loc}/
+    # {cam}/{date}.json, and the store warm-starts from it, flipping
+    # warm_start.
+    slice_dir = tmp_path / CACHE_VERSION / "test" / "auxtel"
     slice_dir.mkdir(parents=True)
     (slice_dir / "2025-01-01.json").write_text(
-        '{"version": "v1", "channels": {}, "extensions": {}, '
-        '"per_day": {}, "night_report_keys": []}'
+        f'{{"version": "{CACHE_VERSION}", "channels": {{}}, '
+        '"extensions": {}, "per_day": {}, "night_report_keys": []}'
     )
     with run_app(cache_dir=tmp_path) as client:
         body = client.get("/api/health/status").json()

@@ -39,12 +39,22 @@ class DateIndex:
     ``channels`` is the "what exists" structured-data index. ``per_day``
     holds per-day artifacts keyed by channel. ``night_report_keys`` tracks
     night-report object keys (content fetched on demand).
+
+    ``seq_files`` and ``per_day_keys`` track *which files* back each
+    channel/seq slot and per-day channel. A REMOVED event names one object
+    key, but the bucket may store an artifact under any filename — so a
+    rename (put new name, delete old) must only drop the slot when its last
+    backing file goes, not on the first delete it sees.
     """
 
     channels: dict[str, set[SeqNum]] = field(default_factory=dict)
     extensions: dict[str, ExtInfo] = field(default_factory=dict)
     per_day: dict[str, str] = field(default_factory=dict)
     night_report_keys: set[str] = field(default_factory=set)
+    # channel -> seq -> the "{filename}.{ext}" tails backing that seq.
+    seq_files: dict[str, dict[SeqNum, set[str]]] = field(default_factory=dict)
+    # channel -> full object keys backing that per-day artifact.
+    per_day_keys: dict[str, set[str]] = field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:

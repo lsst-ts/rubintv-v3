@@ -6,7 +6,7 @@ everything (the old monolithic-pickle pain). Each file carries a version
 tag; a mismatch or any corruption discards that slice and it is rebuilt
 from S3. Missing cache dir disables caching silently.
 
-    {cache_dir}/v1/{location}/{camera}/{date}.json
+    {cache_dir}/v2/{location}/{camera}/{date}.json
 """
 
 from __future__ import annotations
@@ -21,7 +21,10 @@ from lsst.ts.rubintv.logging import get_logger
 
 log = get_logger(__name__)
 
-CACHE_VERSION = "v1"
+# v2 added seq_files/per_day_keys (the backing-file maps that make REMOVED
+# handling rename-safe). A version bump discards older slices — by design
+# they cost a cold rescan, never a migration.
+CACHE_VERSION = "v2"
 
 
 class DiskCache:
@@ -103,7 +106,11 @@ class DiskCache:
             date = path.stem
             try:
                 index = _decode(json.loads(path.read_text()))
-            except (OSError, ValueError, KeyError) as exc:
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+                # TypeError/AttributeError cover version-valid JSON of the
+                # wrong shape (e.g. a corrupted slice whose "channels" is not
+                # a dict) — load_all runs unguarded in the lifespan, and a
+                # bad cache file must cost a cold rescan, never a crash loop.
                 log.warning("cache.load.skip", path=str(path), error=str(exc))
                 continue
             result.setdefault((location, camera), {})[date] = index
@@ -120,6 +127,11 @@ def _encode(index: DateIndex) -> dict[str, object]:
         },
         "per_day": index.per_day,
         "night_report_keys": sorted(index.night_report_keys),
+        "seq_files": {
+            ch: {str(seq): sorted(files) for seq, files in per_seq.items()}
+            for ch, per_seq in index.seq_files.items()
+        },
+        "per_day_keys": {ch: sorted(keys) for ch, keys in index.per_day_keys.items()},
     }
 
 
@@ -141,6 +153,13 @@ def _decode(raw: dict[str, Any]) -> DateIndex:
         extensions=extensions,
         per_day=dict(raw["per_day"]),
         night_report_keys=set(raw["night_report_keys"]),
+        seq_files={
+            ch: {_coerce_seq(s): set(files) for s, files in per_seq.items()}
+            for ch, per_seq in raw.get("seq_files", {}).items()
+        },
+        per_day_keys={
+            ch: set(keys) for ch, keys in raw.get("per_day_keys", {}).items()
+        },
     )
 
 

@@ -140,8 +140,12 @@ class EventStore:
             idx = self._date_index(loc_cam, ev.day_obs)
             if ev.is_per_day:
                 idx.per_day[ev.channel] = key
+                idx.per_day_keys.setdefault(ev.channel, set()).add(key)
             else:
                 idx.channels.setdefault(ev.channel, set()).add(ev.seq_num)
+                idx.seq_files.setdefault(ev.channel, {}).setdefault(
+                    ev.seq_num, set()
+                ).add(f"{ev.filename}.{ev.ext}")
                 idx.extensions.setdefault(ev.channel, ExtInfo()).record(
                     ev.seq_num, ev.ext
                 )
@@ -163,15 +167,37 @@ class EventStore:
             return
         idx = dates[date]
         if (ev := parse_channel_event(key)) is not None:
+            # A REMOVED event names one file; a slot may be backed by several
+            # (a rename is put-new + delete-old, and the diff emits CREATED
+            # before REMOVED within a batch). Only drop the slot when its
+            # *last* backing file goes — discarding by coarse (channel, seq)
+            # alone would permanently erase renamed-but-live data.
             if ev.is_per_day:
+                backing_keys = idx.per_day_keys.get(ev.channel)
+                if backing_keys is not None:
+                    backing_keys.discard(key)
+                    if backing_keys:
+                        if idx.per_day.get(ev.channel) == key:
+                            # The displayed key was removed; deterministically
+                            # promote a surviving one.
+                            idx.per_day[ev.channel] = max(backing_keys)
+                        return
+                    idx.per_day_keys.pop(ev.channel, None)
                 idx.per_day.pop(ev.channel, None)
             else:
                 seqs = idx.channels.get(ev.channel)
                 if seqs is not None:
+                    files = idx.seq_files.get(ev.channel, {}).get(ev.seq_num)
+                    if files is not None:
+                        files.discard(f"{ev.filename}.{ev.ext}")
+                        if files:
+                            return  # another file still backs this seq
+                        idx.seq_files[ev.channel].pop(ev.seq_num, None)
                     seqs.discard(ev.seq_num)
                     if not seqs:
                         del idx.channels[ev.channel]
                         idx.extensions.pop(ev.channel, None)
+                        idx.seq_files.pop(ev.channel, None)
         elif parse_night_report(key) is not None:
             idx.night_report_keys.discard(key)
         # Prune now-empty dates so the calendar stays accurate.
