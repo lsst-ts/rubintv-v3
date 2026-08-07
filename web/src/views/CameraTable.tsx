@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { queryKeys, type MetadataProgress } from "../lib/liveQuery";
+import {
+  queryKeys,
+  resetMetadataStream,
+  type MetadataProgress,
+} from "../lib/liveQuery";
 import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
@@ -102,12 +106,25 @@ export function CameraTable() {
   // Metadata is fetched independently of the structured payload so the grid
   // (channels/seqs) renders immediately from cache without waiting on this
   // large, live-from-S3 download. It's the backstop for the WS stream.
-  const { data: restMeta, isSuccess: restMetaLoaded } = useQuery<Metadata>({
+  const {
+    data: restMeta,
+    isSuccess: restMetaLoaded,
+    dataUpdatedAt: restMetaUpdatedAt,
+  } = useQuery<Metadata>({
     queryKey: queryKeys.metadata(location, camera, date),
     queryFn: () => api.metadata(location, camera, date),
     enabled: date !== "",
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
+
+  // Each fresh REST metadata fetch is complete as of its fetch time, so drop
+  // the stream accumulation then (dataUpdatedAt changes per successful fetch).
+  // Without this, a seq deleted server-side lingers as a ghost row: the merge
+  // below unions the stream slot back in, and that slot is only ever added to.
+  useEffect(() => {
+    if (!restMetaUpdatedAt) return;
+    resetMetadataStream(qc, location, camera, date);
+  }, [qc, location, camera, date, restMetaUpdatedAt]);
 
   // The metadata the table renders: streamed rows merged with the REST
   // backstop. The stream usually arrives first on slow links; REST fills any

@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { applyLiveMessage, queryKeys } from "./liveQuery";
+import { applyLiveMessage, queryKeys, resetMetadataStream } from "./liveQuery";
 
 function spyInvalidate(qc: QueryClient) {
   const calls: unknown[][] = [];
@@ -81,4 +81,30 @@ test("metadataComplete clears progress but keeps streamed rows", () => {
   expect(qc.getQueryData(pkey)).toBeNull();
   // Streamed rows survive completion (the table still renders them).
   expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 } });
+});
+
+test("resetMetadataStream clears the accumulation; later chunks re-accumulate", () => {
+  const qc = new QueryClient();
+  const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
+  qc.setQueryData(skey, {
+    "1": { exp_time: 30 },
+    // A row deleted server-side: gone from the refetched REST metadata, but
+    // the stream slot alone would keep it alive as a ghost.
+    "2": { exp_time: 31 },
+  });
+
+  // A fresh REST metadata document supersedes everything streamed before it.
+  resetMetadataStream(qc, "local", "lsstcam", "2026-04-10");
+  expect(qc.getQueryData(skey)).toEqual({});
+
+  // Chunks arriving after the reset accumulate on top as normal.
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    location: "local",
+    camera: "lsstcam",
+    date: "2026-04-10",
+    seq: 2,
+    data: { "3": { exp_time: 32 } },
+  });
+  expect(qc.getQueryData(skey)).toEqual({ "3": { exp_time: 32 } });
 });

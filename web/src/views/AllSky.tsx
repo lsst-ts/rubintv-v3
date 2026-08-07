@@ -137,7 +137,16 @@ export function AllSky() {
           allSky
           value={date}
           isCurrentDayObs={isCurrentDayObs}
-          onChange={(d) => setParams({ date: d })}
+          // Merge with the existing params (as Layout's applyDate does):
+          // replacing them wholesale would drop unrelated ones, e.g.
+          // headerless=true.
+          onChange={(d) =>
+            setParams((prev) => {
+              const p = new URLSearchParams(prev);
+              p.set("date", d);
+              return p;
+            })
+          }
         />
         <span style={{ flex: 1 }} />
         {isCurrent ? (

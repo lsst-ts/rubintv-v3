@@ -53,7 +53,14 @@ export function useWebSocket(
 ) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const socketRef = useRef<WebSocket | null>(null);
-  const subscriptionsRef = useRef<Map<string, Subscription>>(new Map());
+  // Keyed by the serialised subscription, refcounted: several consumers can
+  // subscribe to an identical topic (e.g. CameraTable and AllSky for the same
+  // camera/date), and the server must only see one subscribe/unsubscribe pair
+  // for the lot — otherwise the first consumer's cleanup would kill the
+  // survivors' stream.
+  const subscriptionsRef = useRef<
+    Map<string, { sub: Subscription; count: number }>
+  >(new Map());
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
   const backoffRef = useRef(500);
   // True once the first connection has opened, so we can distinguish the
@@ -92,8 +99,9 @@ export function useWebSocket(
         }
         setStatus("open");
         backoffRef.current = 500;
-        // Replay subscriptions after a reconnect.
-        for (const sub of subscriptionsRef.current.values()) {
+        // Replay subscriptions after a reconnect — once per unique topic,
+        // regardless of how many consumers hold it.
+        for (const { sub } of subscriptionsRef.current.values()) {
           send({ action: "subscribe", ...sub });
         }
         // On a *re*connect (not the first open), refetch: data may have
@@ -148,11 +156,27 @@ export function useWebSocket(
   const subscribe = useCallback(
     (sub: Subscription) => {
       const key = JSON.stringify(sub);
-      subscriptionsRef.current.set(key, sub);
-      send({ action: "subscribe", ...sub });
+      const entry = subscriptionsRef.current.get(key);
+      if (entry) {
+        // Another consumer already holds this topic; just refcount it.
+        entry.count += 1;
+      } else {
+        subscriptionsRef.current.set(key, { sub, count: 1 });
+        send({ action: "subscribe", ...sub });
+      }
+      let released = false;
       return () => {
-        subscriptionsRef.current.delete(key);
-        send({ action: "unsubscribe", ...sub });
+        // Guard against a cleanup running twice (harmless in React's normal
+        // lifecycle, but it must not decrement another consumer's hold).
+        if (released) return;
+        released = true;
+        const cur = subscriptionsRef.current.get(key);
+        if (!cur) return;
+        cur.count -= 1;
+        if (cur.count <= 0) {
+          subscriptionsRef.current.delete(key);
+          send({ action: "unsubscribe", ...sub });
+        }
       };
     },
     [send],

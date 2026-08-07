@@ -143,6 +143,25 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
 
 type Metadata = Record<string, Record<string, unknown>>;
 
+/** Drop the accumulated WS metadata stream for a (loc, cam, date).
+ *
+ *  Called when a fresh REST metadata document lands: that document is complete
+ *  as of its fetch time, so anything accumulated from the stream before then
+ *  is redundant — and keeping it would resurrect rows deleted server-side
+ *  (the slot is otherwise only ever added to). Chunks arriving afterwards
+ *  re-accumulate on top as normal. */
+export function resetMetadataStream(
+  qc: QueryClient,
+  location: string,
+  camera: string,
+  date: string,
+): void {
+  qc.setQueryData<Metadata>(
+    queryKeys.metadataStream(location, camera, date),
+    {},
+  );
+}
+
 /** Merge one streamed metadata chunk into the date payload + progress. */
 function mergeMetadataChunk(
   qc: QueryClient,

@@ -107,10 +107,19 @@ interface Tab {
 }
 
 // Build the folder-tab model from the report: one tab per text item (in order),
-// then one per plot group.
+// then one per plot group. Slugs can collide (two titles that slugify the
+// same), and a duplicate id makes the second tab unselectable (and a duplicate
+// React key), so collisions get a -2, -3… suffix.
 function buildTabs(data: NightReportOut): Tab[] {
+  const seen = new Map<string, number>();
+  const uniqueId = (title: string): string => {
+    const base = slug(title);
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base}-${n}`;
+  };
   const tabs: Tab[] = data.text.map((item) => ({
-    id: slug(item.title),
+    id: uniqueId(item.title),
     label: item.title,
     type: "text",
     text: item,
@@ -125,7 +134,7 @@ function buildTabs(data: NightReportOut): Tab[] {
     byGroup.get(p.group)!.push(p);
   }
   for (const g of order) {
-    tabs.push({ id: slug(g), label: g, type: "plot", plots: byGroup.get(g) });
+    tabs.push({ id: uniqueId(g), label: g, type: "plot", plots: byGroup.get(g) });
   }
   return tabs;
 }
