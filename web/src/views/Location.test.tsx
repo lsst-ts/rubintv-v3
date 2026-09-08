@@ -44,9 +44,14 @@ function stubLocation(cameras?: unknown[]) {
   if (cameras) payload.camera_groups[0].cameras = cameras as never;
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
-    const body = url.endsWith("/api/locations/local")
-      ? payload
-      : { camera_groups: [] };
+    let body: unknown = { camera_groups: [] };
+    if (url.endsWith("/api/locations/local")) {
+      body = payload;
+    } else if (url.endsWith("/api/locations")) {
+      // The location list must name "local", or the route guard reads the URL
+      // as pointing at a location this deployment doesn't have and 404s.
+      body = [{ name: "local", title: "Local" }];
+    }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 }

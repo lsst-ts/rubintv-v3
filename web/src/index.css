@@ -2826,3 +2826,49 @@ button.danger:disabled {
 /* Headerless embed: drop the shell padding so the grid fills the iframe. */
 .shell.headerless { display: block; }
 .shell.headerless .app-content { padding: 0.75rem; }
+
+/* ── 404 ───────────────────────────────────────────────────────────────────
+   The not-found page, reached from an unmatched path or a URL naming a
+   location/camera/channel this deployment doesn't have. Centred in the content
+   column, using the display face for the code so it reads as a signpost rather
+   than an error dump. */
+.notfound {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px; padding: 12vh 1rem;
+  text-align: center;
+}
+.notfound-code {
+  margin: 0;
+  font-family: var(--display); font-size: 72px; font-weight: 700;
+  line-height: 1; letter-spacing: -0.02em;
+  color: var(--line-mid);
+}
+.notfound-title {
+  margin: 0;
+  font-family: var(--display); font-size: 22px; font-weight: 600;
+  color: var(--ink);
+}
+.notfound-detail {
+  margin: 0; max-width: 46ch;
+  color: var(--ink-2); font-size: 14px; line-height: 1.5;
+}
+.notfound-detail code {
+  font-family: var(--mono); font-size: 13px;
+  background: var(--paper-3); color: var(--ink);
+  padding: 1px 5px; border-radius: 3px;
+  /* A long mistyped segment must not push the page sideways. */
+  overflow-wrap: anywhere;
+}
+.notfound-actions {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  justify-content: center; margin-top: 8px;
+}
+.notfound-link {
+  font-family: var(--hand); font-size: 13px; font-weight: 500;
+  color: var(--accent); text-decoration: none;
+  border: 1px solid var(--line-mid); border-radius: 4px;
+  padding: 6px 14px;
+}
+.notfound-link:hover {
+  border-color: var(--accent); background: var(--accent-soft);
+}

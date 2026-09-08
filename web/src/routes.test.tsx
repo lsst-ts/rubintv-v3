@@ -40,7 +40,33 @@ beforeEach(() => {
   }) as unknown as typeof fetch;
 });
 
+// The route guard (useRouteValid) 404s a URL whose :location isn't in
+// /api/locations, so every test's stub must advertise the location it
+// navigates to. Most stubs here predate the guard and return a generic object
+// for /api/locations; rather than restate the location list in each, wrap the
+// active stub so that one endpoint always includes the path's own location.
+// A stub that returns a real array (the Home/landing tests) is left alone —
+// those assert on the list itself.
+function seedLocationForPath(path: string) {
+  const name = path.split("/").filter(Boolean)[0];
+  if (!name) return;
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.endsWith("/api/locations")) return inner(input, init);
+    return Promise.resolve(inner(input, init)).then(async (resp) => {
+      const body = await resp.json();
+      // Already a populated list: the test is asserting on it, so keep it.
+      const seeded = Array.isArray(body) && body.length > 0
+        ? body
+        : [{ name, title: name }];
+      return { ok: true, json: () => Promise.resolve(seeded) };
+    });
+  }) as unknown as typeof fetch;
+}
+
 function renderAt(path: string) {
+  seedLocationForPath(path);
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const result = render(
     <QueryClientProvider client={createQueryClient()}>
@@ -217,7 +243,11 @@ test("channel /current route follows the newest exposure", async () => {
       body = {
         name: "auxtel",
         title: "AuxTel",
-        channels: [],
+        // The URL under test addresses the monitor channel, so the camera must
+        // advertise it — the route guard 404s a channel the camera doesn't have.
+        channels: [
+          { name: "monitor", title: "Monitor", label: "raw", per_day: false },
+        ],
         image_viewer_link:
           "http://ccs.lsst.org/view?image=AT_O_{dayObs}_{seqNum:06}&raft=R00",
       };
@@ -697,16 +727,7 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  const router = createMemoryRouter(routes, {
-    initialEntries: ["/local/auxtel?date=2026-04-10"],
-  });
-  render(
-    <QueryClientProvider client={createQueryClient()}>
-      <LiveProvider>
-        <RouterProvider router={router} />
-      </LiveProvider>
-    </QueryClientProvider>,
-  );
+  const { router } = renderAt("/local/auxtel?date=2026-04-10");
 
   // Open the picker (defaults to the Months view) and switch to the heatmap.
   localStorage.removeItem("rubintv.datepicker.mode");
@@ -775,16 +796,7 @@ test("prev/next-day steppers move to adjacent dates with data", async () => {
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  const router = createMemoryRouter(routes, {
-    initialEntries: ["/local/auxtel?date=2026-04-10"],
-  });
-  render(
-    <QueryClientProvider client={createQueryClient()}>
-      <LiveProvider>
-        <RouterProvider router={router} />
-      </LiveProvider>
-    </QueryClientProvider>,
-  );
+  const { router } = renderAt("/local/auxtel?date=2026-04-10");
 
   // On the newest date: "next day" (newer) is disabled; "previous day" enables
   // once the calendar loads.
@@ -815,10 +827,16 @@ test("a ?seq_filter range narrows the table and surfaces as chips", async () => 
   }) as unknown as typeof fetch;
 
   renderAt("/local/auxtel?date=2026-04-10&seq_filter=gte11-lte12");
-  // Only seqs in [11, 12] show; seq 10 is excluded by the URL range.
-  expect(await screen.findByText("11")).toBeDefined();
-  expect(screen.getByText("12")).toBeDefined();
-  expect(screen.queryByText("10")).toBeNull();
+  // Only seqs in [11, 12] show; seq 10 is excluded by the URL range. Scope the
+  // lookups to the table body: the same numbers also appear in the filter
+  // chips above it, so an unscoped query is ambiguous.
+  const tbody = await waitFor(() => {
+    const b = document.querySelector("tbody") as HTMLElement;
+    if (!within(b).queryByText("11")) throw new Error("not ready");
+    return b;
+  });
+  expect(within(tbody).getByText("12")).toBeDefined();
+  expect(within(tbody).queryByText("10")).toBeNull();
   // The range surfaces as removable filter chips.
   const chips = [...document.querySelectorAll(".filter-chip")].map(
     (c) => c.textContent,
@@ -1273,4 +1291,142 @@ test("stepping the date from Channels stores Table as the wanted tab", async () 
   );
   expect(localStorage.getItem("rubintv.cameraTab")).toBe("table");
   localStorage.removeItem("rubintv.cameraTab");
+});
+
+// ── URL validation / 404 ─────────────────────────────────────────────────
+// Bad locations and cameras used to be accepted by the router and render a
+// half-built shell (breadcrumbs and tabs for something that isn't there, with
+// "Could not load" in the body). They now resolve to the 404 page.
+
+test("an unknown location renders the 404 page, not a location shell", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    const body = url.endsWith("/api/locations")
+      ? [{ name: "summit", title: "Summit" }]
+      : { camera_groups: [] };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  // Note: renderAt's seeding leaves a populated list alone, so "nowhere" is
+  // genuinely absent from the config here.
+  renderAt("/nowhere");
+  expect(await screen.findByText("No such location")).toBeDefined();
+  expect(screen.getByText("404")).toBeDefined();
+  // The name that failed is echoed, so a typo is obvious.
+  expect(screen.getByText("nowhere")).toBeDefined();
+  // The shell must not dress the 404 as the location it couldn't find.
+  expect(screen.queryByRole("link", { name: "nowhere" })).toBeNull();
+});
+
+test("an unknown camera 404s and offers its location as the way back", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/locations")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve([{ name: "local", title: "Local" }]),
+      });
+    }
+    // The backend 404s an unknown camera; the guard reads that as "missing".
+    if (/\/cameras\/nosuchcam$/.test(url)) {
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/nosuchcam");
+  expect(await screen.findByText("No such camera")).toBeDefined();
+  const back = screen.getByRole("link", { name: /Back to local/ });
+  expect(back.getAttribute("href")).toBe("/local");
+  // No tabs or date picker for a camera that doesn't exist.
+  expect(screen.queryByRole("button", { name: /day with data/ })).toBeNull();
+});
+
+test("a channel the camera doesn't have 404s", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [
+          { name: "monitor", title: "Monitor", label: "raw", per_day: false },
+        ],
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel/not_a_channel?seq=1&date=2026-04-10");
+  expect(await screen.findByText("No such channel")).toBeDefined();
+  // Back goes up to the camera, which does exist.
+  expect(
+    screen.getByRole("link", { name: /Back to auxtel/ }).getAttribute("href"),
+  ).toBe("/local/auxtel");
+});
+
+test("a path matching no route at all renders the 404 with a way home", async () => {
+  // Previously this matched nothing and the Layout rendered an empty outlet —
+  // a blank page with no way back.
+  renderAt("/local/auxtel/monitor/deeper/still");
+  expect(await screen.findByText("Page not found")).toBeDefined();
+  expect(screen.getByRole("link", { name: /Go to home/ })).toBeDefined();
+});
+
+// A valid deep link must never flash the 404 while the config that validates
+// it is still in flight — the guard stays transparent until the answer is in.
+test("a valid camera deep link never renders the 404 while config loads", async () => {
+  let resolveLocations: (v: unknown) => void = () => {};
+  const pending = new Promise((r) => {
+    resolveLocations = r;
+  });
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/locations")) {
+      return pending.then(() => ({
+        ok: true,
+        json: () => Promise.resolve([{ name: "local", title: "Local" }]),
+      }));
+    }
+    let body: unknown = {};
+    if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [] };
+    } else if (/calendar$/.test(url)) {
+      body = { dates: [] };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel");
+  // While /api/locations is still in flight there is no 404 on screen.
+  expect(screen.queryByText("404")).toBeNull();
+  await act(async () => {
+    resolveLocations(null);
+    await pending;
+  });
+  await waitFor(() => expect(screen.queryByText("404")).toBeNull());
+});
+
+// A transient failure of the config fetch is not evidence the URL is wrong;
+// 404ing on a network blip would eject users from pages that really exist.
+test("a failed locations fetch does not 404 a real page", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/locations")) {
+      return Promise.reject(new Error("network down"));
+    }
+    let body: unknown = {};
+    if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [] };
+    } else if (/calendar$/.test(url)) {
+      body = { dates: [] };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel");
+  await waitFor(() => expect(screen.queryByText("404")).toBeNull());
 });

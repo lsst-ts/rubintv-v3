@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Link,
   Outlet,
+  useLocation as useRouterLocation,
+  useMatches,
   useNavigate,
   useParams,
   useSearchParams,
@@ -14,6 +16,7 @@ import { STALE } from "../lib/queryClient";
 import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
+import { useRouteValid } from "../lib/useRouteValid";
 import { setCameraTabPref } from "../lib/cameraTabPref";
 
 // The deployment site (RAPID_ANALYSIS_LOCATION) from /api/config, used to label the
@@ -36,15 +39,28 @@ function useSite(): string | undefined {
 // URL params (Decision 7).
 export function Layout() {
   const { location, camera } = useParams();
+  const { pathname } = useRouterLocation();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const nav = useShellNav();
   const site = useSite();
+  // Whether the outlet is showing the 404 page. Two ways to get there: the
+  // URL names a location/camera/channel this deployment doesn't have (the
+  // route guard), or it matched no route at all (the "*" route, flagged by its
+  // handle — it binds no params, so useParams can't distinguish it from Home).
+  // The shell must not dress that page as the thing it couldn't find: no tabs,
+  // date picker, camera breadcrumb or scan-status pills, so every "are we on a
+  // camera/location" test below is gated on the route being real.
+  const matches = useMatches();
+  const unmatchedPath = matches.some(
+    (m) => (m.handle as { notFound?: boolean } | undefined)?.notFound,
+  );
+  const notFound = useRouteValid() === "missing" || unmatchedPath;
 
   // The per-camera view tabs (Table / Channels / Night report …) from the real
   // camera config. Only shown on a camera route.
   const tabs = tabsForCamera(nav.cameraInfo);
-  const onCamera = !!location && !!camera && !nav.system;
+  const onCamera = !!location && !!camera && !nav.system && !notFound;
 
   // The LSSTCam processing-mode banner ("USDF Nightly Validation Processing" /
   // "Summit Quicklook Processing"). Non-null only on the lsstcam/lsstcam_aos
@@ -130,8 +146,10 @@ export function Layout() {
   // WITHOUT the wayfinding topbar (which would otherwise duplicate the "home"
   // breadcrumb and the drawer). Every inner page (a location, a camera, or a
   // system page) gets the topbar. Home is the only route with neither a
-  // :location param nor a system path.
-  const isHome = !location && !nav.system;
+  // :location param nor a system path — except the router's "*" catch-all,
+  // which also has no params but must NOT get the brandless full-bleed
+  // treatment: a 404 needs the topbar's breadcrumb and drawer to get back out.
+  const isHome = !location && !nav.system && pathname === "/";
   if (isHome) {
     return (
       <div className="app-root">
@@ -152,7 +170,7 @@ export function Layout() {
   // location page shows the location's display title (e.g. "USDF"). System
   // pages (status/detectors/admin) render their own <h1> in the view body, so
   // they get no topbar title here to avoid double-titling.
-  const onLocation = !!location && !camera && !nav.system;
+  const onLocation = !!location && !camera && !nav.system && !notFound;
   const locationTitle =
     nav.locations.find((l) => l.name === location)?.title ?? location;
   const title = onCamera
@@ -178,7 +196,7 @@ export function Layout() {
                   always a link back to the launcher, on every inner page
                   (locations, cameras, and the system pages). */}
               <Link to="/">home</Link>
-              {location && (
+              {location && !notFound && (
                 <>
                   <span className="sep" aria-hidden="true">
                     ›
@@ -190,7 +208,7 @@ export function Layout() {
                   )}
                 </>
               )}
-              {location && camera && (
+              {location && camera && !notFound && (
                 <>
                   <span className="sep" aria-hidden="true">
                     ›
@@ -234,8 +252,12 @@ export function Layout() {
                     'connected' indicator now lives on the Status page. */}
                 {onCamera && <S3Status linkToStatus />}
                 {/* Historical-scan notice sits with the other status signals
-                    as a compact inline pill, not a full-width banner. */}
-                <LoadingBanner location={location} camera={camera} />
+                    as a compact inline pill, not a full-width banner. Scan
+                    progress for a location/camera that doesn't exist is
+                    meaningless, so it's suppressed on the 404 page. */}
+                {!notFound && (
+                  <LoadingBanner location={location} camera={camera} />
+                )}
               </div>
               <NavMenu />
             </div>

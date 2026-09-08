@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { ApiError } from "./api";
 
 // Centralised TanStack Query config. The date-tiered staleTime strategy
 // (Appendix A of the design doc) lives here so every view shares it.
@@ -89,7 +90,16 @@ export function createQueryClient(): QueryClient {
         // Always show stale while revalidating; refetch on focus is noisy
         // for an always-on summit display, so disable it.
         refetchOnWindowFocus: false,
-        retry: 1,
+        // Retry once — but never on a 4xx. A 404 (an unknown location, camera
+        // or date) is a definitive answer about the URL, not a blip, so
+        // retrying only delays the route guard's 404 page; a 403 from the
+        // admin gate won't change on a second try either. 5xx and network
+        // failures are the transient cases worth repeating.
+        retry: (count, error) => {
+          const status = error instanceof ApiError ? error.status : 0;
+          if (status >= 400 && status < 500) return false;
+          return count < 1;
+        },
       },
     },
   });
