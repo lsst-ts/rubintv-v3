@@ -65,6 +65,16 @@ def _mount_ddv(app: FastAPI, settings: Settings, prefix: str) -> str | None:
     if ddv_dir is None or not ddv_dir.is_dir():
         log.info("subapp.skip", subapp="ddv", reason="no build directory")
         return None
+    # `flutter build web` writes index.html and the bootstrap early, then
+    # compiles; a dart2js failure therefore leaves a *directory* behind with
+    # no main.dart.js in it. Mounting that serves a page that loads forever,
+    # which reads as "DDV is broken" rather than "DDV wasn't built". The
+    # compiler output is the only reliable marker that the build finished.
+    if not (ddv_dir / "main.dart.js").is_file():
+        log.warning(
+            "subapp.skip", subapp="ddv", reason="incomplete build", dir=str(ddv_dir)
+        )
+        return None
     path = f"{prefix}/ddv"
     app.mount(
         path,

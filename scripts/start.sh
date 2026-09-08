@@ -23,11 +23,28 @@ if [ -n "$DDV_DEPLOY_BRANCH" ]; then
     if command -v timeout >/dev/null 2>&1; then
         timeout "${DDV_BUILD_TIMEOUT:-600}" \
             bash -c 'cd "$1" && bash "$2/build-ddv.sh"' _ \
-            "$DDV_BUILD_DIR" "$script_dir" ||
-            echo "DDV build failed or timed out; continuing without /ddv" >&2
+            "$DDV_BUILD_DIR" "$script_dir"
     else
-        (cd "$DDV_BUILD_DIR" && bash "$script_dir/build-ddv.sh") ||
-            echo "DDV build failed; continuing without /ddv" >&2
+        (cd "$DDV_BUILD_DIR" && bash "$script_dir/build-ddv.sh")
+    fi
+    ddv_status=$?
+    # Non-fatal, but never quiet: the failure is otherwise a couple of lines
+    # buried under a few hundred lines of `pub get` output, and the app comes
+    # up looking healthy. 124 is timeout(1)'s "deadline hit" status.
+    if [ "$ddv_status" -ne 0 ]; then
+        if [ "$ddv_status" -eq 124 ]; then
+            reason="timed out after ${DDV_BUILD_TIMEOUT:-600}s"
+        else
+            reason="exited $ddv_status"
+        fi
+        echo "========================================================" >&2
+        echo "DDV BUILD FAILED ($reason) - continuing without /ddv" >&2
+        echo "Branch: ${DDV_DEPLOY_BRANCH}. Scroll up for the compiler error." >&2
+        echo "========================================================" >&2
+    elif [ ! -f "$DDV_BUILD_DIR/ddv/build/web/main.dart.js" ]; then
+        # Belt and braces: flutter has been known to exit 0 with no compiler
+        # output. Without main.dart.js the mount is skipped anyway, so say why.
+        echo "DDV BUILD INCOMPLETE (no main.dart.js) - continuing without /ddv" >&2
     fi
 else
     echo "DDV_DEPLOY_BRANCH not set; skipping the DDV build" >&2
