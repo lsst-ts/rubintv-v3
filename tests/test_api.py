@@ -290,7 +290,9 @@ def test_date_payload(seeded_client: TestClient) -> None:
     assert body["channels"]["witness_detector"] == [1, 2]
     assert body["extensions"]["witness_detector"]["default"] == "png"
     assert body["extensions"]["witness_detector"]["exceptions"] == {"2": "jpg"}
-    assert body["per_day"]["day_movie"].endswith("m.mp4")
+    # Per-day artifacts carry seq + extension, not the object key: the client
+    # rebuilds the proxy URL from {camera}/{date}/{channel}/ plus these.
+    assert body["per_day"]["day_movie"] == {"seq": "final", "ext": "mp4"}
     assert body["has_night_report"] is True
     # Metadata is no longer bundled here — it's fetched separately so the grid
     # never waits on the (slow, live-from-S3) metadata download.

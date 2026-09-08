@@ -61,8 +61,8 @@ from dataclasses import dataclass
 from lsst.ts.rubintv.config.models import Location, Models
 from lsst.ts.rubintv.data.dayobs import get_current_day_obs, recent_day_obs
 from lsst.ts.rubintv.data.events import StoreChange
-from lsst.ts.rubintv.data.source import S3Poller
-from lsst.ts.rubintv.data.store import EventStore
+from lsst.ts.rubintv.data.source import S3Poller, ScanResult
+from lsst.ts.rubintv.data.store import EventStore, ScanScope
 from lsst.ts.rubintv.logging import get_logger
 
 log = get_logger(__name__)
@@ -339,17 +339,17 @@ class PollEngine:
         total = 0
         for camera in location.cameras:
             prefix = f"{camera.name}/{day}/"
-            events = await asyncio.to_thread(self._poller.scan, location.name, prefix)
-            total += len(events)
-            if events:
+            result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
+            total += len(result.events)
+            if result.events:
                 log.info(
                     "poll.scan",
                     scope="day",
                     location=location.name,
                     prefix=prefix,
-                    events=len(events),
+                    events=len(result.events),
                 )
-                touched = await self._store.apply(events)
+                touched = await self._store.apply(result.events)
                 await self._persist_slices(touched)
             else:
                 log.debug(
@@ -358,7 +358,27 @@ class PollEngine:
                     location=location.name,
                     prefix=prefix,
                 )
+            # This listing is authoritative for exactly one date, so scope
+            # reconciliation to it — an empty result legitimately means
+            # "everything for today was deleted" and must still be applied.
+            await self._reconcile_day(location.name, camera.name, day, result)
         return total
+
+    async def _reconcile_day(
+        self, location: str, camera: str, day: str, result: ScanResult
+    ) -> None:
+        """Reconcile a single-date listing against the store."""
+        dropped = await self._store.reconcile(
+            (location, camera),
+            result.keys,
+            ScanScope(dates=frozenset({day})),
+        )
+        await self._evict_slices(location, camera, dropped)
+        # A date that survived may still have lost slots; its slice is
+        # rewritten by the caller's _persist_slices only when events landed,
+        # so persist it here too when the listing was empty of new events.
+        if not dropped and not result.events:
+            await self._persist_slices({(location, camera, day)})
 
     async def _scan_recent_window(self) -> int:
         # The recent window per camera: scan {camera}/{date}/ for the last N
@@ -380,20 +400,21 @@ class PollEngine:
         for camera in location.cameras:
             for day in days:
                 prefix = f"{camera.name}/{day}/"
-                events = await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     self._poller.scan, location.name, prefix
                 )
-                total += len(events)
-                if events:
+                total += len(result.events)
+                if result.events:
                     log.info(
                         "poll.scan",
                         scope="recent",
                         location=location.name,
                         prefix=prefix,
-                        events=len(events),
+                        events=len(result.events),
                     )
-                    touched = await self._store.apply(events)
+                    touched = await self._store.apply(result.events)
                     await self._persist_slices(touched)
+                await self._reconcile_day(location.name, camera.name, day, result)
             self._mark(location.name, camera.name, "recent_ready")
             await self._warm_metadata(location.name, camera.name)
         return total
@@ -416,36 +437,29 @@ class PollEngine:
         total = 0
         for camera in location.cameras:
             prefix = f"{camera.name}/"
-            # scan_full returns the dates from *this* listing, so the prune
-            # below can't be poisoned by a concurrent reset()/on-demand scan
-            # mutating the poller's shared _seen between the listing and the
-            # prune.
-            events, observed = await asyncio.to_thread(
-                self._poller.scan_full, location.name, prefix
-            )
-            total += len(events)
+            result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
+            total += len(result.events)
             log.info(
                 "poll.scan",
                 scope="historical",
                 location=location.name,
                 prefix=prefix,
-                events=len(events),
+                events=len(result.events),
             )
-            if events:
-                touched = await self._store.apply(events)
+            if result.events:
+                touched = await self._store.apply(result.events)
                 await self._persist_slices(touched)
-            # The full {camera}/ listing is authoritative for which dates
-            # exist: prune any indexed date it didn't observe (stale warm-start
-            # cache slices whose keys were deleted while we were down — the
-            # poller diff can't emit REMOVED for keys it never saw). Protect
-            # the current observing day: the fast current-day loop may have
-            # inserted today's first keys after this sweep listed the prefix,
-            # so the listing wouldn't include them and prune would wrongly drop
-            # today.
-            pruned = await self._store.prune_dates(
+            # The full {camera}/ listing is authoritative for the whole
+            # camera, so reconcile with an unbounded scope: dates the listing
+            # didn't see are gone (e.g. stale warm-start slices whose keys
+            # were deleted while we were down). Protect the current observing
+            # day — the fast current-day loop may have inserted today's first
+            # keys *after* this sweep listed the prefix, so the listing
+            # wouldn't include them and reconciliation would wrongly drop them.
+            pruned = await self._store.reconcile(
                 (location.name, camera.name),
-                observed,
-                protect={get_current_day_obs()},
+                result.keys,
+                ScanScope(protect=frozenset({get_current_day_obs()})),
             )
             await self._evict_slices(location.name, camera.name, pruned)
             # Recent may not have run (window=0); the full sweep also makes
@@ -498,25 +512,26 @@ class PollEngine:
         prefix = f"{camera}/{date}/"
         try:
             async with self._on_demand_sem:
-                events = await asyncio.to_thread(self._poller.scan, location, prefix)
-            if events:
-                touched = await self._store.apply(events)
+                result = await asyncio.to_thread(self._poller.scan, location, prefix)
+            if result.events:
+                touched = await self._store.apply(result.events)
                 await self._persist_slices(touched)
+            await self._reconcile_day(location, camera, date, result)
         except Exception:  # noqa: BLE001 - on-demand is best-effort
             log.exception(
                 "poll.scan.error", scope="on-demand", location=location, prefix=prefix
             )
             return 0
-        if not events:
+        if not result.events:
             self._remember_empty((location, camera, date))
         log.info(
             "poll.scan",
             scope="on-demand",
             location=location,
             prefix=prefix,
-            events=len(events),
+            events=len(result.events),
         )
-        return len(events)
+        return len(result.events)
 
     def _remember_empty(self, key: tuple[str, str, str]) -> None:
         """Record a date that scanned empty (bounded FIFO)."""

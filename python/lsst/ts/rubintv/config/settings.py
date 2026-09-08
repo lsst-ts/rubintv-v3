@@ -115,6 +115,14 @@ class Settings(BaseSettings):
     the full back-catalogue sweep, so recent history is viewable in seconds.
     ``0`` disables the recent-first phase (full sweep only)."""
 
+    reconcile_dry_run: bool = False
+    """Log what reconciliation *would* remove from the index, without removing
+    it. Deletion is driven by set difference against an S3 listing, so a
+    truncated or mis-scoped listing would silently erase live data; running
+    dry for a day lets the ``store.reconcile.stale`` logs be checked against
+    reality before deletion is trusted. Leaves stale entries in the index
+    (and so in the disk cache) while set."""
+
     metadata_preload_days: int = 3
     """On cold start, pre-fetch metadata.json for this many of the most recent
     dates per camera into the in-memory LRU, so the first table view of a

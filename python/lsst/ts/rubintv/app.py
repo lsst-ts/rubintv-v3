@@ -84,7 +84,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("s3.pool.ready", locations=[loc.name for loc in models.locations])
     buckets = {loc.name: loc.bucket for loc in models.locations}
 
-    store = EventStore()
+    store = EventStore(reconcile_dry_run=settings.reconcile_dry_run)
+    if settings.reconcile_dry_run:
+        # Loud: in this mode deleted objects are never dropped from the index,
+        # so the UI keeps offering data the bucket no longer has.
+        log.warning("store.reconcile.dry_run_enabled")
     # The poller uses a dedicated client per location so its sustained
     # list_objects_v2 traffic doesn't share an HTTP connection pool with
     # the interactive handlers (metadata fetches, proxy GETs).

@@ -1,19 +1,21 @@
-"""EventStore: insert, update, remove-with-prune, and change publishing."""
+"""EventStore: insert, reconciliation-based removal, and change publishing."""
 
 from __future__ import annotations
 
 import pytest
 from lsst.ts.rubintv.data.bus import EventBus
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
-from lsst.ts.rubintv.data.store import EventStore
+from lsst.ts.rubintv.data.index import DateIndex, PerDayRef
+from lsst.ts.rubintv.data.store import (
+    EventStore,
+    ScanScope,
+    _IndexSlice,
+    _stale_entries,
+)
 
 
 def created(key: str, etag: str = "e1", location: str = "local") -> ObjectEvent:
     return ObjectEvent(ObjectKind.CREATED, location, key, etag=etag)
-
-
-def removed(key: str, location: str = "local") -> ObjectEvent:
-    return ObjectEvent(ObjectKind.REMOVED, location, key)
 
 
 async def test_insert_builds_structured_index() -> None:
@@ -111,18 +113,90 @@ async def test_per_day_artifact_indexed_separately() -> None:
     await store.apply([created("auxtel/2026-04-10/movies/final/m.mp4")])
     idx = store.date_index("local", "auxtel", "2026-04-10")
     assert idx is not None
-    assert idx.per_day["movies"].endswith("m.mp4")
+    # Presence is recorded as seq + extension, not the object key: the proxy
+    # resolves the filename by listing the prefix at request time.
+    assert idx.per_day["movies"] == PerDayRef(seq="final", ext="mp4")
     assert "movies" not in idx.channels
 
 
-async def test_remove_prunes_empty_date_from_calendar() -> None:
+async def test_per_day_and_per_seq_extensions_do_not_collide() -> None:
+    # A channel can hold both per-seq stills and a per-day movie of them.
+    # Their extensions are tracked separately, so neither overwrites the other.
     store = EventStore()
-    key = "lsstcam/2026-04-10/c/000001/a.png"
-    await store.apply([created(key)])
+    await store.apply(
+        [
+            created("auxtel/2026-04-10/movies/000001/a.png"),
+            created("auxtel/2026-04-10/movies/final/m.mp4"),
+        ]
+    )
+    idx = store.date_index("local", "auxtel", "2026-04-10")
+    assert idx is not None
+    assert idx.extensions["movies"].default == "png"
+    assert idx.per_day["movies"].ext == "mp4"
+
+
+async def test_reconcile_drops_a_vanished_seq() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/c/000001/a.png"),
+            created("lsstcam/2026-04-10/c/000002/b.png"),
+        ]
+    )
+    # A later listing of that date no longer contains seq 2.
+    await store.reconcile(
+        ("local", "lsstcam"),
+        {"lsstcam/2026-04-10/c/000001/a.png"},
+        ScanScope(dates=frozenset({"2026-04-10"})),
+    )
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels["c"] == {1}
+
+
+async def test_reconcile_prunes_empty_date_from_calendar() -> None:
+    store = EventStore()
+    await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
     assert store.calendar("local", "lsstcam") == ["2026-04-10"]
-    await store.apply([removed(key)])
+    dropped = await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    assert dropped == {"2026-04-10"}
     assert store.calendar("local", "lsstcam") == []
     assert store.date_index("local", "lsstcam", "2026-04-10") is None
+
+
+async def test_reconcile_ignores_dates_outside_its_scope() -> None:
+    # A single-date listing is authoritative only for that date; it must not
+    # prune dates it never examined.
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/c/000001/a.png"),
+            created("lsstcam/2026-04-11/c/000002/b.png"),
+        ]
+    )
+    await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    assert store.calendar("local", "lsstcam") == ["2026-04-11"]
+
+
+async def test_reconcile_survives_a_rename() -> None:
+    # A rename is put-new + delete-old. Both keys name the same (channel, seq)
+    # slot, so reconciling against a listing that holds only the new filename
+    # must leave the slot intact — this is the data-loss hazard that per-key
+    # REMOVED handling previously needed backing-file tracking to avoid.
+    store = EventStore()
+    await store.apply([created("lsstcam/2026-04-10/c/000001/old.png")])
+    await store.reconcile(
+        ("local", "lsstcam"),
+        {"lsstcam/2026-04-10/c/000001/new.png"},
+        ScanScope(dates=frozenset({"2026-04-10"})),
+    )
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels["c"] == {1}
 
 
 async def test_night_report_presence() -> None:
@@ -149,7 +223,7 @@ async def test_apply_returns_touched_slices() -> None:
     }
 
 
-async def test_prune_dates_drops_unobserved_and_keeps_observed() -> None:
+async def test_reconcile_drops_unobserved_dates_on_a_full_sweep() -> None:
     store = EventStore()
     await store.apply(
         [
@@ -157,39 +231,46 @@ async def test_prune_dates_drops_unobserved_and_keeps_observed() -> None:
             created("auxtel/2026-04-10/monitor/000001/b.png"),  # real
         ]
     )
-    # A full sweep observed only the real date; the epoch slice is stale.
-    pruned = await store.prune_dates(("local", "auxtel"), {"2026-04-10"})
+    # A full {camera}/ sweep is authoritative for every date (unbounded
+    # scope); it observed only the real one, so the epoch slice is stale.
+    pruned = await store.reconcile(
+        ("local", "auxtel"),
+        {"auxtel/2026-04-10/monitor/000001/b.png"},
+        ScanScope(),
+    )
     assert pruned == {"1970-01-01"}
     assert store.calendar("local", "auxtel") == ["2026-04-10"]
     assert store.date_index("local", "auxtel", "1970-01-01") is None
 
 
-async def test_prune_dates_publishes_calendar_change_per_dropped_date() -> None:
+async def test_reconcile_publishes_calendar_change_per_dropped_date() -> None:
     bus = EventBus()
     store = EventStore(bus)
     received: list[StoreChange] = []
     async with bus.subscribe() as stream:
         await store.apply([created("auxtel/1970-01-01/monitor/000001/a.png")])
-        await store.prune_dates(("local", "auxtel"), set())
-        # Drain the apply's channelData, then the prune's calendar change.
+        await store.reconcile(("local", "auxtel"), set(), ScanScope())
+        # Drain the apply's channelData, then the reconcile's calendar change.
         received.append(await stream.__anext__())
         received.append(await stream.__anext__())
     assert StoreChange("calendarUpdate", "local", "auxtel", "1970-01-01") in received
 
 
-async def test_prune_dates_noop_for_unknown_camera() -> None:
+async def test_reconcile_noop_for_unknown_camera() -> None:
     store = EventStore()
-    assert await store.prune_dates(("local", "nope"), {"2026-04-10"}) == set()
+    assert await store.reconcile(("local", "nope"), set(), ScanScope()) == set()
 
 
-async def test_prune_dates_keeps_protected_dates() -> None:
+async def test_reconcile_keeps_protected_dates() -> None:
     # A protected date (e.g. today, just added by the current-day loop after
-    # the sweep listed the prefix) must survive even when the sweep's observed
-    # set doesn't include it.
+    # the sweep listed the prefix) must survive even when the sweep's listing
+    # doesn't include it.
     store = EventStore()
     await store.apply([created("auxtel/1970-01-01/monitor/000001/a.png")])
     await store.apply([created("auxtel/2026-04-10/monitor/000001/b.png")])
-    pruned = await store.prune_dates(("local", "auxtel"), set(), protect={"2026-04-10"})
+    pruned = await store.reconcile(
+        ("local", "auxtel"), set(), ScanScope(protect=frozenset({"2026-04-10"}))
+    )
     assert pruned == {"1970-01-01"}
     assert store.calendar("local", "auxtel") == ["2026-04-10"]
 
@@ -243,38 +324,38 @@ async def test_apply_yields_during_large_batches() -> None:
     assert len(idx.channels["c"]) == EventStore._YIELD_EVERY + 1  # noqa: SLF001
 
 
-async def test_remove_per_day_artifact_prunes_date() -> None:
+async def test_reconcile_removes_a_vanished_per_day_artifact() -> None:
     store = EventStore()
-    key = "auxtel/2026-04-10/movies/final/m.mp4"
-    await store.apply([created(key)])
-    await store.apply([removed(key)])
+    await store.apply([created("auxtel/2026-04-10/movies/final/m.mp4")])
+    await store.reconcile(
+        ("local", "auxtel"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
     assert store.date_index("local", "auxtel", "2026-04-10") is None
     assert store.calendar("local", "auxtel") == []
 
 
-async def test_remove_night_report_key() -> None:
+async def test_reconcile_removes_a_vanished_night_report() -> None:
     store = EventStore()
     key = "lsstcam/2026-04-10/night_report/summary_md.json"
     await store.apply([created(key)])
     assert store.has_night_report("local", "lsstcam", "2026-04-10")
-    await store.apply([removed(key)])
+    await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
     assert not store.has_night_report("local", "lsstcam", "2026-04-10")
 
 
-async def test_remove_for_unknown_date_is_a_noop() -> None:
-    # Removing objects (metadata, channel) from a date that was never indexed
-    # must not create empty structures or raise.
+async def test_reconcile_for_unknown_camera_creates_nothing() -> None:
+    # Reconciling a camera that was never indexed must not create empty
+    # structures or raise.
     store = EventStore()
-    await store.apply(
-        [
-            removed("lsstcam/2026-04-10/metadata.json"),
-            removed("lsstcam/2026-04-10/c/000001/a.png"),
-        ]
+    await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
     )
     assert store.snapshot() == {}
 
 
-async def test_remove_one_of_two_seqs_keeps_channel() -> None:
+async def test_reconcile_keeps_a_channel_that_still_has_seqs() -> None:
     store = EventStore()
     await store.apply(
         [
@@ -282,7 +363,11 @@ async def test_remove_one_of_two_seqs_keeps_channel() -> None:
             created("lsstcam/2026-04-10/c/000002/b.png"),
         ]
     )
-    await store.apply([removed("lsstcam/2026-04-10/c/000002/b.png")])
+    await store.reconcile(
+        ("local", "lsstcam"),
+        {"lsstcam/2026-04-10/c/000001/a.png"},
+        ScanScope(dates=frozenset({"2026-04-10"})),
+    )
     idx = store.date_index("local", "lsstcam", "2026-04-10")
     assert idx is not None
     assert idx.channels["c"] == {1}
@@ -324,34 +409,86 @@ async def test_clear_empties_store_and_calendar() -> None:
 
 
 async def test_rename_within_seq_keeps_the_seq() -> None:
-    # A rename is put-new + delete-old under the same seq directory, and the
-    # poller's diff emits CREATED before REMOVED within a batch. The seq must
-    # survive the REMOVED for the old filename — dropping it by coarse
-    # (channel, seq) would permanently erase live data (no later diff
-    # re-emits an unchanged key).
+    # A rename is put-new + delete-old under the same seq directory. Because
+    # the index records (channel, seq) presence rather than filenames, both
+    # keys denote the same slot, so reconciling against a listing holding only
+    # the new name leaves the slot intact. This is the data-loss hazard that
+    # per-key REMOVED handling needed backing-file tracking to avoid.
     store = EventStore()
-    old = "lsstcam/2026-04-10/witness_detector/000001/old.png"
     new = "lsstcam/2026-04-10/witness_detector/000001/new.png"
-    await store.apply([created(old)])
-    await store.apply([created(new), removed(old)])
+    await store.apply([created("lsstcam/2026-04-10/witness_detector/000001/old.png")])
+    await store.apply([created(new)])
+    await store.reconcile(
+        ("local", "lsstcam"), {new}, ScanScope(dates=frozenset({"2026-04-10"}))
+    )
     idx = store.date_index("local", "lsstcam", "2026-04-10")
     assert idx is not None
     assert idx.channels["witness_detector"] == {1}
-    # Removing the last backing file does drop the seq (and the empty date).
-    await store.apply([removed(new)])
+    # The seq going away entirely does drop it (and the now-empty date).
+    await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
     assert store.date_index("local", "lsstcam", "2026-04-10") is None
 
 
 async def test_rename_per_day_artifact_keeps_the_channel() -> None:
-    # Same rename scenario for a per-day artifact: the channel entry must
-    # survive and repoint to the surviving key.
+    # Same rename scenario for a per-day artifact: the channel entry survives,
+    # since presence is keyed by channel rather than by object key.
     store = EventStore()
-    old = "auxtel/2026-04-10/movies/final/old.mp4"
     new = "auxtel/2026-04-10/movies/final/new.mp4"
-    await store.apply([created(old)])
-    await store.apply([created(new), removed(old)])
+    await store.apply([created("auxtel/2026-04-10/movies/final/old.mp4")])
+    await store.apply([created(new)])
+    await store.reconcile(
+        ("local", "auxtel"), {new}, ScanScope(dates=frozenset({"2026-04-10"}))
+    )
     idx = store.date_index("local", "auxtel", "2026-04-10")
     assert idx is not None
-    assert idx.per_day["movies"] == new
-    await store.apply([removed(new)])
+    assert idx.per_day["movies"] == PerDayRef(seq="final", ext="mp4")
+    await store.reconcile(
+        ("local", "auxtel"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
     assert store.date_index("local", "auxtel", "2026-04-10") is None
+
+
+async def test_dry_run_logs_but_keeps_the_index_intact() -> None:
+    # Deletion acts on the strength of a listing, so a deployment can run dry
+    # first: the difference is computed and logged, but nothing is removed.
+    store = EventStore(reconcile_dry_run=True)
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/c/000001/a.png"),
+            created("lsstcam/2026-04-10/c/000002/b.png"),
+        ]
+    )
+    dropped = await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    assert dropped == set()
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels["c"] == {1, 2}
+    assert store.calendar("local", "lsstcam") == ["2026-04-10"]
+
+
+async def test_stale_entries_reports_what_would_go() -> None:
+    # The pure pass underpinning both the dry run and the real apply.
+    idx = DateIndex(
+        channels={"c": {1, 2, 3}},
+        per_day={"movies": PerDayRef(seq="final", ext="mp4")},
+        night_report_keys={"lsstcam/2026-04-10/night_report/s_md.json"},
+    )
+    wanted = _IndexSlice(channels={"c": {1}}, per_day=set(), night_report_keys=set())
+    stale = _stale_entries(idx, wanted)
+    assert stale.seqs == {"c": {2, 3}}
+    assert stale.per_day == {"movies"}
+    assert stale.night_report_keys == {"lsstcam/2026-04-10/night_report/s_md.json"}
+    assert stale.total == 4
+    # Computing it must not have mutated the index.
+    assert idx.channels["c"] == {1, 2, 3}
+    assert "movies" in idx.per_day
+
+
+async def test_stale_entries_empty_when_consistent() -> None:
+    idx = DateIndex(channels={"c": {1}})
+    wanted = _IndexSlice(channels={"c": {1}}, per_day=set(), night_report_keys=set())
+    assert _stale_entries(idx, wanted).is_empty

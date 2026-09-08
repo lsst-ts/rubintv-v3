@@ -5,6 +5,16 @@ per-``(location, camera)`` indexes the API reads, and publishes coarse
 ``StoreChange``s to the ``EventBus`` so listeners refetch/repush the right
 slice. Nothing else mutates the indexes.
 
+Deletion is handled by *reconciliation*, not per-key removal events. A
+listing of a prefix is authoritative for that prefix: anything indexed
+under it but absent from the listing is gone. ``reconcile`` applies that as
+a set difference, which makes deletion detection independent of event
+ordering — a rename (put new name, delete old) lands as "the slot still
+exists", because presence is keyed by (channel, seq) rather than by
+filename. Callers must pass the scope their listing actually covered
+(:class:`ScanScope`), so a single-date listing can never prune dates it
+didn't examine.
+
 Concurrency: a poller writes while the API reads. A per-``(loc, cam)``
 asyncio lock guards mutations; reads take copies of the small index slices
 they need, so the API never observes a half-applied update.
@@ -14,10 +24,11 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from dataclasses import dataclass
 
 from lsst.ts.rubintv.data.bus import EventBus
-from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
-from lsst.ts.rubintv.data.index import DateIndex, ExtInfo
+from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, SeqNum, StoreChange
+from lsst.ts.rubintv.data.index import DateIndex, ExtInfo, PerDayRef
 from lsst.ts.rubintv.data.parser import (
     parse_channel_event,
     parse_metadata,
@@ -31,16 +42,44 @@ log = get_logger(__name__)
 LocCam = tuple[str, str]
 
 
+@dataclass(frozen=True, slots=True)
+class ScanScope:
+    """What a listing actually covered, so reconciliation can't over-prune.
+
+    A listing is authoritative only for the prefix it enumerated. ``dates``
+    of ``None`` means the whole camera was listed (a full ``{camera}/``
+    sweep), so every indexed date is in scope; otherwise only the named
+    dates are, and anything else is left untouched.
+
+    ``protect`` names dates that must survive even when in scope and absent
+    from the listing — the current observing day, whose fast poll loop may
+    have inserted keys *after* a slow sweep enumerated the prefix. Without
+    it, a full sweep could delete today's data the instant it appeared.
+    """
+
+    dates: frozenset[str] | None = None
+    protect: frozenset[str] = frozenset()
+
+    def covers(self, date: str) -> bool:
+        return self.dates is None or date in self.dates
+
+
 class EventStore:
     """In-memory index of all channel data, keyed by (location, camera)."""
 
-    def __init__(self, bus: EventBus | None = None) -> None:
+    def __init__(
+        self, bus: EventBus | None = None, *, reconcile_dry_run: bool = False
+    ) -> None:
         self._bus = bus or EventBus()
         # (loc, cam) -> date -> DateIndex
         self._dates: dict[LocCam, dict[str, DateIndex]] = defaultdict(dict)
         # (loc, cam) -> sorted set of dates (calendar)
         self._calendar: dict[LocCam, set[str]] = defaultdict(set)
         self._locks: dict[LocCam, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # When set, reconcile() computes and logs what it *would* remove but
+        # leaves the index untouched. Lets a deployment be observed against a
+        # live bucket before deletion is trusted; see reconcile().
+        self._dry_run = reconcile_dry_run
 
     @property
     def bus(self) -> EventBus:
@@ -128,24 +167,28 @@ class EventStore:
         return None
 
     def _mutate(self, kind: ObjectKind, loc_cam: LocCam, event: ObjectEvent) -> None:
-        """Insert or remove a single object from the indexes (lock held)."""
+        """Insert a single object into the indexes (lock held).
+
+        Only CREATED does anything. Deletion is reconciliation's job (see
+        :meth:`reconcile`) — a per-key REMOVED can't be applied safely on its
+        own, because within one diff batch a rename emits CREATED(new) before
+        REMOVED(old) and both name the same logical slot.
+        """
         if kind is ObjectKind.CREATED:
             self._insert(loc_cam, event)
-        else:
-            self._remove(loc_cam, event)
 
     def _insert(self, loc_cam: LocCam, event: ObjectEvent) -> None:
         key = event.key
         if (ev := parse_channel_event(key)) is not None:
             idx = self._date_index(loc_cam, ev.day_obs)
             if ev.is_per_day:
-                idx.per_day[ev.channel] = key
-                idx.per_day_keys.setdefault(ev.channel, set()).add(key)
+                # Presence + seq + extension is the whole payload: the rest of
+                # the key is {camera}/{date}/{channel}/, which every caller
+                # already has, and the proxy lists that prefix to find the
+                # actual filename.
+                idx.per_day[ev.channel] = PerDayRef(seq=str(ev.seq_num), ext=ev.ext)
             else:
                 idx.channels.setdefault(ev.channel, set()).add(ev.seq_num)
-                idx.seq_files.setdefault(ev.channel, {}).setdefault(
-                    ev.seq_num, set()
-                ).add(f"{ev.filename}.{ev.ext}")
                 idx.extensions.setdefault(ev.channel, ExtInfo()).record(
                     ev.seq_num, ev.ext
                 )
@@ -157,92 +200,80 @@ class EventStore:
         # metadata.json content is fetched separately; its presence alone
         # doesn't change the structured index.
 
-    def _remove(self, loc_cam: LocCam, event: ObjectEvent) -> None:
-        key = event.key
-        date = _date_of(key)
-        if date is None:
-            return
-        dates = self._dates.get(loc_cam)
-        if not dates or date not in dates:
-            return
-        idx = dates[date]
-        if (ev := parse_channel_event(key)) is not None:
-            # A REMOVED event names one file; a slot may be backed by several
-            # (a rename is put-new + delete-old, and the diff emits CREATED
-            # before REMOVED within a batch). Only drop the slot when its
-            # *last* backing file goes — discarding by coarse (channel, seq)
-            # alone would permanently erase renamed-but-live data.
-            if ev.is_per_day:
-                backing_keys = idx.per_day_keys.get(ev.channel)
-                if backing_keys is not None:
-                    backing_keys.discard(key)
-                    if backing_keys:
-                        if idx.per_day.get(ev.channel) == key:
-                            # The displayed key was removed; deterministically
-                            # promote a surviving one.
-                            idx.per_day[ev.channel] = max(backing_keys)
-                        return
-                    idx.per_day_keys.pop(ev.channel, None)
-                idx.per_day.pop(ev.channel, None)
-            else:
-                seqs = idx.channels.get(ev.channel)
-                if seqs is not None:
-                    files = idx.seq_files.get(ev.channel, {}).get(ev.seq_num)
-                    if files is not None:
-                        files.discard(f"{ev.filename}.{ev.ext}")
-                        if files:
-                            return  # another file still backs this seq
-                        idx.seq_files[ev.channel].pop(ev.seq_num, None)
-                    seqs.discard(ev.seq_num)
-                    if not seqs:
-                        del idx.channels[ev.channel]
-                        idx.extensions.pop(ev.channel, None)
-                        idx.seq_files.pop(ev.channel, None)
-        elif parse_night_report(key) is not None:
-            idx.night_report_keys.discard(key)
-        # Prune now-empty dates so the calendar stays accurate.
-        if idx.is_empty:
-            del dates[date]
-            self._calendar[loc_cam].discard(date)
-
-    async def prune_dates(
-        self,
-        loc_cam: LocCam,
-        observed: set[str],
-        protect: set[str] | None = None,
+    async def reconcile(
+        self, loc_cam: LocCam, observed: set[str], scope: ScanScope
     ) -> set[str]:
-        """Drop indexed dates for a camera that a full sweep didn't observe.
+        """Drop indexed data absent from an authoritative listing.
 
-        A full ``{camera}/`` listing is authoritative for which dates exist:
-        any date in the store but absent from ``observed`` is stale (e.g. a
-        warm-start cache slice whose source keys were deleted from the bucket
-        while the process was down — the poller's diff can't emit REMOVED for
-        keys it never saw, so deletions would otherwise survive forever).
+        ``observed`` is every object key the listing returned. Within
+        ``scope``, anything indexed but not present in ``observed`` is gone
+        from the bucket and is removed: stale slots inside a date, and whole
+        dates that no longer exist at all (e.g. a warm-start cache slice whose
+        source keys were deleted while the process was down).
 
-        ``protect`` dates are never pruned even when absent from ``observed`` —
-        used for dates a concurrent writer (the current-day loop, an on-demand
-        deep-link scan) may have just added *after* the sweep listed the
-        prefix, which the listing therefore wouldn't include. Without this,
-        such a date could be deleted the instant it appeared.
+        Set-difference reconciliation is what makes deletion correct without
+        per-object bookkeeping. A rename lands as CREATED(new) + REMOVED(old)
+        in one batch, but both keys resolve to the same (channel, seq) slot,
+        so the slot survives on the strength of the new key alone.
 
-        Publishes a ``calendarUpdate`` change per dropped date so listeners
-        refresh, and returns the dropped dates so the caller can evict their
-        cache slices. Takes the per-(loc, cam) lock, like ``apply``.
+        Every removal is logged (``store.reconcile.stale``), because this is
+        the only path that deletes indexed data and it acts on the strength of
+        a listing: a truncated or mis-scoped listing would otherwise silently
+        erase live data with no trace of what went. In ``dry_run`` mode the
+        same difference is computed and logged but nothing is mutated, so a
+        deployment can be watched before it is trusted.
+
+        Publishes a ``calendarUpdate`` per dropped date so listeners refresh,
+        and returns the dropped dates so the caller can evict cache slices.
+        Takes the per-(loc, cam) lock, like ``apply``.
         """
-        keep = observed | (protect or set())
+        wanted = _index_keys(observed)
+        dropped: set[str] = set()
+        changed: set[str] = set()
         async with self._locks[loc_cam]:
             dates = self._dates.get(loc_cam)
             if not dates:
                 return set()
-            stale = set(dates) - keep
-            for date in stale:
-                del dates[date]
-                self._calendar[loc_cam].discard(date)
-        for date in stale:
+            for date in list(dates):
+                if not scope.covers(date) or date in scope.protect:
+                    continue
+                idx = dates[date]
+                stale = _stale_entries(idx, wanted.get(date, _EMPTY_SLICE))
+                if stale.is_empty:
+                    continue
+                # Log before mutating, so a crash mid-apply still leaves a
+                # record of what was about to go.
+                log.info(
+                    "store.reconcile.stale",
+                    location=loc_cam[0],
+                    camera=loc_cam[1],
+                    date=date,
+                    entries=stale.total,
+                    dry_run=self._dry_run,
+                    **stale.summary(),
+                )
+                if self._dry_run:
+                    continue
+                _apply_stale(idx, stale)
+                changed.add(date)
+                if idx.is_empty:
+                    del dates[date]
+                    self._calendar[loc_cam].discard(date)
+                    dropped.add(date)
+        for date in dropped:
+            log.info(
+                "store.reconcile.date_dropped",
+                location=loc_cam[0],
+                camera=loc_cam[1],
+                date=date,
+            )
             self._bus.publish(
                 StoreChange("calendarUpdate", loc_cam[0], loc_cam[1], date)
             )
-        return stale
+        # A date that lost slots but still exists needs a data refresh too.
+        for date in changed - dropped:
+            self._bus.publish(StoreChange("channelData", loc_cam[0], loc_cam[1], date))
+        return dropped
 
     def _date_index(self, loc_cam: LocCam, date: str) -> DateIndex:
         dates = self._dates[loc_cam]
@@ -351,6 +382,111 @@ class EventStore:
     def has_night_report(self, location: str, camera: str, date: str) -> bool:
         idx = self.date_index(location, camera, date)
         return bool(idx and idx.night_report_keys)
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexSlice:
+    """The presence an observed listing implies for one date."""
+
+    channels: dict[str, set[SeqNum]]
+    per_day: set[str]
+    night_report_keys: set[str]
+
+
+_EMPTY_SLICE = _IndexSlice(channels={}, per_day=set(), night_report_keys=set())
+
+
+def _index_keys(observed: set[str]) -> dict[str, _IndexSlice]:
+    """Project raw object keys onto the shape the index stores.
+
+    Parsing the listing into the same (channel, seq) presence the index holds
+    is what lets reconciliation be a plain set difference — filenames never
+    enter the comparison, so a renamed object matches the slot it backs.
+    """
+    slices: dict[str, _IndexSlice] = {}
+
+    def slice_for(date: str) -> _IndexSlice:
+        if date not in slices:
+            slices[date] = _IndexSlice(
+                channels={}, per_day=set(), night_report_keys=set()
+            )
+        return slices[date]
+
+    for key in observed:
+        if (ev := parse_channel_event(key)) is not None:
+            sl = slice_for(ev.day_obs)
+            if ev.is_per_day:
+                sl.per_day.add(ev.channel)
+            else:
+                sl.channels.setdefault(ev.channel, set()).add(ev.seq_num)
+        elif (nr := parse_night_report(key)) is not None:
+            slice_for(nr.day_obs).night_report_keys.add(key)
+    return slices
+
+
+@dataclass(frozen=True, slots=True)
+class StaleEntries:
+    """What a reconciliation would remove from one date's index.
+
+    Computed without mutating anything, so the same pass can drive a dry run
+    (log what *would* go) and the real application. ``total`` is the count
+    used for logging; ``is_empty`` says the index is already consistent with
+    the listing.
+    """
+
+    seqs: dict[str, set[SeqNum]]
+    per_day: set[str]
+    night_report_keys: set[str]
+
+    @property
+    def total(self) -> int:
+        return (
+            sum(len(s) for s in self.seqs.values())
+            + len(self.per_day)
+            + len(self.night_report_keys)
+        )
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.seqs or self.per_day or self.night_report_keys)
+
+    def summary(self) -> dict[str, object]:
+        """Compact, log-friendly description of what would be dropped."""
+        return {
+            "seqs": {ch: sorted(s, key=str) for ch, s in self.seqs.items()},
+            "per_day": sorted(self.per_day),
+            "night_report_keys": sorted(self.night_report_keys),
+        }
+
+
+def _stale_entries(idx: DateIndex, wanted: _IndexSlice) -> StaleEntries:
+    """What in ``idx`` is absent from ``wanted``. Pure — mutates nothing."""
+    seqs: dict[str, set[SeqNum]] = {}
+    for channel, indexed in idx.channels.items():
+        stale = indexed - wanted.channels.get(channel, set())
+        if stale:
+            seqs[channel] = stale
+    return StaleEntries(
+        seqs=seqs,
+        per_day={ch for ch in idx.per_day if ch not in wanted.per_day},
+        night_report_keys=idx.night_report_keys - wanted.night_report_keys,
+    )
+
+
+def _apply_stale(idx: DateIndex, stale: StaleEntries) -> None:
+    """Remove the entries ``_stale_entries`` identified (lock held)."""
+    for channel, gone in stale.seqs.items():
+        idx.channels[channel] -= gone
+        ext = idx.extensions.get(channel)
+        if ext is not None:
+            for seq in gone:
+                ext.exceptions.pop(seq, None)
+        if not idx.channels[channel]:
+            del idx.channels[channel]
+            idx.extensions.pop(channel, None)
+    for channel in stale.per_day:
+        del idx.per_day[channel]
+    idx.night_report_keys -= stale.night_report_keys
 
 
 def _date_of(key: str) -> str | None:

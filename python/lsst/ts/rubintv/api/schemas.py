@@ -127,6 +127,15 @@ class ExtInfoOut(BaseModel):
     """seq_num (as string) -> extension, for the non-default cases."""
 
 
+class PerDayOut(BaseModel):
+    """Where a per-day artifact lives within its channel/date prefix."""
+
+    seq: str
+    """The seq segment — a word sentinel like "final"."""
+    ext: str
+    """File extension, so the client can tell a movie from a still."""
+
+
 class DatePayload(BaseModel):
     """Everything needed to render a camera table for one date."""
 
@@ -134,8 +143,13 @@ class DatePayload(BaseModel):
     channels: dict[str, list[SeqNum]]
     """channel -> sorted seq_nums present (the structured-data index)."""
     extensions: dict[str, ExtInfoOut]
-    per_day: dict[str, str]
-    """channel -> S3 key of the per-day artifact."""
+    per_day: dict[str, PerDayOut]
+    """channel -> the per-day artifact's seq segment and file extension.
+
+    The rest of the object's key is ``{camera}/{date}/{channel}/``, which the
+    client already has, and the proxy resolves the filename by listing that
+    prefix — so this is all the index needs to carry.
+    """
     has_night_report: bool
     # Metadata is deliberately NOT bundled here. It is a large, slow,
     # live-from-S3 fetch, whereas channels/per_day come from the warm-start

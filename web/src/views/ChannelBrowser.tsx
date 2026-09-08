@@ -46,10 +46,18 @@ function latestFor(
   if (!payload) return { src: null, isVideo: false, seqLabel: null, seq: null };
 
   if (ch.per_day) {
-    const key = payload.per_day?.[ch.name];
-    if (!key) return { src: null, isVideo: false, seqLabel: null, seq: null };
-    const src = api.perDayMediaUrl(location, camera, key);
-    const isVideo = VIDEO_EXTS.some((e) => key.toLowerCase().endsWith(e));
+    const seqSeg = payload.per_day?.[ch.name];
+    if (!seqSeg) return { src: null, isVideo: false, seqLabel: null, seq: null };
+    const fileExt = payload.extensions?.[ch.name]?.default ?? "mp4";
+    const src = api.perDayMediaUrl(
+      location,
+      camera,
+      ch.name,
+      payload.date,
+      seqSeg,
+      fileExt,
+    );
+    const isVideo = VIDEO_EXTS.includes(fileExt);
     return { src, isVideo, seqLabel: isVideo ? "movie" : "stills", seq: null };
   }
 

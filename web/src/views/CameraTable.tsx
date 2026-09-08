@@ -605,9 +605,9 @@ export function CameraTable() {
 
       {payload && Object.keys(payload.per_day).length > 0 && (
         <div className="per-day">
-          {Object.entries(payload.per_day).map(([chan, key]) => (
+          {Object.entries(payload.per_day).map(([chan, seq]) => (
             <span key={chan} className="per-day-item">
-              {chan}: {key.split("/").pop()}
+              {chan}: {seq}
             </span>
           ))}
         </div>

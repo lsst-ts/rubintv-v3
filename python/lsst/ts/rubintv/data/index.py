@@ -32,29 +32,49 @@ class ExtInfo:
         return self.exceptions.get(seq_num, self.default)
 
 
+@dataclass(frozen=True, slots=True)
+class PerDayRef:
+    """A per-day artifact's location within its channel/date prefix.
+
+    ``seq`` is the word sentinel segment (e.g. ``"final"``); ``ext`` is the
+    file type, which the UI needs to tell a movie from a still. Together with
+    ``{camera}/{date}/{channel}/`` — which every caller already has — this is
+    enough to build a proxy URL, so the full object key is never stored.
+    """
+
+    seq: str
+    ext: str
+
+
 @dataclass(slots=True)
 class DateIndex:
     """Everything indexed for one (location, camera, date).
 
-    ``channels`` is the "what exists" structured-data index. ``per_day``
-    holds per-day artifacts keyed by channel. ``night_report_keys`` tracks
-    night-report object keys (content fetched on demand).
+    The index records *presence*, not object identity: which (channel, seq)
+    slots exist, and which channels have a per-day artifact. That is the
+    whole requirement for serving the UI — the proxy resolves the actual
+    object by listing the seq prefix at request time, so the index never
+    needs to know a filename. Not storing them keeps the resident footprint
+    proportional to observations rather than to every object ever written
+    (the difference between integer seqs and full S3 key strings, which is
+    what previously made this process grow without bound).
 
-    ``seq_files`` and ``per_day_keys`` track *which files* back each
-    channel/seq slot and per-day channel. A REMOVED event names one object
-    key, but the bucket may store an artifact under any filename — so a
-    rename (put new name, delete old) must only drop the slot when its last
-    backing file goes, not on the first delete it sees.
+    ``channels`` is the "what exists" structured-data index. ``per_day``
+    maps a channel to its artifact's seq sentinel (e.g. ``"final"``) — the
+    rest of that object's key is ``{camera}/{date}/{channel}/`` , which every
+    caller already has. ``night_report_keys`` keeps full object keys because
+    the report fetcher GETs them directly and a plot's group segment can't
+    be reconstructed from anything else; there are only a handful per date.
     """
 
     channels: dict[str, set[SeqNum]] = field(default_factory=dict)
     extensions: dict[str, ExtInfo] = field(default_factory=dict)
-    per_day: dict[str, str] = field(default_factory=dict)
+    # channel -> (seq sentinel, extension) for the per-day artifact. Kept
+    # apart from ``extensions`` because a channel can carry both per-seq
+    # frames and a per-day artifact (a movie of them) with different types —
+    # folding both into one ExtInfo would let whichever arrived last decide.
+    per_day: dict[str, PerDayRef] = field(default_factory=dict)
     night_report_keys: set[str] = field(default_factory=set)
-    # channel -> seq -> the "{filename}.{ext}" tails backing that seq.
-    seq_files: dict[str, dict[SeqNum, set[str]]] = field(default_factory=dict)
-    # channel -> full object keys backing that per-day artifact.
-    per_day_keys: dict[str, set[str]] = field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:

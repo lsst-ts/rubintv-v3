@@ -29,6 +29,7 @@ from lsst.ts.rubintv.api.schemas import (
     LocationOut,
     LocationSummary,
     MosaicViewEntryOut,
+    PerDayOut,
     TimeSinceClockOut,
 )
 from lsst.ts.rubintv.config.models import Camera, Location, Models
@@ -235,7 +236,9 @@ async def get_date_payload(
             )
             for ch, e in idx.extensions.items()
         },
-        per_day=idx.per_day,
+        per_day={
+            ch: PerDayOut(seq=ref.seq, ext=ref.ext) for ch, ref in idx.per_day.items()
+        },
         has_night_report=bool(idx.night_report_keys),
     )
 
