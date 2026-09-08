@@ -4,14 +4,23 @@
 emits normalised ``ObjectEvent``s; everything downstream is identical
 whether the source polls S3 or (future) consumes a Kafka topic.
 
-``S3Poller`` implements the interface by listing a prefix and *diffing*
-against the previous listing to synthesise created / removed / updated
-events. ETag change on a still-present key is an update (emitted as
-``CREATED`` — the store treats created and updated identically: upsert).
+``S3Poller`` implements the interface by listing a prefix and emitting a
+``CREATED`` per object found. It holds no state between scans: the store is
+idempotent (inserts are upserts into presence sets), so re-emitting
+unchanged keys is a no-op, and deletion is handled by the store
+reconciling against the same listing rather than by a synthesised REMOVED.
+
+That statelessness is deliberate. The previous design cached each prefix's
+last listing to diff against, which meant retaining every object key in the
+bucket — gigabytes, and unbounded in the bucket's size — purely to answer
+"did this change?". It doesn't need answering: the store already knows what
+it holds, and an object's content changing is invisible to a presence index
+anyway (the browser revalidates media against S3 by ETag on its own).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind
@@ -29,7 +38,7 @@ log = get_logger(__name__)
 
 
 class DataSource(Protocol):
-    """Emits object changes for a location under a key prefix.
+    """Emits object presence for a location under a key prefix.
 
     ``scan`` is synchronous (it does blocking I/O); callers run it off the
     event loop via ``asyncio.to_thread``. A future push-based source (Kafka)
@@ -37,106 +46,80 @@ class DataSource(Protocol):
     inherently a blocking listing.
     """
 
-    def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
-        """Return the object changes observed since the last scan of prefix."""
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        """Return everything currently under ``prefix``."""
         ...
 
 
-class S3Poller:
-    """A ``DataSource`` that diffs successive S3 listings.
+@dataclass(frozen=True, slots=True)
+class ScanResult:
+    """One listing: the events to apply, and the raw keys observed.
 
-    State is kept per ``(location, prefix)`` so each watched prefix (e.g.
-    today's data per camera) diffs independently.
+    ``keys`` is what the listing actually returned, so a caller can
+    reconcile the store against it (anything indexed under the scanned
+    scope but missing here has been deleted). It is consumed immediately
+    and not retained.
+    """
+
+    events: list[ObjectEvent]
+    keys: set[str]
+
+    @property
+    def dates(self) -> set[str]:
+        """The day_obs values present in this listing."""
+        return {date for key in self.keys if (date := _date_of(key)) is not None}
+
+
+class S3Poller:
+    """A ``DataSource`` that lists S3 prefixes.
+
+    Stateless between scans — see the module docstring for why the previous
+    listing is neither kept nor needed.
     """
 
     def __init__(self, client_for: ClientFactory) -> None:
         self._client_for = client_for
-        # (location, prefix) -> {key: etag}
-        self._seen: dict[tuple[str, str], dict[str, str]] = {}
         # location -> bucket name, filled lazily from the client factory.
         self._buckets: dict[str, str] = {}
-        # Bumped by reset(); scans started before a reset must not write
-        # their listing back, or the post-reset rescan would diff against
-        # stale state and re-emit nothing into the freshly cleared store.
-        self._generation = 0
 
     def register_bucket(self, location: str, bucket: str) -> None:
         """Tell the poller which bucket backs a location."""
         self._buckets[location] = bucket
 
     def reset(self) -> None:
-        """Forget all previous listings so the next scans re-emit everything.
+        """No-op, kept for API compatibility with the admin flush action.
 
-        Pairs with clearing the EventStore (the admin flush-historical
-        action): the diff state must be dropped with the data it described,
-        otherwise the triggered rescan sees no changes and the store stays
-        empty until keys actually change upstream.
+        The poller holds no cross-scan state, so a flush of the store needs
+        nothing undone here: the next scan re-lists the bucket and re-emits
+        everything regardless.
         """
-        self._generation += 1
-        self._seen.clear()
 
-    def scan(self, location: str, prefix: str) -> list[ObjectEvent]:
-        """List ``prefix`` and return changes vs. the previous scan."""
-        changes, _ = self._scan(location, prefix)
-        return changes
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        """List ``prefix`` and emit a CREATED for every object under it.
 
-    def scan_full(
-        self, location: str, prefix: str
-    ) -> tuple[list[ObjectEvent], set[str]]:
-        """Scan ``prefix`` and also return the dates present in *this* listing.
-
-        The dates come from the listing this call actually performed — not from
-        the shared ``_seen`` snapshot, which a concurrent ``reset()`` (admin
-        flush) or an on-demand date scan may have cleared or overwritten
-        between this scan and the caller reading it. A full-sweep caller uses
-        these dates to prune stale ones; deriving them from the live listing
-        prevents the prune from ever deleting dates this scan didn't examine
-        (which would otherwise wipe freshly-added dates and, because ``_seen``
-        still held their keys, leave them unrecoverable until the next full
-        sweep).
+        Events are emitted in sorted key order. ``ExtInfo`` treats the first
+        extension it sees for a channel as that channel's default and the rest
+        as exceptions, so an arbitrary iteration order would make the default
+        depend on which key happened to come first — the same date could
+        classify differently between two scans.
         """
-        changes, current = self._scan(location, prefix)
-        dates = {date for key in current if (date := _date_of(key)) is not None}
-        return changes, dates
-
-    def _scan(
-        self, location: str, prefix: str
-    ) -> tuple[list[ObjectEvent], dict[str, str]]:
         bucket = self._buckets.get(location)
         if bucket is None:
             raise KeyError(f"no bucket registered for location {location!r}")
+        keys = self._list(location, bucket, prefix)
+        events = [
+            ObjectEvent(kind=ObjectKind.CREATED, location=location, key=key)
+            for key in sorted(keys)
+        ]
+        return ScanResult(events=events, keys=keys)
 
-        generation = self._generation
-        current = self._list(location, bucket, prefix)
-        previous = self._seen.get((location, prefix), {})
-        changes = _diff(location, previous, current)
-        if generation == self._generation:
-            self._seen[(location, prefix)] = current
-        return changes, current
-
-    def observed_dates(self, location: str, prefix: str) -> set[str]:
-        """Dates present in the most recent listing of ``prefix``.
-
-        Derived from the keys captured by the last ``scan`` of this prefix,
-        so callers can treat a full ``{camera}/`` sweep as authoritative for
-        which dates exist in the bucket (and prune the rest). Keys that don't
-        parse to a day_obs are ignored, matching the store's ingestion. An
-        unscanned prefix yields the empty set.
-
-        Prefer ``scan_full`` for prune decisions: this reads shared ``_seen``,
-        which a concurrent reset/on-demand scan can have changed since the
-        sweep listed the prefix.
-        """
-        seen = self._seen.get((location, prefix), {})
-        return {date for key in seen if (date := _date_of(key)) is not None}
-
-    def _list(self, location: str, bucket: str, prefix: str) -> dict[str, str]:
+    def _list(self, location: str, bucket: str, prefix: str) -> set[str]:
         client: S3Client = self._client_for(location)
         paginator = client.get_paginator("list_objects_v2")
-        result: dict[str, str] = {}
+        result: set[str] = set()
         for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
             for obj in page.get("Contents", []):
-                result[obj["Key"]] = obj.get("ETag", "")
+                result.add(obj["Key"])
         return result
 
 
@@ -149,27 +132,6 @@ def _date_of(key: str) -> str | None:
     if (md := parse_metadata(key)) is not None:
         return md.day_obs
     return None
-
-
-def _diff(
-    location: str, previous: dict[str, str], current: dict[str, str]
-) -> list[ObjectEvent]:
-    """Compute created/updated (CREATED) and removed events between
-    listings."""
-    changes: list[ObjectEvent] = []
-    for key, etag in current.items():
-        if key not in previous or previous[key] != etag:
-            changes.append(
-                ObjectEvent(
-                    kind=ObjectKind.CREATED, location=location, key=key, etag=etag
-                )
-            )
-    for key in previous:
-        if key not in current:
-            changes.append(
-                ObjectEvent(kind=ObjectKind.REMOVED, location=location, key=key)
-            )
-    return changes
 
 
 if TYPE_CHECKING:

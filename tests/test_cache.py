@@ -5,17 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
-from lsst.ts.rubintv.data.index import DateIndex, ExtInfo
+from lsst.ts.rubintv.data.index import DateIndex, ExtInfo, PerDayRef
 
 
 def sample_index() -> DateIndex:
     return DateIndex(
         channels={"witness_detector": {1, 2, 5}},
         extensions={"witness_detector": ExtInfo(default="png", exceptions={2: "jpg"})},
-        per_day={"movies": "auxtel/2026-04-10/movies/final/m.mp4"},
+        per_day={"movies": PerDayRef(seq="final", ext="mp4")},
         night_report_keys={"lsstcam/2026-04-10/night_report/s_md.json"},
-        seq_files={"witness_detector": {1: {"a.png"}, 2: {"b.jpg"}, 5: {"c.png"}}},
-        per_day_keys={"movies": {"auxtel/2026-04-10/movies/final/m.mp4"}},
     )
 
 
@@ -47,13 +45,10 @@ def test_round_trip(tmp_path: Path) -> None:
     assert idx.channels["witness_detector"] == {1, 2, 5}
     assert idx.extensions["witness_detector"].for_seq(2) == "jpg"
     assert idx.extensions["witness_detector"].for_seq(1) == "png"
-    assert idx.per_day["movies"].endswith("m.mp4")
+    # Seq + extension survive the round trip; the object key never does, since
+    # the proxy resolves the filename by listing the prefix at request time.
+    assert idx.per_day["movies"] == PerDayRef(seq="final", ext="mp4")
     assert idx.night_report_keys == {"lsstcam/2026-04-10/night_report/s_md.json"}
-    # The backing-file maps must survive the round trip: a warm-started slice
-    # without them would lose its rename protection (a REMOVED for a renamed
-    # file would drop a still-live seq).
-    assert idx.seq_files["witness_detector"][2] == {"b.jpg"}
-    assert idx.per_day_keys["movies"] == {"auxtel/2026-04-10/movies/final/m.mp4"}
 
 
 def test_corrupt_file_is_skipped(tmp_path: Path) -> None:

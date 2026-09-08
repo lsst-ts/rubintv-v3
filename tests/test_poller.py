@@ -1,4 +1,9 @@
-"""S3Poller diff behaviour against a moto bucket."""
+"""S3Poller listing behaviour against a moto bucket.
+
+The poller is stateless: every scan reports what is currently under the
+prefix, and deletion is detected by the store reconciling against the same
+listing (see test_store.py) rather than by a synthesised REMOVED event.
+"""
 
 from __future__ import annotations
 
@@ -41,90 +46,74 @@ def poller() -> Iterator[PollerFixture]:
         yield PollerFixture(poller=p, put=put, delete=delete)
 
 
-def test_first_scan_reports_all_as_created(poller: PollerFixture) -> None:
+def test_scan_reports_everything_as_created(poller: PollerFixture) -> None:
     poller.put("lsstcam/2026-04-10/c/000001/a.png")  # type: ignore[operator]
-    changes = poller.poller.scan("local", "lsstcam/")
-    assert len(changes) == 1
-    assert changes[0].kind is ObjectKind.CREATED
+    result = poller.poller.scan("local", "lsstcam/")
+    assert len(result.events) == 1
+    assert result.events[0].kind is ObjectKind.CREATED
 
 
-def test_unchanged_second_scan_reports_nothing(poller: PollerFixture) -> None:
-    poller.put("lsstcam/2026-04-10/c/000001/a.png")  # type: ignore[operator]
-    poller.poller.scan("local", "lsstcam/")
-    assert poller.poller.scan("local", "lsstcam/") == []
-
-
-def test_reset_re_emits_everything(poller: PollerFixture) -> None:
+def test_repeat_scan_re_emits_the_same_keys(poller: PollerFixture) -> None:
     key = "lsstcam/2026-04-10/c/000001/a.png"
     poller.put(key)  # type: ignore[operator]
     poller.poller.scan("local", "lsstcam/")
-    # Settled: a repeat scan is silent. After reset (the flush-historical
-    # path), the same unchanged key must be re-emitted so the cleared store
-    # can be rebuilt.
-    assert poller.poller.scan("local", "lsstcam/") == []
+    # No diff state, so an unchanged bucket still reports its contents. The
+    # store upserts into presence sets, making the repeat a no-op there.
+    assert [c.key for c in poller.poller.scan("local", "lsstcam/").events] == [key]
+
+
+def test_reset_is_a_noop(poller: PollerFixture) -> None:
+    key = "lsstcam/2026-04-10/c/000001/a.png"
+    poller.put(key)  # type: ignore[operator]
+    poller.poller.scan("local", "lsstcam/")
+    # The flush-historical path calls reset(); with no cross-scan state there
+    # is nothing to undo, and the next scan rebuilds the cleared store anyway.
     poller.poller.reset()
-    changes = poller.poller.scan("local", "lsstcam/")
-    assert [c.key for c in changes] == [key]
-    assert changes[0].kind is ObjectKind.CREATED
+    assert [c.key for c in poller.poller.scan("local", "lsstcam/").events] == [key]
 
 
-def test_scan_spanning_a_reset_does_not_rearm_stale_state(
-    poller: PollerFixture,
-) -> None:
-    key = "lsstcam/2026-04-10/c/000001/a.png"
-    poller.put(key)  # type: ignore[operator]
-    p = poller.poller
-    p.scan("local", "lsstcam/")
-    # Simulate a reset landing while a scan is in flight (between its listing
-    # and its state write-back) by resetting from inside the listing call.
-    original_list = p._list
-
-    def list_then_reset(location: str, bucket: str, prefix: str) -> dict[str, str]:
-        result = original_list(location, bucket, prefix)
-        p.reset()
-        return result
-
-    p._list = list_then_reset  # type: ignore[method-assign]
-    p.scan("local", "lsstcam/")
-    p._list = original_list  # type: ignore[method-assign]
-    # The spanning scan must not have written its listing back: the next
-    # scan still re-emits everything for the cleared store.
-    changes = p.scan("local", "lsstcam/")
-    assert [c.key for c in changes] == [key]
-
-
-def test_removed_object_reported(poller: PollerFixture) -> None:
+def test_deleted_object_absent_from_next_listing(poller: PollerFixture) -> None:
     key = "lsstcam/2026-04-10/c/000001/a.png"
     poller.put(key)  # type: ignore[operator]
     poller.poller.scan("local", "lsstcam/")
     poller.delete(key)  # type: ignore[operator]
-    changes = poller.poller.scan("local", "lsstcam/")
-    assert len(changes) == 1
-    assert changes[0].kind is ObjectKind.REMOVED
-    assert changes[0].key == key
+    result = poller.poller.scan("local", "lsstcam/")
+    # No REMOVED event is synthesised — the key's absence from `keys` is what
+    # the store reconciles against.
+    assert result.events == []
+    assert result.keys == set()
 
 
-def test_observed_dates_reflects_last_listing(poller: PollerFixture) -> None:
+def test_keys_carry_the_whole_listing(poller: PollerFixture) -> None:
     poller.put("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
-    poller.put("auxtel/2026-04-11/monitor/000001/b.png")  # type: ignore[operator]
     poller.put("auxtel/2026-04-11/metadata.json")  # type: ignore[operator]
-    poller.poller.scan("local", "auxtel/")
-    # Dates present in the bucket, deduped across keys; metadata counts too.
-    assert poller.poller.observed_dates("local", "auxtel/") == {
-        "2026-04-10",
-        "2026-04-11",
+    result = poller.poller.scan("local", "auxtel/")
+    assert result.keys == {
+        "auxtel/2026-04-10/monitor/000001/a.png",
+        "auxtel/2026-04-11/metadata.json",
     }
 
 
-def test_observed_dates_drops_a_vanished_date(poller: PollerFixture) -> None:
+def test_dates_reflect_the_listing(poller: PollerFixture) -> None:
     poller.put("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
-    poller.poller.scan("local", "auxtel/")
-    poller.delete("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
-    poller.poller.scan("local", "auxtel/")
-    # A re-listing with the key gone leaves no observed dates, so a sweep
-    # treats the date as stale and prunes it.
-    assert poller.poller.observed_dates("local", "auxtel/") == set()
+    poller.put("auxtel/2026-04-11/monitor/000001/b.png")  # type: ignore[operator]
+    poller.put("auxtel/2026-04-11/metadata.json")  # type: ignore[operator]
+    result = poller.poller.scan("local", "auxtel/")
+    # Dates present in the bucket, deduped across keys; metadata counts too.
+    assert result.dates == {"2026-04-10", "2026-04-11"}
 
 
-def test_observed_dates_unscanned_prefix_is_empty(poller: PollerFixture) -> None:
-    assert poller.poller.observed_dates("local", "auxtel/") == set()
+def test_dates_empty_for_an_empty_prefix(poller: PollerFixture) -> None:
+    assert poller.poller.scan("local", "auxtel/").dates == set()
+
+
+def test_events_are_emitted_in_sorted_key_order(poller: PollerFixture) -> None:
+    # ExtInfo takes the first extension it sees for a channel as the default,
+    # so emission order decides how a date's extensions are classified. A set
+    # iterates arbitrarily; sorting keeps the lowest seq authoritative and the
+    # result stable across scans.
+    poller.put("lsstcam/2026-04-10/c/000002/b.jpg")  # type: ignore[operator]
+    poller.put("lsstcam/2026-04-10/c/000001/a.png")  # type: ignore[operator]
+    poller.put("lsstcam/2026-04-10/c/000003/c.png")  # type: ignore[operator]
+    emitted = [e.key for e in poller.poller.scan("local", "lsstcam/").events]
+    assert emitted == sorted(emitted)
