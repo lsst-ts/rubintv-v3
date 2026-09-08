@@ -55,6 +55,7 @@ def test_config_reports_the_deployment_site() -> None:
 
 def test_ddv_mounted_when_assets_present(tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<!doctype html><title>DDV</title>")
+    (tmp_path / "main.dart.js").write_text("// compiled")
     settings = make_settings(ddv_path=tmp_path)
     with run_app(settings) as client:
         # The reported mount path is the full browser-facing (prefixed) URL.
@@ -72,6 +73,7 @@ def test_ddv_bare_path_redirects_with_spa_mounted(tmp_path: Path) -> None:
     ddv = tmp_path / "ddv"
     ddv.mkdir()
     (ddv / "index.html").write_text("<!doctype html><title>DDV</title>")
+    (ddv / "main.dart.js").write_text("// compiled")
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text("<!doctype html><div id=root></div>")
@@ -88,6 +90,17 @@ def test_ddv_skipped_when_dir_missing(tmp_path: Path) -> None:
     with run_app(settings) as client:
         assert client.get("/api/subapps").json()["mounted"] == []
         # Main app still serves.
+        assert client.get("/api/health/live").status_code == 200
+
+
+def test_ddv_skipped_when_build_incomplete(tmp_path: Path) -> None:
+    # `flutter build web` writes index.html before it compiles, so a dart2js
+    # failure leaves a directory holding everything *except* main.dart.js.
+    # Mounting that served a page that spins forever instead of skipping.
+    (tmp_path / "index.html").write_text("<!doctype html><title>DDV</title>")
+    (tmp_path / "flutter_bootstrap.js").write_text("// bootstrap")
+    with run_app(make_settings(ddv_path=tmp_path)) as client:
+        assert client.get("/api/subapps").json()["mounted"] == []
         assert client.get("/api/health/live").status_code == 200
 
 
