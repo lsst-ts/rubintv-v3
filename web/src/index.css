@@ -703,13 +703,37 @@ h1, h2 {
 .landing-inner { max-width: 1080px; margin: 0 auto; padding: 44px 48px 72px; }
 /* The NavMenu drawer floats over the hero, top-right. */
 .home-toggle { position: absolute; top: 22px; right: 26px; z-index: 5; }
-.home-hero { margin-bottom: 2px; }
+/* Logo on the left, the Simon Krughoff memorial in the space to its right.
+   Wraps to a stack on narrow screens. */
+.home-hero {
+  margin-bottom: 2px;
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 20px 32px;
+}
 /* The inline Rubin mark as the hero lockup — the one place the brand appears.
    It follows the accent via currentColor, so it needs no dark-mode filter. */
 .brand-logo {
   height: 104px; width: auto; display: block;
   color: var(--accent-bright);
 }
+/* In-memoriam card: a quiet bordered plaque beside the hero mark, linking to
+   the community.lsst.org remembrance thread. */
+.memoriam {
+  display: flex; flex-direction: column; gap: 6px;
+  max-width: 380px;
+  padding: 14px 18px;
+  border: 1px solid var(--line-mid); border-radius: 10px;
+  background: var(--paper-2);
+  text-decoration: none; color: var(--ink);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.memoriam:hover { background: var(--paper-3); border-color: var(--accent-bright); }
+.memoriam-name {
+  font-family: var(--display); font-weight: 700; font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.memoriam-text { font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
+
 .home-tagline {
   display: flex; align-items: center; gap: 11px;
   font-family: var(--mono); font-size: 13px; color: var(--ink-soft);
