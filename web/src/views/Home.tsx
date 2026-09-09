@@ -72,6 +72,22 @@ export function Home() {
       <div className="landing-inner">
         <div className="home-hero">
           <RubinMark className="brand-logo" />
+          {/* In-memoriam card for Simon Krughoff, in the space beside the
+              logo. Links out to the community.lsst.org remembrance thread. */}
+          <a
+            className="memoriam"
+            href="https://community.lsst.org/t/remembering-simon-krughoff/7344"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span className="memoriam-name">
+              In memory of Simon Krughoff 1974&ndash;2023
+            </span>
+            <span className="memoriam-text">
+              Who, among his many contributions to the project, helped launch
+              RubinTV
+            </span>
+          </a>
         </div>
         <div className="home-tagline">
           <b>RubinTV</b>
