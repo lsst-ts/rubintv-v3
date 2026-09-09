@@ -708,6 +708,7 @@ h1, h2 {
 .home-hero {
   margin-bottom: 2px;
   display: flex; align-items: center; flex-wrap: wrap;
+  justify-content: space-between;
   gap: 20px 32px;
 }
 /* The inline Rubin mark as the hero lockup — the one place the brand appears.
@@ -722,12 +723,14 @@ h1, h2 {
   display: flex; flex-direction: column; gap: 6px;
   max-width: 380px;
   padding: 14px 18px;
-  border: 1px solid var(--line-mid); border-radius: 10px;
-  background: var(--paper-2);
+  border: 1px solid var(--accent-line); border-radius: 10px;
+  /* Tinted in the mark's own teal — --accent-soft is a pale tint in light mode
+     and a deep one in dark, so the plaque sits with the logo in both. */
+  background: var(--accent-soft);
   text-decoration: none; color: var(--ink);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: border-color 120ms ease;
 }
-.memoriam:hover { background: var(--paper-3); border-color: var(--accent-bright); }
+.memoriam:hover { border-color: var(--accent-bright); }
 .memoriam-name {
   font-family: var(--display); font-weight: 700; font-size: 14px;
   letter-spacing: -0.01em;
