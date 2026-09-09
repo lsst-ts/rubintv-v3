@@ -1,0 +1,2733 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RubinTV",
+    "version": "3.0.0"
+  },
+  "paths": {
+    "/api/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Live",
+        "description": "Liveness: the process is running.",
+        "operationId": "live_api_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Ready",
+        "description": "Readiness: the app is ready to serve traffic.",
+        "operationId": "ready_api_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/status": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "App Status",
+        "description": "Detailed status: readiness plus per-camera history-loading progress.",
+        "operationId": "app_status_api_health_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "List Locations",
+        "operationId": "list_locations_api_locations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocationSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Locations Api Locations Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Location Detail",
+        "operationId": "get_location_detail_api_locations__location__get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Camera Detail",
+        "operationId": "get_camera_detail_api_locations__location__cameras__camera__get",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/calendar": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Calendar",
+        "operationId": "get_calendar_api_locations__location__cameras__camera__calendar_get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/dates/{date}": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Date Payload",
+        "operationId": "get_date_payload_api_locations__location__cameras__camera__dates__date__get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatePayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/metadata/{date}": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Metadata",
+        "operationId": "get_metadata_api_locations__location__cameras__camera__metadata__date__get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/events": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Event By Key",
+        "description": "Resolve a specific event by its S3 key (validated by the parser).",
+        "operationId": "get_event_by_key_api_locations__location__cameras__camera__events_get",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/night-report/{date}": {
+      "get": {
+        "tags": [
+          "night-report"
+        ],
+        "summary": "Get Night Report",
+        "operationId": "get_night_report_api_locations__location__cameras__camera__night_report__date__get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NightReportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/admin/controls": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Controls",
+        "operationId": "get_controls_api_locations__location__admin_controls_get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Set Control",
+        "operationId": "set_control_api_locations__location__admin_controls_post",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlValue"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/controls": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Site Controls",
+        "operationId": "get_site_controls_api_admin_controls_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlsOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/menus": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Admin Menus",
+        "operationId": "get_admin_menus_api_admin_menus_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMenusOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/detectors/config": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Detectors Config",
+        "operationId": "get_detectors_config_api_detectors_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectorsConfigOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/status": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Admin Status",
+        "operationId": "get_admin_status_api_admin_status_get",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/controls/set": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Set Site Control",
+        "description": "Write an arbitrary control key/value (also used by the menu boxes).",
+        "operationId": "set_site_control_api_admin_controls_set_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/witness-detector": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Set Witness Detector",
+        "description": "Write the witness-detector value to its configured control key.",
+        "operationId": "set_witness_detector_api_admin_witness_detector_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/reset-head-node": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reset Head Node",
+        "description": "Trigger a head-node reset by writing its sentinel control value.",
+        "operationId": "reset_head_node_api_admin_reset_head_node_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/detectors/{set_name}/restart": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Restart Workers",
+        "description": "Restart a cluster set's workers.\n\nResolves the set's status key from ``redis_detectors`` config, derives the\nreset key (``CLUSTER_STATUS_X`` -> ``RUBINTV_CONTROL_RESET_X``) and writes\nthe ``reset`` sentinel (matching the original app).",
+        "operationId": "restart_workers_api_detectors__set_name__restart_post",
+        "parameters": [
+          {
+            "name": "set_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Set Name"
+            }
+          },
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/flush-historical": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Flush Historical",
+        "description": "Clear the disk + in-memory historical cache and trigger a cold\nrescan.",
+        "operationId": "flush_historical_api_admin_flush_historical_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/flush-redis": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Flush Redis",
+        "description": "Danger zone: flush the entire Redis database.",
+        "operationId": "flush_redis_api_admin_flush_redis_post",
+        "parameters": [
+          {
+            "name": "x-auth-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Auth-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/channels/{channel}/{date}/{seq}/{filename}": {
+      "get": {
+        "tags": [
+          "proxy"
+        ],
+        "summary": "Proxy Object",
+        "operationId": "proxy_object_api_locations__location__cameras__camera__channels__channel___date___seq___filename__get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "seq",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Seq"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}": {
+      "get": {
+        "tags": [
+          "proxy"
+        ],
+        "summary": "Proxy Night Report Plot",
+        "operationId": "proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Group"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/services": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Services",
+        "description": "Current liveness of every reporting RA service.",
+        "operationId": "services_api_health_services_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/heartbeats": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Post Heartbeat",
+        "description": "Record one liveness beat (fire-and-forget).",
+        "operationId": "post_heartbeat_internal_heartbeats_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Heartbeat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Post Heartbeat Internal Heartbeats Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/subapps": {
+      "get": {
+        "tags": [
+          "subapps"
+        ],
+        "summary": "List Subapps",
+        "description": "Mounted sub-app paths, for the frontend nav.",
+        "operationId": "list_subapps_api_subapps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object",
+                  "title": "Response List Subapps Api Subapps Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "App Config",
+        "description": "Deployment bootstrap the SPA reads at startup.\n\n``site`` is the deployment site name (``RAPID_ANALYSIS_LOCATION``:\n``summit``, ``usdf-k8s``, ``local`` \u2026). The frontend uses it to label\nthe header \u2014 which processing banner to show and whether to flag a\nnon-prod instance \u2014 since where the *pod* runs is distinct from which\nlocation's bucket is being viewed.",
+        "operationId": "app_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response App Config Api Config Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdminActionOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "AdminActionOut",
+        "description": "Generic result of an admin action."
+      },
+      "AdminMenuItemOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "AdminMenuItemOut"
+      },
+      "AdminMenuOut": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminMenuItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "key",
+          "items"
+        ],
+        "title": "AdminMenuOut"
+      },
+      "AdminMenusOut": {
+        "properties": {
+          "menus": {
+            "items": {
+              "$ref": "#/components/schemas/AdminMenuOut"
+            },
+            "type": "array",
+            "title": "Menus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "menus"
+        ],
+        "title": "AdminMenusOut"
+      },
+      "AdminStatusOut": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "git_sha": {
+            "type": "string",
+            "title": "Git Sha"
+          },
+          "commit_date": {
+            "type": "string",
+            "title": "Commit Date"
+          },
+          "is_release": {
+            "type": "boolean",
+            "title": "Is Release"
+          },
+          "redis_enabled": {
+            "type": "boolean",
+            "title": "Redis Enabled"
+          },
+          "cache_enabled": {
+            "type": "boolean",
+            "title": "Cache Enabled"
+          },
+          "witness_detector_key": {
+            "type": "string",
+            "title": "Witness Detector Key"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "git_sha",
+          "commit_date",
+          "is_release",
+          "redis_enabled",
+          "cache_enabled",
+          "witness_detector_key",
+          "is_admin"
+        ],
+        "title": "AdminStatusOut",
+        "description": "Site-wide admin panel header info."
+      },
+      "CalendarOut": {
+        "properties": {
+          "dates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dates"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts",
+            "default": {}
+          },
+          "max_seq": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Max Seq",
+            "default": {}
+          },
+          "channel_latest": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Channel Latest",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "dates"
+        ],
+        "title": "CalendarOut"
+      },
+      "CameraGroupOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/CameraSummary"
+            },
+            "type": "array",
+            "title": "Cameras"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "cameras"
+        ],
+        "title": "CameraGroupOut"
+      },
+      "CameraOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelOut"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "metadata_columns": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Metadata Columns"
+          },
+          "locked_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Locked Columns"
+          },
+          "image_viewer_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Viewer Link"
+          },
+          "quicklook_viewer_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quicklook Viewer Link"
+          },
+          "night_report_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Night Report Label"
+          },
+          "night_report_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Night Report Prefix"
+          },
+          "copy_row_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Row Template"
+          },
+          "live_view": {
+            "type": "boolean",
+            "title": "Live View"
+          },
+          "time_since_clock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeSinceClockOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extra_buttons": {
+            "items": {
+              "$ref": "#/components/schemas/ExtraButtonOut"
+            },
+            "type": "array",
+            "title": "Extra Buttons"
+          },
+          "mosaic_view_meta": {
+            "items": {
+              "$ref": "#/components/schemas/MosaicViewEntryOut"
+            },
+            "type": "array",
+            "title": "Mosaic View Meta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "online",
+          "logo",
+          "text_colour",
+          "icon",
+          "channels",
+          "metadata_columns",
+          "locked_columns",
+          "image_viewer_link",
+          "quicklook_viewer_link",
+          "night_report_label",
+          "night_report_prefix",
+          "copy_row_template",
+          "live_view",
+          "time_since_clock",
+          "extra_buttons",
+          "mosaic_view_meta"
+        ],
+        "title": "CameraOut",
+        "description": "Full camera detail for the camera page header."
+      },
+      "CameraStatus": {
+        "properties": {
+          "location": {
+            "type": "string",
+            "title": "Location"
+          },
+          "camera": {
+            "type": "string",
+            "title": "Camera"
+          },
+          "recent_ready": {
+            "type": "boolean",
+            "title": "Recent Ready"
+          },
+          "full_complete": {
+            "type": "boolean",
+            "title": "Full Complete"
+          }
+        },
+        "type": "object",
+        "required": [
+          "location",
+          "camera",
+          "recent_ready",
+          "full_complete"
+        ],
+        "title": "CameraStatus"
+      },
+      "CameraSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "text_shadow": {
+            "type": "boolean",
+            "title": "Text Shadow",
+            "default": false
+          },
+          "latest_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Date"
+          },
+          "primary_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "online"
+        ],
+        "title": "CameraSummary",
+        "description": "Camera as listed under a location (no heavy detail)."
+      },
+      "ChannelOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "per_day": {
+            "type": "boolean",
+            "title": "Per Day"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "label",
+          "colour",
+          "text_colour",
+          "icon",
+          "per_day"
+        ],
+        "title": "ChannelOut"
+      },
+      "ControlValue": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "ControlValue"
+      },
+      "ControlsOut": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "title": "ControlsOut"
+      },
+      "DatePayload": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "channels": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Channels"
+          },
+          "extensions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtInfoOut"
+            },
+            "type": "object",
+            "title": "Extensions"
+          },
+          "per_day": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Per Day"
+          },
+          "has_night_report": {
+            "type": "boolean",
+            "title": "Has Night Report"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "channels",
+          "extensions",
+          "per_day",
+          "has_night_report"
+        ],
+        "title": "DatePayload",
+        "description": "Everything needed to render a camera table for one date."
+      },
+      "DetectorOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "DetectorOut",
+        "description": "One configured cluster-status stream (site-wide)."
+      },
+      "DetectorsConfigOut": {
+        "properties": {
+          "detectors": {
+            "items": {
+              "$ref": "#/components/schemas/DetectorOut"
+            },
+            "type": "array",
+            "title": "Detectors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detectors"
+        ],
+        "title": "DetectorsConfigOut"
+      },
+      "EventOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "camera": {
+            "type": "string",
+            "title": "Camera"
+          },
+          "day_obs": {
+            "type": "string",
+            "title": "Day Obs"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "seq_num": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Seq Num"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "ext": {
+            "type": "string",
+            "title": "Ext"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "camera",
+          "day_obs",
+          "channel",
+          "seq_num",
+          "filename",
+          "ext"
+        ],
+        "title": "EventOut"
+      },
+      "ExtInfoOut": {
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "exceptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Exceptions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default",
+          "exceptions"
+        ],
+        "title": "ExtInfoOut"
+      },
+      "ExtraButtonOut": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "link_url": {
+            "type": "string",
+            "title": "Link Url"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "name",
+          "link_url",
+          "logo",
+          "text_colour"
+        ],
+        "title": "ExtraButtonOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Heartbeat": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "ttl": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Ttl",
+            "default": 30.0
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service"
+        ],
+        "title": "Heartbeat",
+        "description": "One liveness report from an RA service."
+      },
+      "KeyValuesText": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "keyvalues",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Content"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "content"
+        ],
+        "title": "KeyValuesText"
+      },
+      "LinkItem": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "url"
+        ],
+        "title": "LinkItem"
+      },
+      "LinksText": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "links",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "items": {
+              "$ref": "#/components/schemas/LinkItem"
+            },
+            "type": "array",
+            "title": "Content"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "content"
+        ],
+        "title": "LinksText"
+      },
+      "LiveResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "LiveResponse"
+      },
+      "LocationOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "text_shadow": {
+            "type": "boolean",
+            "title": "Text Shadow"
+          },
+          "is_teststand": {
+            "type": "boolean",
+            "title": "Is Teststand"
+          },
+          "has_cluster_status": {
+            "type": "boolean",
+            "title": "Has Cluster Status"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Services"
+          },
+          "camera_groups": {
+            "items": {
+              "$ref": "#/components/schemas/CameraGroupOut"
+            },
+            "type": "array",
+            "title": "Camera Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "logo",
+          "text_colour",
+          "text_shadow",
+          "is_teststand",
+          "has_cluster_status",
+          "services",
+          "camera_groups"
+        ],
+        "title": "LocationOut"
+      },
+      "LocationSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo"
+          },
+          "text_colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Colour"
+          },
+          "text_shadow": {
+            "type": "boolean",
+            "title": "Text Shadow",
+            "default": false
+          },
+          "is_teststand": {
+            "type": "boolean",
+            "title": "Is Teststand",
+            "default": false
+          },
+          "has_cluster_status": {
+            "type": "boolean",
+            "title": "Has Cluster Status",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title"
+        ],
+        "title": "LocationSummary"
+      },
+      "MosaicViewEntryOut": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "meta_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Meta Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "media_type",
+          "meta_columns"
+        ],
+        "title": "MosaicViewEntryOut"
+      },
+      "MultilineText": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "multiline",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "content"
+        ],
+        "title": "MultilineText"
+      },
+      "NightReportOut": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "exists": {
+            "type": "boolean",
+            "title": "Exists"
+          },
+          "text": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/MultilineText"
+                },
+                {
+                  "$ref": "#/components/schemas/KeyValuesText"
+                },
+                {
+                  "$ref": "#/components/schemas/LinksText"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "keyvalues": "#/components/schemas/KeyValuesText",
+                  "links": "#/components/schemas/LinksText",
+                  "multiline": "#/components/schemas/MultilineText"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Text"
+          },
+          "plots": {
+            "items": {
+              "$ref": "#/components/schemas/PlotOut"
+            },
+            "type": "array",
+            "title": "Plots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "exists",
+          "text",
+          "plots"
+        ],
+        "title": "NightReportOut"
+      },
+      "PlotOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "group",
+          "filename"
+        ],
+        "title": "PlotOut"
+      },
+      "ReadyResponse": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ready"
+        ],
+        "title": "ReadyResponse"
+      },
+      "ServicesResponse": {
+        "properties": {
+          "services": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Services"
+          }
+        },
+        "type": "object",
+        "required": [
+          "services"
+        ],
+        "title": "ServicesResponse"
+      },
+      "StatusResponse": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "cache_enabled": {
+            "type": "boolean",
+            "title": "Cache Enabled"
+          },
+          "warm_start": {
+            "type": "boolean",
+            "title": "Warm Start"
+          },
+          "historical_loading": {
+            "type": "boolean",
+            "title": "Historical Loading"
+          },
+          "s3_healthy": {
+            "type": "boolean",
+            "title": "S3 Healthy"
+          },
+          "s3_slow": {
+            "type": "boolean",
+            "title": "S3 Slow"
+          },
+          "s3_last_cycle_seconds": {
+            "type": "number",
+            "title": "S3 Last Cycle Seconds"
+          },
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/CameraStatus"
+            },
+            "type": "array",
+            "title": "Cameras"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ready",
+          "cache_enabled",
+          "warm_start",
+          "historical_loading",
+          "s3_healthy",
+          "s3_slow",
+          "s3_last_cycle_seconds",
+          "cameras"
+        ],
+        "title": "StatusResponse"
+      },
+      "TimeSinceClockOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "TimeSinceClockOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

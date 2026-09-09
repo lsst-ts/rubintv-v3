@@ -1,0 +1,4392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>RubinTV — Camera Table (sidebar) header explorations</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { height: 100%; }
+  body {
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .shell {
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    transition: grid-template-columns 180ms ease;
+  }
+  .shell.collapsed { grid-template-columns: 0 1fr; }
+
+  /* Sidebar */
+  .sidebar {
+    border-right: 1.5px solid var(--stroke);
+    background: var(--paper-2);
+    padding: 18px 14px;
+    overflow: hidden auto;
+    position: relative;
+    min-width: 0;
+    display: flex; flex-direction: column;
+  }
+  .shell.collapsed .sidebar { border-right: none; padding: 0; }
+  .sidebar-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .icon-btn {
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1.25px solid var(--stroke);
+    border-radius: 4px;
+    background: var(--paper);
+    cursor: pointer;
+    font-family: var(--mono); font-size: 13px; line-height: 1;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--paper-3); }
+
+  /* Sidebar footer — pinned to the bottom; home for the global theme toggle */
+  .sidebar-foot {
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid var(--line-soft);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .sidebar-foot .foot-label {
+    font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  /* Small reopen tab — just the chevron, no brand text. Lives in the
+     space the sidebar vacated. */
+  /* Reopen tab — anchored to the bottom-left of the topbar so it meets the
+     header bottom border. */
+  .topbar { position: relative; }
+  .sidebar-reopen {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1.25px solid var(--stroke); border-radius: 4px;
+    background: var(--paper-2);
+    cursor: pointer;
+    font-family: var(--mono); font-size: 14px; line-height: 1;
+  }
+  .sidebar-reopen:hover { background: var(--paper-3); }
+
+  /* Collapsed-sidebar left gutter — reopen button + vertical appearance picker,
+     top-anchored so they fill the space the sidebar vacated. */
+  .topbar-leftgutter {
+    position: absolute; top: 13px; left: 10px; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+
+  /* Brand block in the topbar right column — one compact line, visible only
+     when the sidebar is collapsed. */
+  .topbar-brand {
+    display: flex; flex-direction: row; align-items: center;
+    gap: 7px; line-height: 1;
+    margin-bottom: 0;
+  }
+  .topbar-brand .brand-mark { height: 13px; margin-bottom: 0; }
+  .topbar-brand .brand { font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+  .topbar-brand .site  {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+    padding-left: 7px; border-left: 1px solid var(--line-mid);
+  }
+  .sidebar h1 { font-family: var(--hand); font-weight: 700; font-size: 22px; margin: 0; }
+  .sidebar .site { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
+  .sidebar .group-h {
+    font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin: 14px 6px 4px;
+  }
+  .sidebar .cam {
+    font-family: var(--hand); font-size: 13px;
+    padding: 5px 10px; margin-bottom: 2px;
+    border: 1.25px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sidebar .cam:hover { background: var(--paper-3); }
+  .sidebar .cam.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .sidebar .cam.dim { color: var(--ink-soft); }
+  .sidebar .cam .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--good);
+  }
+  .sidebar .cam.dim .dot { background: var(--line-soft); }
+
+  /* Camera pills (wireframe-B sidebar) + per-camera view list */
+  .sidebar .cam-pills {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 6px 6px 2px;
+  }
+  .sidebar .cam-pill {
+    font-family: var(--hand); font-size: 13px; line-height: 1;
+    padding: 6px 11px;
+    border: 1.25px solid var(--stroke); border-radius: 6px;
+    background: var(--paper); color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .sidebar .cam-pill:hover { background: var(--paper-3); }
+  .sidebar .cam-pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .sidebar .cam-pill.dim {
+    color: var(--ink-soft); border-color: var(--line-soft);
+    cursor: default; opacity: 0.6;
+  }
+  .sidebar .cam-pill .pdot {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--good);
+    flex-shrink: 0;
+  }
+  .sidebar .cam-pill.active .pdot { background: var(--paper); }
+  .sidebar .cam-pill.dim .pdot { background: var(--line-soft); }
+
+  .sidebar .view-list { margin-top: 2px; }
+  .sidebar .view-item {
+    font-family: var(--hand); font-size: 14px;
+    padding: 6px 10px; margin: 0 6px 2px;
+    border-radius: 5px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar .view-item:hover { background: var(--paper-3); }
+  .sidebar .view-item.active { background: var(--accent-soft); font-weight: 600; }
+  .sidebar .view-item .vbullet {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--line-soft); flex-shrink: 0;
+  }
+  .sidebar .view-item.active .vbullet { background: var(--accent); }
+  .sidebar .view-item .vcount {
+    margin-left: auto; font-family: var(--mono); font-size: 10px;
+    color: var(--ink-soft);
+  }
+
+  /* All-sky feed view */
+  .allsky-wrap {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  }
+  .allsky-toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--paper-2);
+    position: relative; z-index: 5;
+  }
+  .amovie-label { font-family: var(--hand); font-size: 13px; color: var(--ink-soft); }
+  .amovie-reset {
+    font-family: var(--hand); font-size: 12px; color: var(--accent);
+    border-bottom: 1px dashed var(--accent); cursor: pointer;
+  }
+  .amovie-reset:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .allsky-stage {
+    flex: 1; min-height: 0; display: flex; gap: 22px;
+    align-items: flex-start; padding: 18px 22px 22px; overflow: auto;
+  }
+  .allsky-col {
+    flex: 1; min-width: 0; max-width: 540px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .allsky-mediahead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; padding: 0 2px;
+  }
+  .amh-title { font-family: var(--hand); font-weight: 700; font-size: 16px; }
+  .amh-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
+  .allsky-frame {
+    border: 1.5px solid var(--stroke); border-radius: 8px;
+    background: var(--paper-2); padding: 10px;
+  }
+  .allsky-ph {
+    position: relative;
+    aspect-ratio: 1 / 1; border-radius: 6px;
+    border: 1px solid var(--line-soft);
+    background:
+      repeating-linear-gradient(45deg, transparent 0 11px, rgba(0,0,0,0.035) 11px 22px),
+      radial-gradient(circle at 50% 48%, var(--paper) 0 54%, var(--paper-3) 70%, var(--paper-2) 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  }
+  .allsky-cap {
+    font-family: var(--mono); font-size: 13px; color: var(--ink-soft);
+    letter-spacing: 0.5px; white-space: nowrap;
+  }
+  .allsky-sub {
+    font-family: var(--mono); font-size: 10px; color: var(--line-soft);
+    white-space: nowrap;
+  }
+  .amovie-play {
+    width: 48px; height: 48px; border-radius: 50%;
+    border: 1.5px solid var(--ink-soft); color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; padding-left: 3px; margin-bottom: 8px;
+  }
+
+  /* ---------- Breadcrumbs (clickable) ---------- */
+  .crumb { font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .crumb .seg { color: var(--ink-soft); }
+  .crumb .seg.link { cursor: pointer; border-bottom: 1px dashed transparent; }
+  .crumb .seg.link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .crumb .sep { color: var(--line-soft); }
+
+  /* ---------- Landing pages (home + location) ---------- */
+  .landing {
+    height: 100vh; overflow: auto;
+    background: var(--paper);
+    padding: 0;
+  }
+  .landing-inner { max-width: 1080px; margin: 0 auto; padding: 40px 48px 64px; }
+  .landing-topbar {
+    padding: 14px 22px 14px;
+    border-bottom: 1.5px solid var(--stroke);
+    background: var(--paper);
+    position: sticky; top: 0; z-index: 4;
+  }
+  .landing-brand { font-family: var(--hand); font-weight: 700; font-size: 46px; margin: 0; line-height: 1; }
+  .landing-sub { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin-top: 8px; }
+  .landing-h {
+    font-family: var(--hand); font-size: 14px; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin: 38px 0 14px;
+  }
+
+  /* Location cards (home) */
+  .loc-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+  }
+  .loc-card {
+    border: 1.5px solid var(--stroke); border-radius: 8px;
+    background: var(--paper-2); padding: 18px 18px 14px;
+    cursor: pointer; transition: background 120ms ease, transform 120ms ease;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .loc-card:hover { background: var(--paper-3); transform: translateY(-2px); }
+  .loc-card-top { display: flex; align-items: center; justify-content: space-between; }
+  .loc-name { font-family: var(--hand); font-weight: 700; font-size: 24px; white-space: nowrap; }
+  .loc-arrow { font-family: var(--mono); font-size: 18px; color: var(--ink-soft); }
+  .loc-card:hover .loc-arrow { color: var(--accent); }
+  .loc-label { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+  .loc-blurb { font-family: var(--hand); font-size: 14px; color: var(--ink-2); margin-top: 2px; }
+  .loc-foot {
+    display: flex; align-items: center; gap: 14px; margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--line-soft);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  }
+  .loc-stat { display: inline-flex; align-items: center; gap: 6px; }
+  .loc-stat .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+  .loc-stat.dim { color: var(--line-soft); }
+
+  /* Camera cards (location page) */
+  .cam-group { margin-bottom: 22px; }
+  .cam-group-h {
+    font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+    margin-bottom: 8px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .cam-card {
+    border: 1.5px solid var(--stroke); border-radius: 7px;
+    background: var(--paper); padding: 14px 14px 12px;
+    cursor: pointer; transition: background 120ms ease, transform 120ms ease;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .cam-card:hover { background: var(--paper-2); transform: translateY(-2px); }
+  .cam-card.off { opacity: 0.55; cursor: not-allowed; }
+  .cam-card.off:hover { background: var(--paper); transform: none; }
+  .cam-card-name { font-family: var(--hand); font-weight: 700; font-size: 17px; }
+  .cam-card-status {
+    font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+    display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft);
+  }
+  .cam-card-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--line-soft); }
+  .cam-card-status.on { color: var(--good); }
+  .cam-card-status.on::before { background: var(--good); }
+
+  /* Main */
+  .main { overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .topbar {
+    padding: 12px 22px 0;
+    border-bottom: 1.5px solid var(--stroke);
+    background: var(--paper);
+  }
+  /* When sidebar is closed, leave just enough left-padding for the reopen
+     button; the page title fills the freed space. */
+  .shell.collapsed .topbar { padding-left: 56px; min-height: 116px; }
+  .crumb { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+  .title-row {
+    display: flex; align-items: baseline; gap: 14px; margin-top: 4px;
+  }
+  .title-row h2 { font-family: var(--hand); font-weight: 700; font-size: 30px; margin: 0; }
+  .title-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+  /* Live status pill — combined indicator. Pulsing dot from .tag.live
+     (border, pinkish bg) is in styles.css. Two rows, label left,
+     mono time numerals right — column-aligned via grid + tabular-nums
+     so the seconds digits line up vertically. */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 5px 14px 6px 12px;
+    line-height: 1.1;
+  }
+  .status-pill .clocks {
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: 8px;
+    row-gap: 1px;
+    align-items: baseline;
+  }
+  .status-pill .clock-label {
+    font-family: var(--hand);
+    font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: right;
+    line-height: 1.1;
+  }
+  .status-pill .clock-time {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--ink);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: 0.1px;
+  }
+  .status-pill .clock-time .ms {
+    font-size: 9px;
+    color: var(--ink-soft);
+    font-weight: 500;
+    margin-left: 1px;
+  }
+
+  .tabs {
+    display: flex; gap: 4px; margin-top: 12px;
+    border-bottom: 1px solid var(--line-mid);
+  }
+  .tab {
+    font-family: var(--display); font-size: 14px; font-weight: 500;
+    letter-spacing: -0.005em;
+    padding: 9px 15px 10px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    color: var(--ink-soft);
+    display: flex; align-items: center; gap: 7px;
+    transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+    border-radius: 5px 5px 0 0;
+  }
+  .tab:hover { color: var(--ink); background: var(--paper-2); }
+  .tab.active {
+    color: var(--ink);
+    font-weight: 700;
+    border-bottom-color: var(--accent);
+    background: transparent;
+  }
+  .tab .count {
+    font-family: var(--mono); font-size: 10px; font-weight: 500;
+    color: var(--ink-soft);
+    background: var(--paper-3);
+    padding: 1px 6px; border-radius: 999px;
+    line-height: 1.5;
+  }
+  .tab.active .count { background: var(--accent-soft); color: var(--accent); }
+
+  /* Controls bar */
+  .controls {
+    padding: 10px 22px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--paper);
+    position: relative;
+  }
+  .ctrl-spacer { flex: 1; }
+
+  /* ---------- Date picker ----------
+     The .btn-tab 📅 control opens a popover anchored below it. Three
+     visual variants are exposed as a tweak so the team can compare:
+       • 'classic'     — single-month grid + arrows
+       • 'two-months'  — two months side by side, no sidebar
+       • 'nights'      — vertical list of recent observing nights, with
+                          per-night metadata (image count, dome, seeing) and
+                          a small month mini-map
+     All three share the popover frame + month-grid pieces below.
+     Day cells show the MAX SEQ NUM for each observed night beneath the
+     date — a number is more informative than the dot we had originally. */
+  .date-cluster { position: relative; display: inline-flex; }
+  .date-pop {
+    position: absolute;
+    top: calc(100% + 6px); left: 0;
+    background: var(--paper);
+    border: 1.5px solid var(--stroke);
+    border-radius: 6px;
+    box-shadow: var(--shadow-pop);
+    z-index: 30;
+    font-family: var(--hand);
+    display: flex;
+    overflow: hidden;
+  }
+  .date-pop.v-classic { width: 280px; }
+  .date-pop.v-two-months { width: 580px; }
+  .date-pop.v-nights  { width: 460px; max-height: 380px; }
+
+  /* Month grid — shared by classic + presets */
+  .dp-month { flex: 1; padding: 10px 12px 12px; }
+  .dp-mhead {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .dp-mhead .month {
+    font-family: var(--hand); font-weight: 700; font-size: 14px;
+  }
+  .dp-mhead .yr {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+    margin-left: 4px;
+  }
+  .dp-mhead .arr {
+    width: 22px; height: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1.25px solid var(--stroke); border-radius: 3px;
+    background: var(--paper);
+    font-family: var(--mono); font-size: 11px; cursor: pointer;
+  }
+  .dp-mhead .arr:hover { background: var(--paper-3); }
+  .dp-mhead .arrs { display: inline-flex; gap: 4px; }
+  .dp-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+  }
+  .dp-grid .dow {
+    font-family: var(--mono); font-size: 9px;
+    color: var(--ink-soft);
+    text-align: center;
+    padding: 4px 0 5px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .dp-day {
+    height: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink);
+    border: 1.25px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+    font-variant-numeric: tabular-nums;
+    padding: 2px 0;
+  }
+  .dp-day .num { font-size: 11px; line-height: 1; }
+  .dp-day .ct {
+    font-size: 9px;
+    line-height: 1;
+    color: var(--ink-soft);
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+  .dp-day:hover { background: var(--paper-3); }
+  .dp-day.out { color: var(--line-soft); cursor: default; }
+  .dp-day.out:hover { background: transparent; }
+  .dp-day.out .ct { color: var(--line-soft); }
+  .dp-day.today {
+    border-color: var(--ink);
+    font-weight: 700;
+  }
+  .dp-day.selected {
+    background: var(--ink); color: var(--paper);
+    border-color: var(--ink);
+  }
+  .dp-day.selected .ct { color: var(--paper); opacity: 0.85; }
+  .dp-day.in-range { background: var(--accent-soft); }
+  .dp-day.disabled { color: var(--line-soft); cursor: not-allowed; }
+  .dp-day.disabled:hover { background: transparent; }
+
+  .dp-foot {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line-soft);
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-soft);
+  }
+  .dp-foot .input {
+    flex: 1; min-width: 0;
+    font-family: var(--mono); font-size: 11px;
+    padding: 3px 6px;
+    border: 1.25px solid var(--stroke); border-radius: 3px;
+    background: var(--paper); color: var(--ink);
+  }
+  .dp-foot .today-link {
+    cursor: pointer;
+    font-family: var(--hand); font-size: 11px;
+    color: var(--accent);
+    border-bottom: 1px dashed var(--accent);
+  }
+  .dp-foot .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+  /* Legend strip beneath grid (classic + presets) */
+  .dp-legend {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    margin-top: 6px;
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+  }
+  .dp-legend .swatch {
+    display: inline-block; width: 5px; height: 5px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* Two-month grid wrapper */
+  .dp-two {
+    display: flex; flex-direction: column;
+    width: 100%;
+  }
+  .dp-two-grids {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .dp-two-grids .dp-month { padding: 10px 12px 6px; }
+  .dp-two-grids .dp-month + .dp-month {
+    border-left: 1px solid var(--line-soft);
+  }
+  .dp-two-foot {
+    padding: 8px 14px 10px;
+    border-top: 1px solid var(--line-soft);
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-soft);
+    background: var(--paper-2);
+  }
+  .dp-two-foot .input {
+    flex: 1; min-width: 0;
+    font-family: var(--mono); font-size: 12px;
+    padding: 4px 8px;
+    border: 1.25px solid var(--stroke); border-radius: 3px;
+    background: var(--paper); color: var(--ink);
+  }
+  .dp-two-foot .today-link {
+    cursor: pointer;
+    font-family: var(--hand); font-size: 12px;
+    color: var(--accent);
+    border-bottom: 1px dashed var(--accent);
+  }
+  .dp-two-foot .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+  /* Presets sidebar (unused; kept so .dp-presets CSS doesn't 404 if
+     something else references it) */
+  .dp-presets {
+    width: 200px;
+    border-right: 1px solid var(--line-soft);
+    background: var(--paper-2);
+    padding: 10px 8px;
+    display: flex; flex-direction: column;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+  .dp-presets .ph {
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.3px;
+    padding: 4px 6px 2px;
+    background: transparent;
+    border: none;
+    white-space: nowrap;
+  }
+  .dp-preset {
+    padding: 5px 8px;
+    font-family: var(--hand); font-size: 12px;
+    color: var(--ink);
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .dp-preset > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+  .dp-preset:hover { background: var(--paper-3); }
+  .dp-preset.active { background: var(--ink); color: var(--paper); }
+  .dp-preset .pmeta {
+    font-family: var(--mono); font-size: 9px;
+    color: var(--ink-soft);
+  }
+  .dp-preset.active .pmeta { color: var(--paper); opacity: 0.7; }
+
+  /* Nights list variant */
+  .dp-nights-wrap { display: flex; width: 100%; min-height: 0; }
+  .dp-nights-list {
+    flex: 1; min-width: 0;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .dp-nights-list .nhdr {
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 6px 12px 4px;
+    position: sticky; top: 0;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line-soft);
+    z-index: 1;
+  }
+  .night-row {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    column-gap: 10px;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .night-row:hover { background: var(--paper-3); }
+  .night-row.selected { background: var(--accent-soft); }
+  .night-row .ndate {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .night-row .ndow {
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .night-row .nmid {
+    display: flex; flex-direction: column; gap: 2px;
+    min-width: 0;
+  }
+  .night-row .nlabel {
+    font-family: var(--hand); font-size: 12px;
+    color: var(--ink);
+  }
+  .night-row .nmeta {
+    font-family: var(--mono); font-size: 9.5px;
+    color: var(--ink-soft);
+    display: flex; gap: 8px;
+  }
+  .night-row .nmeta .bad { color: var(--warn); }
+  .night-row .ncount {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .night-row .ncount .imgs {
+    font-family: var(--hand); font-size: 9px;
+    color: var(--ink-soft);
+    display: block; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  /* Bar chart under image count, showing image volume across the night */
+  .night-row .nbars {
+    display: flex; align-items: flex-end; gap: 1px;
+    height: 14px;
+  }
+  .night-row .nbars span {
+    width: 3px;
+    background: var(--accent);
+    border-radius: 1px;
+    opacity: 0.6;
+  }
+  .night-row.selected .nbars span { opacity: 1; }
+
+  /* Mini month map on the right of the nights variant */
+  .dp-minimap {
+    width: 160px;
+    border-left: 1px solid var(--line-soft);
+    background: var(--paper-2);
+    padding: 10px 10px 12px;
+    flex-shrink: 0;
+  }
+  .dp-minimap .mm-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .dp-minimap .mm-month {
+    font-family: var(--hand); font-weight: 700; font-size: 12px;
+  }
+  .dp-minimap .mm-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+  }
+  .dp-minimap .mm-day {
+    aspect-ratio: 1;
+    font-family: var(--mono); font-size: 8.5px;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    border-radius: 2px;
+    position: relative;
+  }
+  .dp-minimap .mm-day:hover { background: var(--paper-3); }
+  .dp-minimap .mm-day.out { color: var(--line-soft); }
+  .dp-minimap .mm-day.has-data { color: var(--ink); font-weight: 600; }
+  .dp-minimap .mm-day.has-data::after {
+    content: ''; position: absolute; bottom: 1px;
+    width: 3px; height: 3px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .dp-minimap .mm-day.selected {
+    background: var(--ink); color: var(--paper);
+  }
+  .dp-minimap .mm-day.selected::after { background: var(--paper); }
+  .dp-minimap .mm-legend {
+    margin-top: 8px;
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    line-height: 1.4;
+  }
+
+  /* Column picker popover — wider than the filter popover because it
+     shows all columns at once in a multi-column grid. Sized to fit a
+     reasonable number of columns without horizontal scroll; the grid
+     auto-wraps vertically as needed. */
+  .cols-cluster { position: relative; display: inline-flex; }
+  .cols-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    font-family: var(--hand); font-size: 13px;
+    border: 1.25px solid var(--stroke);
+    border-radius: 4px;
+    background: var(--paper);
+    cursor: pointer;
+  }
+  .cols-btn:hover { background: var(--paper-3); }
+  .cols-btn.active { background: var(--accent-soft); border-color: var(--accent); }
+  .cols-btn .frac {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-soft);
+  }
+  .picker-pop {
+    position: absolute;
+    top: calc(100% + 6px); left: 0;
+    width: min(720px, calc(100vw - 40px));
+    max-height: 70vh;
+    background: var(--paper);
+    border: 1.5px solid var(--stroke);
+    border-radius: 6px;
+    box-shadow: var(--shadow-pop);
+    z-index: 20;
+    display: flex; flex-direction: column;
+    font-family: var(--hand);
+  }
+  .picker-head {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .picker-head .title {
+    font-family: var(--hand); font-weight: 700; font-size: 14px;
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .picker-head .count {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .picker-head .count b { color: var(--ink); }
+  .picker-head input.search {
+    flex: 1; min-width: 140px;
+    font-family: var(--mono); font-size: 12px;
+    padding: 5px 8px;
+    border: 1.25px solid var(--stroke);
+    border-radius: 3px;
+    background: var(--paper);
+  }
+  .picker-head .bulk {
+    display: inline-flex; gap: 6px;
+  }
+  .picker-head .bulk button {
+    font-family: var(--hand); font-size: 12px;
+    padding: 4px 10px;
+    border: 1.25px solid var(--stroke); border-radius: 3px;
+    background: var(--paper); cursor: pointer;
+  }
+  .picker-head .bulk button:hover { background: var(--paper-3); }
+  .picker-body {
+    flex: 1; overflow-y: auto;
+    padding: 8px 14px 12px;
+  }
+  .picker-group { margin-top: 12px; }
+  .picker-group:first-child { margin-top: 2px; }
+  .picker-group .group-title {
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin-bottom: 6px;
+    display: flex; align-items: baseline; gap: 8px;
+    border-bottom: 1px solid var(--line-soft);
+    padding-bottom: 3px;
+  }
+  .picker-group .group-title .num {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-soft);
+  }
+  .picker-group .group-title .group-bulk {
+    margin-left: auto;
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .picker-group .group-title .group-bulk:hover { color: var(--accent); }
+  /* Auto-fill grid — as many columns as the popover width allows. */
+  .picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 2px 14px;
+  }
+  .picker-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--hand); font-size: 13px;
+    color: var(--ink);
+    user-select: none;
+  }
+  .picker-item:hover { background: var(--paper-3); }
+  .picker-item.dim { color: var(--ink-soft); }
+  .picker-item input[type="checkbox"] {
+    width: 14px; height: 14px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .picker-item .label-text {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .picker-item mark {
+    background: transparent; color: var(--accent); font-weight: 700;
+    padding: 0;
+  }
+  .picker-item .swatch {
+    width: 10px; height: 10px;
+    border: 1px solid var(--stroke);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .picker-foot {
+    padding: 8px 14px;
+    border-top: 1px solid var(--line-soft);
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+    background: var(--paper-2);
+  }
+  .picker-foot .spacer { flex: 1; }
+
+  /* Filter chip strip — separate row below the controls bar so wrapping
+     chips never affect the formatting of the controls row. */
+  .filter-bar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 6px;
+    padding: 6px 22px;
+    background: var(--paper-2);
+    border-bottom: 1px solid var(--line-soft);
+    min-height: 32px;
+  }
+  .filter-bar > .label {
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-right: 2px;
+  }
+  .filter-bar .empty-hint {
+    font-family: var(--hand); font-size: 12px;
+    color: var(--ink-soft); font-style: italic;
+  }
+
+  /* Filter cluster ------------------------------------------------ */
+  .filter-cluster { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+  .filter-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    font-family: var(--hand); font-size: 13px;
+    border: 1.25px solid var(--stroke);
+    border-radius: 4px;
+    background: var(--paper);
+    cursor: pointer;
+  }
+  .filter-btn:hover { background: var(--paper-3); }
+  .filter-btn.active { background: var(--accent-soft); border-color: var(--accent); }
+  .filter-btn .count {
+    font-family: var(--mono); font-size: 10px;
+    padding: 1px 5px; border-radius: 10px;
+    background: var(--accent); color: var(--paper);
+  }
+
+  .filter-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 4px 3px 8px;
+    border: 1.25px solid var(--stroke); border-radius: 14px;
+    background: var(--paper-2);
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    line-height: 1;
+  }
+  .filter-chip .col {
+    font-family: var(--hand); font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .filter-chip .op {
+    font-family: var(--mono); color: var(--ink-soft);
+    padding: 0 2px;
+  }
+  .filter-chip .val { color: var(--ink); font-weight: 600; }
+  .filter-chip .x {
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-family: var(--mono); font-size: 12px; line-height: 1;
+    color: var(--ink-soft);
+    cursor: pointer;
+    margin-left: 2px;
+  }
+  .filter-chip .x:hover { background: var(--ink); color: var(--paper); }
+  .filter-clear {
+    font-family: var(--hand); font-size: 12px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    margin-left: 2px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .filter-clear:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Filter popover */
+  .filter-pop {
+    position: absolute;
+    top: calc(100% + 6px); left: 0;
+    width: 320px;
+    background: var(--paper);
+    border: 1.5px solid var(--stroke);
+    border-radius: 6px;
+    box-shadow: var(--shadow-pop);
+    z-index: 20;
+    padding: 10px 12px 12px;
+    font-family: var(--hand);
+  }
+  .filter-pop h4 {
+    margin: 0 0 8px;
+    font-family: var(--hand); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--ink-soft);
+  }
+  .filter-pop .row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px;
+  }
+  .filter-pop label {
+    font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+    width: 38px;
+  }
+  .filter-pop select, .filter-pop input {
+    flex: 1;
+    font-family: var(--mono); font-size: 11px;
+    padding: 4px 6px;
+    border: 1.25px solid var(--stroke);
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--ink);
+    min-width: 0;
+  }
+  .filter-pop select.op { flex: 0 0 56px; }
+  .filter-pop .apply {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 100%;
+    padding: 6px 0;
+    margin-top: 4px;
+    font-family: var(--hand); font-size: 13px; font-weight: 700;
+    background: var(--ink); color: var(--paper);
+    border: none; border-radius: 4px;
+    cursor: pointer;
+  }
+  .filter-pop .apply:disabled { opacity: 0.4; cursor: not-allowed; }
+  .filter-pop .apply:hover:not(:disabled) { background: var(--accent); }
+  .filter-pop .hint {
+    margin-top: 6px;
+    font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+  }
+  .filter-pop .suggestions {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 4px;
+  }
+  .filter-pop .suggestion {
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 6px;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--ink);
+    background: var(--paper-2);
+  }
+  .filter-pop .suggestion:hover { border-style: solid; border-color: var(--accent); color: var(--accent); }
+
+  /* Fuzzy column combobox. Replaces the giant <select> — with 100+ columns
+     a dropdown is unusable; typed substring/subsequence search is faster. */
+  .filter-combo { position: relative; flex: 1; min-width: 0; }
+  .filter-combo input {
+    width: 100%;
+    font-family: var(--mono); font-size: 11px;
+    padding: 4px 6px;
+    border: 1.25px solid var(--stroke);
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--ink);
+    box-sizing: border-box;
+  }
+  .filter-combo input:focus { outline: 2px solid var(--accent-soft); outline-offset: -1px; }
+  .filter-combo .list {
+    position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+    max-height: 180px; overflow-y: auto;
+    background: var(--paper);
+    border: 1.25px solid var(--stroke);
+    border-radius: 3px;
+    z-index: 30;
+    box-shadow: var(--shadow-pop);
+  }
+  .filter-combo .count {
+    padding: 4px 8px;
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--paper-2);
+    text-transform: uppercase; letter-spacing: 0.3px;
+    position: sticky; top: 0; z-index: 1;
+  }
+  .filter-combo .item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 8px;
+    font-family: var(--mono); font-size: 11px;
+    cursor: pointer;
+    color: var(--ink);
+    gap: 6px;
+  }
+  .filter-combo .item:hover { background: var(--paper-3); }
+  .filter-combo .item.kbd-active { background: var(--accent-soft); }
+  .filter-combo .item .name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .filter-combo .item mark {
+    background: transparent; color: var(--accent);
+    font-weight: 700;
+    padding: 0;
+  }
+  .filter-combo .item .type-pill {
+    font-family: var(--hand); font-size: 9px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--ink-soft);
+    padding: 1px 5px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .filter-combo .empty {
+    padding: 8px;
+    font-family: var(--hand); font-size: 11px;
+    color: var(--ink-soft); font-style: italic;
+    text-align: center;
+  }
+  .filter-pop .type-tag {
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    margin-left: auto;
+    padding: 1px 6px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .filter-pop .col-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  /* Table area */
+  .table-wrap {
+    flex: 1;
+    overflow: auto;
+    background: var(--paper);
+    position: relative;
+  }
+  .data-table {
+    border-collapse: collapse;
+    font-family: var(--mono);
+    table-layout: fixed;
+    width: max-content;
+    min-width: 100%;
+  }
+  .data-table th, .data-table td {
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+    padding: 6px 8px;
+    font-size: 11px;
+    vertical-align: middle;
+    background-clip: padding-box;
+  }
+  .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--paper-2);
+    border-right: none;
+    border-bottom: 1.5px solid var(--stroke);
+    font-family: var(--hand);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: left;
+    user-select: none;
+  }
+  /* Sticky seq column */
+  .data-table th.seq, .data-table td.seq {
+    position: sticky; left: 0;
+    z-index: 4;
+    background: var(--paper-2);
+    border-right: 1.5px solid var(--stroke);
+  }
+  .data-table thead th.seq { z-index: 6; border-right: 1.5px solid var(--stroke); }
+
+  /* Cell chip (for channel image previews) */
+  .cell-chip {
+    width: 26px; height: 26px;
+    border: 1px solid var(--stroke);
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  /* Resizer removed per teammate feedback */
+
+  /* HEADER STYLES */
+
+  /* Style: ellipsis */
+  .hs-ellipsis th .label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px;
+  }
+
+  /* Style: wrap */
+  .hs-wrap th .label {
+    display: block;
+    white-space: normal;
+    line-height: 1.15;
+    word-break: break-word;
+    text-wrap: balance;
+  }
+  .hs-wrap thead th { vertical-align: bottom; padding-top: 10px; padding-bottom: 6px; }
+
+  /* Style: stacked (words on separate lines, no rotation) */
+  .hs-stacked thead th { vertical-align: bottom; padding: 8px 8px 6px; }
+  .hs-stacked thead th .label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.05;
+    gap: 1px;
+    font-size: 11px;
+  }
+  .hs-stacked thead th .label span { display: block; }
+
+  /* Style: angled
+     Column widths come from the data. Header labels are rendered as a
+     separate overlay layer (absolutely-positioned divs above the table)
+     whose horizontal position is computed from each <th>'s actual offsetLeft.
+     This way a label can extend rightward past its own column, only ever
+     truncated when its diagonal projection would exceed --header-h.
+     The full name is offered on hover via the div's title attribute.
+     The seq.no column is rendered angled too, matching the other columns. */
+  .hs-angled thead th {
+    height: var(--header-h, 150px);
+    vertical-align: bottom;
+    padding: 0;
+  }
+  .hs-angled thead th:not(.seq) .label { display: none; } /* labels live in overlay */
+  /* Seq column stays sticky-left and needs its label rendered IN the cell
+     (the overlay scrolls horizontally with the rest of the content). */
+  .hs-angled thead th.seq {
+    padding: 6px 8px;
+    z-index: 8;            /* sit above the header overlay (z:7) */
+  }
+  .hs-angled thead th.seq .label {
+    font-family: var(--hand);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* Overlay layer: one rotated div per column, positioned at the column's
+     measured x-offset. Sits inside .table-wrap so it scrolls horizontally
+     WITH the table content — do NOT pin to left:0 or labels will drift out
+     of sync with their columns as the user scrolls right. Vertically, it
+     sticks to top:0 so it stays put while the body scrolls. */
+  .header-overlay {
+    position: sticky;
+    top: 0;
+    /* no `left` — overlay flows horizontally with the table content */
+    height: var(--header-h, 150px);
+    margin-bottom: calc(var(--header-h, 150px) * -1);  /* overlap the thead band */
+    pointer-events: none;
+    z-index: 7;
+  }
+  .header-overlay-bg {
+    position: absolute;
+    inset: 0;
+    background: var(--paper-2);
+    border-bottom: 1.5px solid var(--stroke);
+    pointer-events: none;
+  }
+  .header-overlay .hdr-label {
+    position: absolute;
+    bottom: 6px;
+    transform: rotate(-45deg);
+    transform-origin: left bottom;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Truncated only by header height. At -45°, vertical projection =
+       L × sin(45°) ≈ L × 0.707, so max L = H × √2 ≈ H × 1.4142. */
+    max-width: calc(var(--header-h, 150px) * 1.4142);
+    font-family: var(--hand);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--ink);
+    padding: 2px 6px 2px 4px;
+    pointer-events: auto;
+    cursor: help;
+  }
+
+  /* Style: vertical */
+  .hs-vertical thead th { height: 130px; vertical-align: bottom; padding: 6px 0; }
+  .hs-vertical thead th .label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 120px;
+    font-size: 11px;
+    padding: 6px 2px;
+  }
+  .hs-vertical thead th.seq .label { writing-mode: horizontal-tb; transform: none; padding: 8px; max-height: none; }
+  .hs-vertical thead th.seq { height: 130px; vertical-align: bottom; }
+
+  /* Newest row highlight */
+  tr.newest td { background: var(--accent-soft); }
+  tr.newest td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+  /* Annotations */
+  .anno {
+    font-family: var(--hand); color: var(--accent); font-size: 12px;
+    line-height: 1.25;
+  }
+
+  /* Tooltip on hover for ellipsis */
+  th[title] { cursor: help; }
+
+  /* Object-cell glyph: single unicode char shown in the cell, clickable
+     to open a FoldoutCell with the underlying object payload. */
+  .obj-glyph {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 20px;
+    padding: 0 4px;
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    background: var(--paper);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .obj-glyph:hover { border-color: var(--ink); background: var(--paper-3); }
+  .obj-cell.empty { color: var(--ink-soft); font-family: var(--mono); }
+
+  /* Foldout popover — modal-ish frame anchored near the clicked cell,
+     showing either a flat list of values or key-value pairs. */
+  .foldout-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(20, 20, 28, 0.15);
+    z-index: 50;
+  }
+  .foldout {
+    position: fixed;
+    background: var(--paper);
+    border: 1.5px solid var(--stroke);
+    border-radius: 6px;
+    box-shadow: var(--shadow-pop);
+    z-index: 51;
+    min-width: 260px;
+    max-width: 380px;
+    max-height: 60vh;
+    display: flex; flex-direction: column;
+    font-family: var(--mono);
+  }
+  .foldout-head {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex; align-items: baseline; gap: 8px;
+    background: var(--paper-2);
+    border-radius: 6px 6px 0 0;
+  }
+  .foldout-head .glyph {
+    font-size: 14px; line-height: 1;
+  }
+  .foldout-head .title {
+    font-family: var(--hand); font-weight: 700; font-size: 13px;
+    color: var(--ink);
+  }
+  .foldout-head .seq {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+    margin-left: auto;
+  }
+  .foldout-head .close {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    background: var(--paper);
+    cursor: pointer;
+    font-family: var(--mono); font-size: 11px; line-height: 1;
+    color: var(--ink-soft);
+  }
+  .foldout-head .close:hover { background: var(--paper-3); color: var(--ink); }
+  .foldout-body {
+    flex: 1; overflow-y: auto;
+    padding: 6px 0;
+  }
+  .foldout-body .row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 3px 12px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .foldout-body .row:nth-child(even) { background: var(--paper-2); }
+  .foldout-body .row .k {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-soft);
+    min-width: 44px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .foldout-body .row .v {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .foldout-body.list .row .k { min-width: 28px; }
+  .foldout-foot {
+    padding: 5px 12px 6px;
+    border-top: 1px solid var(--line-soft);
+    background: var(--paper-2);
+    font-family: var(--hand); font-size: 10px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.4px;
+    border-radius: 0 0 6px 6px;
+  }
+
+  /* Filter-hidden notice — banner above the scrollable table area
+     telling the user when filters are suppressing rows. Lives OUTSIDE
+     .table-wrap so it never scrolls horizontally with the table. */
+  .filter-notice {
+    flex-shrink: 0;
+    padding: 6px 16px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent);
+    font-family: var(--hand);
+    font-size: 12px;
+    color: var(--ink);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .filter-notice .icon {
+    font-family: var(--mono); font-size: 10px;
+    padding: 1px 6px;
+    border: 1px solid var(--stroke);
+    border-radius: 10px;
+    background: var(--paper);
+  }
+  .filter-notice .count {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink); font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .filter-notice .spacer { flex: 1; }
+  .filter-notice .clear {
+    cursor: pointer;
+    font-family: var(--hand); font-size: 12px;
+    color: var(--ink);
+    border-bottom: 1px dashed var(--ink);
+  }
+  .filter-notice .clear:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Empty state — shown when filters exclude every row. */
+  .empty-state {
+    padding: 40px 24px;
+    text-align: center;
+    font-family: var(--hand);
+    color: var(--ink-soft);
+  }
+  .empty-state .glyph {
+    font-size: 32px;
+    margin-bottom: 6px;
+    opacity: 0.6;
+  }
+  .empty-state .title {
+    font-family: var(--hand); font-weight: 700; font-size: 16px;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .empty-state .sub {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .empty-state .clear-link {
+    cursor: pointer;
+    font-family: var(--hand); font-size: 13px;
+    color: var(--accent);
+    border-bottom: 1px dashed var(--accent);
+  }
+  .empty-state .clear-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+  /* Bottom hint bar */
+  .hintbar {
+    border-top: 1px solid var(--line-soft);
+    padding: 8px 22px;
+    background: var(--paper-2);
+    font-family: var(--hand); font-size: 12px;
+    color: var(--ink-soft);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .hintbar kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border: 1px solid var(--ink-soft);
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  /* ====== Channels tab — Layout C (grouped list + single viewer),
+     restyled in the paper/ink wireframe vocabulary ====== */
+  .chv-root {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 288px 1fr;
+    background: var(--paper);
+  }
+
+  /* Left: grouped channel list */
+  .chv-list {
+    border-right: 1.5px solid var(--stroke);
+    background: var(--paper-2);
+    overflow-y: auto;
+    padding: 16px 0 24px;
+    min-width: 0;
+  }
+  .chv-list-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 0 16px 12px;
+  }
+  .chv-list-head .ttl { font-family: var(--hand); font-weight: 700; font-size: 19px; }
+  .chv-list-head .ct {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+    letter-spacing: 0.5px;
+  }
+  .chv-group { margin-bottom: 12px; }
+  .chv-group-h {
+    padding: 6px 16px 4px;
+    font-family: var(--hand); font-size: 11px;
+    color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .chv-item {
+    display: grid;
+    grid-template-columns: 12px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .chv-item:hover { background: var(--paper-3); }
+  .chv-item.active {
+    background: var(--paper);
+    border-left-color: var(--accent);
+  }
+  .chv-item .sw {
+    width: 12px; height: 12px;
+    border: 1.25px solid var(--stroke);
+    border-radius: 2px;
+  }
+  .chv-item .nm-wrap { min-width: 0; }
+  .chv-item .nm {
+    font-family: var(--hand); font-size: 14.5px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chv-item.active .nm { font-weight: 700; }
+  .chv-item .mt {
+    font-family: var(--mono); font-size: 9.5px; color: var(--ink-soft);
+    margin-top: 1px;
+  }
+  .chv-tag {
+    font-size: 9px;
+    padding: 1px 7px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .chv-tag.live::before { width: 5px; height: 5px; }
+
+  /* Right: single channel viewer */
+  .chv-viewer {
+    overflow-y: auto;
+    padding: 22px 26px 30px;
+    min-width: 0;
+  }
+  .chv-vhead {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px;
+  }
+  .chv-vhead .sw {
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--stroke);
+    border-radius: 3px;
+  }
+  .chv-vhead h3 {
+    font-family: var(--hand); font-weight: 700; font-size: 30px;
+    margin: 0; line-height: 1;
+  }
+  .chv-vhead .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+  .chv-frame {
+    height: 380px;
+    border-radius: 5px;
+    border-width: 1.5px;
+  }
+  .chv-cols {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 26px;
+    margin-top: 18px;
+  }
+  .chv-section-h {
+    font-family: var(--hand); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .chv-desc {
+    font-family: var(--sans); font-size: 14px; line-height: 1.55;
+    color: var(--ink-2); text-wrap: pretty;
+  }
+  .chv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chv-actions .btn { font-size: 13px; padding: 5px 10px; }
+  .chv-actions .btn.chv-copied {
+    background: var(--good);
+    border-color: var(--good);
+    color: var(--paper);
+  }
+  .chv-meta-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 16px;
+    font-family: var(--mono); font-size: 11.5px;
+  }
+  .chv-meta-grid .k { color: var(--ink-soft); }
+  .chv-meta-grid .v { color: var(--ink); }
+
+  /* ====== Night report tab ======
+     Faithful to the real RubinTV NightReport component: the report is its
+     own set of folder tabs. Each text item is one tab (multiline / keyvalues
+     / links); each plot GROUP is one tab showing a 2-up grid of figures
+     (image + filename figcaption). One panel shows at a time. A hidden
+     'elana' tab is revealed by typing its name, as in the real app. */
+  .nr-root {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .nr-head {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 18px 26px 0;
+  }
+  .nr-head h3 { font-family: var(--hand); font-weight: 700; font-size: 27px; margin: 0; line-height: 1; }
+  .nr-head .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+  /* Folder-style sub-tab strip */
+  .nr-tabwrap { padding: 16px 26px 0; flex-shrink: 0; }
+  .nr-subtabs {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    align-items: flex-end;
+    border-bottom: 1.5px solid var(--stroke);
+  }
+  .nr-subtab {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 13px 7px;
+    font-family: var(--hand); font-size: 13px;
+    color: var(--ink-soft);
+    background: var(--paper-2);
+    border: 1.5px solid var(--stroke); border-bottom: none;
+    border-radius: 7px 7px 0 0;
+    cursor: pointer;
+    position: relative; top: 1.5px;
+  }
+  .nr-subtab:hover { background: var(--paper-3); }
+  .nr-subtab.active {
+    background: var(--paper);
+    color: var(--ink); font-weight: 700;
+    border-bottom: 1.5px solid var(--paper);
+    z-index: 1;
+  }
+  .nr-subtab .kind {
+    font-family: var(--mono); font-size: 8px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--ink-soft);
+    border: 1px solid var(--line-soft); border-radius: 6px;
+    padding: 0 5px;
+  }
+  .nr-subtab .pct {
+    font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .nr-subtab.egg { border-style: dashed; }
+
+  /* Content panel */
+  .nr-panel {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    padding: 20px 26px 30px;
+  }
+
+  /* Text panels — key/value rendered as a list (real app uses <ul><li>) */
+  .nr-text { max-width: 660px; }
+  .nr-text .lead {
+    font-family: var(--hand); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--ink-soft);
+    margin-bottom: 12px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .nr-text .lead .pill {
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.4px;
+    border: 1px solid var(--line-soft); border-radius: 6px; padding: 0 5px;
+  }
+  .nr-kv {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 6px 16px;
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .nr-kv .k { color: var(--ink-soft); }
+  .nr-kv .v { color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+  .nr-log {
+    margin: 0;
+    font-family: var(--mono); font-size: 12px; line-height: 1.6;
+    color: var(--ink-2);
+    white-space: pre-wrap;
+  }
+  .nr-links { display: flex; flex-direction: column; gap: 6px; }
+  .nr-link {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 9px 14px;
+    border: 1.25px solid var(--stroke); border-radius: 6px;
+    background: var(--paper-2);
+    cursor: pointer;
+  }
+  .nr-link:hover { background: var(--paper-3); }
+  .nr-link .lk { font-family: var(--hand); font-size: 14px; color: var(--accent); }
+  .nr-link .ld { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); margin-left: auto; }
+  .nr-link .arr { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+
+  /* Plots grid — real app is 2-up, flex-wrap; each .plot is a figure */
+  .nr-plot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .nr-plot { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .nr-plot .ph {
+    aspect-ratio: 4 / 3; width: 100%;
+    border: 1.5px solid var(--stroke); border-radius: 5px;
+    flex-direction: column; gap: 5px;
+  }
+  .nr-plot .ph .stamp {
+    font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+  }
+  .nr-plot .ph .axes {
+    font-family: var(--hand); font-size: 9px; color: var(--ink-soft);
+    letter-spacing: 0.3px;
+  }
+  .nr-plot figcaption {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    word-break: break-all;
+  }
+  .nr-eggnote {
+    font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+    line-height: 1.5; max-width: 460px;
+  }
+
+  /* ============================================================
+     RUBINTV — BRAND THEME  (fleshed-out styling)
+     Vera C. Rubin Observatory: constellation teal on clean cool
+     white, charcoal structure, IBM Plex data + Space Grotesk
+     display. Scoped to this file; supersedes the wireframe tokens.
+     ============================================================ */
+  :root {
+    --ink: #23282d;
+    --ink-2: #4b525a;
+    --ink-soft: #828b93;
+    --line: #23282d;
+    --line-soft: #e3e8ea;
+    --line-mid: #ccd3d7;
+    --stroke: #23282d;          /* structural hairlines (charcoal in light) */
+    color-scheme: light;
+
+    --paper: #ffffff;
+    --paper-2: #f5f8f9;
+    --paper-3: #ebeff1;
+
+    --accent: #0a8d93;          /* readable teal — links, focus, selection */
+    --accent-bright: #00bbc6;   /* constellation cyan — live, bars, dots */
+    --accent-soft: #ddf1f2;     /* selected-row / in-range tint */
+    --accent-line: #8ad6da;
+
+    --warn: #d97a2f;
+    --good: #1f9d63;
+
+    --hand: 'IBM Plex Sans', system-ui, sans-serif;     /* UI labels */
+    --display: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
+
+    --shadow-pop: 0 12px 34px -10px rgba(18,32,38,0.26), 0 3px 10px -3px rgba(18,32,38,0.12);
+    --shadow-card: 0 1px 2px rgba(18,32,38,0.05), 0 8px 20px -12px rgba(18,32,38,0.20);
+  }
+
+  body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+  /* Display type on the big titles + section heads */
+  .sidebar h1, .title-row h2, .landing-brand, .chv-vhead h3, .nr-head h3,
+  .chv-list-head .ttl, .loc-name, .cam-card-name {
+    font-family: var(--display); letter-spacing: -0.012em;
+  }
+  .group-h, .landing-h, .cam-group-h, .chv-group-h, .chv-section-h,
+  .picker-head .title, .picker-group .group-title, .dp-nights-list .nhdr,
+  .filter-bar > .label { letter-spacing: 0.08em !important; }
+
+  /* Buttons → quiet control border, soft hover, snappy active */
+  .btn {
+    border: 1px solid var(--line-mid);
+    border-radius: 6px;
+    background: var(--paper);
+    font-weight: 500;
+    transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+  .btn-tab { background: var(--paper-2); }
+  .btn-active, .btn.btn-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* Tags / pills */
+  .tag { border: 1px solid var(--line-mid); border-radius: 999px; font-weight: 500; }
+  .tag.live { background: var(--paper-2); border-color: var(--line-mid); }
+  .tag.live::before { background: var(--good); }
+
+  /* Cards → hairline + soft shadow + teal lift on hover */
+  .loc-card, .cam-card {
+    border: 1px solid var(--line-mid);
+    box-shadow: var(--shadow-card);
+  }
+  .loc-card:hover, .cam-card:hover:not(.off) {
+    border-color: var(--accent-line); box-shadow: var(--shadow-pop);
+  }
+  .allsky-frame, .chv-frame { border: 1px solid var(--line-mid); box-shadow: var(--shadow-card); }
+
+  /* Floating surfaces → hairline border (shadow handled by sweep) */
+  .date-pop, .picker-pop, .filter-pop, .foldout, .filter-combo .list {
+    border: 1px solid var(--line-mid);
+  }
+
+  /* Inputs / combobox / selects — quiet by default, teal focus ring */
+  .filter-pop select, .filter-pop input, .filter-combo input,
+  .dp-foot .input, .dp-two-foot .input, .picker-head input.search,
+  .icon-btn, .sidebar-reopen {
+    border-color: var(--line-mid);
+  }
+  .filter-combo input:focus,
+  .filter-pop input:focus, .filter-pop select:focus,
+  .picker-head input.search:focus, .dp-foot .input:focus, .dp-two-foot .input:focus {
+    outline: 2px solid var(--accent-soft); outline-offset: -1px; border-color: var(--accent);
+  }
+
+  /* Active controls / filter triggers → teal */
+  .filter-btn.active, .cols-btn.active { background: var(--accent-soft); border-color: var(--accent); }
+  .filter-btn .count { background: var(--accent-bright); }
+
+  /* Folder sub-tabs inside the night report keep the teal top accent */
+  .nr-subtab.active { box-shadow: inset 0 2.5px 0 var(--accent); }
+
+  /* Calendar — selected = teal, today = teal ring */
+  .dp-day.selected, .dp-minimap .mm-day.selected {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .dp-day.selected .ct { color: #fff; }
+  .dp-day.today { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .dp-minimap .mm-day.has-data::after { background: var(--accent-bright); }
+
+  /* Sidebar nav active — charcoal stays for structure; online dot = cyan */
+  .sidebar .cam .dot, .sidebar .cam-pill .pdot,
+  .loc-stat .dot, .cam-card-status.on::before { background: var(--accent-bright); }
+  .sidebar .view-item.active .vbullet { background: var(--accent); }
+
+  /* Data table — solid hairline grid, crisp sticky header */
+  .data-table thead th { letter-spacing: 0.01em; background: var(--paper-2); }
+  .data-table th.seq, .data-table td.seq { background: var(--paper-2); }
+  tr.newest td { background: var(--accent-soft); }
+
+  /* Night-report plot placeholders + all-sky frame stay neutral on white */
+  .nr-plot .ph, .allsky-ph { background-color: var(--paper-2); }
+
+  /* Live status pill text */
+  .status-pill .clock-time { color: var(--ink); }
+
+
+  /* ============================================================
+     DARK THEME + theme selector
+     ============================================================ */
+  [data-theme="dark"] {
+    --ink: #e8edef;
+    --ink-2: #aeb7bd;
+    --ink-soft: #808a91;
+    --line: #e8edef;
+    --line-soft: #262d32;
+    --line-mid: #38424a;
+    --stroke: #3a444c;
+
+    --paper: #14181b;
+    --paper-2: #1a2024;
+    --paper-3: #232b30;
+
+    --accent: #2cc6cd;
+    --accent-bright: #19d3da;
+    --accent-soft: #0f2f33;
+    --accent-line: #2c6a6e;
+
+    --warn: #e2914e;
+    --good: #2bb673;
+
+    --shadow-pop: 0 16px 44px -12px rgba(0,0,0,0.70), 0 4px 14px -4px rgba(0,0,0,0.55);
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.45), 0 10px 26px -16px rgba(0,0,0,0.65);
+
+    color-scheme: dark;
+  }
+  [data-theme="dark"] .ph, [data-theme="dark"] .wf, [data-theme="dark"] .scroller,
+  [data-theme="dark"] .chip, [data-theme="dark"] .ccd { border-color: var(--line-mid); }
+  [data-theme="dark"] .sidebar .cam.active {
+    background: var(--paper-3); color: var(--ink); border-color: var(--accent);
+  }
+  [data-theme="dark"] .sidebar .cam.active .dot { background: var(--accent-bright); }
+  [data-theme="dark"] .sidebar .cam-pill.active {
+    background: var(--accent-soft); color: var(--ink); border-color: var(--accent);
+  }
+  [data-theme="dark"] .sidebar .cam-pill.active .pdot { background: var(--accent-bright); }
+  [data-theme="dark"] .btn-active, [data-theme="dark"] .btn.btn-active {
+    background: var(--accent); color: #07211f; border-color: var(--accent);
+  }
+  [data-theme="dark"] .nr-subtab.active { background: var(--paper); border-bottom-color: var(--paper); }
+  [data-theme="dark"] .cell-chip, [data-theme="dark"] .chv-item .sw,
+  [data-theme="dark"] .chv-vhead .sw, [data-theme="dark"] .picker-item .swatch {
+    border-color: var(--line-mid);
+  }
+
+  /* Theme mode selector — compact segmented control */
+  .theme-seg {
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--line-mid);
+    border-radius: 8px;
+    background: var(--paper-2);
+  }
+  .theme-seg-btn {
+    width: 27px; height: 23px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border: none; background: transparent;
+    border-radius: 6px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  }
+  .theme-seg-btn:hover { color: var(--ink); background: var(--paper-3); }
+  .theme-seg-btn.active { color: var(--accent); background: var(--paper); box-shadow: var(--shadow-card); }
+  [data-theme="dark"] .theme-seg-btn.active { background: var(--paper-3); }
+  .theme-seg-btn svg { width: 14px; height: 14px; display: block; }
+  /* Vertical stack — used in the collapsed-sidebar topbar's left gutter */
+  .theme-seg.vertical { flex-direction: column; gap: 3px; }
+  .topbar-appearance { position: absolute; top: 12px; left: 10px; z-index: 10; }
+
+
+  /* ---- Rubin Observatory logo lockups ---- */
+  .sidebar-head .brand-mark { height: 20px; width: auto; display: block; margin-bottom: 7px; }
+  .topbar-brand .brand-mark { height: 14px; width: auto; display: block; margin-bottom: 4px; }
+  .home-hero { margin-bottom: 4px; }
+  .brand-logo { height: 104px; width: auto; display: block; }
+  .brand-logo-dark { display: none; }
+  [data-theme="dark"] .brand-logo-light { display: none; }
+  [data-theme="dark"] .brand-logo-dark { display: block; }
+  .home-tagline {
+    font-family: var(--mono); font-size: 13px; color: var(--ink-soft);
+    margin-top: 16px; display: flex; align-items: center; gap: 11px;
+  }
+  .home-tagline b {
+    font-family: var(--display); font-weight: 700; font-size: 16px;
+    color: var(--ink); letter-spacing: -0.01em;
+  }
+  .home-tagline .sep { width: 1px; height: 14px; background: var(--line-mid); display: inline-block; }
+
+  /* Standardised outline UI icons */
+  .ui-icon { width: 15px; height: 15px; display: block; flex-shrink: 0; }
+  .ui-icon.chevron { width: 12px; height: 12px; opacity: 0.65; }
+  .cols-btn .ui-icon.chevron { margin-left: 1px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  (function () {
+    try {
+      var m = localStorage.getItem('rubintv-theme') || 'system';
+      var sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', m === 'system' ? (sysDark ? 'dark' : 'light') : m);
+    } catch (e) {}
+  })();
+</script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Real column schema (~130 keys) extracted from production metadata.
+     Sets window.REAL_META_COLS. If absent, the synthetic ~42-col demo
+     set built inline below is used as a fallback. -->
+<script src="real-columns.js"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<script type="text/babel">
+
+
+
+
+
+
+
+
+
+
+
+
+const { useState, useRef, useEffect, useMemo, useCallback } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "headerStyle": "angled",
+  "density": "compact",
+  "showAnnotations": false,
+  "channelColumns": true,
+  "datePickerStyle": "two-months"
+} /*EDITMODE-END*/;
+
+// Operators offered per data type. The data loader only distinguishes
+// three value kinds — number, string, object — so those are the only
+// types we expose. (Previously this prototype had separate `category`
+// and `date` types, but the JSON loader doesn't recognise those: any
+// non-number / non-object value comes through as a plain string, and
+// dates are strings.) See <MetadataCell> and <FoldoutCell> in
+// src/js/components/TableView.tsx for the loader-side semantics.
+const OPS_BY_TYPE = {
+  number: [['=', '='], ['!=', '≠'], ['>', '>'], ['<', '<'], ['>=', '≥'], ['<=', '≤'], ['between', 'between']],
+  string: [['=', 'equals'], ['!=', 'not equals'], ['~', 'contains'], ['starts', 'starts with'], ['ends', 'ends with'], ['in', 'is one of']],
+  object: [['exists', 'has value'], ['!exists', 'is empty']]
+};
+
+// The loader only emits these three types — anything else seen in a
+// schema extract is normalised down. `category` / `date` etc. → `string`.
+const KNOWN_TYPES = new Set(['number', 'string', 'object']);
+const normaliseType = (t) => KNOWN_TYPES.has(t) ? t : 'string';
+
+// Realistic camera groups (matches summit-usdf layout from the screenshots)
+const CAMERA_GROUPS = [
+{ label: 'Main', cams: [
+  { name: 'LSSTCam', online: true },
+  { name: 'LSSTCamAOS', online: true },
+  { name: 'LSSTCam Guider', online: true }]
+},
+{ label: 'Auxiliary', cams: [
+  { name: 'AuxTel', online: true },
+  { name: 'AuxTel mount', online: true },
+  { name: 'AuxTel night plan', online: false },
+  { name: 'AuxTel observing', online: false }]
+},
+{ label: 'Mount / Sky', cams: [
+  { name: 'TMA', online: true },
+  { name: 'All Sky', online: true }]
+},
+{ label: 'Star trackers', cams: [
+  { name: 'StarTracker narrow', online: true },
+  { name: 'StarTracker wide', online: true },
+  { name: 'StarTracker fast', online: false }]
+},
+{ label: 'Legacy', cams: [
+  { name: 'ComCam', online: false },
+  { name: 'ComCam Sim', online: false }]
+}];
+
+// Views available per camera. Every camera gets Table / Channels / Nightly
+// Summary, EXCEPT All Sky, which is a single continuous fisheye feed and so
+// only offers the Feed view.
+const CAM_VIEWS = [
+{ id: 'Table', label: 'Table', count: 786 },
+{ id: 'Channels', label: 'Channels', count: 8 },
+{ id: 'Night report', label: 'Nightly Summary', count: null }];
+
+const ALLSKY_VIEWS = [{ id: 'Feed', label: 'Feed', count: null }];
+
+function viewsForCam(cam) {
+  return cam === 'All Sky' ? ALLSKY_VIEWS : CAM_VIEWS;
+}
+
+// RubinTV locations (sites). summit-usdf carries the full camera catalogue;
+// the downstream sites replicate / process a subset. `cams` lists which
+// CAMERA_GROUPS entries each location offers (null = all of them).
+const LOCATIONS = [
+{ id: 'summit-usdf', name: 'Summit', blurb: 'Cerro Pachón · live observing tonight', cams: null },
+{ id: 'base-usdf', name: 'Base', blurb: 'La Serena · replicated summit data', cams: ['LSSTCam', 'AuxTel', 'TMA', 'All Sky'] },
+{ id: 'usdf', name: 'USDF', blurb: 'SLAC Data Facility · prompt products', cams: ['LSSTCam', 'LSSTCamAOS', 'LSSTCam Guider', 'ComCam'] },
+{ id: 'tucson-teststand', name: 'Tucson', blurb: 'Camera integration test stand', cams: ['ComCam', 'ComCam Sim', 'StarTracker narrow', 'StarTracker wide'] }];
+
+
+function locationById(id) {
+  return LOCATIONS.find((l) => l.id === id) || LOCATIONS[0];
+}
+
+// Camera groups available at a location, filtered from the master catalogue.
+function groupsForLocation(id) {
+  const allow = locationById(id).cams;
+  if (!allow) return CAMERA_GROUPS;
+  return CAMERA_GROUPS.
+  map((g) => ({ ...g, cams: g.cams.filter((c) => allow.includes(c.name)) })).
+  filter((g) => g.cams.length);
+}
+
+// Flat, online-first camera list for a location (used to pick a sensible
+// default camera when one isn't already chosen).
+function firstCamAt(id) {
+  const cams = groupsForLocation(id).flatMap((g) => g.cams);
+  return (cams.find((c) => c.online) || cams[0]).name;
+}
+
+
+// Channel + metadata columns, with realistically-long names
+const CHANNEL_COLS = [
+{ key: 'witness', label: 'Witness Detector', color: '#cfe6e8' },
+{ key: 'fp_post', label: 'Focal-plane post-ISR mosaic', color: '#d4e7c5' },
+{ key: 'fp_cal', label: 'Focal-plane calexp mosaic', color: '#cfc2e0' },
+{ key: 'psf', label: 'PSF shape (AzEl)', color: '#e4c5d8' },
+{ key: 'fwhm', label: 'FWHM focal plane', color: '#c4d6e6' },
+{ key: 'mount', label: 'Mount torques', color: '#b8aed3' },
+{ key: 'imexam', label: 'Image analysis', color: '#e6c5cb' },
+{ key: 'timeline', label: 'Event timeline', color: '#e8c8a8' }];
+
+
+const META_COLS_BASE = [
+{ key: 'exptime', label: 'Exposure time', type: 'number', sample: ['15.0', '15.0', '30.0', '15.0', '15.0', '15.0', '5.0', '15.0', '15.0', '15.0', '30.0'] },
+{ key: 'imgtype', label: 'Image type', type: 'string', sample: ['science', 'science', 'flat', 'science', 'science', 'science', 'bias', 'science', 'science', 'science', 'flat'] },
+{ key: 'm_witness', label: 'Witness Detector', type: 'string', sample: ['R22_S11', 'R22_S11', 'R10_S00', 'R22_S11', 'R22_S11', 'R22_S11', '—', 'R22_S11', 'R22_S11', 'R22_S11', 'R10_S00'] },
+{ key: 'resfwhm', label: 'Residual AOS FWHM', type: 'number', sample: ['0.36', '0.41', '—', '0.38', '0.42', '0.45', '—', '0.39', '0.40', '0.41', '—'] },
+{ key: 'mountdeg', label: 'Mount motion image degradation', type: 'number', sample: ['0.018″', '0.022″', '—', '0.019″', '0.024″', '0.021″', '—', '0.020″', '0.018″', '0.023″', '—'] },
+{ key: 'skymean', label: 'Sky mean', type: 'number', sample: ['9372.50', '9301.12', '—', '9415.88', '9388.04', '9344.21', '—', '9402.67', '9355.10', '9376.92', '—'] },
+{ key: 'target', label: 'Target', type: 'string', sample: ['lowdst', 'lowdst', 'dome', 'lowdst', 'lowdst', 'lowdst', '—', 'lowdst', 'lowdst', 'lowdst', 'dome'] },
+{ key: 'datebegin', label: 'Date begin', type: 'string', sample: ['2026-05-01T10:11:51.738', '...:10:12:06.812', '...:10:12:21.041', '...:10:12:36.122', '...:10:12:51.011', '...:10:13:05.998', '...:10:13:20.402', '...:10:13:35.330', '...:10:13:50.221', '...:10:14:05.118', '...:10:14:20.011'] },
+{ key: 'focusz', label: 'Focus Z', type: 'number', sample: ['-2.65', '-2.63', '—', '-2.66', '-2.64', '-2.62', '—', '-2.65', '-2.64', '-2.63', '—'] },
+{ key: 'filter', label: 'Filter', type: 'string', sample: ['z_20', 'z_20', 'z_20', 'z_20', 'z_20', 'z_20', 'z_20', 'r_03', 'r_03', 'r_03', 'r_03'] },
+{ key: 'group', label: 'Group name', type: 'string', sample: ['BT664_O_20260429_000780', 'BT664_O_20260429_000779', 'flatfield_evening', 'BT664_O_20260429_000777', 'BT664_O_20260429_000776', 'BT664_O_20260429_000775', 'bias_seq', 'BT667_O_20260429_000773', 'BT667_O_20260429_000772', 'BT667_O_20260429_000771', 'flatfield_evening'] },
+{ key: 'ra', label: 'RA', type: 'number', sample: ['8.11', '8.11', '—', '8.11', '8.11', '8.11', '—', '11.42', '11.42', '11.42', '—'] },
+{ key: 'dec', label: 'Dec', type: 'number', sample: ['-37.4', '-37.4', '—', '-37.4', '-37.4', '-37.4', '—', '-29.1', '-29.1', '-29.1', '—'] },
+{ key: 'airmass', label: 'Airmass', type: 'number', sample: ['1.214', '1.219', '—', '1.225', '1.231', '1.238', '—', '1.302', '1.310', '1.318', '—'] },
+{ key: 'rotang', label: 'Rotator angle', type: 'number', sample: ['72.4', '72.4', '—', '72.4', '72.4', '72.4', '—', '-15.8', '-15.8', '-15.8', '—'] },
+
+// Object-valued columns: each cell is a JSON object whose DISPLAY_VALUE
+// key (if present) gives the unicode glyph shown in the table. Clicking
+// the glyph opens a FoldoutCell with the rest of the payload — either
+// a flat list of values or a list of key-value pairs. Matches the real
+// loader behaviour for cells like "isr timings" / "verifyDarkIsr timings".
+{ key: 'isr_timings', label: 'ISR timings', type: 'object', sample: [
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.9', '192': '✅ in 8.1', '195': '✅ in 7.7', '196': '✅ in 7.8', '199': '✅ in 7.2', '200': '✅ in 7.6', '203': '✅ in 7.5', '204': '✅ in 7.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.0', '192': '✅ in 8.3', '195': '✅ in 7.9', '196': '✅ in 8.0', '199': '✅ in 7.5', '200': '✅ in 7.7', '203': '✅ in 7.8', '204': '✅ in 7.7' },
+  null,
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.1', '192': '✅ in 8.2', '195': '✅ in 7.7', '196': '✅ in 7.7', '199': '✅ in 7.3', '200': '✅ in 7.5', '203': '✅ in 7.5', '204': '✅ in 7.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.0', '192': '✅ in 8.6', '195': '✅ in 7.6', '196': '✅ in 7.6', '199': '✅ in 7.3', '200': '✅ in 7.7', '203': '✅ in 7.6', '204': '✅ in 7.5' },
+  { DISPLAY_VALUE: '⏱', '191': '⚠ skipped', '192': '✅ in 8.1', '195': '✅ in 7.6', '196': '✅ in 8.0', '199': '✅ in 7.3', '200': '✅ in 7.4', '203': '✅ in 7.4', '204': '✅ in 7.4' },
+  null,
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.8', '192': '✅ in 8.4', '195': '✅ in 7.8', '196': '✅ in 7.5', '199': '✅ in 8.2', '200': '✅ in 8.6', '203': '✅ in 7.9', '204': '✅ in 7.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.9', '192': '✅ in 8.6', '195': '✅ in 7.8', '196': '✅ in 7.6', '199': '✅ in 8.1', '200': '✅ in 8.4', '203': '✅ in 7.8', '204': '✅ in 7.6' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.5', '192': '✅ in 8.7', '195': '✅ in 7.8', '196': '✅ in 7.3', '199': '✅ in 8.2', '200': '✅ in 8.3', '203': '✅ in 7.8', '204': '✅ in 7.2' },
+  null]
+},
+{ key: 'dq_flags', label: 'DQ flags', type: 'object', sample: [
+  { DISPLAY_VALUE: '🏁', '0': 'EDGE', '1': 'SAT' },
+  { DISPLAY_VALUE: '🏁', '0': 'EDGE' },
+  null,
+  { DISPLAY_VALUE: '🏁', '0': 'CR', '1': 'EDGE', '2': 'SAT' },
+  null,
+  { DISPLAY_VALUE: '🏁', '0': 'EDGE' },
+  null,
+  { DISPLAY_VALUE: '🏁', '0': 'CR' },
+  null,
+  { DISPLAY_VALUE: '🏁', '0': 'EDGE', '1': 'SAT' },
+  null]
+}];
+
+/* Additional realistic LSST-style columns. Real cameras have 100–150+
+   columns; we add a sampling here so the fuzzy column picker has something
+   meaningful to filter against. Sample data is synthetic but plausible. */
+const EXTRA_COL_DEFS = [
+['mount_az', 'Mount azimuth', 'number', 'Mount', { base: 180, jitter: 90, decimals: 3 }],
+['mount_el', 'Mount elevation', 'number', 'Mount', { base: 65, jitter: 20, decimals: 3 }],
+['mount_ha', 'Mount hour angle', 'number', 'Mount', { base: 0, jitter: 4, decimals: 4 }],
+['m1m3_temp', 'M1M3 temperature', 'number', 'Optics', { base: 7.4, jitter: 1.2, decimals: 2 }],
+['m2_temp', 'M2 temperature', 'number', 'Optics', { base: 7.1, jitter: 1.5, decimals: 2 }],
+['weather_humidity', 'Outside humidity', 'number', 'Weather', { base: 22, jitter: 12, decimals: 1 }],
+['weather_pressure', 'Atmospheric pressure', 'number', 'Weather', { base: 728, jitter: 4, decimals: 2 }],
+['weather_temp_air', 'Outside air temperature', 'number', 'Weather', { base: 8.5, jitter: 2.4, decimals: 2 }],
+['weather_wind_speed', 'Wind speed', 'number', 'Weather', { base: 4.2, jitter: 3.1, decimals: 2 }],
+['weather_wind_dir', 'Wind direction', 'number', 'Weather', { base: 220, jitter: 60, decimals: 1 }],
+['seeing_dimm', 'DIMM seeing', 'number', 'Seeing', { base: 0.78, jitter: 0.2, decimals: 3 }],
+['seeing_mass', 'MASS seeing', 'number', 'Seeing', { base: 0.65, jitter: 0.2, decimals: 3 }],
+['dome_az', 'Dome azimuth', 'number', 'Dome', { base: 180, jitter: 90, decimals: 2 }],
+['dome_status', 'Dome status', 'string', 'Dome', { vals: ['open', 'closed', 'opening', 'closing'] }],
+['shutter_state', 'Shutter state', 'string', 'Dome', { vals: ['open', 'closed'] }],
+['detector_serial', 'Detector serial', 'string', 'Detector', { prefix: 'ITL-' }],
+['guider_centroid_x', 'Guider centroid x', 'number', 'Guider', { base: 2048, jitter: 50, decimals: 2 }],
+['guider_centroid_y', 'Guider centroid y', 'number', 'Guider', { base: 2048, jitter: 50, decimals: 2 }],
+['aos_z4', 'AOS Zernike Z4', 'number', 'AOS', { base: -0.05, jitter: 0.4, decimals: 3 }],
+['aos_z11', 'AOS Zernike Z11', 'number', 'AOS', { base: 0.02, jitter: 0.3, decimals: 3 }],
+['track_rate_ra', 'Track rate RA', 'number', 'Pointing', { base: 15.04, jitter: 0.02, decimals: 5 }],
+['track_rate_dec', 'Track rate Dec', 'number', 'Pointing', { base: 0.0, jitter: 0.01, decimals: 5 }],
+['sky_bright_r', 'Sky brightness (r)', 'number', 'Sky', { base: 20.8, jitter: 0.4, decimals: 2 }],
+['sky_bright_z', 'Sky brightness (z)', 'number', 'Sky', { base: 19.4, jitter: 0.4, decimals: 2 }],
+['obs_id', 'Observation ID', 'string', 'Image', { prefix: 'MC_O_' }],
+['science_program', 'Science program', 'string', 'Image', { vals: ['BLOCK-664', 'BLOCK-667', 'survey-DD', 'survey-WFD', 'eng-cal'] }],
+['band', 'Band', 'string', 'Image', { vals: ['u', 'g', 'r', 'i', 'z', 'y'] }]];
+
+
+const EXTRA_COLS = (() => {
+  // deterministic PRNG so the synthetic sample data is stable across reloads
+  let s = 0x1f2e3d4c;
+  const rand = () => {s = Math.imul(s, 1664525) + 1013904223 >>> 0;return s / 0x100000000;};
+  return EXTRA_COL_DEFS.map(([key, label, type, group, opts]) => {
+    let sample;
+    if (type === 'string' && opts.vals) {
+      sample = Array.from({ length: 11 }, () => opts.vals[Math.floor(rand() * opts.vals.length)]);
+    } else if (type === 'string') {
+      sample = Array.from({ length: 11 }, () => opts.prefix + (Math.floor(rand() * 9000) + 1000));
+    } else {
+      sample = Array.from({ length: 11 }, () =>
+      (opts.base + (rand() - 0.5) * 2 * opts.jitter).toFixed(opts.decimals)
+      );
+    }
+    return { key, label, type, group, sample };
+  });
+})();
+
+// The two known object-typed cells in the real schema. The auto-extracted
+// real-columns.js only captured scalar-valued keys, so we splice them back
+// in here so the design reflects every type the loader emits.
+const REAL_OBJECT_COLS = [
+{ key: 'isr_timings', label: 'isr timings', type: 'object', sample: [
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.9', '192': '✅ in 8.1', '195': '✅ in 7.7', '196': '✅ in 7.8', '199': '✅ in 7.2', '200': '✅ in 7.6', '203': '✅ in 7.5', '204': '✅ in 7.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.0', '192': '✅ in 8.3', '195': '✅ in 7.9', '196': '✅ in 8.0', '199': '✅ in 7.5', '200': '✅ in 7.7', '203': '✅ in 7.8', '204': '✅ in 7.7' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.0', '192': '✅ in 8.7', '195': '✅ in 8.0', '196': '✅ in 7.8', '199': '✅ in 7.2', '200': '✅ in 7.6', '203': '✅ in 7.6', '204': '✅ in 7.7' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.1', '192': '✅ in 8.2', '195': '✅ in 7.7', '196': '✅ in 7.7', '199': '✅ in 7.3', '200': '✅ in 7.5', '203': '✅ in 7.5', '204': '✅ in 7.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.0', '192': '✅ in 8.6', '195': '✅ in 7.6', '196': '✅ in 7.6', '199': '✅ in 7.3', '200': '✅ in 7.7', '203': '✅ in 7.6', '204': '✅ in 7.5' },
+  { DISPLAY_VALUE: '⏱', '191': '⚠ skipped', '192': '✅ in 8.1', '195': '✅ in 7.6', '196': '✅ in 8.0', '199': '✅ in 7.3', '200': '✅ in 7.4', '203': '✅ in 7.4', '204': '✅ in 7.4' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 8.7', '192': '✅ in 9.0', '195': '✅ in 8.7', '196': '✅ in 8.6', '199': '✅ in 8.0', '200': '✅ in 8.0', '203': '✅ in 8.4', '204': '✅ in 8.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.8', '192': '✅ in 8.4', '195': '✅ in 7.8', '196': '✅ in 7.5', '199': '✅ in 8.2', '200': '✅ in 8.6', '203': '✅ in 7.9', '204': '✅ in 7.3' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.9', '192': '✅ in 8.6', '195': '✅ in 7.8', '196': '✅ in 7.6', '199': '✅ in 8.1', '200': '✅ in 8.4', '203': '✅ in 7.8', '204': '✅ in 7.6' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.5', '192': '✅ in 8.7', '195': '✅ in 7.8', '196': '✅ in 7.3', '199': '✅ in 8.2', '200': '✅ in 8.3', '203': '✅ in 7.8', '204': '✅ in 7.2' },
+  { DISPLAY_VALUE: '⏱', '191': '✅ in 7.6', '192': '✅ in 8.6', '195': '✅ in 8.0', '196': '✅ in 7.4', '199': '✅ in 8.2', '200': '✅ in 8.5', '203': '✅ in 8.1', '204': '✅ in 7.1' }]
+},
+{ key: 'verifyDarkIsr_timings', label: 'verifyDarkIsr timings', type: 'object', sample: Array.from({ length: 11 }, (_, i) => ({
+    DISPLAY_VALUE: '⏱',
+    '0': `✅ in ${(12 - i * 0.2).toFixed(1)}`,
+    '1': `✅ in ${(11.8 - i * 0.18).toFixed(1)}`,
+    '2': `✅ in ${(13 - i * 0.21).toFixed(1)}`,
+    '3': `✅ in ${(12 - i * 0.22).toFixed(1)}`,
+    '4': `✅ in ${(11.6 - i * 0.09).toFixed(1)}`,
+    '5': `✅ in ${(13.2 - i * 0.18).toFixed(1)}`,
+    '6': `✅ in ${(12.2 - i * 0.21).toFixed(1)}`,
+    '7': `✅ in ${(10.5 - i * 0.08).toFixed(1)}`
+  })) }];
+
+
+// Final META_COLS: pick the source list, splice in real object cols when
+// running on the real schema, then normalise every column's `type` down
+// to the loader's three values (number / string / object).
+const META_COLS = (window.REAL_META_COLS ?
+[...window.REAL_META_COLS, ...REAL_OBJECT_COLS] :
+[...META_COLS_BASE, ...EXTRA_COLS]).
+map((c) => ({ ...c, type: normaliseType(c.type) }));
+
+// Assign a `group` to every column. CHANNEL_COLS all share one group;
+// META_COLS_BASE uses a fixed map by key; EXTRA_COLS already carry group.
+const META_GROUP_BY_KEY = {
+  exptime: 'Image', imgtype: 'Image', target: 'Image', datebegin: 'Image',
+  filter: 'Image', group: 'Image',
+  m_witness: 'Detector',
+  resfwhm: 'AOS',
+  mountdeg: 'Mount',
+  skymean: 'Sky',
+  focusz: 'Optics',
+  ra: 'Pointing', dec: 'Pointing', airmass: 'Pointing', rotang: 'Pointing'
+};
+CHANNEL_COLS.forEach((c) => {c.group = c.group || 'Channels';});
+META_COLS_BASE.forEach((c) => {c.group = c.group || META_GROUP_BY_KEY[c.key] || 'Misc';});
+
+// Default visibility set — differs by dataset because key names differ
+// between the real schema and the synthetic demo set.
+const DEFAULT_VISIBLE = window.REAL_META_COLS ?
+new Set([
+'seq',
+'witness', 'fp_post', 'fp_cal', 'psf', 'fwhm', 'mount', 'imexam', 'timeline',
+// Sensible defaults from the real schema — a small scannable set;
+// the rest are reachable via the column picker.
+'exposure_time', 'image_type', 'target',
+'readout_effective', 'readout_start',
+'isr_start_time_shutter', 'mean_isr_runtime',
+'mean_calczernikestask_runtime', 'zernike_delivery_time_shutter',
+'imaging_ingest_finished', 'wf_ingestion_duration',
+'shutter_close_to_zernikes',
+// Object-valued cells — show one of them by default so designers
+// see the glyph + fold-out treatment without hunting through the
+// column picker.
+'isr_timings']) :
+new Set([
+'seq',
+'witness', 'fp_post', 'fp_cal', 'psf', 'fwhm', 'mount', 'imexam', 'timeline',
+'exptime', 'imgtype', 'm_witness', 'resfwhm', 'mountdeg', 'skymean',
+'target', 'datebegin', 'focusz', 'filter', 'group', 'ra', 'dec',
+'airmass', 'rotang',
+'isr_timings', 'dq_flags']);
+
+
+const COLS = [{ key: 'seq', label: 'Seq.No', sticky: true }, ...CHANNEL_COLS, ...META_COLS];
+
+// Column widths derive purely from the DATA in each column — header label
+// length never influences the width. If the header is too long for its
+// column's data width, it gets curtailed by the header-height cap (and the
+// full name is offered on hover via the th title).
+function widthFromData(col) {
+  if (col.key === 'seq') return 64; // 3–4 digit seq nums
+  if (CHANNEL_COLS.find((cc) => cc.key === col.key)) return 44; // one image chip + padding
+  if (col.type === 'object') return 42; // single glyph + padding
+  const longest = Math.max(
+    1, // never zero
+    ...(col.sample || []).map((s) => String(s).length)
+  );
+  // monospace 11px renders at ~6.6px / char; +18px padding for breathing room
+  return Math.max(36, Math.ceil(longest * 6.8 + 18));
+}
+const SEQ_NUMS = [786, 785, 784, 783, 782, 781, 780, 779, 778, 777, 776];
+
+/* ---------- Live status pill ----------
+   Two clocks: UTC wall time + time since the most recent image landed
+   in the table. Both tick once a second; numerals are aligned vertically
+   via a 2-col grid + tabular-nums so the seconds digits line up. */
+/* ---------- Theme mode selector (light / system / dark) ---------- */
+const SunIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
+  </svg>
+);
+const MoonIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+  </svg>
+);
+const AutoIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="13" rx="1.5" />
+    <path d="M8 21h8M12 17v4" />
+  </svg>
+);
+
+/* ---------- Standardised outline UI icons (feather-style stroke) ---------- */
+const CalendarIcon = () => (
+  <svg className="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4.5" width="18" height="16" rx="2" />
+    <path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
+  </svg>
+);
+const ColumnsIcon = () => (
+  <svg className="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16M15 4v16" />
+  </svg>
+);
+const DownloadIcon = () => (
+  <svg className="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="M7 10l5 5 5-5M12 15V3" />
+  </svg>
+);
+const ChevronDownIcon = () => (
+  <svg className="ui-icon chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
+function ThemeToggle({ vertical }) {
+  const [mode, setMode] = useState(() => {
+    try { return localStorage.getItem('rubintv-theme') || 'system'; } catch (e) { return 'system'; }
+  });
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const resolved = mode === 'system' ? (mq.matches ? 'dark' : 'light') : mode;
+      document.documentElement.setAttribute('data-theme', resolved);
+    };
+    apply();
+    try { localStorage.setItem('rubintv-theme', mode); } catch (e) {}
+    if (mode === 'system') {
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    }
+  }, [mode]);
+  const opts = [['light', 'Light', SunIcon], ['system', 'System', AutoIcon], ['dark', 'Dark', MoonIcon]];
+  return (
+    <div className={'theme-seg' + (vertical ? ' vertical' : '')} role="group" aria-label="Color theme">
+      {opts.map(([val, label, Icon]) => (
+        <button key={val}
+          className={'theme-seg-btn' + (mode === val ? ' active' : '')}
+          title={label + ' theme'} aria-label={label + ' theme'} aria-pressed={mode === val}
+          onClick={() => setMode(val)}>
+          <Icon />
+        </button>
+      ))}
+    </div>);
+}
+
+function LiveStatusPill() {
+  // Drift forward from a fixed baseline so the prototype shows a
+  // believable wall time + a recently-arrived image, independent of the
+  // viewer's clock.
+  const baseUtc = useMemo(() => {
+    // 2026-05-01 14:01:23 UTC — matches the date pinned in the table.
+    return Date.UTC(2026, 4, 1, 14, 1, 23) - performance.now();
+  }, []);
+  // Last image landed 3 minutes 48 seconds before the wall time at mount.
+  const lastImgAt = useMemo(() => baseUtc - (3 * 60 + 48) * 1000, [baseUtc]);
+
+  const [now, setNow] = useState(() => baseUtc + performance.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(baseUtc + performance.now()), 1000);
+    return () => clearInterval(id);
+  }, [baseUtc]);
+
+  const utc = new Date(now);
+  const pad = (n) => String(n).padStart(2, '0');
+  const utcStr = `${pad(utc.getUTCHours())}:${pad(utc.getUTCMinutes())}:${pad(utc.getUTCSeconds())}`;
+
+  const sinceMs = Math.max(0, now - lastImgAt);
+  const sinceS = Math.floor(sinceMs / 1000);
+  const sinceStr = `${pad(Math.floor(sinceS / 3600))}:${pad(Math.floor(sinceS % 3600 / 60))}:${pad(sinceS % 60)}`;
+
+  return (
+    <span className="tag live status-pill">
+      <span className="clocks">
+        <span className="clock-label">UTC</span>
+        <span className="clock-time">{utcStr}</span>
+        <span className="clock-label">since img</span>
+        <span className="clock-time">{sinceStr}</span>
+      </span>
+    </span>);
+
+}
+
+/* ---------- Date picker ----------
+   Click the [📅 YYYY-MM-DD] btn-tab to open a popover. The popover style
+   is exposed as a tweak so we can compare three directions side-by-side:
+
+     classic  — month grid only, prev/next, today shortcut
+     presets  — month grid + sidebar of observing-night shortcuts (last
+                night, last 7, current run, custom range)
+     nights   — vertical list of recent observing nights with per-night
+                metadata (image count + hourly volume bars + weather) and
+                a small month mini-map on the right for jumping around
+
+   Reference "today" is pinned to 2026-05-01 to match the table. */
+
+const REF_TODAY = { y: 2026, m: 4, d: 1 }; // m is 0-indexed (4 = May)
+
+// Deterministic per-day metadata: which days had observing, image count,
+// weather notes, hourly volume profile. Seeded so the design is stable.
+function buildDayInfo() {
+  let s = 0xb16b00b5;
+  const rand = () => {s = Math.imul(s, 1664525) + 1013904223 >>> 0;return s / 0x100000000;};
+  const info = {};
+  // Populate 6 months around the reference.
+  for (let mo = -2; mo <= 1; mo++) {
+    const d0 = new Date(Date.UTC(REF_TODAY.y, REF_TODAY.m + mo, 1));
+    const daysInMonth = new Date(Date.UTC(REF_TODAY.y, REF_TODAY.m + mo + 1, 0)).getUTCDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d));
+      const key = `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(d)}`;
+      // 60% observing chance, dampened if weather bad
+      const weatherBad = rand() < 0.18;
+      const observed = !weatherBad && rand() < 0.78;
+      if (!observed) {
+        info[key] = { observed: false, weatherBad, count: 0 };
+        continue;
+      }
+      const heavy = rand() < 0.3;
+      const count = heavy ? Math.floor(700 + rand() * 400) : Math.floor(200 + rand() * 400);
+      // 10 hourly buckets (typical night, sundown→sunrise minus twilight)
+      const bars = Array.from({ length: 10 }, () => Math.floor(2 + rand() * 14));
+      info[key] = { observed: true, weatherBad: false, count, heavy, bars };
+    }
+  }
+  // Pin the reference day to a realistic value
+  info['2026-05-01'] = { observed: true, weatherBad: false, count: 786, heavy: true, bars: [4, 11, 13, 14, 12, 10, 13, 11, 8, 5] };
+  return info;
+}
+const pad2 = (n) => String(n).padStart(2, '0');
+const fmtKey = ({ y, m, d }) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const fmtKeyDate = (date) => `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function DatePicker({ style = 'two-months', defaultOpen = true, onChange }) {
+  // Default to OPEN so the design-review comment lands on the picker
+  // already visible; teammate explicitly asked to "explore possibilities
+  // for the opened calendar/date picker". Callers that embed the picker
+  // inline (e.g. the All Sky movie controls) pass defaultOpen={false}.
+  const [open, setOpen] = useState(defaultOpen);
+  const [selected, setSelected] = useState(REF_TODAY);
+  // Month being viewed in the LEFT grid. For the two-months layout the
+  // right grid renders view.m + 1. Stored as {y, m}.
+  const [view, setView] = useState({ y: REF_TODAY.y, m: REF_TODAY.m - 1 });
+  const rootRef = useRef(null);
+
+  // Day metadata — built once.
+  const dayInfo = useMemo(buildDayInfo, []);
+
+  // Single pick handler — closes the popover and notifies the caller.
+  const pick = (d) => {setSelected(d);setOpen(false);onChange && onChange(d);};
+
+  // Click-outside / Esc to close.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {if (e.key === 'Escape') setOpen(false);};
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const selKey = fmtKey(selected);
+  const label = selKey;
+
+  return (
+    <span className="date-cluster" ref={rootRef}>
+      <span className="btn btn-tab" onClick={() => setOpen((v) => !v)} style={{ cursor: 'pointer' }}>
+        <CalendarIcon />{label}
+      </span>
+
+      {open &&
+      <div className={`date-pop v-${style}`} onClick={(e) => e.stopPropagation()}>
+          {style === 'classic' &&
+        <MonthGrid
+          view={view} setView={setView}
+          selected={selected} setSelected={setSelected}
+          dayInfo={dayInfo} showFoot
+          onPick={pick} />
+
+        }
+
+          {style === 'two-months' &&
+        <div className="dp-two" data-comment-anchor="d4040cb8be-div-492-7">
+              <div className="dp-two-grids">
+                <MonthGrid
+              view={view} setView={setView}
+              selected={selected} setSelected={setSelected}
+              dayInfo={dayInfo}
+              monthOffset={0}
+              showArrows
+              onPick={pick} data-comment-anchor="f0d8f6a845-div-508-7" />
+            
+                <MonthGrid
+              view={view} setView={setView}
+              selected={selected} setSelected={setSelected}
+              dayInfo={dayInfo}
+              monthOffset={1}
+              showArrows={false}
+              onPick={pick} />
+            
+              </div>
+              <div className="dp-two-foot">
+                <input className="input" value={fmtKey(selected)} readOnly />
+                <span className="today-link" onClick={() => {
+              setSelected(REF_TODAY);
+              setView({ y: REF_TODAY.y, m: REF_TODAY.m - 1 });
+            }}>jump to today</span>
+              </div>
+            </div>
+        }
+
+          {style === 'nights' &&
+        <NightsPanel
+          dayInfo={dayInfo}
+          selected={selected} setSelected={setSelected}
+          view={view} setView={setView}
+          onPick={pick} />
+
+        }
+        </div>
+      }
+    </span>);
+
+}
+
+/* Reusable month grid. Shows leading/trailing days from prev/next month
+   dimmed; today is outlined; selected is filled ink. Days with observing
+   data display the night's MAX SEQ NUM (image count) beneath the date,
+   per teammate feedback — a number is far more informative than a dot.
+   `showArrows` lets the two-month layout suppress arrows on the right
+   grid so navigation is unambiguous. `showFoot` is currently unused in
+   the two-month layout (the shared foot lives outside MonthGrid). */
+function MonthGrid({ view, setView, selected, setSelected, dayInfo, showFoot, showArrows = true, monthOffset = 0, onPick }) {
+  // Resolve the actual month to render from view + offset.
+  const baseDate = new Date(Date.UTC(view.y, view.m + monthOffset, 1));
+  const y = baseDate.getUTCFullYear();
+  const m = baseDate.getUTCMonth();
+  const firstDow = baseDate.getUTCDay();
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const daysInPrev = new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+  // Build 6 weeks × 7 days = 42 cells
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) {
+    const d = daysInPrev - firstDow + 1 + i;
+    cells.push({ d, mOff: -1, key: fmtKey({ y: m === 0 ? y - 1 : y, m: (m + 11) % 12, d }) });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ d, mOff: 0, key: fmtKey({ y, m, d }) });
+  }
+  let nextD = 1;
+  while (cells.length < 42) {
+    cells.push({ d: nextD, mOff: 1, key: fmtKey({ y: m === 11 ? y + 1 : y, m: (m + 1) % 12, d: nextD }) });
+    nextD++;
+  }
+
+  const todayKey = fmtKey(REF_TODAY);
+  const selKey = fmtKey(selected);
+
+  // Stepping always moves the underlying `view`, regardless of which
+  // sub-grid the user clicked the arrow on.
+  const stepMonth = (n) => {
+    const nm = view.m + n;
+    setView({ y: view.y + Math.floor(nm / 12), m: (nm % 12 + 12) % 12 });
+  };
+
+  return (
+    <div className="dp-month">
+      <div className="dp-mhead">
+        <div>
+          <span className="month">{MONTH_NAMES[m]}</span>
+          <span className="yr">{y}</span>
+        </div>
+        {showArrows &&
+        <div className="arrs">
+            <button className="arr" onClick={() => stepMonth(-12)} title="Previous year">«</button>
+            <button className="arr" onClick={() => stepMonth(-1)} title="Previous month">‹</button>
+            <button className="arr" onClick={() => stepMonth(1)} title="Next month">›</button>
+            <button className="arr" onClick={() => stepMonth(12)} title="Next year">»</button>
+          </div>
+        }
+      </div>
+
+      <div className="dp-grid">
+        {DOW.map((d) => <div key={d} className="dow">{d}</div>)}
+        {cells.map((c, i) => {
+          const info = dayInfo[c.key];
+          const isOut = c.mOff !== 0;
+          const isFuture = c.key > todayKey;
+          const classes = ['dp-day'];
+          if (isOut) classes.push('out');
+          if (isFuture && !isOut) classes.push('disabled');
+          if (info?.observed) classes.push('has-data');
+          if (info?.heavy) classes.push('heavy');
+          // 'today' outline only on the in-month cell — otherwise the same
+          // date shows two outlines (in-month + leading/trailing) when two
+          // months are displayed side by side.
+          if (c.key === todayKey && !isOut) classes.push('today');
+          if (c.key === selKey && !isOut) classes.push('selected');
+          // Bottom-row content: max seq num for observed nights. Out-of-month
+          // and future days never show a count; weathered-out nights are
+          // indistinguishable from no-observing nights here — both render
+          // as 'no count', per teammate feedback that there's no separate
+          // 'weathered out' display state.
+          const ctText = !isFuture && !isOut && info?.observed ? info.count : '';
+          return (
+            <div
+              key={i}
+              className={classes.join(' ')}
+              title={isOut ? '' : info?.observed ? `${c.key} · ${info.count} images` : c.key}
+              onClick={() => {
+                if (isOut || isFuture) return;
+                onPick({ y, m, d: c.d });
+              }}>
+              <span className="num">{c.d}</span>
+              {ctText !== '' && <span className="ct">{ctText}</span>}
+            </div>);
+
+        })}
+      </div>
+
+      {showFoot &&
+      <div className="dp-foot">
+          <input className="input" value={fmtKey(selected)} readOnly />
+          <span className="today-link" onClick={() => {setSelected(REF_TODAY);setView({ y: REF_TODAY.y, m: REF_TODAY.m });}}>jump to today</span>
+        </div>
+      }
+    </div>);
+
+}
+
+function NightsPanel({ dayInfo, selected, setSelected, view, setView, onPick }) {
+  // Build the list of recent observing nights (~30)
+  const nights = useMemo(() => {
+    const out = [];
+    let d = new Date(Date.UTC(REF_TODAY.y, REF_TODAY.m, REF_TODAY.d));
+    for (let i = 0; i < 90 && out.length < 30; i++) {
+      const k = fmtKeyDate(d);
+      const info = dayInfo[k];
+      if (info?.observed) {
+        out.push({
+          key: k,
+          y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(),
+          dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()],
+          count: info.count, heavy: info.heavy, bars: info.bars
+        });
+      } else if (info?.weatherBad) {
+        out.push({ key: k, y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(),
+          dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()],
+          count: 0, weatherBad: true });
+      }
+      d = new Date(d.getTime() - 86400000);
+    }
+    return out;
+  }, [dayInfo]);
+
+  const selKey = fmtKey(selected);
+
+  return (
+    <div className="dp-nights-wrap">
+      <div className="dp-nights-list">
+        <div className="nhdr">Recent observing nights · {nights.filter((n) => !n.weatherBad).length}</div>
+        {nights.map((n) =>
+        <div
+          key={n.key}
+          className={`night-row ${n.key === selKey ? 'selected' : ''}`}
+          onClick={() => onPick({ y: n.y, m: n.m, d: n.day })}
+          title={n.key}>
+          
+            <div>
+              <div className="ndate">{n.key.slice(5)}</div>
+              <div className="ndow">{n.dow}</div>
+            </div>
+            <div className="nmid">
+              <span className="nlabel">
+                {n.weatherBad ? 'weathered out' : n.heavy ? 'long night' : 'standard night'}
+              </span>
+              {!n.weatherBad ?
+            <span className="nmeta">
+                  <span className="nbars">
+                    {n.bars.map((h, i) =>
+                <span key={i} style={{ height: `${Math.max(2, h)}px` }} />
+                )}
+                  </span>
+                </span> :
+
+            <span className="nmeta"><span className="bad">dome closed · humidity 92%</span></span>
+            }
+            </div>
+            <div className="ncount">
+              {n.weatherBad ? '—' : n.count}
+              <span className="imgs">{n.weatherBad ? '' : 'images'}</span>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="dp-minimap">
+        <MiniMap view={view} setView={setView} selected={selected} setSelected={setSelected} dayInfo={dayInfo} onPick={onPick} />
+      </div>
+    </div>);
+
+}
+
+function MiniMap({ view, setView, selected, setSelected, dayInfo, onPick }) {
+  const { y, m } = view;
+  const firstDow = new Date(Date.UTC(y, m, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const todayKey = fmtKey(REF_TODAY);
+  const selKey = fmtKey(selected);
+  const stepMonth = (n) => {
+    const nm = m + n;
+    setView({ y: y + Math.floor(nm / 12), m: (nm % 12 + 12) % 12 });
+  };
+
+  return (
+    <>
+      <div className="mm-head">
+        <span className="mm-month">{MONTH_NAMES[m].slice(0, 3)} {y}</span>
+        <span>
+          <button className="arr" style={{ width: 18, height: 18, fontSize: 10 }} onClick={() => stepMonth(-1)}>‹</button>
+          <button className="arr" style={{ width: 18, height: 18, fontSize: 10, marginLeft: 2 }} onClick={() => stepMonth(1)}>›</button>
+        </span>
+      </div>
+      <div className="mm-grid">
+        {DOW.map((d) => <div key={d} style={{ fontFamily: 'var(--mono)', fontSize: 8, color: 'var(--ink-soft)', textAlign: 'center' }}>{d[0]}</div>)}
+        {cells.map((d, i) => {
+          if (d == null) return <div key={i} />;
+          const k = fmtKey({ y, m, d });
+          const info = dayInfo[k];
+          const isFuture = k > todayKey;
+          const classes = ['mm-day'];
+          if (info?.observed) classes.push('has-data');
+          if (k === selKey) classes.push('selected');
+          if (isFuture) classes.push('out');
+          return (
+            <div key={i} className={classes.join(' ')} onClick={() => {if (!isFuture) onPick({ y, m, d });}} title={k}>{d}</div>);
+
+        })}
+      </div>
+      <div className="mm-legend">
+        Dot · observing night<br />
+        Selected highlights in list at left.
+      </div>
+    </>);
+
+}
+
+function Sidebar({ groups, activeCam, onPickCam, activeSystem, onPickSystem, activeTab, onPickView, activeLocation, locations, onPickLocation, onClose }) {
+  const cams = (groups || CAMERA_GROUPS).flatMap((g) => g.cams);
+  return (
+    <div className="sidebar">
+      <div className="sidebar-head">
+        <div>
+          <img className="brand-mark" src="assets/rubin-mark.png" alt="Vera C. Rubin Observatory" />
+          <h1>RubinTV</h1>
+          <div className="site">{activeLocation} · 2026-05-01</div>
+        </div>
+
+        <button className="icon-btn" onClick={onClose} title="Hide sidebar" aria-label="Hide sidebar">«</button>
+      </div>
+
+      <div className="group-h">Cameras</div>
+      <div className="cam-pills">
+        {cams.map((c) =>
+        <div
+          key={c.name}
+          className={`cam-pill ${c.name === activeCam && !activeSystem ? 'active' : ''} ${!c.online ? 'dim' : ''}`}
+          onClick={() => c.online && onPickCam(c.name)}>
+          
+            <span className="pdot" />
+            <span>{c.name}</span>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <div className="group-h">System</div>
+        {['Detectors', 'Admin'].map((item) =>
+        <div
+          key={item}
+          className={`cam ${activeSystem === item ? 'active' : ''}`}
+          onClick={() => onPickSystem(item)}>
+          
+            <span>{item}</span>
+            <span className="dot" />
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 6 }}>
+        <div className="group-h">Location</div>
+        {(locations || LOCATIONS).map((l) =>
+        <div
+          key={l.id}
+          className={`cam ${l.id === activeLocation ? 'active' : ''}`}
+          onClick={() => onPickLocation(l.id)}>
+          
+            <span>{l.id}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar-foot">
+        <span className="foot-label">Appearance</span>
+        <ThemeToggle />
+      </div>
+    </div>);
+
+}
+
+/* All-sky feed view — All Sky is a single continuous fisheye stream, so it
+   has no per-seq table or channels. We surface the most recent still and the
+   most recent movie, plus a date picker for replaying historical movies. */
+function AllSkyFeed() {
+  // null = showing the most recent (live) movie; a "YYYY-MM-DD" string = a
+  // historical movie picked from the calendar.
+  const [movieDate, setMovieDate] = useState(null);
+  const latest = '2026-05-01';
+  const historical = movieDate && movieDate !== latest;
+  const shownDate = movieDate || latest;
+
+  return (
+    <div className="allsky-wrap">
+      <div className="allsky-toolbar">
+        <span className="amovie-label">Historical movie</span>
+        <DatePicker style="two-months" defaultOpen={false} onChange={(d) => setMovieDate(fmtKey(d))} />
+        {historical &&
+        <span className="amovie-reset" onClick={() => setMovieDate(null)}>← back to latest</span>
+        }
+        <span style={{ flex: 1 }} />
+        <span className="tag live"><span className="hand">live · 30s cadence</span></span>
+      </div>
+
+      <div className="allsky-stage">
+        <div className="allsky-col">
+          <div className="allsky-mediahead">
+            <span className="amh-title">Most recent still</span>
+            <span className="amh-meta">14:03:12 UTC · 30 s exp</span>
+          </div>
+          <div className="allsky-frame">
+            <div className="allsky-ph">
+              <div className="allsky-cap">all-sky still</div>
+              <div className="allsky-sub">fisheye · whole-sky · single frame</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="allsky-col">
+          <div className="allsky-mediahead">
+            <span className="amh-title">{historical ? 'Movie' : 'Most recent movie'}</span>
+            <span className="amh-meta">{historical ? `dayObs ${shownDate}` : 'rolling · updates live'}</span>
+          </div>
+          <div className="allsky-frame">
+            <div className="allsky-ph allsky-movie">
+              <div className="amovie-play">▶</div>
+              <div className="allsky-cap">all-sky movie</div>
+              <div className="allsky-sub">timelapse · {shownDate}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>);
+
+}
+
+function Table({ headerStyle, density, channelColumns, showAnnotations, filters, setFilters, hiddenCols }) {
+  // Foldout state: which (rowIdx, colKey, anchor rect) cell is open. Null = closed.
+  const [foldout, setFoldout] = useState(null);
+
+  // Visible columns: respect both the channelColumns master toggle AND the
+  // per-column hidden set from the column picker.
+  const visibleCols = useMemo(() => {
+    return COLS.filter((c) => {
+      if (hiddenCols && hiddenCols.has(c.key)) return false;
+      if (!channelColumns && CHANNEL_COLS.find((cc) => cc.key === c.key)) return false;
+      return true;
+    });
+  }, [channelColumns, hiddenCols]);
+
+  // Column widths (fixed, derived from data; not user-resizable per feedback)
+  const widths = useMemo(() => {
+    const o = {};
+    COLS.forEach((c) => o[c.key] = widthFromData(c));
+    return o;
+  }, []);
+
+  // density adjusts row height & font
+  const rowPad = density === 'compact' ? '3px 8px' : density === 'comfy' ? '10px 10px' : '6px 8px';
+  const fontSize = density === 'compact' ? 10 : density === 'comfy' ? 12 : 11;
+
+  // Apply active filters: keep only row indices where every filter matches.
+  // META_COLS sample arrays are positional by row.
+  const matchOne = (cellVal, op, v) => {
+    // Object-type ops are existence-only — the cell is either populated
+    // or null/undefined. No value is meaningful for these.
+    if (op === 'exists') return cellVal != null;
+    if (op === '!exists') return cellVal == null;
+    const s = String(cellVal ?? '');
+    const target = String(v ?? '').trim();
+    const sl = s.toLowerCase(),tl = target.toLowerCase();
+    if (op === '=') return sl === tl;
+    if (op === '!=') return sl !== tl;
+    if (op === '~') return sl.includes(tl);
+    if (op === 'starts') return sl.startsWith(tl);
+    if (op === 'ends') return sl.endsWith(tl);
+    if (op === 'in') {
+      const parts = target.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+      return parts.includes(sl);
+    }
+    if (op === 'between') {
+      const [lo, hi] = target.split(/\s*[,–\-]\s*/).map(parseFloat);
+      const a = parseFloat(s);
+      if ([a, lo, hi].some(Number.isNaN)) return false;
+      return a >= Math.min(lo, hi) && a <= Math.max(lo, hi);
+    }
+    if (op === '>' || op === '<' || op === '>=' || op === '<=') {
+      const a = parseFloat(s),b = parseFloat(target);
+      if (Number.isNaN(a) || Number.isNaN(b)) return false;
+      if (op === '>') return a > b;
+      if (op === '<') return a < b;
+      if (op === '>=') return a >= b;
+      if (op === '<=') return a <= b;
+    }
+    return true;
+  };
+  const visibleRowIdx = useMemo(() => {
+    const idx = SEQ_NUMS.map((_, i) => i);
+    if (!filters || !filters.length) return idx;
+    return idx.filter((i) =>
+    filters.every((f) => {
+      const col = META_COLS.find((c) => c.key === f.col);
+      if (!col) return true;
+      return matchOne(col.sample[i], f.op, f.value);
+    })
+    );
+  }, [filters]);
+
+  // Reset header style overrides for vertical/angled
+  const headerExtraClass = `hs-${headerStyle}`;
+
+  /* For angled mode: render labels as a SEPARATE overlay layer, positioning
+     each label at the measured left-edge of its <th>. Lets labels extend
+     rightward beyond their own column width — they're only truncated when
+     their diagonal rise (L × sin45°) would exceed --header-h. */
+  const wrapRef = useRef(null);
+  const headRef = useRef(null);
+  const overlayRef = useRef(null);
+  const [colPositions, setColPositions] = useState([]);
+  const [tableW, setTableW] = useState(0);
+
+  useEffect(() => {
+    if (headerStyle !== 'angled') return;
+    const measure = () => {
+      if (!headRef.current || !wrapRef.current) return;
+      const ths = [...headRef.current.querySelectorAll('th')];
+      const wrapRect = wrapRef.current.getBoundingClientRect();
+      const sl = wrapRef.current.scrollLeft;
+      const positions = ths.map((th) => {
+        const r = th.getBoundingClientRect();
+        // Position relative to the scroll-content origin so overlay scrolls
+        // horizontally in lockstep with the table.
+        return {
+          left: r.left - wrapRect.left + sl,
+          width: r.width
+        };
+      });
+      setColPositions(positions);
+      const tbl = wrapRef.current.querySelector('.data-table');
+      if (tbl) setTableW(tbl.offsetWidth);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (headRef.current) ro.observe(headRef.current);
+    if (wrapRef.current) ro.observe(wrapRef.current);
+    window.addEventListener('resize', measure);
+    return () => {ro.disconnect();window.removeEventListener('resize', measure);};
+  }, [headerStyle, visibleCols, widths]);
+
+  // Sticky-top is handled by native CSS (position: sticky on .header-overlay).
+  // Nothing to wire up here.
+
+  return (
+    <>
+    {filters && filters.length > 0 && visibleRowIdx.length < SEQ_NUMS.length &&
+      <div className="filter-notice" role="status">
+        <span className="icon">filtered</span>
+        <span>
+          <span className="count">{SEQ_NUMS.length - visibleRowIdx.length}</span>
+          {' '}row{SEQ_NUMS.length - visibleRowIdx.length === 1 ? '' : 's'} hidden by{' '}
+          <span className="count">{filters.length}</span>
+          {' '}active filter{filters.length === 1 ? '' : 's'}
+          {' · showing '}
+          <span className="count">{visibleRowIdx.length}</span>
+          {' of '}
+          <span className="count">{SEQ_NUMS.length}</span>
+        </span>
+        <span className="spacer" />
+        <span className="clear" onClick={() => setFilters && setFilters([])}>clear filters</span>
+      </div>
+      }
+    <div className="table-wrap" ref={wrapRef} data-comment-anchor="c038cfa544-div-859-5">
+      {headerStyle === 'angled' &&
+        <div className="header-overlay" ref={overlayRef} style={{ width: tableW }}>
+          <div className="header-overlay-bg" />
+          {visibleCols.map((c, i) => {
+            if (!colPositions[i]) return null;
+            if (c.sticky) return null; // seq label is rendered in-place inside its sticky <th>
+            const pos = colPositions[i];
+            return (
+              <div
+                key={c.key}
+                className="hdr-label"
+                title={c.label}
+                style={{ left: pos.left + 4 }}>
+              
+                {c.label}
+              </div>);
+
+          })}
+        </div>
+        }
+      <table className={`data-table ${headerExtraClass}`} style={{ fontSize }}>
+        <colgroup>
+          {visibleCols.map((c) => <col key={c.key} style={{ width: widths[c.key] }} />)}
+        </colgroup>
+        <thead ref={headRef}>
+          <tr>
+            {visibleCols.map((c) =>
+              <th
+                key={c.key}
+                className={c.sticky ? 'seq' : ''}
+                style={{
+                  width: widths[c.key],
+                  '--label-w': widths[c.key] + 'px', height: "150px"
+                }}
+                title={!c.sticky ? c.label : undefined}>
+              
+                <span className="label">
+                  {headerStyle === 'stacked' && !c.sticky ?
+                  c.label.split(' ').map((w, i) => <span key={i}>{w}</span>) :
+                  c.label}
+                </span>
+              </th>
+              )}
+          </tr>
+        </thead>
+        <tbody>
+          {visibleRowIdx.map((ri, displayIdx) => {
+              const s = SEQ_NUMS[ri];
+              return (
+                <tr key={s} className={displayIdx === 0 && !filters.length ? 'newest' : ri === 0 ? 'newest' : ''}>
+              {visibleCols.map((c) => {
+                    if (c.key === 'seq') {
+                      return <td key="seq" className="seq" style={{ padding: rowPad }}>{s}</td>;
+                    }
+                    const channelCol = CHANNEL_COLS.find((cc) => cc.key === c.key);
+                    if (channelCol) {
+                      // chip
+                      const isEmpty = (ri + c.key.length) % 7 === 3;
+                      return (
+                        <td key={c.key} style={{ padding: rowPad }}>
+                      {!isEmpty &&
+                          <span
+                            className="cell-chip"
+                            style={{ background: channelCol.color }} />
+
+                          }
+                    </td>);
+
+                    }
+                    const metaCol = META_COLS.find((mc) => mc.key === c.key);
+                    const v = metaCol?.sample[ri];
+
+                    // Object cells render as their DISPLAY_VALUE glyph (or a
+                    // generic ▦ fallback) inside a button that opens the
+                    // FoldoutCell. Null / undefined renders as em-dash.
+                    if (metaCol?.type === 'object') {
+                      const obj = v;
+                      if (obj == null || typeof obj !== 'object') {
+                        return <td key={c.key} className="obj-cell empty" style={{ padding: rowPad, textAlign: 'center' }}>—</td>;
+                      }
+                      const glyph = obj.DISPLAY_VALUE || '▦';
+                      return (
+                        <td key={c.key} className="obj-cell" style={{ padding: rowPad, textAlign: 'center' }}>
+                        <button
+                            type="button"
+                            className="obj-glyph"
+                            title={`${metaCol.label} — click to expand`}
+                            onClick={(e) => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setFoldout({ rowIdx: ri, colKey: c.key, anchor: { x: r.left, y: r.bottom } });
+                            }}>
+                          {glyph}
+                        </button>
+                      </td>);
+                    }
+
+                    // Number cells: per the loader, numbers are floats. Show
+                    // a 2-decimal-place truncation in the cell, with the full
+                    // value available via title-tooltip on hover. Non-numeric
+                    // sentinels (em-dash, null) fall through unchanged.
+                    let display = v ?? '';
+                    let titleAttr;
+                    if (metaCol?.type === 'number') {
+                      const n = parseFloat(v);
+                      if (!Number.isNaN(n) && v !== '' && v != null && String(v) !== '—') {
+                        const full = String(v);
+                        const trunc = (Math.trunc(n * 100) / 100).toFixed(2);
+                        if (full !== trunc) titleAttr = full;
+                        display = trunc;
+                      }
+                    }
+                    return (
+                      <td key={c.key} title={titleAttr} style={{
+                        padding: rowPad,
+                        color: display === '—' || display === '' ? 'var(--ink-soft)' : 'var(--ink)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        cursor: titleAttr ? 'help' : undefined
+                      }}>{display === '' ? '—' : display}</td>);
+
+                  })}
+            </tr>);
+            })}
+        </tbody>
+      </table>
+      {visibleRowIdx.length === 0 && filters && filters.length > 0 &&
+        <div className="empty-state">
+          <div className="glyph">⌕</div>
+          <div className="title">No rows match the current filters</div>
+          <div className="sub">
+            {SEQ_NUMS.length} row{SEQ_NUMS.length === 1 ? '' : 's'} hidden by{' '}
+            {filters.length} active filter{filters.length === 1 ? '' : 's'}.
+          </div>
+          <span className="clear-link" onClick={() => setFilters && setFilters([])}>clear all filters</span>
+        </div>
+        }
+      {showAnnotations &&
+        <div className="anno" style={{ position: 'absolute', right: 18, top: headerStyle === 'vertical' ? 140 : headerStyle === 'angled' ? 120 : 50, maxWidth: 220, pointerEvents: 'none' }}>
+          ← column widths derive from<br />
+          the longest value in each column.<br />
+          long header names truncate.
+        </div>
+        }
+      {foldout && (() => {
+          const col = META_COLS.find((c) => c.key === foldout.colKey);
+          const obj = col?.sample[foldout.rowIdx];
+          if (!obj || typeof obj !== 'object') return null;
+          const seq = SEQ_NUMS[foldout.rowIdx];
+          return (
+            <FoldoutCell
+              col={col}
+              obj={obj}
+              seq={seq}
+              anchor={foldout.anchor}
+              onClose={() => setFoldout(null)} />);
+
+        })()}
+    </div>
+    </>);
+
+}
+
+/* FoldoutCell — pops out near the clicked object cell to show its
+   payload. Per <MetadataCell>/<FoldoutCell> in TableView.tsx, an object
+   value can be either a flat list (all keys numeric → render as values
+   only) or a list of key-value pairs (mixed/string keys → render with
+   labels). The DISPLAY_VALUE key is consumed by the cell glyph itself
+   and stripped from the fold-out body. */
+function FoldoutCell({ col, obj, seq, anchor, onClose }) {
+  // Close on outside-click / Escape.
+  useEffect(() => {
+    const onKey = (e) => {if (e.key === 'Escape') onClose();};
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Strip the DISPLAY_VALUE marker — it's the glyph, not data.
+  const entries = Object.entries(obj).filter(([k]) => k !== 'DISPLAY_VALUE');
+  const isList = entries.length > 0 && entries.every(([k]) => /^\d+$/.test(k));
+  const glyph = obj.DISPLAY_VALUE || '▦';
+
+  // Position: anchor below the clicked glyph, clamped into the viewport.
+  // Measured after first render so we can flip up / left when needed.
+  const ref = useRef(null);
+  const [pos, setPos] = useState({ left: anchor.x, top: anchor.y + 4 });
+  useEffect(() => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    let left = anchor.x;
+    let top = anchor.y + 4;
+    if (left + r.width > window.innerWidth - 10) left = window.innerWidth - r.width - 10;
+    if (top + r.height > window.innerHeight - 10) top = Math.max(10, anchor.y - r.height - 24);
+    setPos({ left, top });
+  }, [anchor.x, anchor.y]);
+
+  return (
+    <>
+      <div className="foldout-backdrop" onClick={onClose} />
+      <div className="foldout" ref={ref} style={{ left: pos.left, top: pos.top }} onClick={(e) => e.stopPropagation()}>
+        <div className="foldout-head">
+          <span className="glyph">{glyph}</span>
+          <span className="title">{col.label}</span>
+          <span className="seq">seq {seq}</span>
+          <button className="close" onClick={onClose} title="Close (Esc)" aria-label="Close">✕</button>
+        </div>
+        <div className={`foldout-body ${isList ? 'list' : ''}`}>
+          {entries.length === 0 &&
+          <div className="row"><span className="v" style={{ color: 'var(--ink-soft)', fontStyle: 'italic' }}>(no items)</span></div>
+          }
+          {entries.map(([k, val]) =>
+          <div key={k} className="row">
+              <span className="k">{isList ? k : k}</span>
+              <span className="v">{String(val)}</span>
+            </div>
+          )}
+        </div>
+        <div className="foldout-foot">
+          {isList ? `${entries.length} items` : `${entries.length} key/value pairs`}
+        </div>
+      </div>
+    </>);
+
+}
+
+/* ---------- Interactive filter control ----------
+   Lives in the controls bar. Renders the [ filter · N ▾ ] button only;
+   the active filter chips themselves live in <FilterBar> below the
+   controls row so they wrap freely without distorting the controls row.
+
+   The popover hosts:
+     • a fuzzy column combobox (the column count is large — a <select>
+       would be unusable; users type a few chars to narrow)
+     • a type-aware operator picker (operators come from OPS_BY_TYPE for
+       the chosen column's data type)
+     • a value input + suggestion chips drawn from the column's data */
+function FilterControl({ filters, setFilters }) {
+  const [open, setOpen] = useState(false);
+  const [draftCol, setDraftCol] = useState(() => META_COLS[0]?.key || 'imgtype');
+  const [draftOp, setDraftOp] = useState('=');
+  const [draftVal, setDraftVal] = useState('');
+  const rootRef = useRef(null);
+
+  const draftColDef = useMemo(
+    () => META_COLS.find((c) => c.key === draftCol),
+    [draftCol]
+  );
+  const draftType = draftColDef?.type || 'string';
+  const availableOps = OPS_BY_TYPE[draftType] || OPS_BY_TYPE.string;
+
+  // If the current op isn't valid for the new column's type, snap to the
+  // first valid op for that type.
+  useEffect(() => {
+    if (!availableOps.some(([op]) => op === draftOp)) {
+      setDraftOp(availableOps[0][0]);
+    }
+  }, [draftType]); // eslint-disable-line
+
+  // Suggestions: unique values from the column's sample data, minus em-dashes.
+  const suggestions = useMemo(() => {
+    if (!draftColDef) return [];
+    return [...new Set(draftColDef.sample.filter((v) => v && v !== '—'))].slice(0, 8);
+  }, [draftColDef]);
+
+  // Click outside / Escape to close.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {if (e.key === 'Escape') setOpen(false);};
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const valueless = draftOp === 'exists' || draftOp === '!exists';
+  const apply = () => {
+    if (!valueless && !draftVal.trim()) return;
+    setFilters([...filters, { col: draftCol, op: draftOp, value: valueless ? '' : draftVal.trim() }]);
+    setDraftVal('');
+    setOpen(false);
+  };
+
+  // Placeholder hint by op — e.g. "3.5", "science", "1.0, 1.5", "open, closed".
+  const valuePlaceholder = (() => {
+    if (draftOp === 'between') return 'lo, hi';
+    if (draftOp === 'in') return 'a, b, c';
+    if (suggestions[0]) return suggestions[0];
+    return 'value';
+  })();
+
+  return (
+    <span className="filter-cluster" ref={rootRef}>
+      <button
+        className={`filter-btn ${filters.length ? 'active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Add or edit filters">
+        <span>filter</span>
+        {filters.length > 0 && <span className="count">{filters.length}</span>}
+        <span style={{ fontSize: 9, marginLeft: 1 }}>▾</span>
+      </button>
+
+      {open &&
+      <div className="filter-pop" onClick={(e) => e.stopPropagation()}>
+          <h4>Add filter</h4>
+          <div className="col-row">
+            <label>column</label>
+            <ColumnCombo value={draftCol} onChange={(k) => {setDraftCol(k);setDraftVal('');}} />
+          </div>
+          <div className="col-row" style={{ marginTop: -2 }}>
+            <label>&nbsp;</label>
+            <span className="type-tag" style={{ marginLeft: 0 }} data-comment-anchor="b75d469975-span-530-13">{draftType}</span>
+          </div>
+          <div className="row">
+            <label>op</label>
+            <select className="op" value={draftOp} onChange={(e) => setDraftOp(e.target.value)}
+          data-comment-anchor="93b8741de3-select-419-13"
+          style={{ flex: '0 0 110px' }}>
+              {availableOps.map(([op, lbl]) => <option key={op} value={op}>{lbl}</option>)}
+            </select>
+            <input
+            placeholder={valueless ? '(no value needed)' : valuePlaceholder}
+            value={valueless ? '' : draftVal}
+            disabled={valueless}
+            onChange={(e) => setDraftVal(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && apply()}
+            autoFocus />
+          </div>
+          {suggestions.length > 0 && draftOp !== 'between' && !valueless &&
+        <>
+              <div className="hint">common values:</div>
+              <div className="suggestions">
+                {suggestions.map((s) =>
+            <span key={s} className="suggestion" onClick={() =>
+            setDraftVal((prev) => draftOp === 'in' && prev ? `${prev}, ${s}` : s)
+            }>{s}</span>
+            )}
+              </div>
+            </>
+        }
+          <button className="apply" disabled={!valueless && !draftVal.trim()} onClick={apply}>
+            add filter
+          </button>
+        </div>
+      }
+    </span>);
+
+}
+
+/* Fuzzy column combobox. Substring + subsequence match against the
+   column label. Arrow keys navigate; Enter selects. The label is what
+   the user sees, but the stored value is the column's stable `key`. */
+function ColumnCombo({ value, onChange }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [kbdIdx, setKbdIdx] = useState(0);
+  const inputRef = useRef(null);
+  const rootRef = useRef(null);
+
+  const current = META_COLS.find((c) => c.key === value);
+  const display = open ? query : current?.label || '';
+
+  // Fuzzy match: prefer substring, fall back to subsequence.
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return META_COLS.map((c) => ({ col: c, score: 0, hl: null }));
+    const scored = [];
+    for (const c of META_COLS) {
+      const lbl = c.label.toLowerCase();
+      const key = c.key.toLowerCase();
+      const subIdx = lbl.indexOf(q);
+      if (subIdx !== -1) {
+        scored.push({
+          col: c,
+          score: subIdx === 0 ? -1000 : -500 + subIdx,
+          hl: { kind: 'range', a: subIdx, b: subIdx + q.length }
+        });
+        continue;
+      }
+      // subsequence in label or key
+      const sub = subseq(lbl, q) ?? subseq(key, q);
+      if (sub) scored.push({
+        col: c,
+        score: sub.score,
+        hl: { kind: 'seq', idx: sub.spansInLabel }
+      });
+    }
+    scored.sort((a, b) => a.score - b.score);
+    return scored;
+  }, [query]);
+
+  useEffect(() => {setKbdIdx(0);}, [query]);
+
+  // Click outside to close.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const pick = (col) => {onChange(col.key);setOpen(false);setQuery('');};
+
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown') {e.preventDefault();setKbdIdx((i) => Math.min(matches.length - 1, i + 1));} else
+    if (e.key === 'ArrowUp') {e.preventDefault();setKbdIdx((i) => Math.max(0, i - 1));} else
+    if (e.key === 'Enter' && matches[kbdIdx]) {e.preventDefault();pick(matches[kbdIdx].col);} else
+    if (e.key === 'Escape') {setOpen(false);setQuery('');}
+  };
+
+  return (
+    <span className="filter-combo" ref={rootRef} data-comment-anchor="b8a4bed171-select-411-13">
+      <input
+        ref={inputRef}
+        value={display}
+        placeholder="search columns…"
+        onFocus={() => {setOpen(true);setQuery('');}}
+        onChange={(e) => {setQuery(e.target.value);setOpen(true);}}
+        onKeyDown={onKey} />
+      
+      {open &&
+      <div className="list" onMouseDown={(e) => e.preventDefault() /* keep focus */}>
+          <div className="count">
+            {matches.length} of {META_COLS.length} columns
+          </div>
+          {matches.length === 0 &&
+        <div className="empty">no columns match “{query}”</div>
+        }
+          {matches.map((m, i) =>
+        <div
+          key={m.col.key}
+          className={`item ${i === kbdIdx ? 'kbd-active' : ''}`}
+          onMouseEnter={() => setKbdIdx(i)}
+          onClick={() => pick(m.col)}>
+              <span className="name">{highlight(m.col.label, m.hl)}</span>
+              <span className="type-pill">{m.col.type}</span>
+            </div>
+        )}
+        </div>
+      }
+    </span>);
+
+}
+
+// Subsequence match: returns {score, spansInLabel} or null. Score is
+// negative so it sorts after substring hits.
+function subseq(hay, needle) {
+  let i = 0,j = 0;
+  const spans = [];
+  while (i < hay.length && j < needle.length) {
+    if (hay[i] === needle[j]) {
+      spans.push(i);
+      j++;
+    }
+    i++;
+  }
+  if (j < needle.length) return null;
+  // Score: prefer tighter runs (lower span between first/last char).
+  const spread = spans[spans.length - 1] - spans[0];
+  return { score: spread, spansInLabel: spans };
+}
+
+// Wrap matched span(s) of the label in <mark>. hl is either
+// {kind:'range', a, b} for substring hits, or {kind:'seq', idx:[...]} for
+// subsequence hits.
+function highlight(label, hl) {
+  if (!hl) return label;
+  if (hl.kind === 'range') {
+    const { a, b } = hl;
+    return <>{label.slice(0, a)}<mark>{label.slice(a, b)}</mark>{label.slice(b)}</>;
+  }
+  // subsequence
+  const parts = [];
+  let last = 0;
+  for (const i of hl.idx) {
+    parts.push(label.slice(last, i));
+    parts.push(<mark key={'m' + i}>{label[i]}</mark>);
+    last = i + 1;
+  }
+  parts.push(label.slice(last));
+  return <>{parts}</>;
+}
+
+/* Active filter chips rendered as a separate strip below the controls bar.
+   Wraps freely — long chips or many chips never distort the controls row. */
+function FilterBar({ filters, setFilters }) {
+  const labelFor = (key) => META_COLS.find((c) => c.key === key)?.label || key;
+  const opLabel = (col, op) => {
+    const t = META_COLS.find((c) => c.key === col)?.type || 'string';
+    const found = (OPS_BY_TYPE[t] || []).find(([o]) => o === op);
+    return found ? found[1] : op;
+  };
+  return (
+    <div className="filter-bar">
+      <span className="label">filters</span>
+      {filters.length === 0 &&
+      <span className="empty-hint">none active — click “filter” above to add one</span>
+      }
+      {filters.map((f, i) =>
+      <span key={i} className="filter-chip">
+          <span className="col">{labelFor(f.col)}</span>
+          <span className="op" data-comment-anchor="913ede2422-span-1359-11">{opLabel(f.col, f.op)}</span>
+          {f.op !== 'exists' && f.op !== '!exists' &&
+        <span className="val" data-comment-anchor="9b5ab590f8-span-1360-9">{f.value}</span>
+        }
+          <span
+          className="x"
+          title="Remove filter"
+          onClick={() => setFilters(filters.filter((_, j) => j !== i))}>×</span>
+        </span>
+      )}
+      {filters.length > 1 &&
+      <span className="filter-clear" onClick={() => setFilters([])}>clear all</span>
+      }
+    </div>);
+
+}
+
+/* ---------- Interactive column picker ----------
+   A wide popover anchored to the [⚙ columns N/M ▾] button. Lists every
+   metadata column in a multi-column grid with a live search at the top.
+   No horizontal scroll — the grid auto-wraps.
+
+   Scope: METADATA columns only. Channels are always shown (they're not
+   part of the per-row metadata payload). Seq.No is structural and
+   always shown.
+
+   The metadata schema is dynamic — keys can change from one seq num to
+   the next — so columns are presented as a flat alphabetical list. No
+   client-side grouping is invented; the union of keys observed in the
+   day's rows is what shows up here.
+
+   Bulk actions: "all", "none", "reset" (back to defaults). */
+function ColumnPicker({ hiddenCols, setHiddenCols }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef(null);
+  const popRef = useRef(null);
+
+  // Clamp the popover into the viewport. The button can sit deep in the
+  // controls row, so its natural left-anchor often runs the popover off
+  // the right edge of the screen. Measure post-render, then shift left
+  // by the overflow amount so the popover's right edge always sits
+  // inside the viewport.
+  useEffect(() => {
+    if (!open || !popRef.current) return;
+    const pop = popRef.current;
+    pop.style.left = '0px';
+    const rect = pop.getBoundingClientRect();
+    const overflow = rect.right - (window.innerWidth - 12);
+    if (overflow > 0) pop.style.left = `${-overflow}px`;
+  }, [open, query, hiddenCols]);
+
+  // The picker lists metadata columns only. Channels are always shown;
+  // Seq.No is structural and always shown.
+  const allTogglable = useMemo(
+    () => [...META_COLS].sort((a, b) => a.label.localeCompare(b.label)),
+    []
+  );
+  const total = allTogglable.length;
+  const visibleCount = allTogglable.filter((c) => !hiddenCols.has(c.key)).length;
+
+  // Filter by query — substring against label or key, case-insensitive.
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allTogglable;
+    return allTogglable.filter((c) =>
+    c.label.toLowerCase().includes(q) || c.key.toLowerCase().includes(q)
+    );
+  }, [query, allTogglable]);
+
+  // Click outside / Escape to close.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {if (e.key === 'Escape') setOpen(false);};
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const toggle = (key) => {
+    const next = new Set(hiddenCols);
+    if (next.has(key)) next.delete(key);else next.add(key);
+    setHiddenCols(next);
+  };
+  const showAll = () => {
+    // Only un-hide metadata columns — leave any channel-related state alone.
+    const next = new Set(hiddenCols);
+    for (const c of META_COLS) next.delete(c.key);
+    setHiddenCols(next);
+  };
+  const hideAll = () => {
+    const next = new Set(hiddenCols);
+    for (const c of META_COLS) next.add(c.key);
+    setHiddenCols(next);
+  };
+  const reset = () => {
+    const next = new Set();
+    for (const c of META_COLS) if (!DEFAULT_VISIBLE.has(c.key)) next.add(c.key);
+    setHiddenCols(next);
+  };
+
+  const q = query.trim().toLowerCase();
+
+  return (
+    <span className="cols-cluster" ref={rootRef}>
+      <button
+        className={`cols-btn ${hiddenCols.size > 0 ? 'active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        title="Add / remove metadata columns">
+        <ColumnsIcon /><span>columns</span>
+        <span className="frac">{visibleCount}/{total}</span>
+        <ChevronDownIcon />
+      </button>
+
+      {open &&
+      <div className="picker-pop" ref={popRef} onClick={(e) => e.stopPropagation()}>
+          <div className="picker-head">
+            <span className="title">metadata columns</span>
+            <span className="count"><b>{visibleCount}</b> of {total} shown</span>
+            <input
+            className="search"
+            placeholder="search columns…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoFocus />
+            <div className="bulk">
+              <button onClick={showAll} title="Show all metadata columns">all</button>
+              <button onClick={hideAll} title="Hide all metadata columns">none</button>
+              <button onClick={reset} title="Restore default column set">reset</button>
+            </div>
+          </div>
+          <div className="picker-body">
+            {matches.length === 0 ?
+          <div style={{ padding: 20, textAlign: 'center', fontFamily: 'var(--hand)', color: 'var(--ink-soft)', fontStyle: 'italic' }}>
+                no columns match “{query}”
+              </div> :
+
+          <div className="picker-grid">
+                {matches.map((c) =>
+            <label key={c.key} className={`picker-item ${hiddenCols.has(c.key) ? 'dim' : ''}`}>
+                    <input
+                type="checkbox"
+                checked={!hiddenCols.has(c.key)}
+                onChange={() => toggle(c.key)} />
+                    <span className="label-text">{highlightLabel(c.label, q)}</span>
+                  </label>
+            )}
+              </div>
+          }
+          </div>
+          <div className="picker-foot">
+            <span>Channels and Seq.No are always shown.</span>
+            <span className="spacer" />
+            <span>{[...hiddenCols].filter((k) => META_COLS.some((c) => c.key === k)).length} hidden</span>
+          </div>
+        </div>
+      }
+    </span>);
+
+}
+
+function highlightLabel(label, q) {
+  if (!q) return label;
+  const idx = label.toLowerCase().indexOf(q);
+  if (idx === -1) return label;
+  return <>{label.slice(0, idx)}<mark>{label.slice(idx, idx + q.length)}</mark>{label.slice(idx + q.length)}</>;
+}
+
+/* ---------- Channels tab ----------
+   Layout C from the Channels-tab explorations: a grouped channel list
+   on the left, one large viewer + metadata on the right. Restyled here
+   in the camera-table sketch's paper/ink/hand vocabulary instead of the
+   dark theme it was prototyped in. Muted chip colours match CHANNEL_COLS. */
+const CHANNELS_TAB = [
+{ name: 'witness_detector', title: 'Witness Detector', color: '#cfe6e8', seq: '0786', updated: '12s ago', desc: 'Single-CCD raw preview from R22_S11', perDay: false },
+{ name: 'focal_plane_mosaic', title: 'Post-ISR mosaic', color: '#d4e7c5', seq: '0786', updated: '14s ago', desc: 'ISR-corrected full focal-plane mosaic', perDay: false },
+{ name: 'calexp_mosaic', title: 'Calexp mosaic', color: '#cfc2e0', seq: '0785', updated: '46s ago', desc: 'Calibrated exposure mosaic', perDay: false },
+{ name: 'psf_shape_azel', title: 'PSF shape AzEl', color: '#e4c5d8', seq: '0785', updated: '52s ago', desc: 'Whisker plot of PSF shape in Az/El', perDay: false },
+{ name: 'fwhm_focal_plane', title: 'FWHM Focal Plane', color: '#c4d6e6', seq: '0784', updated: '1m ago', desc: 'PSF FWHM per detector across the focal plane', perDay: false },
+{ name: 'mount', title: 'Mount torques', color: '#b8aed3', seq: '0786', updated: '11s ago', desc: 'Az/El mount torque trace over the exposure', perDay: false },
+{ name: 'imexam', title: 'Image Analysis', color: '#e6c5cb', seq: '0785', updated: '47s ago', desc: 'Per-exposure quick statistics', perDay: false },
+{ name: 'event_timeline', title: 'Event timeline', color: '#e8c8a8', seq: '0786', updated: '9s ago', desc: 'Per-visit event chronology', perDay: false },
+{ name: 'day_movie', title: 'Whole Day Movie', color: '#b8d4e0', seq: 'today', updated: 'rolling', desc: 'Every exposure of the day stitched into a rolling movie', perDay: true }];
+
+
+const CHANNEL_GROUPS_TAB = [
+{ title: 'Per-exposure imaging', names: ['witness_detector', 'focal_plane_mosaic', 'calexp_mosaic'] },
+{ title: 'Per-exposure analysis', names: ['psf_shape_azel', 'fwhm_focal_plane', 'mount', 'imexam'] },
+{ title: 'Per-night', names: ['event_timeline', 'day_movie'] }];
+
+
+function ChannelsView() {
+  const byName = useMemo(() => Object.fromEntries(CHANNELS_TAB.map((c) => [c.name, c])), []);
+  const [focused, setFocused] = useState('calexp_mosaic');
+  const [copied, setCopied] = useState(false);
+  const hero = byName[focused];
+
+  // Reset the "copied" confirmation whenever the focused channel changes.
+  useEffect(() => {setCopied(false);}, [focused]);
+  const copyLink = () => {
+    const url = `https://rubintv.lsst.org/summit-usdf/lsstcam/channel/${hero.name}`;
+    if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  const meta = [
+  ['exp time', '15 s'], ['image type', 'science'], ['target', 'lowdust'],
+  ['filter', 'z_20'], ['focus Z', '−2.65'], ['witness', 'R22_S11'],
+  ['sky mean', '9 372.50'], ['date begin', '10:12:16']];
+
+
+  return (
+    <div className="chv-root">
+      {/* Left: grouped list */}
+      <div className="chv-list">
+        <div className="chv-list-head">
+          <div className="ttl">Channels</div>
+          <div className="ct">{CHANNELS_TAB.length} TOTAL</div>
+        </div>
+        {CHANNEL_GROUPS_TAB.map((g) =>
+        <div className="chv-group" key={g.title}>
+            <div className="chv-group-h">{g.title}</div>
+            {g.names.map((n) => {
+            const ch = byName[n];
+            const active = n === focused;
+            return (
+              <div key={n} className={`chv-item ${active ? 'active' : ''}`} onClick={() => setFocused(n)}>
+                  <span className="sw" style={{ background: ch.color }} />
+                  <div className="nm-wrap">
+                    <div className="nm">{ch.title}</div>
+                    <div className="mt">seq {ch.seq} · {ch.updated}</div>
+                  </div>
+                  <span className={`tag chv-tag ${ch.perDay ? '' : 'live'}`}>{ch.perDay ? 'day' : 'live'}</span>
+                </div>);
+
+          })}
+          </div>
+        )}
+      </div>
+
+      {/* Right: single viewer */}
+      <div className="chv-viewer">
+        <div className="chv-vhead">
+          <span className="sw" style={{ background: hero.color }} />
+          <h3>{hero.title}</h3>
+          <span className={`tag ${hero.perDay ? '' : 'live'}`}>{hero.perDay ? 'per day' : 'live'}</span>
+          <span style={{ flex: 1 }} />
+          <span className="meta">seq {hero.seq} · updated {hero.updated}</span>
+        </div>
+
+        <div className="ph chv-frame">{hero.name}.png</div>
+
+        <div className="chv-cols">
+          <div>
+            <div className="chv-section-h">Description</div>
+            <div className="chv-desc">
+              {hero.desc}. Generated {hero.perDay ? 'across the whole night' : 'per exposure'} by the Summit Quicklook pipeline and refreshed automatically as new seq numbers arrive.
+            </div>
+            <div className="chv-actions" data-comment-anchor="622b1f674e-div-1645-13">
+              <span className="btn btn-active">↗ open full-page live view</span>
+              <span className={`btn ${copied ? 'chv-copied' : ''}`} onClick={copyLink}>
+                {copied ? '✓ link copied' : '⎘ copy image link'}
+              </span>
+              <span className="btn">↓ download {hero.perDay ? 'movie' : 'image'}</span>
+            </div>
+          </div>
+          <div>
+            <div className="chv-section-h">Exposure metadata</div>
+            <div className="chv-meta-grid">
+              {meta.map(([k, v]) =>
+              <React.Fragment key={k}>
+                  <div className="k">{k}</div>
+                  <div className="v">{v}</div>
+                </React.Fragment>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>);
+
+}
+
+/* ---------- Night report tab ----------
+   Faithful to the real RubinTV NightReport component. The report data is
+   { text: NightReportText[], plots: NightReportPlot[] }. getTabs() turns
+   each text item into a tab (type multiline | keyvalues | links) and each
+   plot GROUP into a tab; text tabs come first. One panel shows at a time.
+   Plot tabs render a 2-up grid of <figure> = image + filename <figcaption>.
+   The 'elana' tab is hidden until you type its name — same easter egg as
+   the real component (DEFAULT_HIDDEN_TABS = ['elana']). */
+
+// Mirrors sanitiseString in the real codebase — used for tab ids.
+function nrSanitise(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+const NIGHT_REPORT = {
+  text: [
+  {
+    title: 'Summary', type: 'keyvalues',
+    content: {
+      'date': '2026-06-08', 'day obs': '20260608', 'telescope': 'Simonyi',
+      'instrument': 'LSSTCam', 'program': 'BLOCK-320', 'exposures': '786',
+      'on-sky': '6h 24m', 'filters': 'u g r i z y', 'dome': 'open'
+    }
+  },
+  {
+    title: 'Efficiency', type: 'multiline',
+    content:
+    `NIGHT REPORT — 2026-06-08 (dayObs 20260608)
+Simonyi / LSSTCam
+
+open-shutter efficiency ... 78.4 %
+median slew + settle ...... 4.62 s
+median readout ............ 2.00 s
+science exposures ......... 786
+calibration exposures ..... 58
+longest gap ............... 14m 52s @ 01:40
+visits / hour ............. 122
+
+Dome opened 21:12 once humidity < 80%.
+Survey cadence ran 22:10 → 05:20 uninterrupted.
+Closed 05:31 at morning twilight. No weather faults.`
+  },
+  {
+    title: 'Per-band counts', type: 'keyvalues',
+    content: { u: '42', g: '118', r: '156', i: '174', z: '161', y: '99', darks: '14', flats: '22' }
+  },
+  {
+    title: 'Links', type: 'links',
+    content: [
+    { label: 'Grafana — summit dashboards', url: '#grafana' },
+    { label: 'Nightly observing log', url: '#nightlog' },
+    { label: 'Times Square — night report notebook', url: '#times-square' },
+    { label: 'EFD — engineering facility database', url: '#efd' },
+    { label: 'Rubin Observatory documentation', url: '#docs' }]
+  }],
+
+  plots: [
+  { filename: 'coverage_polar_alt_az.png', group: 'Coverage' },
+  { filename: 'exposure_count_by_filter.png', group: 'Coverage' },
+  { filename: 'delivered_seeing_vs_time.png', group: 'Seeing' },
+  { filename: 'psf_fwhm_vs_time.png', group: 'Seeing' },
+  { filename: 'dimm_seeing_vs_time.png', group: 'Seeing' },
+  { filename: 'zero_point_vs_time.png', group: 'Photometry' },
+  { filename: 'sky_brightness_vs_time.png', group: 'Photometry' },
+  { filename: 'photometric_scatter_vs_mag.png', group: 'Photometry' },
+  { filename: 'astrometric_offsets.png', group: 'Astrometry' },
+  { filename: 'astrometric_rms_vs_time.png', group: 'Astrometry' },
+  { filename: 'mount_motion_residuals.png', group: 'Mount' },
+  { filename: 'mount_jitter_vs_time.png', group: 'Mount' },
+  { filename: 'wind_speed_direction.png', group: 'Environment' },
+  { filename: 'temperature_vs_time.png', group: 'Environment' },
+  { filename: 'airmass_vs_time.png', group: 'Environment' }]
+
+};
+
+// getTabs(): text tabs first (in order), then one tab per plot group.
+function nrGetTabs(report) {
+  const tabs = [];
+  (report.text || []).forEach((item) => {
+    tabs.push({ id: nrSanitise(item.title), label: item.title, type: 'text', kind: item.type, data: item });
+  });
+  if (report.plots) {
+    const order = [];const map = new Map();
+    report.plots.forEach((p) => {
+      if (!map.has(p.group)) {map.set(p.group, []);order.push(p.group);}
+      map.get(p.group).push(p);
+    });
+    order.forEach((g) => tabs.push({ id: nrSanitise(g), label: g, type: 'plot', data: map.get(g) }));
+  }
+  return tabs;
+}
+
+// short, readable hint of what the plot shows — drawn inside the placeholder
+function nrPlotHint(fn) {
+  return fn.replace(/\.(png|jpg|jpeg|gif|svg)$/i, '').replace(/_/g, ' ');
+}
+
+function NightReportTextTab({ item }) {
+  if (item.type === 'multiline') {
+    return <pre className="nr-log">{item.content}</pre>;
+  }
+  if (item.type === 'keyvalues') {
+    return (
+      <div className="nr-kv">
+        {Object.entries(item.content).map(([k, v]) =>
+        <React.Fragment key={k}>
+            <div className="k">{k}</div>
+            <div className="v">{v}</div>
+          </React.Fragment>
+        )}
+      </div>);
+
+  }
+  if (item.type === 'links') {
+    return (
+      <div className="nr-links">
+        {item.content.map((l) =>
+        <a className="nr-link" key={l.url} href={l.url} onClick={(e) => e.preventDefault()}>
+            <span className="lk">{l.label}</span>
+            <span className="ld">{l.url}</span>
+            <span className="arr">↗</span>
+          </a>
+        )}
+      </div>);
+
+  }
+  return null;
+}
+
+function NightReportPlotsTab({ plots }) {
+  return (
+    <div className="nr-plot-grid">
+      {plots.map((p) =>
+      <figure className="nr-plot" key={p.filename}>
+          <div className="ph">
+            <span className="stamp">{nrPlotHint(p.filename)}</span>
+            <span className="axes">plot image</span>
+          </div>
+          <figcaption>{p.filename}</figcaption>
+        </figure>
+      )}
+    </div>);
+
+}
+
+function NightReportView() {
+  const baseTabs = useMemo(() => nrGetTabs(NIGHT_REPORT), []);
+  // Hidden easter-egg tab, revealed by typing 'elana' (as in the real app).
+  const [eggOpen, setEggOpen] = useState(false);
+  const tabs = useMemo(() => {
+    const eggTab = {
+      id: 'elana', label: 'elana', type: 'text', kind: 'multiline', egg: true,
+      data: { type: 'multiline', content:
+        "you found the hidden tab.\n\nin the real RubinTV night report this id\nlives in DEFAULT_HIDDEN_TABS and only\nappears once someone types its name." }
+    };
+    return eggOpen ? [...baseTabs, eggTab] : baseTabs;
+  }, [baseTabs, eggOpen]);
+
+  const [selected, setSelected] = useState(baseTabs[0].id);
+
+  // Type-to-reveal listener for the hidden tab.
+  useEffect(() => {
+    let typed = '';
+    const target = 'elana';
+    const onKey = (e) => {
+      if (e.key.length !== 1) return;
+      typed = (typed + e.key.toLowerCase()).slice(-target.length);
+      if (typed === target) {
+        setEggOpen(true);
+        setSelected('elana');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const cur = tabs.find((t) => t.id === selected) || tabs[0];
+
+  return (
+    <div className="nr-root">
+      <div className="nr-head">
+        <h3>Nightly Summary</h3>
+        <span className="meta">dayObs 20260608 · Simonyi / LSSTCam</span>
+        <span style={{ flex: 1 }} />
+        <span className="tag live"><span className="hand">auto-refresh</span></span>
+      </div>
+
+      <div className="nr-tabwrap">
+        <div className="nr-subtabs">
+          {tabs.map((tab) =>
+          <div
+            key={tab.id}
+            className={`nr-subtab ${tab.id === selected ? 'active' : ''} ${tab.egg ? 'egg' : ''}`}
+            onClick={() => setSelected(tab.id)}>
+              <span>{tab.label}</span>
+              {tab.type === 'plot' ?
+            <span className="pct">{tab.data.length}</span> :
+            <span className="kind">{tab.kind === 'keyvalues' ? 'key/val' : tab.kind === 'multiline' ? 'text' : 'links'}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="nr-panel">
+        {cur.type === 'plot' ?
+        <NightReportPlotsTab plots={cur.data} /> :
+        <div className="nr-text">
+            <div className="lead">
+              <span>{cur.label}</span>
+              <span className="pill">{cur.kind === 'keyvalues' ? 'KEY / VALUE' : cur.kind === 'multiline' ? 'MULTILINE' : 'LINKS'}</span>
+            </div>
+            <NightReportTextTab item={cur.data} />
+          </div>
+        }
+      </div>
+    </div>);
+
+}
+
+/* Clickable breadcrumb. Each segment may carry an onClick to navigate; the
+   last (current) segment is plain text. */
+function Crumb({ segments }) {
+  return (
+    <div className="crumb">
+      {segments.map((s, i) =>
+      <React.Fragment key={i}>
+          {i > 0 && <span className="sep">›</span>}
+          {s.onClick ?
+        <span className="seg link" onClick={s.onClick}>{s.label}</span> :
+        <span className="seg">{s.label}</span>}
+        </React.Fragment>
+      )}
+    </div>);
+
+}
+
+/* Home — choose a location. */
+function HomePage({ onPickLocation }) {
+  return (
+    <div className="landing" data-screen-label="home">
+      <div style={{ position: "fixed", top: "20px", right: "24px", zIndex: 20 }}><ThemeToggle /></div>
+      <div className="landing-inner">
+        <div className="home-hero">
+          <img className="brand-logo brand-logo-light" src="assets/rubin-logo.png" alt="Vera C. Rubin Observatory" />
+          <img className="brand-logo brand-logo-dark" src="assets/rubin-logo-dark.png" alt="Vera C. Rubin Observatory" />
+        </div>
+        <div className="home-tagline"><b>RubinTV</b><span className="sep"></span>live camera displays</div>
+
+        <div className="landing-h">Choose a location</div>
+        <div className="loc-grid">
+          {LOCATIONS.map((l) => {
+            const cams = groupsForLocation(l.id).flatMap((g) => g.cams);
+            const online = cams.filter((c) => c.online).length;
+            return (
+              <div key={l.id} className="loc-card" onClick={() => onPickLocation(l.id)}>
+                <div className="loc-card-top">
+                  <span className="loc-name">{l.name}</span>
+                  <span className="loc-arrow">→</span>
+                </div>
+                <div className="loc-label">{l.id}</div>
+                <div className="loc-blurb">{l.blurb}</div>
+                <div className="loc-foot">
+                  <span className="loc-stat"><span className="dot" /> {online} live</span>
+                  <span className="loc-stat dim">{cams.length} cameras</span>
+                </div>
+              </div>);
+
+          })}
+        </div>
+      </div>
+    </div>);
+
+}
+
+/* Location — choose a camera offered at this site. */
+function LocationPage({ locId, onHome, onPickCam }) {
+  const loc = locationById(locId);
+  const groups = groupsForLocation(locId);
+  return (
+    <div className="landing" data-screen-label={`location:${locId}`}>
+      <div className="landing-topbar">
+        <Crumb segments={[{ label: 'home', onClick: onHome }, { label: locId }]} />
+        <div className="title-row" style={{ alignItems: 'flex-start' }}>
+          <h2>{loc.name}</h2>
+          <span style={{ flex: 1 }} />
+          <ThemeToggle />
+          <span className="tag live"><span className="hand">live</span></span>
+        </div>
+      </div>
+
+      <div className="landing-inner">
+        <div className="landing-h">Cameras at {locId}</div>
+        {groups.map((g) =>
+        <div key={g.label} className="cam-group">
+            <div className="cam-group-h">{g.label}</div>
+            <div className="cam-grid">
+              {g.cams.map((c) =>
+            <div
+              key={c.name}
+              className={`cam-card ${!c.online ? 'off' : ''}`}
+              onClick={() => c.online && onPickCam(c.name)}>
+              
+                  <span className="cam-card-name">{c.name}</span>
+                  <span className={`cam-card-status ${c.online ? 'on' : ''}`}>{c.online ? 'live' : 'offline'}</span>
+                </div>
+            )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>);
+
+}
+
+function App() {
+  const [t, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
+  // Navigation: 'home' (locations) → 'location' (cameras) → 'camera' (the
+  // table / feed). Persisted so a reload keeps you where you were.
+  const [page, setPage] = useState(() => localStorage.getItem('rubintv.page') || 'home');
+  const [activeLocation, setActiveLocation] = useState(() => localStorage.getItem('rubintv.loc') || 'summit-usdf');
+  const [activeCam, setActiveCam] = useState(() => localStorage.getItem('rubintv.cam') || 'LSSTCam');
+  const [activeSystem, setActiveSystem] = useState(null); // 'Detectors' | 'Admin' | null
+  const [activeTab, setActiveTab] = useState('Table');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [filters, setFilters] = useState([]);
+  // Per-column visibility — track the HIDDEN set (default empty means
+  // "everything in DEFAULT_VISIBLE is on"). Only metadata columns are
+  // ever hidden; channels and Seq.No are always shown.
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    const h = new Set();
+    for (const c of META_COLS) if (!DEFAULT_VISIBLE.has(c.key)) h.add(c.key);
+    return h;
+  });
+
+  const showCamera = !activeSystem;
+
+  useEffect(() => {localStorage.setItem('rubintv.page', page);}, [page]);
+  useEffect(() => {localStorage.setItem('rubintv.loc', activeLocation);}, [activeLocation]);
+  useEffect(() => {localStorage.setItem('rubintv.cam', activeCam);}, [activeCam]);
+
+  // Switching cameras may change which views exist (All Sky only has Feed).
+  // Reset to the camera's first valid view when the current one isn't offered.
+  const viewForCam = (name, current) => {
+    const views = viewsForCam(name);
+    return views.some((v) => v.id === current) ? current : views[0].id;
+  };
+  const pickCam = (name) => {
+    setActiveSystem(null);
+    setActiveCam(name);
+    setActiveTab((tab) => viewForCam(name, tab));
+  };
+
+  // Navigation handlers.
+  const goHome = () => {setActiveSystem(null);setPage('home');};
+  const goLocation = (id) => {
+    const loc = id || activeLocation;
+    setActiveLocation(loc);
+    setActiveSystem(null);
+    setPage('location');
+  };
+  const openCamFromLocation = (name) => {
+    setActiveCam(name);
+    setActiveSystem(null);
+    setActiveTab((tab) => viewForCam(name, tab));
+    setPage('camera');
+  };
+
+  if (page === 'home') {
+    return <HomePage onPickLocation={goLocation} />;
+  }
+  if (page === 'location') {
+    return <LocationPage locId={activeLocation} onHome={goHome} onPickCam={openCamFromLocation} />;
+  }
+
+  return (
+    <div className={`shell ${sidebarOpen ? '' : 'collapsed'}`}>
+      {sidebarOpen ?
+      <Sidebar groups={groupsForLocation(activeLocation)} activeCam={activeCam} onPickCam={pickCam} activeSystem={activeSystem} onPickSystem={setActiveSystem} activeTab={activeTab} onPickView={setActiveTab} activeLocation={activeLocation} locations={LOCATIONS} onPickLocation={goLocation} onClose={() => setSidebarOpen(false)} /> :
+      <div />
+      }
+      <div className="main">
+        {showCamera ? <>
+        <div className="topbar">
+          {!sidebarOpen &&
+            <div className="topbar-leftgutter">
+              <button className="sidebar-reopen" onClick={() => setSidebarOpen(true)} title="Show sidebar" aria-label="Show sidebar" data-comment-anchor="d90a460e45-button-313-9">»</button>
+              <ThemeToggle vertical />
+            </div>
+            }
+          <Crumb segments={[
+            { label: 'home', onClick: goHome },
+            { label: activeLocation, onClick: () => goLocation() },
+            { label: activeCam.toLowerCase() }]} />
+          <div className="title-row" style={{ alignItems: "flex-start" }}>
+            <h2>{activeCam}</h2>
+            <span style={{ flex: 1 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              {!sidebarOpen &&
+                <div className="topbar-brand">
+                  <img className="brand-mark" src="assets/rubin-mark.png" alt="Vera C. Rubin Observatory" />
+                  <span className="brand">RubinTV</span>
+                  <span className="site">{activeLocation}</span>
+                </div>
+                }
+              <LiveStatusPill />
+            </div>
+          </div>
+          <div className="tabs">
+            {viewsForCam(activeCam).map((v) =>
+              <div
+                key={v.id}
+                className={`tab ${activeTab === v.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(v.id)}>
+                {v.label}
+                {v.count != null && <span className="count">{v.count}</span>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {activeTab === 'Feed' ? <AllSkyFeed /> : activeTab === 'Channels' ? <ChannelsView /> : activeTab === 'Night report' ? <NightReportView /> : <>
+        <div className="controls">
+          <span className="btn">◀</span>
+          <DatePicker style={t.datePickerStyle} />
+          <span className="btn">▶</span>
+          <ColumnPicker hiddenCols={hiddenCols} setHiddenCols={setHiddenCols} />
+          <FilterControl filters={filters} setFilters={setFilters} />
+          <span className="btn"><DownloadIcon />metadata</span>
+          <span className="ctrl-spacer" />
+        </div>
+
+        <FilterBar filters={filters} setFilters={setFilters} />
+
+        <Table
+              headerStyle={t.headerStyle}
+              density={t.density}
+              channelColumns={t.channelColumns}
+              showAnnotations={t.showAnnotations}
+              filters={filters}
+              setFilters={setFilters}
+              hiddenCols={hiddenCols} />
+          
+
+        <div className="hintbar">
+          <span>← → arrow keys to jump rows</span>
+          <span style={{ flex: 1 }} />
+          <span><kbd>?</kbd> shortcuts</span>
+        </div>
+        </>}
+        </> : <>
+        <div className="topbar">
+          {!sidebarOpen &&
+            <div className="topbar-leftgutter">
+              <button className="sidebar-reopen" onClick={() => setSidebarOpen(true)} title="Show sidebar" aria-label="Show sidebar">»</button>
+              <ThemeToggle vertical />
+            </div>
+            }
+          <Crumb segments={[
+            { label: 'home', onClick: goHome },
+            { label: activeLocation, onClick: () => goLocation() },
+            { label: activeSystem.toLowerCase() }]} />
+          <div className="title-row">
+            <h2>{activeSystem}</h2>
+            <span className="meta">{activeSystem === 'Detectors' ? 'cluster status · redis stream' : 'redis controls'}</span>
+            <span style={{ flex: 1 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              {!sidebarOpen &&
+                <div className="topbar-brand">
+                  <img className="brand-mark" src="assets/rubin-mark.png" alt="Vera C. Rubin Observatory" />
+                  <span className="brand">RubinTV</span>
+                  <span className="site">{activeLocation}</span>
+                </div>
+                }
+          <span className="tag live"><span className="hand">live</span></span>
+            </div>
+          </div>
+        </div>
+        <div style={{ flex: 1, padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="wf wf-dashed" style={{ padding: 28, textAlign: 'center', maxWidth: 460 }}>
+            <div className="hand-b" style={{ fontSize: 20, marginBottom: 6 }}>{activeSystem} — own page</div>
+            <div className="hand" style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
+              reached from the sidebar, not from camera tabs.<br />
+              see the wireframe explorations for {activeSystem === 'Detectors' ? 'cluster status views' : 'admin / redis controls'}.
+            </div>
+          </div>
+        </div>
+        </>}
+      </div>
+
+      {window.TweaksPanel &&
+      <window.TweaksPanel title="Tweaks">
+          <window.TweakSection title="Column headers">
+            <window.TweakSelect
+            label="Header style"
+            value={t.headerStyle}
+            onChange={(v) => setTweak('headerStyle', v)}
+            options={[
+            { value: 'stacked', label: 'Stacked (words on lines)' },
+            { value: 'angled', label: 'Angled (-35°)' },
+            { value: 'vertical', label: 'Vertical (90°)' },
+            { value: 'ellipsis', label: 'Ellipsis + hover' },
+            { value: 'wrap', label: 'Wrapped (multi-line)' }]
+            } />
+          
+          </window.TweakSection>
+          <window.TweakSection title="Density">
+            <window.TweakRadio
+            label="Row density"
+            value={t.density}
+            onChange={(v) => setTweak('density', v)}
+            options={[
+            { value: 'compact', label: 'Compact' },
+            { value: 'regular', label: 'Regular' },
+            { value: 'comfy', label: 'Comfy' }]
+            } />
+          
+          </window.TweakSection>
+          <window.TweakSection title="Date picker">
+            <window.TweakSelect
+            label="Picker style"
+            value={t.datePickerStyle}
+            onChange={(v) => setTweak('datePickerStyle', v)}
+            options={[
+            { value: 'classic', label: 'Classic — single month' },
+            { value: 'two-months', label: 'Two months side-by-side' },
+            { value: 'nights', label: 'Recent nights list' }]
+            } />
+          
+          </window.TweakSection>
+          <window.TweakSection title="View">
+            <window.TweakToggle label="Channel image cells" value={t.channelColumns} onChange={(v) => setTweak('channelColumns', v)} />
+            <window.TweakToggle label="Designer annotations" value={t.showAnnotations} onChange={(v) => setTweak('showAnnotations', v)} />
+          </window.TweakSection>
+        </window.TweaksPanel>
+      }
+    </div>);
+
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

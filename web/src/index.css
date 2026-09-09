@@ -1,0 +1,2901 @@
+/* RubinTV design system — ported from the Claude Design "Camera Table Sidebar v2"
+ * design (design/from-claude/Camera Table - Sidebar v2.html). Light + dark
+ * palettes toggle via [data-theme] on <html>; "system" follows the OS. White /
+ * charcoal structure, teal accent, IBM Plex data + Space Grotesk display. */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+/* ── Light palette (default) ───────────────────────────────────────────── */
+:root {
+  --ink: #23282d;
+  --ink-2: #4b525a;
+  --ink-soft: #828b93;
+  --line: #23282d;
+  --line-soft: #e3e8ea;
+  --line-mid: #ccd3d7;
+  --stroke: #23282d;          /* structural hairlines (charcoal in light) */
+  color-scheme: light;
+
+  --paper: #ffffff;
+  --paper-2: #f5f8f9;
+  --paper-3: #ebeff1;
+  /* Vertical stripe for alternate metadata columns — a hair off --paper so it
+     reads as a faint band, not a colour. Kept its own token so tuning it never
+     disturbs --paper-2 (headers, sticky seq column). */
+  --col-stripe: #f7fafb;
+
+  --accent: #0a8d93;          /* readable teal — links, focus, selection */
+  --accent-bright: #00bbc6;   /* constellation cyan — live, bars, dots */
+  --accent-soft: #ddf1f2;     /* selected-row / in-range tint */
+  --accent-line: #8ad6da;
+
+  --warn: #d97a2f;
+  --good: #1f9d63;
+
+  --hand: 'IBM Plex Sans', system-ui, sans-serif;     /* UI labels */
+  --display: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
+  --shadow-pop: 0 12px 34px -10px rgba(18,32,38,0.26), 0 3px 10px -3px rgba(18,32,38,0.12);
+  --shadow-card: 0 1px 2px rgba(18,32,38,0.05), 0 8px 20px -12px rgba(18,32,38,0.20);
+}
+
+/* ── Dark palette ──────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --ink: #e8edef;
+  --ink-2: #aeb7bd;
+  --ink-soft: #808a91;
+  --line: #e8edef;
+  --line-soft: #262d32;
+  --line-mid: #38424a;
+  --stroke: #3a444c;
+
+  --paper: #14181b;
+  --paper-2: #1a2024;
+  --paper-3: #232b30;
+  /* Slightly lighter than --paper; the faint lift reads as a band on the dark
+     table without lifting to the --paper-2 header tone. */
+  --col-stripe: #191e22;
+
+  --accent: #2cc6cd;
+  --accent-bright: #19d3da;
+  --accent-soft: #0f2f33;
+  --accent-line: #2c6a6e;
+
+  --warn: #e2914e;
+  --good: #2bb673;
+
+  --shadow-pop: 0 16px 44px -12px rgba(0,0,0,0.70), 0 4px 14px -4px rgba(0,0,0,0.55);
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.45), 0 10px 26px -16px rgba(0,0,0,0.65);
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display type on big titles + section heads. */
+.hand-b,
+h1, h2 {
+  font-family: var(--display);
+  letter-spacing: -0.012em;
+}
+.hand { font-family: var(--hand); }
+.mono { font-family: var(--mono); }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  background: var(--paper);
+  font-family: var(--hand);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.btn-tab { background: var(--paper-2); }
+.btn-active, .btn.btn-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* ── Tags / pills ──────────────────────────────────────────────────────── */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--line-mid);
+  padding: 2px 8px;
+  font-family: var(--hand); font-size: 12px; font-weight: 500;
+  border-radius: 999px;
+  background: var(--paper);
+}
+.tag.live { background: var(--paper-2); border-color: var(--line-mid); }
+.tag.live::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--good); animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ── App shell (single full-width main column) ─────────────────────────── */
+/* App root wraps the optional full-width environment strip above the main
+   column. The strip takes its natural height; the column fills the rest of
+   the viewport. The old collapsible sidebar is gone — wayfinding now lives in
+   the NavMenu drawer (see .navmenu below). */
+.app-root { height: 100vh; display: flex; flex-direction: column; }
+
+/* The headerless embed shell (?headerless=true) is still a bare block. */
+.shell.headerless { display: block; }
+
+/* Full-width "this isn't production" strip across the top of the app. Amber
+   for a deployed -dev instance, a louder red for a local dev server, so the
+   two are distinguishable at a glance. */
+.env-strip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 16px;
+  font-family: var(--hand); font-size: 12px; font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.28);
+}
+.env-strip.env-dev { background: var(--warn); }
+.env-strip.env-localhost { background: #c0392b; }
+/* CI and the test site are non-prod but low-stakes — a muted slate keeps them
+   visible without the alarm colour reserved for a live localhost/-dev box. */
+.env-strip.env-ci,
+.env-strip.env-test { background: #556070; }
+.env-strip .env-tag {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  letter-spacing: 0.06em;
+}
+.env-strip .env-label { text-transform: uppercase; }
+
+/* Non-prod warning as a pill, centred in the topbar-strip on inner pages (the
+   full-width .env-strip above is used only on the Home hero, which has no
+   topbar). Same env colours as the strip so the signal is unchanged. Absolutely
+   centred so the breadcrumb and status cluster on either side don't shove it
+   off-centre. */
+.env-pill {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-family: var(--hand); font-size: 11px; font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  max-width: min(50%, 100%);
+}
+.env-pill.env-dev { background: var(--warn); }
+.env-pill.env-localhost { background: #c0392b; }
+.env-pill.env-ci,
+.env-pill.env-test { background: #556070; }
+.env-pill .env-tag {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  letter-spacing: 0.06em;
+}
+.env-pill .env-label {
+  text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Main column ───────────────────────────────────────────────────────── */
+.main { overflow: hidden; display: flex; flex-direction: column; position: relative; }
+/* No sidebar: the main column fills the app-root on its own. */
+.app-root .main--full { flex: 1; min-height: 0; }
+
+.topbar {
+  background: var(--paper);
+  position: relative;
+}
+
+/* Utility strip across the top: breadcrumb (rooted at "home") on the left; the
+   non-prod env pill centred; the scan/S3 status pills + the NavMenu drawer on
+   the right. The brand lockup is intentionally NOT repeated here — it lives only
+   on the Home hero. position: relative anchors the absolutely-centred env pill. */
+.topbar-strip {
+  position: relative;
+  display: flex; align-items: center; gap: 14px;
+  min-height: 22px;
+  padding: 7px 22px;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.topbar-strip-right {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 12px;
+}
+/* The two status pills (S3 connectivity + historical-scan) sit side by side,
+   centred on a shared midline so they line up horizontally despite any
+   difference in height. */
+.topbar-status {
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
+}
+
+/* Title + tabs below the strip, laid out as a row: the title/tabs stack in a
+   left column (topbar-main-lead) that fills the width, with the date picker
+   sitting at the end, in line with the tabs. */
+.topbar-main {
+  padding: 12px 22px 0;
+  display: flex; align-items: flex-end; gap: 14px;
+}
+/* No tabs row to fill the gap, so the title/date would otherwise sit flush on
+   the bottom border — give it its own bottom padding. */
+.topbar.no-tabs .topbar-main { padding-bottom: 12px; }
+/* The title + tabs column takes the available space so it — not the date
+   picker — owns the empty stretch of the row (the picker just sits at the end).
+   The tabs' bottom border then spans the full width up to the picker. */
+.topbar-main-lead { flex: 1; min-width: 0; }
+
+/* Breadcrumbs */
+.crumb,
+.breadcrumbs {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.crumb a,
+.breadcrumbs a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-bottom: 1px dashed transparent;
+}
+.crumb a:hover,
+.breadcrumbs a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.crumb .sep,
+.breadcrumbs .sep {
+  color: var(--line-mid);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+}
+/* Current page: the leaf crumb is not a link, so make it read as the
+   "you are here" anchor — full-ink and a touch heavier than the trail. */
+.crumb .here,
+.breadcrumbs .here { color: var(--ink); font-weight: 600; }
+
+.title-row {
+  display: flex; align-items: center; gap: 14px; margin-top: 4px;
+}
+.title-row h2 { font-family: var(--display); font-weight: 700; font-size: 30px; margin: 0; }
+.title-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+/* Processing-mode banner beside the LSSTCam title: "USDF Nightly Validation
+   Processing" / "Summit Quicklook Processing". A solid muted chip so it reads
+   as an active-state label, not a passive caption. The title-row centres its
+   children, so the chip sits level with the big title with no baseline nudge.
+   The background is clipped to a right-leaning parallelogram — bottom-left and
+   top-right are the outermost corners — so extra side padding keeps the text
+   clear of the slanted edges (--skew is the horizontal offset of that slant). */
+.processing-banner {
+  --skew: 12px;
+  font-family: var(--display); font-size: 15px; font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 8px calc(16px + var(--skew));
+  background: #446538; color: #fff;
+  white-space: nowrap;
+  /* No box-shadow/border-radius: clip-path would clip both away anyway. */
+  clip-path: polygon(
+    var(--skew) 0,
+    100% 0,
+    calc(100% - var(--skew)) 100%,
+    0 100%
+  );
+}
+/* Two muted hues at roughly equal brightness so the site reads at a glance
+   without either shouting: Summit's live quicklook keeps the v2 olive-green;
+   USDF's nightly batch takes a muted steel-blue in the same brightness band. */
+.processing-banner.site-summit,
+.processing-banner.site-summit-usdf {
+  background: #446538;
+}
+.processing-banner.site-usdf {
+  background: #38556b;
+}
+
+/* View tab bar */
+.tabs {
+  display: flex; gap: 4px; margin-top: 12px;
+  border-bottom: 1px solid var(--line-mid);
+}
+.tabs .tab {
+  font-family: var(--display); font-size: 14px; font-weight: 500;
+  letter-spacing: -0.005em;
+  padding: 9px 15px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  text-decoration: none;
+  background: transparent;
+  display: flex; align-items: center; gap: 7px;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  border-radius: 5px 5px 0 0;
+}
+.tabs .tab:hover { color: var(--ink); background: var(--paper-2); }
+.tabs .tab.active {
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom-color: var(--accent);
+  background: transparent;
+}
+.tabs .tab .count {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  color: var(--ink-soft);
+  background: var(--paper-3);
+  padding: 1px 6px; border-radius: 999px;
+  line-height: 1.5;
+}
+.tabs .tab.active .count { background: var(--accent-soft); color: var(--accent); }
+
+/* The date picker + prev/next steppers, hoisted from the table toolbar into the
+   camera page's topbar so the selected day persists across the Table / Channels
+   tabs. It sits at the end of topbar-main — the flex:1 lead column takes the
+   free space and pushes it there — and, since topbar-main aligns its children to
+   flex-end, it lands in line with the tabs rather than up on the title. The
+   small bottom margin lifts it off the tabs' bottom border so the trigger sits
+   level with the tab labels. The stepper buttons need their own rule here because
+   the shared .tb-btn styles are scoped to .cam-toolbar. */
+.topbar-datepicker {
+  margin-bottom: 6px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.topbar-datepicker .tb-btn.step {
+  display: inline-flex; align-items: center;
+  padding: 6px 9px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  font-family: var(--mono); font-size: 16px; line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+}
+.topbar-datepicker .tb-btn.step:hover {
+  background: var(--paper-3); border-color: var(--ink-soft);
+}
+.topbar-datepicker .tb-btn.step:disabled {
+  opacity: 0.4; cursor: default;
+  background: var(--paper); border-color: var(--line-mid);
+}
+/* Enlarge only the topbar date trigger (the shared .date-trigger base keeps its
+   size for the AllSky/table pickers). Bigger text + a larger calendar icon,
+   sized to stay within the title-row's slack so the topbar keeps its height. */
+.topbar-datepicker .date-trigger {
+  padding: 6px 12px;
+  font-size: 15px;
+}
+.topbar-datepicker .date-trigger .ui-icon {
+  width: 17px; height: 17px;
+}
+
+.app-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 1.375rem;
+}
+
+/* ── Connection status pill ────────────────────────────────────────────── */
+.conn {
+  /* inline-flex + centred so every pill in this register (S3 alert, scan pill,
+     WS state) shares one vertical rhythm — the plain-text pills line up with the
+     scan pill whose spinner is taller than the text cap-height. */
+  display: inline-flex; align-items: center;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+/* Filled pill so the connection state reads as a flush pill alongside the
+   S3/scan pills, rather than bare floating text. */
+.conn-open {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+}
+.conn-connecting {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.conn-closed {
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink-soft) 14%, transparent);
+}
+
+/* S3-connectivity alert: only rendered when the server can't reach the
+   bucket, so it's styled as an error (not the quiet WS-offline grey) to
+   stand out beside the live indicator. */
+.s3-alert {
+  color: #fff;
+  background: #c64f50;
+  font-weight: 600;
+}
+
+/* S3-slow warning: a degrading-but-alive link. Amber, less loud than the
+   red unreachable alert. */
+.s3-slow {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* Last-cycle latency on the scan-status view: quiet by default so it reads as
+   informational, going amber-bold only once the cycle is flagged slow. */
+.s3-latency { color: var(--ink-soft); }
+.s3-latency--slow { color: var(--warn); font-weight: 600; }
+
+/* When the header pill links to the Status page: inherit the pill's own colour
+   (no default link blue/underline) and just signal clickability. The wrapped
+   .s3-alert / .s3-slow span keeps its red/amber styling. */
+.s3-status-link { display: inline-flex; text-decoration: none; color: inherit; cursor: pointer; }
+.s3-status-link:hover .conn { text-decoration: underline; }
+
+.skeleton { color: var(--ink-soft); }
+
+/* ── Historical-scan pill ──────────────────────────────────────────────────
+   Sits in the topbar status row beside the S3/live indicators, matching their
+   compact `.conn` register: a small spinner + short label, full wording in the
+   title tooltip. */
+.scan-pill {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.scan-spinner {
+  width: 0.6rem; height: 0.6rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent-line);
+  border-top-color: var(--accent);
+  animation: scan-spin 0.8s linear infinite;
+}
+@keyframes scan-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scan-spinner { animation: none; }
+}
+
+/* Stalled scan: the server can't reach S3, so the refresh isn't progressing.
+   Drop the accent register for the amber warning tone and freeze the spinner
+   so the pill doesn't imply movement it isn't making. */
+.scan-stalled {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.scan-stalled .scan-spinner {
+  animation: none;
+  border-color: var(--warn);
+  border-top-color: var(--warn);
+}
+
+.metadata-progress {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+
+/* ── Scan-stage badges ─────────────────────────────────────────────────── */
+.scan-stage {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.75rem;
+}
+.scan-stage--pending { background: var(--warn); color: #1a1a1a; }
+.scan-stage--recent { background: var(--accent-line); color: #1a1a1a; }
+.scan-stage--complete { background: var(--good); color: #fff; }
+
+.scan-cache-warning {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+}
+.scan-cache-warning code { font-family: var(--mono); }
+.scan-cache-mode {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+/* Connection sections at the top of the Status page — one box each for the
+   browser↔server WebSocket and the server↔bucket S3 link, in the same box
+   register as the location cards below. */
+.status-sections {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.75rem;
+  margin: 0.25rem 0 1rem;
+}
+.status-section {
+  flex: 1 1 16rem;
+  max-width: 24rem;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-card);
+}
+.status-section h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+.status-section .s3-latency {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+/* Scan progress: headline count + start-up mode + the location cards,
+   consolidated under one heading. */
+.scan-progress { margin-top: 1.25rem; }
+.scan-progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.scan-progress-head h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.scan-progress .scan-cache-mode,
+.scan-progress .scan-cache-warning {
+  margin: 0.5rem 0 0;
+}
+
+/* ── Scan-status page ──────────────────────────────────────────────────────
+   Per-location cards in the Admin page's box register, flowing side by side
+   instead of full-width stacked tables (two columns across 1280px left the
+   status badges floating mid-page). */
+.scan-summary { font-weight: 600; }
+.scan-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+}
+.scan-loc {
+  flex: 1 1 18rem;
+  max-width: 24rem;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-card);
+}
+.scan-loc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.scan-loc-head h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+.scan-loc-count {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.scan-cams {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.scan-cams li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--line-soft);
+}
+.scan-cams a {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.scan-cams a:hover { text-decoration: underline; }
+.scan-cams .scan-stage { white-space: nowrap; }
+
+/* ── Small action buttons (copy / download) ────────────────────────────── */
+/* Toolbar action buttons (download metadata) — framed like .tb-btn, with a
+   leading icon. */
+.download-metadata {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  font-family: var(--hand);
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.download-metadata:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.download-metadata:disabled { cursor: default; opacity: 0.5; }
+.download-metadata:disabled:hover { background: var(--paper); border-color: var(--line-mid); }
+
+/* Per-row copy button stays a quiet inline control. */
+.copy-row {
+  font-family: var(--hand);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ── NavMenu: single hamburger button → drawer (wayfinding + appearance) ───
+   Replaces the app-shell sidebar. Rendered top-right on the Home hero and in
+   the topbar strip on every inner page. Ported from the RubinTV Design System
+   (ui_kits/rubintv/NavMenu.jsx). */
+.navmenu { position: relative; display: inline-flex; }
+.navmenu-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2); cursor: pointer; color: var(--ink-soft);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.navmenu-trigger:hover { background: var(--paper-3); color: var(--ink); border-color: var(--ink-soft); }
+.navmenu-glyph { display: block; color: var(--ink); }
+.navmenu-caret { flex: none; }
+
+.navmenu-pop {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 210px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+  z-index: 40;
+  padding: 6px;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.navmenu-sec {
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 9px 8px 3px;
+}
+.navmenu-link {
+  font-family: var(--hand); font-size: 13.5px; color: var(--ink);
+  text-decoration: none; padding: 6px 8px; border-radius: 5px; display: block;
+}
+.navmenu-link:hover { background: var(--paper-3); color: var(--accent); }
+.navmenu-appearance {
+  margin-top: 5px; padding: 9px 8px 3px;
+  border-top: 1px solid var(--line-soft);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.navmenu-appearance-label {
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+/* ── Home landing (the ONLY page that carries the brand) ────────────────── */
+.landing {
+  height: 100%;
+  overflow: auto;
+  background: var(--paper);
+  position: relative;
+}
+.landing-inner { max-width: 1080px; margin: 0 auto; padding: 44px 48px 72px; }
+/* The NavMenu drawer floats over the hero, top-right. */
+.home-toggle { position: absolute; top: 22px; right: 26px; z-index: 5; }
+/* Logo on the left, the Simon Krughoff memorial in the space to its right.
+   Wraps to a stack on narrow screens. */
+.home-hero {
+  margin-bottom: 2px;
+  display: flex; align-items: center; flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 20px 32px;
+}
+/* The inline Rubin mark as the hero lockup — the one place the brand appears.
+   It follows the accent via currentColor, so it needs no dark-mode filter. */
+.brand-logo {
+  height: 104px; width: auto; display: block;
+  color: var(--accent-bright);
+}
+/* In-memoriam card: a quiet bordered plaque beside the hero mark, linking to
+   the community.lsst.org remembrance thread. */
+.memoriam {
+  display: flex; flex-direction: column; gap: 6px;
+  max-width: 380px;
+  padding: 14px 18px;
+  border: 1px solid var(--accent-line); border-radius: 10px;
+  /* Tinted in the mark's own teal — --accent-soft is a pale tint in light mode
+     and a deep one in dark, so the plaque sits with the logo in both. */
+  background: var(--accent-soft);
+  text-decoration: none; color: var(--ink);
+  transition: border-color 120ms ease;
+}
+.memoriam:hover { border-color: var(--accent-bright); }
+.memoriam-name {
+  font-family: var(--display); font-weight: 700; font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.memoriam-text { font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
+
+.home-tagline {
+  display: flex; align-items: center; gap: 11px;
+  font-family: var(--mono); font-size: 13px; color: var(--ink-soft);
+  margin-top: 14px; margin-bottom: 34px;
+}
+.home-tagline b {
+  font-family: var(--display); font-weight: 700; font-size: 16px;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+.home-tagline .sep { width: 1px; height: 14px; background: var(--line-mid); display: inline-block; }
+
+/* Section heads on the landing + location pages: uppercase mono-ish label. */
+.landing-h {
+  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin: 32px 0 14px;
+}
+.landing-inner .landing-h:first-of-type { margin-top: 6px; }
+
+/* Home location/app cards: text cards with the display face for names, mono for
+   ids, hairline + soft shadow lifting to the accent line on hover. */
+.loc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.loc-card {
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2); padding: 18px 18px 14px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  display: flex; flex-direction: column; gap: 6px;
+  text-decoration: none; color: var(--ink);
+}
+.loc-card:hover {
+  background: var(--paper-3); transform: translateY(-2px);
+  border-color: var(--accent-line); box-shadow: var(--shadow-pop);
+}
+.loc-card-top { display: flex; align-items: center; justify-content: space-between; }
+.loc-name { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -0.012em; white-space: nowrap; }
+.loc-arrow { font-family: var(--mono); font-size: 18px; color: var(--ink-soft); }
+.loc-card:hover .loc-arrow { color: var(--accent); }
+.loc-label { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+/* Location page: camera groups as a card grid. */
+.cam-group { margin-bottom: 22px; }
+.cam-group-h {
+  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.cam-card {
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper); padding: 0; overflow: hidden;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  display: flex; flex-direction: column;
+  text-decoration: none; color: var(--ink);
+}
+.cam-card:hover:not(.off) {
+  transform: translateY(-2px);
+  border-color: var(--accent-line); box-shadow: var(--shadow-pop);
+}
+.cam-card.off { opacity: 0.55; cursor: not-allowed; }
+.cam-card.off:hover { transform: none; }
+.cam-card-body { padding: 11px 13px 12px; display: flex; flex-direction: column; gap: 6px; }
+.cam-card:hover:not(.off) .cam-card-body { background: var(--paper-2); }
+.cam-card--plain .cam-card-body { padding: 14px 14px 13px; }
+
+/* Latest-frame preview thumbnail — a plot-style placeholder standing in for
+   the camera's main-channel image. Diagonal hatch + soft vignette reads as an
+   image tile. */
+.cam-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--line-soft);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--ink) 3%, transparent) 10px 20px),
+    radial-gradient(circle at 50% 44%, var(--paper) 0 50%, var(--paper-3) 74%, var(--paper-2) 100%);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+/* Primary-channel latest frame filling the card thumb. Covers the thatched
+   placeholder background so a camera with data reads as a live tile. Shares
+   the Channels grid's fade-in-on-load treatment (see the .chc-img-loading /
+   .chc-img-spinner rules), so the two card grids load identically. */
+.cam-thumb-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+.cam-card.off .cam-thumb {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--ink) 4%, transparent) 10px 20px),
+    var(--paper-2);
+}
+.cam-card-name { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.cam-card-status {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft);
+}
+.cam-card-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--line-soft); }
+.cam-card-status.on { color: var(--good); }
+.cam-card-status.on::before { background: var(--accent-bright); }
+.cam-card-status.stale { color: var(--warn); }
+.cam-card-status.stale::before { background: var(--warn); }
+
+.dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-left: 0.5rem;
+}
+/* Camera data freshness (location buttons): green = has data this observing
+   day, amber = online but no data today (showing an earlier night), grey =
+   offline in config. Full meaning is in the dot's title/aria-label. */
+.dot.fresh { background: var(--good); }
+.dot.stale { background: var(--warn); }
+.dot.offline { background: var(--line-mid); }
+
+/* ── Controls / table header rows ──────────────────────────────────────── */
+.controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+/* ── Camera table ──────────────────────────────────────────────────────── */
+.cam-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* Empty state — shown instead of the (tall, angled-header) table when a date
+   has no rows, or the camera has no dated data yet. */
+.table-empty {
+  margin: 1rem 0;
+  padding: 2.5rem 1.5rem;
+  border: 1.5px dashed var(--line-mid);
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-family: var(--hand);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+/* Outline UI icons (feather-style). */
+.ui-icon { width: 15px; height: 15px; display: block; flex-shrink: 0; }
+.ui-icon.chevron { width: 12px; height: 12px; opacity: 0.65; }
+
+/* ── Camera table toolbar ──────────────────────────────────────────────── */
+.cam-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.cam-toolbar .tb-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  font-family: var(--hand); font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: none;
+}
+.cam-toolbar .tb-btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.cam-toolbar .tb-btn:disabled { opacity: 0.5; cursor: default; }
+.cam-toolbar .tb-grow { flex: 1; }
+.cam-toolbar .tb-btn .frac {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
+}
+.cam-toolbar .tb-btn .ui-icon.chevron { margin-left: 1px; }
+
+/* Date picker: a trigger button + a two-month calendar popover. */
+/* Header clocks (UTC + time-since-last) — borderless, just the readouts. */
+.status-pill {
+  display: inline-flex; align-items: center;
+  padding: 4px 12px 5px;
+}
+.status-pill .clocks {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: baseline;
+}
+.status-pill .clock-label {
+  font-family: var(--hand);
+  font-size: 12px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  text-align: right; line-height: 1.1;
+}
+.status-pill .clock-time {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 16px; color: var(--ink);
+  font-weight: 600; line-height: 1.1; letter-spacing: 0.1px;
+}
+
+/* Prev/next-day steppers flanking the date picker. */
+.date-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.cam-toolbar .tb-btn.step {
+  padding: 6px 8px;
+  font-family: var(--mono); font-size: 13px; line-height: 1;
+  color: var(--ink);
+}
+.cam-toolbar .tb-btn.step:disabled {
+  opacity: 0.4; cursor: default;
+  background: var(--paper); border-color: var(--line-mid);
+}
+
+.date-cluster { position: relative; display: inline-flex; }
+.date-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-mid); border-radius: 6px;
+  background: var(--paper-2); color: var(--ink);
+  font-family: var(--mono); font-size: 12px;
+  cursor: pointer;
+}
+.date-trigger:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.date-trigger .ui-icon { color: var(--ink-soft); }
+
+/* Date-chip day_obs state (same UTC−12 rule as the Channels banner). The
+   selected date carries whether it's the live observing day: a quiet green
+   tint when it's tonight (table updates live), amber when it's a historical
+   day (table is static). Full meaning is in the chip's title tooltip. */
+.date-trigger.is-live-day {
+  border-color: color-mix(in srgb, var(--good) 55%, var(--line-mid));
+  background: color-mix(in srgb, var(--good) 9%, var(--paper-2));
+}
+.date-trigger.is-live-day .ui-icon { color: var(--good); }
+.date-trigger.is-past-day {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line-mid));
+  background: color-mix(in srgb, var(--warn) 9%, var(--paper-2));
+}
+.date-trigger.is-past-day .ui-icon { color: var(--warn); }
+
+.date-pop {
+  position: absolute;
+  top: calc(100% + 6px); right: 0;
+  width: max-content; max-width: calc(100vw - 24px);
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 30;
+  font-family: var(--hand);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+/* Shared header: view tabs (Months / Heatmap) + selected value + jump link. */
+.dp-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.dp-tabs {
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--line-mid); border-radius: 8px;
+  background: var(--paper-2);
+}
+.dp-tab {
+  border: none; background: transparent;
+  font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
+  padding: 4px 12px; border-radius: 6px; cursor: pointer;
+}
+.dp-tab.active {
+  background: var(--paper); color: var(--accent); box-shadow: var(--shadow-card);
+}
+[data-theme="dark"] .dp-tab.active { background: var(--paper-3); }
+.dp-head-val {
+  margin-left: auto;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+}
+.date-pop .today-link {
+  cursor: pointer;
+  font-family: var(--hand); font-size: 12px;
+  color: var(--accent);
+  border-bottom: 1px dashed var(--accent);
+}
+.date-pop .today-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* ── Two-month view ──────────────────────────────────────────────────────── */
+.dp-two-grids { display: grid; grid-template-columns: 1fr 1fr; width: 560px; max-width: calc(100vw - 24px); }
+.dp-two-grids .dp-month + .dp-month { border-left: 1px solid var(--line-soft); }
+.dp-month { padding: 10px 12px 12px; }
+.dp-mhead {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dp-mhead .month { font-family: var(--hand); font-weight: 700; font-size: 14px; }
+.dp-mhead .yr {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-left: 4px;
+}
+.dp-mhead .arrs { display: inline-flex; gap: 4px; }
+.dp-mhead .arr {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper);
+  font-family: var(--mono); font-size: 11px; color: var(--ink); cursor: pointer;
+}
+.dp-mhead .arr:hover { background: var(--paper-3); }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.dp-grid .dow {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-align: center; padding: 4px 0 5px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.dp-day {
+  height: 38px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  border: 1.25px solid transparent; border-radius: 3px;
+  cursor: pointer; position: relative;
+  font-variant-numeric: tabular-nums; padding: 2px 0;
+}
+.dp-day .num { font-size: 12px; line-height: 1; font-weight: 600; }
+/* Max-seq sits below the day number, clearly subordinate: smaller, lighter,
+   and in the accent hue so it reads as data, not part of the date. */
+.dp-day .ct {
+  font-size: 8.5px; line-height: 1;
+  font-weight: 500; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.dp-day.selected .ct { color: var(--paper); opacity: 0.85; }
+.dp-day:hover { background: var(--paper-3); }
+.dp-day.has-data::after {
+  content: ""; position: absolute; bottom: 4px;
+  width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
+}
+.dp-day.out { color: var(--line-soft); cursor: default; }
+.dp-day.out:hover { background: transparent; }
+.dp-day.today { border-color: var(--ink); font-weight: 700; }
+.dp-day.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.dp-day.selected.has-data::after { background: var(--paper); }
+.dp-day.disabled { color: var(--line-soft); cursor: not-allowed; }
+.dp-day.disabled:hover { background: transparent; }
+
+/* ── Year-heatmap view ───────────────────────────────────────────────────── */
+.dh-scroll { max-height: 56vh; overflow-y: auto; padding: 12px 14px 4px; }
+.dh-empty {
+  padding: 24px; text-align: center;
+  font-family: var(--hand); color: var(--ink-soft); font-style: italic;
+}
+/* Each year block has a subtle alternating background so year boundaries read
+   at a glance. */
+.dh-year {
+  padding: 8px 10px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+.dh-year.alt { background: var(--paper-2); }
+.dh-year-label {
+  font-family: var(--display); font-weight: 700; font-size: 14px; margin-bottom: 6px;
+}
+/* 12 mini-months laid out 6 across × 2 rows, so a year is two horizontal rows. */
+.dh-months-grid {
+  display: grid;
+  grid-template-columns: repeat(6, auto);
+  gap: 12px 16px;
+  justify-content: start;
+}
+/* The whole mini-month is the month-jump target: hovering highlights the block
+   and clicking it opens that month in the Months view; clicking a day inside
+   selects that date instead. */
+.dh-mini {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px; margin: -4px; border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.dh-mini:hover { background: var(--paper-3); border-color: var(--line-mid); }
+.dh-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.dh-mini-label {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.dh-mini:hover .dh-mini-label { color: var(--accent); }
+.dh-mini-jump {
+  font-family: var(--mono); font-size: 10px; line-height: 1;
+  opacity: 0; transition: opacity 100ms ease;
+}
+.dh-mini:hover .dh-mini-jump { opacity: 1; }
+.dh-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 9px);
+  grid-auto-rows: 9px;
+  gap: 2px;
+}
+.dh-day {
+  width: 12px; height: 12px;
+  border-radius: 2px; border: 1px solid transparent; padding: 0; cursor: pointer;
+}
+/* Day cells inside a mini-month are smaller than the legend swatches. */
+.dh-mini-grid .dh-day { width: 9px; height: 9px; border-radius: 1.5px; }
+.dh-day:disabled { cursor: default; }
+/* Activity tints: a single teal ramp that monotonically darkens, so perceived
+   intensity always rises from lv-1 (lightest) to lv-4 (darkest). lv-none =
+   not in calendar; lv-0 = in calendar but no per-seq exposures. */
+.dh-day.lv-none { background: transparent; border-color: var(--line-soft); opacity: 0.4; }
+.dh-day.lv-0 { background: var(--paper-3); }
+.dh-day.lv-1 { background: #9fe2e6; }
+.dh-day.lv-2 { background: #4fc3c9; }
+.dh-day.lv-3 { background: #1f9aa1; }
+.dh-day.lv-4 { background: #0a6b70; }
+[data-theme="dark"] .dh-day.lv-1 { background: #1d4d50; }
+[data-theme="dark"] .dh-day.lv-2 { background: #2a7d82; }
+[data-theme="dark"] .dh-day.lv-3 { background: #34b3ba; }
+[data-theme="dark"] .dh-day.lv-4 { background: #5fe0e6; }
+/* Binary (All Sky): on = has a movie, off = lv-none. */
+.dh-day.lv-on { background: var(--accent); }
+[data-theme="dark"] .dh-day.lv-on { background: var(--accent-bright); }
+.dh-day:not(:disabled):hover { outline: 1.5px solid var(--ink); outline-offset: 0; }
+.dh-day.today { box-shadow: 0 0 0 1px var(--warn); }
+.dh-day.selected { outline: 2px solid var(--ink); outline-offset: 0; }
+
+.dh-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--paper-2);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+}
+.dh-legend { display: inline-flex; align-items: center; gap: 4px; }
+.dh-legend .dh-day { cursor: default; }
+.dh-hint { margin-left: auto; font-style: italic; }
+
+/* Row-density picker: a toolbar button opening a small option popover. */
+.density-cluster { position: relative; display: inline-flex; }
+.density-pop {
+  position: absolute;
+  top: calc(100% + 6px); right: 0;
+  min-width: 130px;
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  display: flex; flex-direction: column;
+  padding: 4px;
+}
+.density-pop button {
+  border: none; background: transparent;
+  font-family: var(--hand); font-size: 13px;
+  color: var(--ink); text-align: left;
+  padding: 6px 10px; border-radius: 4px;
+  cursor: pointer;
+}
+.density-pop button:hover { background: var(--paper-3); }
+.density-pop button.active { color: var(--accent); font-weight: 600; }
+
+/* Column-picker popover. */
+.cols-cluster { position: relative; display: inline-flex; }
+.cols-pop {
+  position: absolute;
+  top: calc(100% + 6px); left: 0;
+  width: min(720px, calc(100vw - 24px));
+  max-height: 70vh;
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  display: flex; flex-direction: column;
+}
+.cols-pop[hidden] { display: none; }
+
+/* Header: title, count, search, bulk actions. */
+.cols-pop .picker-head {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.cols-pop .picker-head .title {
+  font-family: var(--hand); font-weight: 700; font-size: 14px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+}
+.cols-pop .picker-head .count {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+}
+.cols-pop .picker-head .count b { color: var(--ink); }
+/* Select / Reorder segmented toggle. */
+.cols-pop .picker-mode {
+  display: inline-flex;
+  border: 1.25px solid var(--stroke); border-radius: 4px;
+  overflow: hidden;
+}
+.cols-pop .picker-mode button {
+  font-family: var(--hand); font-size: 12px;
+  padding: 4px 12px;
+  border: none; background: var(--paper); color: var(--ink-soft);
+  cursor: pointer;
+}
+.cols-pop .picker-mode button + button { border-left: 1.25px solid var(--stroke); }
+.cols-pop .picker-mode button:hover { background: var(--paper-3); }
+.cols-pop .picker-mode button.active {
+  background: var(--accent-soft); color: var(--ink); font-weight: 600;
+}
+/* Search + bulk share the remaining header width on one line: the group grows
+   to fill it, the search shrinks (min-width:0) so the bulk buttons never wrap
+   to a second row. */
+.cols-pop .picker-head .picker-tools {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
+}
+.cols-pop .picker-head .search {
+  flex: 1; min-width: 60px;
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+}
+.cols-pop .picker-head .search:focus {
+  outline: 2px solid var(--accent-soft); outline-offset: -1px;
+}
+.cols-pop .picker-head .bulk { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.cols-pop .picker-head .bulk button {
+  font-family: var(--hand); font-size: 12px;
+  padding: 4px 10px;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink); cursor: pointer;
+}
+.cols-pop .picker-head .bulk button:hover { background: var(--paper-3); }
+
+/* Scrolling body with the column grid. */
+.cols-pop .picker-body {
+  flex: 1; overflow-y: auto;
+  padding: 8px 14px 12px;
+}
+.cols-pop .picker-empty {
+  padding: 20px; text-align: center;
+  font-family: var(--hand); font-style: italic; color: var(--ink-soft);
+}
+.cols-pop .cols-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2px 14px;
+}
+.cols-pop .picker-item {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--hand); font-size: 13px;
+  padding: 4px; border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+}
+.cols-pop .picker-item:hover { background: var(--paper-3); }
+.cols-pop .picker-item.dim { color: var(--ink-soft); }
+/* Locked columns (always shown when present): ghosted + non-interactive. */
+.cols-pop .picker-item.locked {
+  color: var(--ink-soft);
+  cursor: default;
+  opacity: 0.7;
+}
+.cols-pop .picker-item.locked:hover { background: transparent; }
+.cols-pop .picker-item.locked input[type="checkbox"] { cursor: default; }
+.cols-pop .picker-item .label-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cols-pop input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
+
+/* ── Column order (drag-to-reorder) list ───────────────────────────────── */
+/* The "Shown" section above the show/hide catalogue. Reorders the visible
+   metadata columns; the table follows. */
+.cols-pop .order-section { margin-bottom: 12px; }
+.cols-pop .order-head { margin-bottom: 6px; }
+.cols-pop .order-head .sub,
+.cols-pop .picker-subhead {
+  font-family: var(--hand); font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-soft);
+}
+.cols-pop .picker-subhead { margin: 4px 0 6px; }
+.cols-pop .order-empty {
+  font-family: var(--hand); font-style: italic; color: var(--ink-soft);
+  font-size: 13px; padding: 4px;
+}
+.cols-pop .order-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.cols-pop .order-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 4px; border-radius: 3px;
+  background: var(--paper);
+  font-family: var(--hand); font-size: 13px;
+  /* The whole row is the drag handle. */
+  cursor: grab;
+  touch-action: none; /* let dnd-kit's pointer sensor own touch gestures */
+  /* Sit above sibling rows while dragging so the lifted row isn't clipped. */
+  position: relative;
+}
+.cols-pop .order-item:hover { background: var(--paper-3); }
+.cols-pop .order-item:active { cursor: grabbing; }
+.cols-pop .order-item:focus-visible {
+  outline: 2px solid var(--accent-soft); outline-offset: -1px;
+}
+.cols-pop .order-item.dragging {
+  background: var(--paper-3);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  cursor: grabbing;
+  z-index: 1;
+}
+/* Decorative grip; the whole row carries the drag listeners. */
+.cols-pop .order-grip {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-soft); flex-shrink: 0;
+}
+.cols-pop .order-item:hover .order-grip { color: var(--ink); }
+.cols-pop .order-grip .ui-icon { width: 15px; height: 15px; }
+/* The nudge buttons keep their normal pointer even though the row is grab. */
+.cols-pop .order-nudge button { cursor: pointer; }
+.cols-pop .order-label {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cols-pop .order-nudge { display: inline-flex; gap: 2px; flex-shrink: 0; }
+.cols-pop .order-nudge button {
+  border: 1px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+  font-size: 11px; line-height: 1; width: 20px; height: 20px;
+  cursor: pointer; padding: 0;
+}
+.cols-pop .order-nudge button:hover:not(:disabled) { background: var(--paper-3); }
+.cols-pop .order-nudge button:disabled { opacity: 0.35; cursor: default; }
+
+/* ── Table filters ─────────────────────────────────────────────────────── */
+.filter-cluster { position: relative; display: inline-flex; align-items: center; }
+.filter-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  font-family: var(--hand); font-size: 13px;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  cursor: pointer;
+}
+.filter-btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
+.filter-btn.active { background: var(--accent-soft); border-color: var(--accent); }
+.filter-btn .count {
+  font-family: var(--mono); font-size: 10px;
+  padding: 1px 5px; border-radius: 10px;
+  background: var(--accent); color: var(--paper);
+}
+/* Add-filter popover. */
+.filter-pop {
+  position: absolute;
+  top: calc(100% + 6px); left: 0;
+  width: 320px; max-width: calc(100vw - 24px);
+  background: var(--paper);
+  border: 1.5px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  padding: 10px 12px 12px;
+  font-family: var(--hand);
+}
+.filter-pop h4 {
+  margin: 0 0 8px;
+  font-family: var(--hand); font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-soft);
+}
+.filter-pop .col-row,
+.filter-pop .row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.filter-pop label {
+  font-family: var(--hand); font-size: 11px; color: var(--ink-soft); width: 38px;
+}
+.filter-pop select,
+.filter-pop input {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 11px;
+  padding: 4px 6px;
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  background: var(--paper); color: var(--ink);
+}
+.filter-pop select.op { flex: 0 0 92px; }
+.filter-pop .apply {
+  width: 100%;
+  padding: 6px 0; margin-top: 4px;
+  font-family: var(--hand); font-size: 13px; font-weight: 700;
+  background: var(--ink); color: var(--paper);
+  border: none; border-radius: 4px; cursor: pointer;
+}
+.filter-pop .apply:disabled { opacity: 0.4; cursor: not-allowed; }
+.filter-pop .apply:hover:not(:disabled) { background: var(--accent); }
+.filter-pop .hint {
+  margin-top: 6px; font-family: var(--hand); font-size: 11px; color: var(--ink-soft);
+}
+.filter-pop .suggestions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.filter-pop .suggestion {
+  font-family: var(--mono); font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-soft); border-radius: 10px;
+  background: var(--paper-2); color: var(--ink); cursor: pointer;
+}
+.filter-pop .suggestion:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Column combobox inside the popover. */
+.filter-combo { position: relative; flex: 1; min-width: 0; }
+.filter-combo input { width: 100%; box-sizing: border-box; }
+.filter-combo input:focus { outline: 2px solid var(--accent-soft); outline-offset: -1px; }
+.filter-combo .list {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+  max-height: 180px; overflow-y: auto;
+  background: var(--paper);
+  border: 1.25px solid var(--stroke); border-radius: 3px;
+  z-index: 30; box-shadow: var(--shadow-pop);
+}
+.filter-combo .count {
+  padding: 4px 8px;
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-soft); background: var(--paper-2);
+  text-transform: uppercase; letter-spacing: 0.3px;
+  position: sticky; top: 0; z-index: 1;
+}
+.filter-combo .item {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  padding: 4px 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink); cursor: pointer;
+}
+.filter-combo .item:hover { background: var(--paper-3); }
+.filter-combo .item.kbd-active { background: var(--accent-soft); }
+.filter-combo .item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-combo .item mark { background: transparent; color: var(--accent); font-weight: 700; padding: 0; }
+.filter-combo .item .type-pill {
+  font-family: var(--hand); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.3px; color: var(--ink-soft);
+  padding: 1px 5px; border: 1px solid var(--line-soft); border-radius: 8px;
+  flex-shrink: 0;
+}
+.filter-combo .empty {
+  padding: 8px; text-align: center;
+  font-family: var(--hand); font-size: 11px; color: var(--ink-soft); font-style: italic;
+}
+
+/* Active-filter chip strip below the toolbar. */
+.filter-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 6px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+  min-height: 32px;
+}
+.filter-bar > .label {
+  font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px;
+}
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 4px 3px 8px;
+  border: 1.25px solid var(--stroke); border-radius: 14px;
+  background: var(--paper-2);
+  font-family: var(--mono); font-size: 11px; color: var(--ink); line-height: 1;
+}
+.filter-chip .col { font-family: var(--hand); font-weight: 600; color: var(--ink-soft); }
+.filter-chip .op { font-family: var(--mono); color: var(--ink-soft); padding: 0 2px; }
+.filter-chip .val { color: var(--ink); font-weight: 600; }
+.filter-chip .x {
+  width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--ink-soft);
+  cursor: pointer; margin-left: 2px;
+}
+.filter-chip .x:hover { background: var(--ink); color: var(--paper); }
+.filter-clear {
+  font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
+  cursor: pointer; margin-left: 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.filter-clear:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Per-day artifacts strip. */
+.per-day {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 4px 0 12px;
+}
+.per-day-item {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border: 1px solid var(--line-mid); border-radius: 4px;
+  padding: 3px 8px;
+}
+
+/* ── Data table ────────────────────────────────────────────────────────── */
+.table-wrap {
+  flex: 1;
+  overflow: auto;
+  background: var(--paper);
+  position: relative;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+}
+.data-table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  table-layout: fixed;
+  /* Exactly the sum of the colgroup widths — NOT min-width:100%, which would
+     make a narrow table fill the wrapper and stretch the fixed columns to
+     absorb the surplus. The wrapper scrolls when the table overflows. */
+  width: max-content;
+}
+.data-table th,
+.data-table td {
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  padding: var(--row-pad, 6px 8px);
+  font-size: inherit;
+  vertical-align: middle;
+  background-clip: padding-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.data-table.dens-compact { font-size: 12px; }
+.data-table.dens-regular { font-size: 13px; }
+.data-table thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--paper-2);
+  border-right: none;
+  border-bottom: 1.5px solid var(--stroke);
+  font-family: var(--hand);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  user-select: none;
+}
+/* Sticky seq column. */
+.data-table th.seq,
+.data-table td.seq {
+  position: sticky; left: 0; z-index: 4;
+  background: var(--paper-2);
+  border-right: 1.5px solid var(--stroke);
+}
+.data-table thead th.seq { z-index: 6; }
+
+/* Channel chip cell. */
+.cell-chip {
+  width: 26px; height: 26px;
+  border: 1px solid var(--stroke);
+  border-radius: 2px;
+  display: block;
+  margin: 0 auto;
+  text-decoration: none;
+}
+.cell-chip.empty {
+  border-style: dashed; border-color: var(--line-mid);
+  background: transparent !important;
+}
+
+/* Foldout button: a metadata cell whose value is a JSON object/array shows
+   this button (its DISPLAY_VALUE or a 📖 glyph); clicking opens .cell-modal. */
+.button-table {
+  border: 1px solid var(--stroke);
+  background: var(--paper-3);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font: inherit;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.button-table:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Object-cell modal: fixed full-viewport backdrop with a centred card listing
+   the cell's key/value pairs. Rendered via a portal on document.body. */
+.cell-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.cell-modal {
+  background: var(--paper);
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: min(90vw, 560px);
+  max-height: 80vh;
+  overflow: auto;
+}
+.cell-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--stroke);
+  position: sticky; top: 0;
+  background: var(--paper);
+}
+.cell-modal-title { font-weight: 600; }
+.cell-modal-close {
+  border: none; background: transparent;
+  color: var(--ink-soft);
+  font-size: 20px; line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.cell-modal-close:hover { color: var(--ink); }
+.cell-dict { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cell-dict th.key,
+.cell-dict td.value {
+  text-align: left;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--line-mid);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+/* Cap the key column so a pathologically long key can't crush the value into a
+   sliver (which shreds short values like "raw" into r/a/w). The value column
+   takes the remaining width. */
+.cell-dict th.key {
+  width: 45%;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.cell-dict td.value { word-break: break-word; }
+
+/* Per-row action links. */
+.data-table td a { color: var(--accent); text-decoration: none; }
+.data-table td a:hover { text-decoration: underline; }
+
+/* Icon action cells (viewer / quicklook / copy). */
+.data-table td.action-cell { text-align: center; padding-left: 0; padding-right: 0; }
+.action-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 20px;
+  border: none; background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.action-link:hover { color: var(--accent); background: var(--paper-3); text-decoration: none; }
+.action-link .ui-icon { width: 14px; height: 14px; }
+
+/* Copy confirmation: the icon swaps to a check that draws its stroke in with a
+   small pop. Respects reduced-motion. */
+.copy-row.action-link.copied { color: var(--good); }
+.copy-row.action-link.copied .ui-icon { animation: copy-pop 220ms ease-out; }
+.copy-row.action-link.copied .ui-icon path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: copy-check 260ms 40ms ease-out forwards;
+}
+@keyframes copy-pop {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes copy-check {
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copy-row.action-link.copied .ui-icon,
+  .copy-row.action-link.copied .ui-icon path { animation: none; }
+  .copy-row.action-link.copied .ui-icon path { stroke-dashoffset: 0; }
+}
+
+/* Vertical striping for the metadata columns. A very subtle tint on alternate
+   metadata columns to keep long rows readable, especially in compact density.
+   Painted on the <col> (colgroup) rather than the cells: under
+   border-collapse a column background sits UNDER the cell backgrounds, so the
+   structural columns stay plain (no .col-stripe <col>), a special "_<col>" flag
+   cell paints its own colour over the stripe for free, and the newest-row
+   accent-soft cells likewise win — no per-cell class or :not() guard needed.
+   Only alternate METADATA <col>s carry .col-stripe (see metaAltKeys), so the
+   stripe never counts from the variable-width structural columns. */
+.data-table col.col-stripe {
+  background: var(--col-stripe);
+}
+
+/* Newest-row highlight (top row). */
+/* Newest-row highlight. Skip cells carrying a "_<col>" colour flag so the
+   indicator background (cell-bad, cell-r_color, …) still shows on the top row —
+   those flag rules have lower specificity and would otherwise be overridden. */
+.data-table tr.newest td:not([class*="cell-"]) { background: var(--accent-soft); }
+.data-table tr.newest td.seq {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* ── Per-cell colour flags (from "_<col>" metadata indicators) ──────────────
+   Ported verbatim from the original app's $colors map. The backgrounds are
+   light pastels/gradients, so cells force dark text in both themes to stay
+   legible (the original was a single light theme). Applied both to table cells
+   (.data-table td) and to the single-channel sidebar values (.chv-meta-grid
+   .v), which share the same `_<col>` indicator → `cell-*` class convention. */
+.data-table td.cell-bad,
+.chv-meta-grid .v.cell-bad { background: #c64f50; color: #fff; }
+.data-table td.cell-warning,
+.chv-meta-grid .v.cell-warning { background: #fdf35f; color: #1a1a1a; }
+.data-table td.cell-ok,
+.chv-meta-grid .v.cell-ok { background: #65e54c; color: #1a1a1a; }
+.data-table td.cell-measured,
+.chv-meta-grid .v.cell-measured { background: #64ced9; color: #1a1a1a; }
+
+/* Per-filter band colours. */
+.data-table td.cell-u_color,
+.chv-meta-grid .v.cell-u_color { background: #85b7ff; color: #1a1a1a; }
+.data-table td.cell-g_color,
+.chv-meta-grid .v.cell-g_color { background: #a4dfaf; color: #1a1a1a; }
+.data-table td.cell-r_color,
+.chv-meta-grid .v.cell-r_color { background: #e28d7e; color: #1a1a1a; }
+.data-table td.cell-i_color,
+.chv-meta-grid .v.cell-i_color { background: #ffe07e; color: #1a1a1a; }
+.data-table td.cell-z_color,
+.chv-meta-grid .v.cell-z_color { background: #f89fd0; color: #1a1a1a; }
+.data-table td.cell-y_color,
+.chv-meta-grid .v.cell-y_color { background: #ad7f7f; color: #1a1a1a; }
+
+.data-table td.cell-white_color,
+.chv-meta-grid .v.cell-white_color { background: #fefefe; color: #1a1a1a; }
+.data-table td.cell-rainbow_color,
+.chv-meta-grid .v.cell-rainbow_color {
+  color: #1a1a1a;
+  background: linear-gradient(270deg, #fec8c9 0%, #f5dece 16%, #f5f8cd 28%,
+    #e0f5d1 50%, #c9d2fe 66%, #dcddfe 83%, #f1dafe 100%);
+}
+.data-table td.cell-r_stripes,
+.chv-meta-grid .v.cell-r_stripes {
+  color: #1a1a1a;
+  background: linear-gradient(27deg, #f9bcbc 0%, #f9bcbc 14%, #fefefe 14%,
+    #fefefe 29%, #f9bcbc 29%, #f9bcbc 43%, #fefefe 43%, #fefefe 57%,
+    #f9bcbc 57%, #f9bcbc 71%, #fefefe 71%, #fefefe 84%, #f9bcbc 84%,
+    #f9bcbc 100%);
+}
+.data-table td.cell-b_stripes,
+.chv-meta-grid .v.cell-b_stripes {
+  color: #1a1a1a;
+  background: linear-gradient(27deg, #a2c6f6 0%, #a2c6f6 14%, #fefefe 14%,
+    #fefefe 29%, #a2c6f6 29%, #a2c6f6 43%, #fefefe 43%, #fefefe 57%,
+    #a2c6f6 57%, #a2c6f6 71%, #fefefe 71%, #fefefe 84%, #a2c6f6 84%,
+    #a2c6f6 100%);
+}
+
+/* Coloured sidebar values read as swatches: pad and round so the flag
+   background frames the value rather than bleeding into the grid gap. */
+.chv-meta-grid .v[class*="cell-"] {
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+/* ── Angled header overlay ─────────────────────────────────────────────── */
+.hs-angled thead th {
+  height: var(--header-h, 150px);
+  vertical-align: bottom;
+  padding: 0;
+}
+.hs-angled thead th:not(.seq) .label { display: none; }
+.hs-angled thead th.seq {
+  padding: 6px 8px;
+  z-index: 8;
+}
+.hs-angled thead th.seq .label {
+  font-family: var(--hand); font-size: 11px; font-weight: 600;
+}
+.header-overlay {
+  position: sticky; top: 0;
+  height: var(--header-h, 150px);
+  margin-bottom: calc(var(--header-h, 150px) * -1);
+  pointer-events: none;
+  z-index: 7;
+}
+.header-overlay-bg {
+  position: absolute; inset: 0;
+  background: var(--paper-2);
+  border-bottom: 1.5px solid var(--stroke);
+  pointer-events: none;
+}
+.header-overlay .hdr-label {
+  /* Diagonal rise cap: a -45° label may extend up by at most the header
+     height, i.e. length ≤ header-h × √2. The component caps last-column labels
+     further (rightward room) by taking min(--hdr-rise, room) inline. */
+  --hdr-rise: calc(var(--header-h, 150px) * 1.4142);
+  position: absolute;
+  bottom: 6px;
+  transform: rotate(-45deg);
+  transform-origin: left bottom;
+  white-space: nowrap;
+  font-family: var(--hand); font-size: 12px; font-weight: 500;
+  line-height: 1; color: var(--ink);
+  padding: 2px 6px 2px 4px;
+  pointer-events: auto; cursor: help;
+}
+/* The title text truncates; the sort arrow is pulled out of this flow (see
+   below) so it stays visible at the label's anchored bottom end. */
+.header-overlay .hdr-label .label-text {
+  display: block;
+  max-width: var(--hdr-rise);
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Orderable metadata labels: clickable, with a sort arrow when active. */
+.header-overlay .hdr-label.sortable { cursor: pointer; }
+.header-overlay .hdr-label.sortable:hover { color: var(--accent); }
+.header-overlay .hdr-label.sorted { color: var(--accent); font-weight: 600; }
+/* The arrow sits at the label's left-bottom origin — the near end of the
+   diagonal, right at the column edge — so it stays on screen even when the
+   title text is truncated by an ellipsis. Reserve room for it with the label's
+   left padding, and keep it out of the truncating text flow. */
+.header-overlay .hdr-label .sort-arrow {
+  position: absolute;
+  left: 2px; bottom: 2px;
+  font-size: 9px; line-height: 1;
+}
+.header-overlay .hdr-label.sorted { padding-left: 13px; }
+
+/* Seq.No header sort button (label lives in its own <th>, not the overlay). */
+.data-table thead th.seq .th-sort {
+  display: inline-flex; align-items: center; gap: 3px;
+  border: none; background: transparent; padding: 0;
+  font: inherit; color: inherit; cursor: pointer;
+}
+.data-table thead th.seq .th-sort:hover { color: var(--accent); }
+.data-table thead th.seq.sorted .th-sort { color: var(--accent); font-weight: 600; }
+.data-table thead th.seq .sort-arrow { font-size: 9px; }
+
+/* Channel cadence tag (live / day) — shared by the browser cards and the
+   single-exposure viewer head. */
+.chv-tag {
+  font-size: 9px;
+  padding: 1px 7px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.chv-tag.live::before { width: 5px; height: 5px; }
+
+/* Channel head — swatch + title + tag, used by the single-exposure viewer. */
+.chv-vhead {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px;
+}
+.chv-vhead .sw {
+  width: 16px; height: 16px;
+  border: 1.5px solid var(--stroke);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.chv-vhead h3 {
+  font-family: var(--display); font-weight: 700; font-size: 26px;
+  margin: 0; line-height: 1;
+}
+
+/* Exposure-metadata grid — reused by the single-exposure viewer sidebar. */
+.chv-section-h {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--hand); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+/* Collapse/expand the metadata panel. In the header it sits at the right end;
+   the chevron rotates to face up (panel open) and the collapsed-rail variant
+   faces left (a "reopen" arrow). */
+.chv-meta-toggle {
+  margin-left: auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px;
+  border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.chv-meta-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+.chv-meta-toggle svg { width: 14px; height: 14px; }
+/* Open panel: chevron-down points up to say "fold up". */
+.chv-section-h .chv-meta-toggle svg { transform: rotate(180deg); }
+/* Collapsed rail: point left to say "open out". */
+.chv-meta-toggle.collapsed svg { transform: rotate(90deg); }
+.chv-meta-grid {
+  display: grid;
+  /* Give the value column the bulk of the width so long numbers/timestamps stay
+     on one line; cap the key column so a long field name wraps instead. Both
+     tracks can still shrink (minmax floor 0) so nothing widens the grid past the
+     sidebar and forces a horizontal page scrollbar. */
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
+  gap: 6px 16px;
+  font-family: var(--mono); font-size: 11.5px;
+}
+.chv-meta-grid .k,
+.chv-meta-grid .v { overflow-wrap: anywhere; }
+.chv-meta-grid .k { color: var(--ink-soft); }
+.chv-meta-grid .v { color: var(--ink); }
+
+/* ── Channels browser (latest-frame card grid) ─────────────────────────── */
+.chc-root { padding: 4px 0 24px; }
+
+/* Day-obs banner: the card grid always shows the newest day with data, so
+   state up front whether that is the live observing night or an older one —
+   otherwise a frame from a quiet/old night reads as "now". */
+.chc-dayobs {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--ink-soft);
+}
+.chc-dayobs strong { color: var(--ink); font-weight: 600; }
+.chc-dayobs-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.chc-dayobs--live .chc-dayobs-dot {
+  background: var(--good); animation: pulse 1.5s infinite;
+}
+/* Older night: amber, no pulse — the grid is not updating live. */
+.chc-dayobs--past { color: var(--warn); }
+.chc-dayobs--past strong { color: var(--warn); }
+.chc-dayobs--past .chc-dayobs-dot { background: var(--warn); }
+.chc-group { margin-bottom: 28px; }
+.chc-group-head {
+  display: flex; align-items: baseline; gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.chc-group-head h2 {
+  font-family: var(--display); font-weight: 600; font-size: 20px; margin: 0;
+}
+.chc-count {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.chc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.chc-card {
+  display: flex; flex-direction: column;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 8px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow-card);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.chc-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.chc-frame {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--paper-3);
+  border-bottom: 1px solid var(--line-mid);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.chc-frame img,
+.chc-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Loading feedback while a card image paints (shares the channel-view spinner
+   keyframes/swatch). The card image fades in once loaded rather than streaming
+   in top-down. The same treatment drives the location cards' primary-channel
+   thumbnails (.cam-thumb-img), so both grids load identically. */
+.chc-frame img.chc-img-loading,
+.cam-thumb-img.chc-img-loading { opacity: 0; }
+.chc-frame img,
+.cam-thumb-img { transition: opacity 160ms ease; }
+.chc-img-spinner {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.chc-img-spinner .chv-spinner { width: 26px; height: 26px; border-width: 2.5px; }
+.chc-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.chc-empty-label { font-size: 9px; opacity: 0.75; }
+.chc-empty-date {
+  font-size: 12px; letter-spacing: 0.04em; color: var(--ink);
+}
+.chc-body {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 4px;
+}
+.chc-body .sw {
+  width: 10px; height: 10px;
+  border: 1.25px solid var(--stroke); border-radius: 2px;
+  flex-shrink: 0;
+}
+.chc-title {
+  font-family: var(--display); font-weight: 600; font-size: 15px;
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chc-foot {
+  display: flex; gap: 8px; align-items: center;
+  padding: 0 12px 12px;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.chc-seq { color: var(--ink); font-weight: 600; }
+
+/* Cross-card staleness cue: a live card whose latest seq trails the night's
+   frontier (see STALE_SEQ_LAG) recedes so fresh cards read as current at a
+   glance. The frame desaturates + dims; a quiet "−N" chip in the foot gives
+   the exact lag on inspection. The border carries the indicative orange
+   (--warn, the same "behind/stale" tone as the camera dots and day-obs) so
+   the cue reads even on a card with no image. Kept subtle so it informs
+   without alarming. */
+.chc-card--stale { border-color: var(--warn); }
+/* Keep the stale orange on hover rather than swapping to the accent, so the
+   signal survives a pointer landing on the card. */
+.chc-card--stale:hover { border-color: var(--warn); }
+.chc-card--stale .chc-frame img,
+.chc-card--stale .chc-frame video {
+  filter: saturate(0.45) opacity(0.62);
+  transition: filter 200ms ease;
+}
+.chc-card--stale:hover .chc-frame img,
+.chc-card--stale:hover .chc-frame video {
+  filter: saturate(1) opacity(1);
+}
+.chc-lag {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-weight: 600;
+  border: 1px solid var(--line-mid);
+  border-radius: 999px;
+  padding: 0 5px;
+  line-height: 1.4;
+}
+
+/* ── Channel view ──────────────────────────────────────────────────────── */
+.channel-view {
+  display: grid;
+  /* The image keeps its aspect ratio, so the media track is often wider than
+     the rendered frame. Let the sidebar take a flexible share (min 16rem) so it
+     grows into that slack rather than leaving the metadata pinned narrow. */
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 28rem);
+  /* Header sizes to content; the media/sidebar row fills the rest so the image
+     frame can own a bounded vertical scroll box instead of growing the page. */
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "header header" "media sidebar";
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+}
+/* Collapsed: the sidebar shrinks to just its reopen rail, handing the freed
+   width to the media column. */
+.channel-view.meta-collapsed {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+/* Both content columns must be allowed to shrink below their intrinsic width;
+   without this a wide image or a long metadata string overflows the grid and
+   triggers a horizontal scrollbar on the page. */
+.channel-view .media,
+.channel-view .metadata-sidebar { min-width: 0; }
+.channel-view .table-header,
+.channel-view .channel-head { grid-area: header; margin-bottom: 0; }
+/* The media column fills the view height so the image frame below can own a
+   bounded vertical scroll region (rather than growing the whole page). */
+.media {
+  grid-area: media;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.media img,
+.media video {
+  max-width: 100%;
+  border: 1.5px solid var(--line-mid);
+  border-radius: 5px;
+}
+/* Positioning context for the loading spinner AND the vertical scroll box for
+   the enlarged image. Fills the media column's remaining height; the image
+   inside scrolls up/down when it's taller (the "fill" zoom state below). */
+.chv-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  line-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+/* Zoom states (click toggles). "fill": image at full column width, aspect
+   preserved, so a tall frame overflows the box and scrolls vertically. "fit":
+   whole image scaled to the box height so it's fully visible with no scroll. */
+.chv-zoom-fill img { width: 100%; height: auto; }
+.chv-zoom-fit {
+  /* Nothing overflows when fitted, so centre the shrunk image in the box. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.chv-zoom-fit img {
+  width: auto;
+  max-height: 100%;
+  max-width: 100%;
+}
+/* The zoom cursor (and thus the click affordance) only appears when the image
+   actually overflows and can be zoomed — .chv-zoomable is set by the overflow
+   measurement. A frame-width plot that already fits vertically gets neither. */
+.chv-zoomable.chv-zoom-fill img { cursor: zoom-out; }
+.chv-zoomable.chv-zoom-fit img { cursor: zoom-in; }
+/* While the image is hidden it has no intrinsic size, so the frame would
+   collapse. During loading show a full-width 1:1 placeholder surface so the
+   spinner sits centred in a stable square; once the image reveals, the flex
+   box holds its own height so nothing jumps. */
+.chv-frame:has(img.chv-img-loading) {
+  background: var(--paper-2);
+  border-radius: 5px;
+}
+.chv-frame:has(img.chv-img-loading)::before {
+  content: "";
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+/* While a newly-selected image is still loading, hide it and float a spinner in
+   its place. `visibility: hidden` (not opacity) so a partially-decoded frame is
+   never shown: on first load — with no prior frame beneath — dimming would let
+   you watch the new image paint in top-down. The box is preserved so the frame
+   keeps its size and the spinner stays centred; the image reveals whole once
+   onLoad fires. Neighbours are preloaded, so prev/next swaps complete from
+   cache and never enter this state. */
+.media img.chv-img-loading { visibility: hidden; }
+.chv-img-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.chv-spinner {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  border-top-color: var(--accent);
+  animation: chv-spin 0.7s linear infinite;
+}
+@keyframes chv-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chv-spinner { animation-duration: 1.6s; }
+}
+
+/* Strip of sibling channels offering the same exposure, above the image. Wraps
+   on narrow widths; each chip is tinted with its channel colour. */
+.chv-chan-strip {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 10px;
+}
+.chv-chan {
+  font-family: var(--hand); font-size: 12px; font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #1a1a1a; /* default ink for light channel tints; per-channel text_colour overrides */
+  text-decoration: none;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+a.chv-chan:hover { filter: brightness(1.08); }
+.chv-chan.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  cursor: default;
+}
+.metadata-sidebar {
+  grid-area: sidebar;
+  min-height: 0;
+  overflow-y: auto;
+}
+.seq-nav {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.seq-arrow {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--accent);
+  text-decoration: none;
+  border-radius: 6px;
+  padding: 2px 5px;
+}
+a.seq-arrow:hover { background: var(--line-soft); }
+.seq-arrow svg { width: 15px; height: 15px; }
+.seq-arrow-off { color: var(--ink-soft); opacity: 0.4; }
+/* Jump-to-current sits a touch apart from the prev/next pair. */
+.seq-jump { margin-left: 0.25rem; }
+.seq-current { font-weight: 700; color: var(--ink); }
+.live-badge { letter-spacing: 0.04em; }
+
+/* Icon-only action links in the single-channel head (jump-to-current,
+   open-in-new-tab), next to the live indicator. */
+.chv-iconlink {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  text-decoration: none;
+  border-radius: 6px;
+  padding: 3px;
+}
+.chv-iconlink:hover { background: var(--line-soft); }
+.chv-iconlink svg { width: 16px; height: 16px; }
+
+/* ── All Sky feed ──────────────────────────────────────────────────────── */
+.allsky-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.allsky-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.allsky-toolbar .amovie-label {
+  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
+}
+.allsky-toolbar .date-field {
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-mid); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+}
+
+/* The media stage: two columns (still + movie), each a framed media tile.
+   The tiles stretch to fill the stage on both axes so the imagery uses the
+   available space rather than sitting small in the top-left. */
+.allsky-stage {
+  flex: 1; min-height: 0;
+  display: flex; flex-wrap: wrap; gap: 22px;
+  align-items: stretch;
+  padding: 18px 0 22px;
+  overflow: auto;
+}
+.allsky-col {
+  flex: 1 1 24rem; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: 8px;
+  margin: 0;
+}
+.allsky-mediahead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 0 2px;
+}
+.amh-title { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.amh-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
+.live-view-seq { font-weight: 400; }
+.allsky-frame {
+  /* Don't grow past the image: the frame shrink-wraps to its media (height
+     auto), so on a short page it collapses with the image instead of leaving
+     letterbox padding above and below. min-height: 0 lets it shrink inside
+     the column; the image's max-height (below) is what caps it. */
+  flex: 0 1 auto; min-height: 0;
+  border: 1.5px solid var(--stroke); border-radius: 8px;
+  background: var(--paper-2); padding: 10px;
+  box-shadow: var(--shadow-card);
+  display: flex; align-items: center; justify-content: center;
+}
+.allsky-frame img,
+.allsky-frame video {
+  /* Scale up to fill the column width, but cap height to the column's
+     available space (100% of the definite-height column minus the head/gap)
+     so the media never overflows. width/height auto keeps aspect ratio and
+     lets the media drive the frame's size — no fixed box to letterbox into. */
+  width: auto; height: auto;
+  max-width: 100%; max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  display: block;
+  background: var(--paper-3);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+
+/* ── Night report (folder-tabbed) ──────────────────────────────────────── */
+.nr-root {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  height: 100%;
+}
+.nr-head {
+  display: flex; align-items: baseline; gap: 14px;
+  padding-bottom: 4px;
+}
+.nr-head h1 { margin: 0; }
+.nr-head .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+/* Folder-style sub-tab strip. */
+.nr-tabwrap { padding-top: 12px; flex-shrink: 0; }
+.nr-subtabs {
+  display: flex; flex-wrap: wrap; gap: 3px;
+  align-items: flex-end;
+  border-bottom: 1.5px solid var(--stroke);
+}
+.nr-subtab {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 13px 7px;
+  font-family: var(--hand); font-size: 13px;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke); border-bottom: none;
+  border-radius: 7px 7px 0 0;
+  cursor: pointer;
+  position: relative; top: 1.5px;
+}
+.nr-subtab:hover { background: var(--paper-3); }
+.nr-subtab.active {
+  background: var(--paper);
+  color: var(--ink); font-weight: 700;
+  border-bottom: 1.5px solid var(--paper);
+  z-index: 1;
+}
+.nr-subtab .kind {
+  font-family: var(--mono); font-size: 8px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line-soft); border-radius: 6px;
+  padding: 0 5px;
+}
+.nr-subtab .pct {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Content panel. */
+.nr-panel {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 20px 2px 30px;
+}
+
+.nr-text { max-width: 660px; }
+.nr-text .lead {
+  font-family: var(--hand); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--ink-soft);
+  margin-bottom: 12px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line-soft);
+  display: flex; align-items: baseline; gap: 8px;
+}
+.nr-text .lead .pill {
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.4px;
+  border: 1px solid var(--line-soft); border-radius: 6px; padding: 0 5px;
+}
+.nr-kv {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-family: var(--mono); font-size: 12.5px;
+}
+.nr-kv .k { color: var(--ink-soft); }
+.nr-kv .v { color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+/* Multiline night-report text carries its own newlines + space-padded column
+   alignment; preserve the whitespace and use a monospace font so columns line
+   up, while still wrapping long lines. */
+.nr-log {
+  margin: 0;
+  font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+.nr-links { display: flex; flex-direction: column; gap: 6px; }
+.nr-link {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 9px 14px;
+  border: 1.25px solid var(--stroke); border-radius: 6px;
+  background: var(--paper-2);
+  text-decoration: none;
+}
+.nr-link:hover { background: var(--paper-3); }
+.nr-link .lk { font-family: var(--hand); font-size: 14px; color: var(--accent); }
+.nr-link .ld { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); margin-left: auto; }
+.nr-link .arr { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+
+/* Plots grid — 2-up auto-fill; each .nr-plot is a figure. */
+.nr-plot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+.nr-plot { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.nr-plot img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke); border-radius: 5px;
+}
+.nr-plot figcaption {
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  word-break: break-all;
+}
+
+@media (max-width: 700px) {
+  .channel-view {
+    grid-template-columns: 1fr;
+    /* Stack and let the page scroll on narrow screens; the bounded media scroll
+       box (and its fill/fit zoom) is a desktop affordance, so release the
+       height cap and per-area scrolling here. */
+    grid-template-rows: none;
+    grid-template-areas: "header" "media" "sidebar";
+    height: auto;
+  }
+  .channel-view .chv-frame { overflow: visible; }
+  .channel-view .metadata-sidebar { overflow: visible; }
+}
+
+/* ── Cluster Status (detectors) ────────────────────────────────────────── */
+.cluster-status h1 { margin-bottom: 0.5rem; }
+
+/* Status colours — shared by legend swatches and the cell grids. The canvas
+   sets fill colours directly from getStatusColor(). Ported from the design's
+   .s-* state palette (design/from-claude/styles.css). */
+.status-free { background: #c8e0a8; }
+.status-busy { background: #e8c490; }
+.status-queued { background: #e0a8b8; }
+.status-restarting { background: #d4b8e0; }
+.status-guest { background: #b8d4e0; }
+.status-missing { background: #d8d8d4; }
+
+.legend {
+  margin: 0.75rem 0 1rem;
+  display: inline-block;
+  background: var(--paper-2);
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--hand);
+  font-size: 0.8rem;
+}
+.legend-color {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 1px solid var(--stroke);
+  border-radius: 2px;
+}
+
+/* Plain data tables outside a .table-wrap (Status / Other Queues) use natural
+   layout rather than the camera table's fixed/max-content sizing. */
+:not(.table-wrap) > .data-table {
+  table-layout: auto;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line-mid);
+  border-radius: 6px;
+  overflow: hidden;
+}
+:not(.table-wrap) > .data-table th,
+:not(.table-wrap) > .data-table td {
+  white-space: normal;
+}
+:not(.table-wrap) > .data-table thead th { position: static; }
+
+/* Section rows. Both rows share the SAME track model so the CWFS group lines
+   up edge-to-edge with the Imaging group and shrinks at the same rate: the
+   worker sets sit in equal `1fr` columns that share one "main area", and the
+   step1b card takes a fixed trailing column identical in both rows. Two 1fr
+   (imaging) vs four 1fr (CWFS) divide the identical main area, so their outer
+   edges align and they scale together with the container. */
+.main-detectors,
+.aos-detectors {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+.main-detectors { grid-template-columns: 1fr 1fr var(--step1b-col, 9rem); }
+.aos-detectors { grid-template-columns: 1fr 1fr 1fr 1fr var(--step1b-col, 9rem); }
+
+/* Each worker set is a framed card (design's .wf box). */
+.detector-section,
+.step1b-section,
+.spareworkers-section,
+.other-queues {
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: var(--shadow-card);
+}
+.detector-title,
+.spareworkers-section h3,
+.other-queues h3 {
+  font-family: var(--display);
+  font-size: 0.95rem;
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+}
+/* Grid items now size via the row templates above; the old flex hints are
+   kept only as harmless fallbacks. */
+.detector-section-large { max-width: none; }
+.detector-section-small { min-width: 0; }
+.step1b-section { min-width: 0; }
+
+/* Canvas keeps a square aspect; the polygons are drawn to fit. */
+.detector-canvas {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  background: var(--paper);
+  aspect-ratio: 1 / 1;
+}
+.detector-canvas canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Simple cell grids (step1b / backlog). */
+.step1b-cells,
+.spareworkers-cells {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  background: var(--paper);
+  padding: 6px;
+  min-height: 6rem;
+}
+/* Backlog reflows to fill its (resizable) card, never below 3 columns. */
+.spareworkers-cells { grid-template-columns: repeat(auto-fill, minmax(1.9rem, 1fr)); }
+.detector-cell {
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line-mid);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.detector-cell.status-missing { background: #c8ccd4; }
+.queue-length {
+  color: #1a1a1a;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* Backlog Workers + Other Queues share one row. */
+.bottom-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+/* Backlog card is user-resizable; min-width holds ≥ 3 cells
+   (3 × 1.9rem + 2 gaps + grid padding + card padding/border). */
+.spareworkers-section {
+  width: 12rem;
+  min-width: 9.5rem;
+  max-width: 28rem;
+  resize: horizontal;
+  overflow: auto;
+}
+
+/* Per-section Restart Workers button uses the danger ConfirmButton styling.
+   Size the whole confirm-group's buttons (not just the .danger Confirm) so
+   Confirm and Cancel share one font — otherwise only Confirm got the 0.8rem
+   shrink and Cancel rendered a step taller. */
+.detector-section .danger,
+.step1b-section .danger,
+.spareworkers-section .danger,
+.detector-section .confirm-group button,
+.step1b-section .confirm-group button,
+.spareworkers-section .confirm-group button {
+  font-size: 0.8rem;
+}
+/* The 0.6rem gap that lifts the control off the grid goes on the OUTER element
+   only — the standalone armed-able button, or the confirm-group. Putting it on
+   the Confirm button inside the group would give it a top margin Cancel lacks,
+   which (under align-items: stretch) stretched Cancel a step taller. So zero
+   any margin on the grouped buttons and space the group as a whole. */
+.detector-section > .danger,
+.step1b-section > .danger,
+.spareworkers-section > .danger,
+.detector-section .confirm-group,
+.step1b-section .confirm-group,
+.spareworkers-section .confirm-group {
+  margin-top: 0.6rem;
+}
+.confirm-group button { margin-top: 0; }
+.other-queues { max-width: 30rem; }
+.other-queues-section { flex: 1 1 18rem; }
+.other-queues .data-table { margin-top: 0; }
+
+/* ── Admin panel ───────────────────────────────────────────────────────── */
+.admin-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.admin-version {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.admin-warn { color: var(--warn); }
+.admin-feedback {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+}
+.admin-feedback.ok { background: var(--accent-soft); color: var(--good); }
+.admin-feedback.err { background: var(--paper-3); color: var(--warn); }
+.admin-boxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.admin-box {
+  background: var(--paper-2);
+  border: 1.5px solid var(--stroke);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  min-width: 16rem;
+  box-shadow: var(--shadow-card);
+}
+.admin-box h2,
+.admin-box h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+.admin-readback {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.5rem;
+}
+.admin-note {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.5rem;
+}
+.admin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.admin-row input,
+.admin-row select {
+  background: var(--paper);
+  color: inherit;
+  border: 1.25px solid var(--line-mid);
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.4rem;
+  font-family: var(--mono);
+}
+.admin-danger-zone {
+  border: 1px solid var(--warn);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+.admin-danger-zone > h2 {
+  color: var(--warn);
+  margin-top: 0;
+}
+.admin-danger-zone .admin-box { border-color: var(--warn); margin-bottom: 0.75rem; }
+
+/* ── Confirm button (destructive actions) ──────────────────────────────── */
+/* Confirm/Cancel share ONE box model so they line up regardless of card width:
+   same padding, a 1px border on all three (transparent where there's no
+   visible stroke, so the bordered Cancel isn't 2px taller), and no per-button
+   text wrap — the label stays on one line so both buttons keep an identical
+   single-line height. In a narrow card (e.g. the 9rem Step 1b) the group wraps
+   and the buttons stack full-width instead of overflowing the card. */
+button.danger,
+.confirm-yes.danger {
+  background: var(--warn);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+/* Disabled danger buttons (e.g. Redis actions when Redis is off) must read as
+   inert — without this the full-strength orange looks clickable but swallows
+   clicks. Matches the app's other :disabled controls (opacity 0.5). */
+button.danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.confirm-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+.confirm-yes,
+.confirm-no {
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  /* Keep each label on one line so both buttons share an identical single-line
+     height; they size to content and wrap to a stack only when the card can't
+     hold them side by side. */
+  white-space: nowrap;
+}
+.confirm-yes {
+  background: var(--accent);
+  color: var(--paper);
+}
+.confirm-no {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: var(--line-mid);
+}
+
+/* ── Theme switcher (light / dark / system segmented control) ───────────── */
+.theme-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-mid);
+  border-radius: 8px;
+  background: var(--paper-2);
+}
+.theme-seg-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.theme-seg-btn:hover { color: var(--ink); background: var(--paper-3); }
+.theme-seg-btn.active { color: var(--accent); background: var(--paper); box-shadow: var(--shadow-card); }
+[data-theme="dark"] .theme-seg-btn.active { background: var(--paper-3); }
+.theme-seg-btn svg { width: 14px; height: 14px; display: block; }
+
+/* Vertical stack — used in the collapsed-sidebar left gutter. */
+.theme-seg.vertical { flex-direction: column; gap: 3px; }
+
+/* ── Live Mosaic ───────────────────────────────────────────────────────────
+   A responsive grid of channel tiles: latest plot above a small metadata list.
+   Fits as many columns as will hold a ~22rem tile, so it reflows cleanly when
+   embedded headerless in a narrow <iframe>.
+
+   auto-fit (not auto-fill): when there are fewer tiles than would fill the row,
+   the empty trailing tracks collapse and the real tiles stretch to fill the
+   width. With auto-fill those phantom tracks stay reserved, so at certain
+   widths (e.g. ~1475px, where a 4th 22rem track first fits but only 3 tiles
+   exist) the tiles would shrink to a narrower track and leave a gap. */
+.mosaic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 0.9rem;
+}
+.mosaic-tile {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  margin: 0; min-width: 0;
+}
+.mosaic-tilehead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px;
+}
+.mosaic-title { font-family: var(--display); font-weight: 700; font-size: 15px; }
+.mosaic-seq { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
+.mosaic-frame {
+  border: 1.5px solid var(--stroke); border-radius: 8px;
+  background: var(--paper); padding: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.mosaic-frame img,
+.mosaic-frame video {
+  width: 100%; height: auto; max-height: 60vh;
+  object-fit: contain; border-radius: 4px;
+}
+.mosaic-meta {
+  margin: 0; display: flex; flex-direction: column; gap: 2px;
+  font-size: 12px;
+}
+.mosaic-meta-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  border-top: 1px solid var(--line-soft, var(--stroke));
+  padding: 2px 0;
+}
+.mosaic-meta-row dt { color: var(--ink-soft); font-family: var(--mono); }
+.mosaic-meta-row dd { margin: 0; text-align: right; }
+
+/* Headerless embed: drop the shell padding so the grid fills the iframe. */
+.shell.headerless { display: block; }
+.shell.headerless .app-content { padding: 0.75rem; }
+
+/* ── 404 ───────────────────────────────────────────────────────────────────
+   The not-found page, reached from an unmatched path or a URL naming a
+   location/camera/channel this deployment doesn't have. Centred in the content
+   column, using the display face for the code so it reads as a signpost rather
+   than an error dump. */
+.notfound {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px; padding: 12vh 1rem;
+  text-align: center;
+}
+.notfound-code {
+  margin: 0;
+  font-family: var(--display); font-size: 72px; font-weight: 700;
+  line-height: 1; letter-spacing: -0.02em;
+  color: var(--line-mid);
+}
+.notfound-title {
+  margin: 0;
+  font-family: var(--display); font-size: 22px; font-weight: 600;
+  color: var(--ink);
+}
+.notfound-detail {
+  margin: 0; max-width: 46ch;
+  color: var(--ink-2); font-size: 14px; line-height: 1.5;
+}
+.notfound-detail code {
+  font-family: var(--mono); font-size: 13px;
+  background: var(--paper-3); color: var(--ink);
+  padding: 1px 5px; border-radius: 3px;
+  /* A long mistyped segment must not push the page sideways. */
+  overflow-wrap: anywhere;
+}
+.notfound-actions {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  justify-content: center; margin-top: 8px;
+}
+.notfound-link {
+  font-family: var(--hand); font-size: 13px; font-weight: 500;
+  color: var(--accent); text-decoration: none;
+  border: 1px solid var(--line-mid); border-radius: 4px;
+  padding: 6px 14px;
+}
+.notfound-link:hover {
+  border-color: var(--accent); background: var(--accent-soft);
+}

@@ -1,0 +1,7 @@
+# EUPS table file for lsst.ts.rubintv.
+# Mirrors the V2 package: expose the console scripts and put the namespace
+# package import root (python/) on PYTHONPATH so `import lsst.ts.rubintv` works
+# from an EUPS-set-up checkout.
+
+envPrepend(PATH, ${PRODUCT_DIR}/bin)
+envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
