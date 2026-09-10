@@ -89,6 +89,23 @@ def test_jobs_spread_across_idle_workers() -> None:
             assert got == {"job-1", "job-2"}
 
 
+def test_late_reply_for_departed_client_is_not_given_to_next_client() -> None:
+    with run_app() as app:
+        with app.websocket_connect(WORKER_WS) as worker:
+            with app.websocket_connect(CLIENT_WS) as first:
+                first.send_text("job-1")
+                assert worker.receive_text() == "job-1"
+            # `first` is gone while job-1 still runs on the worker. The worker
+            # must stay busy: job-2 queues until job-1's (now unwanted) reply
+            # arrives, and that reply must not be relayed to `second`.
+            with app.websocket_connect(CLIENT_WS) as second:
+                second.send_text("job-2")
+                worker.send_text("result-1")
+                assert worker.receive_text() == "job-2"
+                worker.send_text("result-2")
+                assert second.receive_text() == "result-2"
+
+
 def test_client_gone_sentinel_is_not_relayed() -> None:
     with run_app() as app:
         with (

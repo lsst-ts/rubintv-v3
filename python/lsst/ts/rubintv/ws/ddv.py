@@ -55,8 +55,13 @@ class _Worker:
 
     conn_id: str
     socket: WebSocket
+    busy: bool = False
+    """Whether a job is running on this worker. Stays ``True`` after the
+    job's client disconnects: the worker only accepts one message at a time,
+    so it must not be handed new work until it has replied to the old."""
     client: _Client | None = None
-    """The client whose job this worker is running; ``None`` when idle."""
+    """The client whose job this worker is running; ``None`` when idle *or*
+    when that client disconnected mid-job (the reply is then discarded)."""
 
 
 @dataclass
@@ -121,7 +126,7 @@ class DdvBridge:
 
     async def _dispatch(self, message: str, client: _Client) -> None:
         """Send a client's job to an idle worker, or queue it."""
-        idle = next((w for w in self._workers.values() if w.client is None), None)
+        idle = next((w for w in self._workers.values() if not w.busy), None)
         if idle is None:
             if len(self._queue) >= _MAX_QUEUE_DEPTH:
                 dropped = self._queue.popleft()
@@ -137,6 +142,7 @@ class DdvBridge:
         await self._start_job(idle, _Job(message, client))
 
     async def _start_job(self, worker: _Worker, job: _Job) -> None:
+        worker.busy = True
         worker.client = job.client
         log.info(
             "ddv.job.started",
@@ -152,8 +158,10 @@ class DdvBridge:
 
     async def _finish(self, worker: _Worker, message: str) -> None:
         """Relay a worker's result to its client and hand it queued work."""
-        client, worker.client = worker.client, None
+        client, worker.client, worker.busy = worker.client, None, False
         if client is None or message == _CLIENT_GONE:
+            # Either the client disconnected mid-job (see _drop_client) or
+            # the worker reported it gone: the reply has no recipient.
             log.info(
                 "ddv.job.unclaimed", worker_id=worker.conn_id, has_client=bool(client)
             )
@@ -171,7 +179,11 @@ class DdvBridge:
     def _drop_client(self, client: _Client) -> None:
         self._clients.pop(client.conn_id, None)
         # Abandon its queued jobs and detach any worker still running one, so
-        # results aren't sent into a closed socket.
+        # results aren't sent into a closed socket. The worker stays busy:
+        # marking it idle here would hand it the next job while the old one
+        # is still running, and the old job's reply would then be relayed to
+        # that next client (and the next client's own reply dropped as
+        # unclaimed), leaving every later reply off by one.
         self._queue = deque(j for j in self._queue if j.client is not client)
         for worker in self._workers.values():
             if worker.client is client:
@@ -180,12 +192,12 @@ class DdvBridge:
 
     def _drop_worker(self, worker: _Worker) -> None:
         self._workers.pop(worker.conn_id, None)
-        if worker.client is not None:
+        if worker.busy:
             # The in-flight job is lost (its message isn't retained); the
-            # client will retry at the protocol level.
+            # client, if still connected, will retry at the protocol level.
             log.warning(
                 "ddv.worker.lost_job",
                 worker_id=worker.conn_id,
-                client_id=worker.client.conn_id,
+                client_id=worker.client.conn_id if worker.client else None,
             )
         log.info("ddv.worker.disconnected", worker_id=worker.conn_id)
