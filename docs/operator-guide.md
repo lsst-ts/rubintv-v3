@@ -11,22 +11,54 @@ against S3; data is written by external pipelines. See
 
 ## Configuration
 
-All runtime config is environment variables, prefixed `RUBINTV_` (see
-[.env.example](../.env.example)). The cameras/locations/channels themselves
-come from the YAML at `RUBINTV_MODELS_PATH`.
+All runtime config is environment variables. The app itself reads the
+`RUBINTV_`-prefixed ones below (see [.env.example](../.env.example)); the
+container entrypoint reads a second, unprefixed set for the sub-app builds it
+runs at pod start (next table). The cameras/locations/channels themselves come
+from the YAML at `RUBINTV_MODELS_PATH`.
 
 | Variable                      | Default                    | Purpose                                                       |
 | ----------------------------- | -------------------------- | ------------------------------------------------------------- |
 | `RAPID_ANALYSIS_LOCATION`     | `local`                    | Deployment site name (set by the Rapid Analysis environment; note: **not** `RUBINTV_`-prefixed). |
+| `RUBINTV_PATH_PREFIX`         | `/rubintv`                 | URL prefix everything is served under: API, WebSockets, sub-apps, SPA. Leading `/`, no trailing slash; `""` serves at the root. |
 | `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
 | `RUBINTV_CACHE_DIR`           | `/scratch`                 | PVC dir for warm-start cache. Missing/unwritable dir (no PVC) disables the cache with one warning. |
 | `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = disabled.     |
 | `RUBINTV_POLL_INTERVAL_SECONDS` | `1.0`                    | Current-day S3 poll cadence.                                  |
+| `RUBINTV_RECENT_WINDOW_DAYS`  | `30`                       | Cold start scans this many recent observing days per camera before the full back-catalogue sweep. `0` = full sweep only. |
+| `RUBINTV_METADATA_PRELOAD_DAYS` | `3`                      | Cold start pre-fetches `metadata.json` for this many recent dates per camera. `0` = on demand only. |
+| `RUBINTV_RECONCILE_DRY_RUN`   | `false`                    | Log what reconciliation *would* remove from the index without removing it. Stale entries stay while set. |
 | `RUBINTV_SPA_DIST`            | unset                      | Built SPA dir to serve. Unset (dev) = Vite serves the SPA.    |
 | `RUBINTV_DDV_PATH`            | unset                      | Built DDV web app dir (Vite `dist`). Unset = `/ddv` not mounted. |
-| `RUBINTV_EXP_CHECKER_ENABLED` | `false`                    | Mount the `exp_checker` sub-app at `/exp_checker`.            |
+| `RUBINTV_EXP_CHECKER_ENABLED` | `false`                    | Mount the `exp_checker` sub-app at `/exp_checker`. In the image this also makes the entrypoint install it (see below). |
+| `RUBINTV_EXP_CHECKER_MODULE`  | `lsst.ts.exp_checker`      | Import path of the exp_checker package (must expose `create_app()` or an `app`). |
+| `RUBINTV_ALLOW_ADMIN_WILDCARD` | `false`                   | Let an `admin_for: ["*"]` wildcard grant admin to any authenticated user. Off so a pod booted with the wrong site grants admin to nobody. |
+| `RUBINTV_WITNESS_DETECTOR_KEY` | `RUBINTV_CONTROL_WITNESS_DETECTOR` | Redis control key the admin "Witness Detector" box writes to. |
+| `RUBINTV_RESET_HEAD_NODE_KEY` | `RUBINTV_CONTROL_RESET_HEAD_NODE` | Redis control key the admin "Reset Head Node" button writes to. |
+| `RUBINTV_RESET_HEAD_NODE_VALUE` | `1`                      | Value written to that key to trigger the reset.               |
 | `RUBINTV_LOG_LEVEL`           | `INFO`                     | Log level.                                                    |
 | `RUBINTV_JSON_LOGS`           | `false` (dev), `true` (img)| JSON logs in production.                                      |
+
+### Container entrypoint
+
+The image's entrypoint, [scripts/start.sh](../scripts/start.sh), builds the
+DDV web app and installs exp_checker at container start (so a pod restart
+picks up new commits of their repos without an image rebuild), then launches
+the app. These variables are read by that script, not by the app, and are
+set in the deployment's pod spec. Sub-app failures are non-fatal: the app
+comes up without the sub-app and logs why.
+
+| Variable                | Default                                          | Purpose                                                       |
+| ----------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| `DDV_DEPLOY_BRANCH`     | unset                                            | Branch of the DDV repo to build. **Unset = no DDV build**, so `/ddv` is not mounted. Names a branch of `DDV_REPO` (the web app), not of the analysis service. |
+| `DDV_REPO`              | `https://github.com/ugyballoons/rubintv-ddv`     | Repository the DDV web app is cloned from. Its charting library, rubin-charts, is a git dependency in the app's lockfile and needs no setting here. |
+| `DDV_BASE_HREF`         | `/rubintv/ddv/`                                  | URL path the DDV build is served under (baked into the build). Bookended by `/`; must match `RUBINTV_PATH_PREFIX` + `/ddv/`. |
+| `DDV_CLIENT_WS_ADDRESS` | `rubintv/ws/ddv`                                 | WebSocket path baked into the DDV client, relative to the page's host; the client appends `/client`. Must match `RUBINTV_PATH_PREFIX` + `/ws/ddv`. |
+| `DDV_BUILD_DIR`         | `/app/ddv-build`                                 | Scratch dir for the clone and build. `RUBINTV_DDV_PATH` (set in the image to `$DDV_BUILD_DIR/ddv/dist`) must point inside it. |
+| `DDV_BUILD_TIMEOUT`     | `600`                                            | Seconds allowed for the clone + build before it is abandoned and the app starts without `/ddv`. |
+| `EXP_CHECKER_REF`       | `main`                                           | Branch or tag of `lsst-sitcom/rubin_exp_checker` to install when `RUBINTV_EXP_CHECKER_ENABLED` is true. |
+| `EXP_CHECKER_DIR`       | `/app/exp-checker-src`                           | Where that clone lands; its `python/` tree is put on `PYTHONPATH`. |
+| `RUBINTV_HTTP_PORT`     | `8080`                                           | Port uvicorn listens on. Not `RUBINTV_PORT`: a Kubernetes Service named `rubintv` injects `RUBINTV_PORT=tcp://...` into every pod in the namespace, so that name is deliberately ignored. |
 
 ## Health & readiness
 
