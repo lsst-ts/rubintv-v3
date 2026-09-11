@@ -53,9 +53,16 @@ def test_config_reports_the_deployment_site() -> None:
         assert client.get("/api/config").json() == {"site": "usdf-k8s"}
 
 
+def write_ddv_build(ddv_dir: Path) -> None:
+    """A finished Vite build: index.html plus a hashed bundle under assets/."""
+    ddv_dir.mkdir(parents=True, exist_ok=True)
+    (ddv_dir / "index.html").write_text("<!doctype html><title>DDV</title>")
+    (ddv_dir / "assets").mkdir()
+    (ddv_dir / "assets" / "index-Ab12Cd34.js").write_text("// bundle")
+
+
 def test_ddv_mounted_when_assets_present(tmp_path: Path) -> None:
-    (tmp_path / "index.html").write_text("<!doctype html><title>DDV</title>")
-    (tmp_path / "main.dart.js").write_text("// compiled")
+    write_ddv_build(tmp_path)
     settings = make_settings(ddv_path=tmp_path)
     with run_app(settings) as client:
         # The reported mount path is the full browser-facing (prefixed) URL.
@@ -71,9 +78,7 @@ def test_ddv_bare_path_redirects_with_spa_mounted(tmp_path: Path) -> None:
     # {path}/...), so without the explicit redirect the advertised sub-app
     # URL answered 404 on the deployed pod.
     ddv = tmp_path / "ddv"
-    ddv.mkdir()
-    (ddv / "index.html").write_text("<!doctype html><title>DDV</title>")
-    (ddv / "main.dart.js").write_text("// compiled")
+    write_ddv_build(ddv)
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text("<!doctype html><div id=root></div>")
@@ -94,11 +99,11 @@ def test_ddv_skipped_when_dir_missing(tmp_path: Path) -> None:
 
 
 def test_ddv_skipped_when_build_incomplete(tmp_path: Path) -> None:
-    # `flutter build web` writes index.html before it compiles, so a dart2js
-    # failure leaves a directory holding everything *except* main.dart.js.
-    # Mounting that served a page that spins forever instead of skipping.
+    # An index.html with no bundle under assets/ (a stale or partial build)
+    # would serve a page that spins forever; it must be skipped instead.
     (tmp_path / "index.html").write_text("<!doctype html><title>DDV</title>")
-    (tmp_path / "flutter_bootstrap.js").write_text("// bootstrap")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "index-Ab12Cd34.css").write_text("/* styles */")
     with run_app(make_settings(ddv_path=tmp_path)) as client:
         assert client.get("/api/subapps").json()["mounted"] == []
         assert client.get("/api/health/live").status_code == 200

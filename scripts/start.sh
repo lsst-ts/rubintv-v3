@@ -6,17 +6,18 @@
 # app must come up regardless, and the sub-app mounts skip whatever turns
 # out to be missing.
 
-# DDV: clone + flutter-build into a scratch dir (RUBINTV_DDV_PATH points
-# inside it). Skipped unless DDV_DEPLOY_BRANCH names the branch to build,
-# so sites without DDV don't pay a Flutter build every restart.
+# DDV: clone + npm-build into a scratch dir (RUBINTV_DDV_PATH points inside
+# it). Skipped unless DDV_DEPLOY_BRANCH names the branch to build, so sites
+# without DDV don't pay a build every restart.
 if [ -n "$DDV_DEPLOY_BRANCH" ]; then
     DDV_BUILD_DIR=${DDV_BUILD_DIR:-/app/ddv-build}
     script_dir=$(cd "$(dirname "$0")" && pwd)
     rm -rf "$DDV_BUILD_DIR"
     mkdir -p "$DDV_BUILD_DIR"
-    # Bound the build: it does network clones + an fvm/Flutter SDK fetch, any
-    # of which can *stall* (not just fail) if GitHub/pub.dev blackholes a
-    # connection. Unbounded, that hang would keep uvicorn from ever binding
+    # Bound the build: it does a network clone + an npm install (including
+    # a git dependency), any of which can *stall* (not just fail) if GitHub
+    # or the npm registry blackholes a connection. Unbounded, that hang
+    # would keep uvicorn from ever binding
     # 8080 -> the chart's probe fails -> CrashLoopBackOff with no app logs. A
     # timeout turns a stalled build into the same non-fatal "continue without
     # /ddv" path a failed build already takes. Override via DDV_BUILD_TIMEOUT.
@@ -41,10 +42,10 @@ if [ -n "$DDV_DEPLOY_BRANCH" ]; then
         echo "DDV BUILD FAILED ($reason) - continuing without /ddv" >&2
         echo "Branch: ${DDV_DEPLOY_BRANCH}. Scroll up for the compiler error." >&2
         echo "========================================================" >&2
-    elif [ ! -f "$DDV_BUILD_DIR/ddv/build/web/main.dart.js" ]; then
-        # Belt and braces: flutter has been known to exit 0 with no compiler
-        # output. Without main.dart.js the mount is skipped anyway, so say why.
-        echo "DDV BUILD INCOMPLETE (no main.dart.js) - continuing without /ddv" >&2
+    elif [ ! -f "$DDV_BUILD_DIR/ddv/dist/index.html" ]; then
+        # Belt and braces: without dist/index.html the mount is skipped
+        # anyway, so say why.
+        echo "DDV BUILD INCOMPLETE (no dist/index.html) - continuing without /ddv" >&2
     fi
 else
     echo "DDV_DEPLOY_BRANCH not set; skipping the DDV build" >&2

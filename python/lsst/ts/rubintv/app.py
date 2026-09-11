@@ -319,8 +319,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await state.heartbeat_svc.handle(socket)
 
     # DDV job relay. The client path matches the address baked into the DDV
-    # Flutter build (DDV_CLIENT_WS_ADDRESS, default rubintv/ws/ddv, plus
-    # /client). Worker pods connect on the internal endpoint (v2 served this
+    # build (DDV_CLIENT_WS_ADDRESS, default rubintv/ws/ddv, plus /client).
+    # Worker pods connect on the internal endpoint (v2 served this
     # at the unprefixed /ws/worker; the pods' target URL is deployment
     # config, updated alongside this app).
     ddv_bridge = DdvBridge()

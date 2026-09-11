@@ -1,6 +1,6 @@
 """Mount optional sub-apps with failure isolation.
 
-- **DDV** (Flutter): a static asset bundle served at ``/ddv``. If the build
+- **DDV** (web app): a static asset bundle served at ``/ddv``. If the build
   directory isn't present, the mount is skipped.
 - **exp_checker**: a FastAPI sub-app mounted at ``/exp_checker``, sharing the
   main process. Loaded dynamically so its absence (or an import error) is
@@ -60,17 +60,17 @@ def _redirect_bare_path(app: FastAPI, path: str) -> None:
 
 
 def _mount_ddv(app: FastAPI, settings: Settings, prefix: str) -> str | None:
-    """Serve the DDV Flutter build at {prefix}/ddv if its assets exist."""
+    """Serve the DDV build at {prefix}/ddv if its assets exist."""
     ddv_dir = settings.ddv_path
     if ddv_dir is None or not ddv_dir.is_dir():
         log.info("subapp.skip", subapp="ddv", reason="no build directory")
         return None
-    # `flutter build web` writes index.html and the bootstrap early, then
-    # compiles; a dart2js failure therefore leaves a *directory* behind with
-    # no main.dart.js in it. Mounting that serves a page that loads forever,
-    # which reads as "DDV is broken" rather than "DDV wasn't built". The
-    # compiler output is the only reliable marker that the build finished.
-    if not (ddv_dir / "main.dart.js").is_file():
+    # A finished Vite build is index.html plus the hashed bundles under
+    # assets/. A directory with an index.html but no bundle (a stale or
+    # partial build) would serve a page that loads forever, which reads as
+    # "DDV is broken" rather than "DDV wasn't built", so require both.
+    has_bundle = any((ddv_dir / "assets").glob("*.js"))
+    if not (ddv_dir / "index.html").is_file() or not has_bundle:
         log.warning(
             "subapp.skip", subapp="ddv", reason="incomplete build", dir=str(ddv_dir)
         )

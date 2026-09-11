@@ -1,8 +1,8 @@
 # Multi-stage build: build the SPA with Node, then serve API + static assets
-# from a Python runtime. The DDV Flutter app is deliberately *not* built
-# here: the entrypoint (scripts/start.sh) builds it at container start, so a
-# pod restart picks up new commits of the DDV repos without rebuilding this
-# image. The runtime image therefore carries the Flutter SDK + fvm.
+# from a Python runtime. The DDV web app is deliberately *not* built here:
+# the entrypoint (scripts/start.sh) builds it at container start, so a pod
+# restart picks up new commits of the DDV repo without rebuilding this
+# image. The runtime image therefore carries Node as well.
 
 # --- Stage 1: build the frontend ---
 FROM node:22-slim AS web
@@ -16,26 +16,21 @@ RUN npm run build
 FROM python:3.12-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# What the container-start DDV build needs: git to clone, the rest for the
-# Flutter web toolchain.
+# What the container-start DDV build needs: git to clone (npm also fetches
+# the app's rubin-charts git dependency with it) and Node to build. Debian's
+# own nodejs is too old for the app's toolchain (Vite needs 20.19+), so Node
+# comes from NodeSource; 24 matches what the DDV repo's CI builds with.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl git libglu1-mesa unzip xz-utils zip && \
+    apt-get install -y --no-install-recommends ca-certificates curl git && \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Flutter won't run as root, so everything runs as a dedicated user.
+# Everything runs as a dedicated, unprivileged user.
 RUN groupadd -g 1000 rubintv && useradd -u 1000 -g rubintv -m rubintv
 WORKDIR /app
 RUN chown rubintv:rubintv /app
 USER rubintv
-
-# Flutter SDK + fvm for the container-start DDV build. `flutter doctor`
-# pre-warms the Dart SDK so container start only pays for the build itself;
-# fvm fetches whatever SDK version the DDV repos pin.
-RUN git clone -b stable --depth 1 \
-    https://github.com/flutter/flutter.git /home/rubintv/flutter
-ENV PATH="/home/rubintv/flutter/bin:/home/rubintv/.pub-cache/bin:${PATH}"
-RUN flutter doctor && dart pub global activate fvm
 
 # setuptools_scm derives the version from git, which isn't present in this
 # context. CI passes the computed version as a build arg; fall back to 0.0.0
@@ -70,7 +65,7 @@ ARG GIT_DATE=unknown
 # RUBINTV_DDV_PATH matches where start.sh leaves the DDV build (under
 # DDV_BUILD_DIR); the mount skips quietly when no build happened.
 ENV RUBINTV_SPA_DIST=/app/web/dist \
-    RUBINTV_DDV_PATH=/app/ddv-build/ddv/build/web \
+    RUBINTV_DDV_PATH=/app/ddv-build/ddv/dist \
     RUBINTV_JSON_LOGS=true \
     RUBINTV_GIT_SHA=$GIT_SHA \
     RUBINTV_GIT_DATE=$GIT_DATE
