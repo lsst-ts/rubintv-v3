@@ -97,8 +97,8 @@ class Settings(BaseSettings):
     static assets; Vite serves the SPA in development."""
 
     ddv_path: Path | None = None
-    """Directory of the built DDV Flutter app. ``None`` skips the /ddv
-    mount."""
+    """Directory of the built DDV web app (Vite's ``dist``). ``None`` skips
+    the /ddv mount."""
 
     exp_checker_enabled: bool = False
     """Mount the exp_checker sub-app at /exp_checker (must be importable)."""

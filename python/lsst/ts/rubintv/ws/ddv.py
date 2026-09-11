@@ -1,9 +1,9 @@
 """WebSocket relay between DDV browser clients and its worker pods.
 
-The DDV (Derived Data Visualization) Flutter app doesn't talk to this
-service's data model; it sends opaque job messages that are executed by
-separate worker pods (``rubintv_visualization`` backends) running in the
-cluster. This module is the switchboard between the two:
+The DDV (Derived Data Visualization) app doesn't talk to this service's
+data model; it sends opaque job messages that are executed by separate
+worker pods (``rubintv_analysis_service``) running in the cluster. This
+module is the switchboard between the two:
 
 - Browsers connect on the public client endpoint and send one message per
   job.

@@ -23,7 +23,7 @@ come from the YAML at `RUBINTV_MODELS_PATH`.
 | `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = disabled.     |
 | `RUBINTV_POLL_INTERVAL_SECONDS` | `1.0`                    | Current-day S3 poll cadence.                                  |
 | `RUBINTV_SPA_DIST`            | unset                      | Built SPA dir to serve. Unset (dev) = Vite serves the SPA.    |
-| `RUBINTV_DDV_PATH`            | unset                      | DDV Flutter build dir. Unset = `/ddv` not mounted.            |
+| `RUBINTV_DDV_PATH`            | unset                      | Built DDV web app dir (Vite `dist`). Unset = `/ddv` not mounted. |
 | `RUBINTV_EXP_CHECKER_ENABLED` | `false`                    | Mount the `exp_checker` sub-app at `/exp_checker`.            |
 | `RUBINTV_LOG_LEVEL`           | `INFO`                     | Log level.                                                    |
 | `RUBINTV_JSON_LOGS`           | `false` (dev), `true` (img)| JSON logs in production.                                      |
