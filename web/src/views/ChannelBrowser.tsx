@@ -46,9 +46,12 @@ function latestFor(
   if (!payload) return { src: null, isVideo: false, seqLabel: null, seq: null };
 
   if (ch.per_day) {
-    const seqSeg = payload.per_day?.[ch.name];
-    if (!seqSeg) return { src: null, isVideo: false, seqLabel: null, seq: null };
-    const fileExt = payload.extensions?.[ch.name]?.default ?? "mp4";
+    const ref = payload.per_day?.[ch.name];
+    if (!ref) return { src: null, isVideo: false, seqLabel: null, seq: null };
+    const seqSeg = ref.seq;
+    // The per-day entry carries its own extension; the channel default is
+    // only a fallback for an index written before that was recorded.
+    const fileExt = ref.ext || payload.extensions?.[ch.name]?.default || "mp4";
     const src = api.perDayMediaUrl(
       location,
       camera,
