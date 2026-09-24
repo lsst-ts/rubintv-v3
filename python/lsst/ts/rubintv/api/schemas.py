@@ -7,6 +7,8 @@ flat and JSON-friendly (sets become sorted lists, etc.).
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from lsst.ts.rubintv.data.events import SeqNum
 from pydantic import BaseModel
 
@@ -239,3 +241,65 @@ class AdminActionOut(BaseModel):
 
     ok: bool
     detail: str = ""
+
+
+# --- observing-block guide -------------------------------------------------
+
+
+class GuideInstrumentOut(BaseModel):
+    """An instrument the guide covers, and where its exposures live in
+    RubinTV so a block can link to its camera date page and viewers."""
+
+    name: str
+    location: str | None
+    """First non-teststand location with a camera of this name, else the
+    first location that has one; ``None`` if no camera matches."""
+    camera: str | None
+    image_viewer_link: str | None
+    quicklook_viewer_link: str | None
+
+
+class GuideConfigOut(BaseModel):
+    """Whether the guide is configured and for which instruments."""
+
+    enabled: bool
+    instruments: list[GuideInstrumentOut]
+    day_start_utc_hour: int
+    """UTC hour at which a day_obs row begins (the noon-UTC rollover)."""
+    max_gap_minutes: float
+
+
+class BlockOut(BaseModel):
+    """One observing block: a run of exposures of one science program."""
+
+    program: str
+    begin: str
+    """UTC, ISO-8601 with ``Z``."""
+    end: str
+    seq_num_0: int
+    seq_num_1: int
+    day_obs: int
+    """day_obs (YYYYMMDD) of the first exposure."""
+    day_obs_end: int
+    n_exposures: int
+
+
+class GuideBlocksOut(BaseModel):
+    instrument: str
+    blocks: list[BlockOut]
+    loading: bool
+    """True until the first sweep has caught up with ConsDB."""
+    updated_at: datetime | None
+    last_exposure_id: int
+    exposures: int
+    error: str | None
+    """Why the last poll failed, if it did; the blocks are still served."""
+
+
+class ProgramNamesOut(BaseModel):
+    names: dict[str, str]
+    """Science-program key (``BLOCK-T123``) -> description."""
+    source: str
+    """``snapshot`` (bundled file) or ``zephyr`` (fetched)."""
+    updated_at: datetime | None
+    error: str | None

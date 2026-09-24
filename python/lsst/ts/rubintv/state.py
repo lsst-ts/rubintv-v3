@@ -17,7 +17,9 @@ if TYPE_CHECKING:
     from lsst.ts.rubintv.data.redis_inputs import RedisInputs
     from lsst.ts.rubintv.data.tasks import CameraScanState
 from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.data.blocknames import BlockNameService
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
+from lsst.ts.rubintv.data.guide import GuideService
 from lsst.ts.rubintv.data.heartbeats import HeartbeatStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
@@ -42,6 +44,11 @@ class AppState:
     heartbeats: HeartbeatStore
     ws: WsService
     heartbeat_svc: HeartbeatService
+    block_names: BlockNameService
+    """Science-program key -> description, for the observing-block guide."""
+    guide: GuideService | None = field(default=None)
+    """Observing-block guide built from ConsDB; ``None`` when no ConsDB URL
+    is configured (the guide page is then hidden)."""
     ready: bool = field(default=False)
     cache_enabled: bool = field(default=False)
     """Whether a disk cache is configured. When false, every restart is a
