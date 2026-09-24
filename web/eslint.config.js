@@ -16,4 +16,22 @@ export default tseslint.config(
     plugins: { "react-hooks": reactHooks },
     rules: reactHooks.configs.recommended.rules,
   },
+  // The vendored guide timeline (BSD-2, Josh Meyers) is plain browser
+  // JavaScript kept close to its upstream form: give it the DOM globals and
+  // skip the TypeScript-only rules that don't apply to untyped code.
+  {
+    files: ["src/guide/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        Intl: "readonly",
+      },
+    },
+  },
 );
