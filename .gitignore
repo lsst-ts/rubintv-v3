@@ -15,6 +15,9 @@ build/
 # Node / frontend
 node_modules/
 web/dist/
+web/coverage/
+web/.vite/
+*.tsbuildinfo
 *.local
 
 # Cache / runtime data
@@ -26,3 +29,8 @@ cache/
 .DS_Store
 .vscode/
 .idea/
+.claude/*
+!.claude/skills/
+
+# setuptools_scm generated version file
+python/lsst/ts/rubintv/_version.py

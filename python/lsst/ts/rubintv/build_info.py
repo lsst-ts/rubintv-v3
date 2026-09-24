@@ -1,0 +1,77 @@
+"""Build provenance: the git commit the running code was built from.
+
+In the container these come from ``RUBINTV_GIT_SHA`` / ``RUBINTV_GIT_DATE``,
+which the Dockerfile bakes in at image-build time from ``git`` build args —
+the runtime image carries no ``.git`` directory, so the values can't be
+recovered later. For local development the env vars are unset, so we fall
+back to running ``git`` in the working tree. Everything is best-effort:
+a missing env var, a missing git, or a non-repo checkout all resolve to
+``"unknown"`` rather than raising, because build provenance is cosmetic and
+must never keep the app from starting.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from functools import lru_cache
+
+_UNKNOWN = "unknown"
+
+
+def _git(*args: str) -> str | None:
+    """Run ``git args...`` in the source tree, or return None on any
+    failure."""
+    try:
+        out = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=os.path.dirname(__file__),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    value = out.stdout.strip()
+    return value or None
+
+
+@lru_cache(maxsize=1)
+def git_sha() -> str:
+    """Short git hash of the built commit ("unknown" if unavailable)."""
+    return (
+        os.environ.get("RUBINTV_GIT_SHA")
+        or _git("rev-parse", "--short", "HEAD")
+        or _UNKNOWN
+    )
+
+
+@lru_cache(maxsize=1)
+def commit_date() -> str:
+    """Commit date of the built commit as YYYY-MM-DD ("unknown" if
+    unavailable)."""
+    return (
+        os.environ.get("RUBINTV_GIT_DATE")
+        or _git("log", "-1", "--format=%cd", "--date=format:%Y-%m-%d")
+        or _UNKNOWN
+    )
+
+
+@lru_cache(maxsize=1)
+def is_release() -> bool:
+    """Whether this is a built/deployed image rather than a live checkout.
+
+    The Dockerfile bakes ``RUBINTV_GIT_SHA`` in at image-build time, so a
+    *real* value marks a deployed build. Local development leaves it unset (the
+    sha/date come from live ``git`` instead). The Admin header uses this to
+    show the full setuptools-scm version only where it's meaningful — a
+    release image — and to drop the noisy ``dev+g<sha>`` string locally.
+
+    A build-arg-less ``docker build`` leaves ``RUBINTV_GIT_SHA`` at its
+    ``"unknown"`` default; that is *not* a release (it would otherwise show a
+    "release" with sha "unknown" in Admin), so the sentinel is excluded.
+    """
+    sha = os.environ.get("RUBINTV_GIT_SHA")
+    return bool(sha) and sha != _UNKNOWN

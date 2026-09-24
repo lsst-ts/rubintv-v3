@@ -1,0 +1,62 @@
+{% set name = "rubintv" %}
+# Version comes from the git tag via setuptools_scm. When conda-build checks out
+# a tagged source, GIT_DESCRIBE_TAG is the tag; fall back to 0.0.0 for untagged
+# builds so the recipe still renders.
+{% set version = environ.get('GIT_DESCRIBE_TAG', '0.0.0') | replace('v', '', 1) %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  path: ../
+
+build:
+  noarch: python
+  # setuptools_scm needs the version discoverable at build time; the
+  # SETUPTOOLS_SCM_PRETEND_VERSION env var lets the build succeed inside
+  # conda-build's exported git archive where tags may be absent.
+  script:
+    - export SETUPTOOLS_SCM_PRETEND_VERSION={{ version }}
+    - {{ PYTHON }} -m pip install . --no-deps --no-build-isolation -vv
+  entry_points:
+    - run_rubintv = lsst.ts.rubintv.run_rubintv:main
+
+requirements:
+  host:
+    - python >=3.12
+    - pip
+    - setuptools >=61
+    - setuptools-scm >=8
+  run:
+    - python >=3.12
+    - fastapi
+    # uvicorn-standard pulls in websockets/wsproto — without them uvicorn
+    # rejects every WS upgrade ("Unsupported upgrade request"), which would
+    # silently break /ws, the DDV bridge, and internal heartbeats in a conda
+    # deployment while HTTP kept working. Matches pyproject's uvicorn[standard].
+    - uvicorn-standard
+    - websockets
+    - pydantic >=2.9
+    - pydantic-settings
+    - pyyaml
+    - boto3
+    - orjson
+    - structlog
+    - redis-py
+    - ijson
+    - nodejs
+
+test:
+  imports:
+    - lsst.ts.rubintv
+    # Guard the WS extra is present so a recipe that dropped it fails the build
+    # rather than shipping a server that can't accept WebSocket upgrades.
+    - websockets
+  commands:
+    - run_rubintv --help
+
+about:
+  home: https://rubintv.lsst.io
+  license: MIT
+  summary: Web app for viewing Vera C. Rubin Observatory data products.

@@ -1,0 +1,97 @@
+[project]
+name = "rubintv"
+dynamic = ["version"]
+description = "RubinTV — web app for viewing Vera C. Rubin Observatory data products (rebuild)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "boto3>=1.35",
+    "orjson>=3.10",
+    "structlog>=24.4",
+    "redis>=5.1",
+    "ijson>=3.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "httpx>=0.27",
+    "moto[s3]>=5.0",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-pyyaml>=6.0",
+    "boto3-stubs[s3]>=1.35",
+]
+
+[project.scripts]
+# Console entry point used by the conda package, EUPS, and start-daemon.sh —
+# matches the V2 deployment so the same launch command works everywhere.
+run_rubintv = "lsst.ts.rubintv.run_rubintv:main"
+
+[project.urls]
+Homepage = "https://rubintv.lsst.io"
+Source = "https://github.com/lsst-ts/rubintv"
+
+[build-system]
+# setuptools + setuptools_scm matches the lsst-ts conda/EUPS toolchain. uv reads
+# this backend fine, so local `uv sync`/`uv run` keep working unchanged.
+requires = ["setuptools>=61", "setuptools-scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+# Sources live under python/ in the LSST namespace layout (lsst.ts.rubintv).
+[tool.setuptools.packages.find]
+where = ["python"]
+
+# Ship the models YAML and the py.typed marker inside the package: the YAML so
+# the app resolves config from any CWD, py.typed so downstream type-checkers
+# treat the installed package as typed.
+[tool.setuptools.package-data]
+"lsst.ts.rubintv" = ["py.typed"]
+"lsst.ts.rubintv.models" = ["*.yaml"]
+
+[tool.setuptools_scm]
+# Version derived from git tags; written into the package for runtime/import.
+write_to = "python/lsst/ts/rubintv/_version.py"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+# B008: FastAPI's Depends()/Query() in argument defaults is the intended idiom.
+ignore = ["B008"]
+
+[tool.ruff.lint.pycodestyle]
+# Activates W505 to mirror the Jenkins-generated flake8 max-doc-length check,
+# so doc/comment overruns show up in the editor before CI sees them.
+max-doc-length = 79
+
+[tool.ruff.lint.per-file-ignores]
+# The Jenkins flake8 config excludes __init__.py wholesale; match it for W505.
+"**/__init__.py" = ["W505"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+# Sources live under python/ in a PEP 420 namespace (lsst.ts.rubintv). Tell mypy
+# the import root so it resolves files to their dotted module name once, instead
+# of also discovering them as a top-level "rubintv".
+mypy_path = "python"
+explicit_package_bases = true
+namespace_packages = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Always-on coverage reporting; no --cov-fail-under, so it never fails the run.
+addopts = "--cov=lsst.ts.rubintv --cov-report=term-missing --cov-report=html"

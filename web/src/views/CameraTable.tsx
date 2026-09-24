@@ -1,0 +1,659 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { api } from "../lib/api";
+import {
+  queryKeys,
+  resetMetadataStream,
+  type MetadataProgress,
+} from "../lib/liveQuery";
+import type { Metadata } from "../lib/types";
+import { STALE, staleTimeForDate } from "../lib/queryClient";
+import { useLiveTopic } from "../lib/LiveContext";
+import { useColumnPrefs } from "../lib/columns";
+import { useDismiss } from "../lib/useDismiss";
+import { isDevInstance } from "../lib/links";
+import { usePageTitle } from "../lib/usePageTitle";
+import { tabsForCamera } from "../lib/useShellNav";
+import { getCameraTabPref } from "../lib/cameraTabPref";
+import { DownloadMetadata } from "../components/DownloadMetadata";
+import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
+import { FilterControl, FilterBar } from "../components/FilterControl";
+import { ColumnOrderList } from "../components/ColumnOrderList";
+import { LiveClocks } from "../components/LiveClocks";
+import {
+  matchRow,
+  SEQ_COL,
+  seqFilterToFilters,
+  filtersToSeqFilter,
+  type Filter,
+} from "../lib/filters";
+import {
+  sortSeqNums,
+  nextSort,
+  sortColForKey,
+  type SortState,
+} from "../lib/sort";
+import { AllSky } from "./AllSky";
+import { CameraDataTable, type Density } from "./CameraDataTable";
+
+// The main camera view: date picker, per-seq-num table with channel columns
+// and metadata columns, per-day artifacts, night-report link. Subscribes to
+// the camera topic so new rows appear live (today) without a reload.
+export function CameraTable() {
+  const { location = "", camera = "" } = useParams();
+  const [params, setParams] = useSearchParams();
+  const qc = useQueryClient();
+
+  const { data: cameraInfo, isPending: cameraPending } = useQuery({
+    queryKey: queryKeys.camera(location, camera),
+    queryFn: () => api.camera(location, camera),
+    staleTime: STALE.config,
+  });
+
+  const { data: calendar, isPending: calendarPending } = useQuery({
+    queryKey: queryKeys.calendar(location, camera),
+    queryFn: () => api.calendar(location, camera),
+    staleTime: STALE.calendar,
+  });
+
+  // Default to the most recent date with data.
+  const date = params.get("date") ?? calendar?.dates[0] ?? "";
+
+  // Live-view cameras delegate to <AllSky> below, which sets its own title;
+  // skip ours so we don't briefly flash a table title before that mounts.
+  usePageTitle(
+    !cameraInfo?.live_view && (cameraInfo?.title ?? camera),
+    !cameraInfo?.live_view && date,
+  );
+
+  // Live updates for this camera (drives table + calendar invalidation).
+  // Passing the resolved date also asks the server to stream that date's
+  // metadata as it loads, so cells fill progressively rather than after one
+  // big REST round-trip.
+  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+
+  // Progress of the streamed metadata (null once complete / not streaming).
+  // These two values are PUSHED by applyLiveMessage via setQueryData; their
+  // fetcher must only reflect the cache, never produce a default — a queryFn
+  // returning `null`/`{}` would run on mount and clobber the value the WS
+  // stream just pushed (the bug that hid the progress indicator). Returning
+  // the cached value keeps the fetcher inert while still registering one (no
+  // "missing queryFn" warning) and staleTime:Infinity stops refetches.
+  const progressKey = queryKeys.metadataProgress(location, camera, date);
+  const { data: metaProgress } = useQuery<MetadataProgress | null>({
+    queryKey: progressKey,
+    queryFn: () => qc.getQueryData<MetadataProgress | null>(progressKey) ?? null,
+    staleTime: Infinity,
+  });
+  // Metadata streamed over the WebSocket, accumulated as chunks arrive. Kept
+  // separate from the REST payload and merged below, so streamed rows show up
+  // immediately even before the (also slow) REST payload lands.
+  const streamKey = queryKeys.metadataStream(location, camera, date);
+  const { data: streamedMeta } = useQuery<Metadata>({
+    queryKey: streamKey,
+    queryFn: () => qc.getQueryData<Metadata>(streamKey) ?? {},
+    staleTime: Infinity,
+  });
+
+  const { data: payload, isPending } = useQuery({
+    queryKey: queryKeys.datePayload(location, camera, date),
+    queryFn: () => api.datePayload(location, camera, date),
+    enabled: date !== "",
+    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
+  });
+
+  // Metadata is fetched independently of the structured payload so the grid
+  // (channels/seqs) renders immediately from cache without waiting on this
+  // large, live-from-S3 download. It's the backstop for the WS stream.
+  const {
+    data: restMeta,
+    isSuccess: restMetaLoaded,
+    dataUpdatedAt: restMetaUpdatedAt,
+  } = useQuery<Metadata>({
+    queryKey: queryKeys.metadata(location, camera, date),
+    queryFn: () => api.metadata(location, camera, date),
+    enabled: date !== "",
+    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
+  });
+
+  // Each fresh REST metadata fetch is complete as of its fetch time, so drop
+  // the stream accumulation then (dataUpdatedAt changes per successful fetch).
+  // Without this, a seq deleted server-side lingers as a ghost row: the merge
+  // below unions the stream slot back in, and that slot is only ever added to.
+  useEffect(() => {
+    if (!restMetaUpdatedAt) return;
+    resetMetadataStream(qc, location, camera, date);
+  }, [qc, location, camera, date, restMetaUpdatedAt]);
+
+  // The metadata the table renders: streamed rows merged with the REST
+  // backstop. The stream usually arrives first on slow links; REST fills any
+  // chunk that was dropped (and covers clients whose stream never connects).
+  const metadata = useMemo<Metadata>(
+    () => ({ ...(streamedMeta ?? {}), ...(restMeta ?? {}) }),
+    [streamedMeta, restMeta],
+  );
+
+  // Guard `channels` like the rest of the shell (useShellNav, columns): the
+  // OpenAPI type says it's always an array, but a fetch stub or a backend
+  // mid-deploy can return a camera object without it, and a bare `.filter`
+  // would crash the whole view rather than degrade to "no channels".
+  const liveChannels = useMemo(
+    () =>
+      (Array.isArray(cameraInfo?.channels) ? cameraInfo.channels : []).filter(
+        (c) => !c.per_day,
+      ),
+    [cameraInfo],
+  );
+  const channelColour = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of liveChannels) m[c.name] = c.colour ?? "var(--accent)";
+    return m;
+  }, [liveChannels]);
+
+  // Row density (compact / regular), persisted per browser.
+  const [density, setDensity] = useState<Density>(() => {
+    try {
+      const d = localStorage.getItem("rubintv.density");
+      if (d === "compact" || d === "regular") return d;
+    } catch {
+      // ignore
+    }
+    return "regular";
+  });
+  const pickDensity = (d: Density) => {
+    try {
+      localStorage.setItem("rubintv.density", d);
+    } catch {
+      // ignore
+    }
+    setDensity(d);
+  };
+
+  const [colsOpen, setColsOpen] = useState(false);
+  const [colsQuery, setColsQuery] = useState("");
+  // Which picker view is showing: "select" (show/hide catalogue) or "reorder"
+  // (drag list). Split so a camera with many chosen columns isn't a wall of
+  // both at once. Persisted per browser so the picker reopens where you left
+  // it (like density).
+  const [colsMode, setColsMode] = useState<"select" | "reorder">(() => {
+    try {
+      const m = localStorage.getItem("rubintv.colsMode");
+      if (m === "select" || m === "reorder") return m;
+    } catch {
+      // ignore
+    }
+    return "select";
+  });
+  const pickColsMode = (m: "select" | "reorder") => {
+    try {
+      localStorage.setItem("rubintv.colsMode", m);
+    } catch {
+      // ignore
+    }
+    setColsMode(m);
+  };
+  // Dismiss the column picker on an outside click or Escape.
+  const colsRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(colsOpen, colsRef, () => setColsOpen(false));
+
+  // The density picker popover, dismissed like the column picker.
+  const [densityOpen, setDensityOpen] = useState(false);
+  const densityRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(densityOpen, densityRef, () => setDensityOpen(false));
+
+  // Per-row action links/buttons, driven by per-camera config. Each is shown
+  // only when its template is configured. {dev} and {siteLoc} are fixed for the
+  // running instance; {dayObs}/{seqNum}/{controller} vary per row and are
+  // filled inside the row map below.
+  const viewerTmpl = cameraInfo?.image_viewer_link ?? null;
+  const quicklookTmpl = cameraInfo?.quicklook_viewer_link ?? null;
+  const copyRowTmpl = cameraInfo?.copy_row_template ?? null;
+  const dev = isDevInstance();
+  // siteLocation keys the {siteLoc}→domain map; only summit/base resolve to a
+  // domain. The URL's location segment is that key. Stable identity so it
+  // doesn't defeat the memoized data table.
+  const linkCtx = useCallback(
+    (controller?: unknown) => ({
+      siteLocation: location,
+      controller: typeof controller === "string" ? controller : undefined,
+      isDevInstance: dev,
+    }),
+    [location, dev],
+  );
+  // Columns are the union of the configured columns (which carry order and
+  // tooltip descriptions) and every key actually present in the metadata —
+  // metadata.json routinely carries far more fields than the config names,
+  // and the old app surfaced all of them. Configured columns come first (in
+  // config order); data-only keys follow, sorted case-insensitively. Keys
+  // beginning with "_" (per-cell indicators) or "@" (empty-channel
+  // replacement strings) are not columns — they decorate other cells.
+  // The configured columns (metadata_columns) are the default-visible set.
+  const defaultColumns = useMemo(
+    () =>
+      Object.keys(cameraInfo?.metadata_columns ?? {}).filter(
+        (name) => name[0] !== "_" && name[0] !== "@",
+      ),
+    [cameraInfo],
+  );
+  const metaColumns = useMemo(() => {
+    const configured = Object.keys(cameraInfo?.metadata_columns ?? {});
+    const seen = new Set(configured);
+    const extra: string[] = [];
+    for (const row of Object.values(metadata)) {
+      for (const key of Object.keys(row)) {
+        if (!seen.has(key)) {
+          seen.add(key);
+          extra.push(key);
+        }
+      }
+    }
+    extra.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    return [...configured, ...extra].filter(
+      (name) => name[0] !== "_" && name[0] !== "@",
+    );
+  }, [cameraInfo, metadata]);
+  const { visible, hidden, locked, toggle, reorder, showAll, hideAll, reset } =
+    useColumnPrefs(
+      location,
+      camera,
+      metaColumns,
+      defaultColumns,
+      cameraInfo?.locked_columns,
+    );
+
+  // All active filters live here, including any on the synthetic Seq.No column.
+  // A Seq.No filter is shareable via a single catch-all ?seq_filter param that
+  // carries every operator (range, =, >, <, between, in, …) — scoped to Seq.No
+  // so it doesn't imply arbitrary columns are URL-passable. It *seeds* the
+  // filters on load and is *mirrored* from them on change. Metadata-column
+  // filters stay local + ephemeral (reset on date/camera change).
+  const [filters, setFilters] = useState<Filter[]>(() =>
+    seqFilterToFilters(params.get("seq_filter")),
+  );
+  // Active column sort, or null for the default order (Seq.No descending). Like
+  // metadata filters this is local + ephemeral — reset on date/camera change,
+  // since a column sorted on one day may not even exist on another.
+  const [sort, setSort] = useState<SortState | null>(null);
+  // Toggle the sort for a column-model key (cycles desc → asc → default).
+  const onSort = useCallback((key: string) => {
+    const col = sortColForKey(key);
+    if (col) setSort((s) => nextSort(s, col));
+  }, []);
+  // Reset to the URL-seeded Seq.No filter whenever the view (camera/date) changes.
+  useEffect(() => {
+    setFilters(seqFilterToFilters(params.get("seq_filter")));
+    setSort(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, camera, date]);
+
+  // Columns offered in the filter popover: the metadata columns plus the
+  // synthetic Seq.No. Seq.No goes last so the popover defaults to a metadata
+  // column (the common case) while a seq-range filter is still selectable.
+  const filterColumns = useMemo(() => [...metaColumns, SEQ_COL], [metaColumns]);
+
+  // Keep ?seq_filter in sync with the current Seq.No clauses so the filter stays
+  // shareable.
+  const seqFilter = useMemo(() => filtersToSeqFilter(filters), [filters]);
+  useEffect(() => {
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (seqFilter) p.set("seq_filter", seqFilter);
+        else p.delete("seq_filter");
+        return p;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seqFilter]);
+
+  // Picker rows filtered by the search box (substring, case-insensitive).
+  const colsMatches = useMemo(() => {
+    const q = colsQuery.trim().toLowerCase();
+    return q
+      ? metaColumns.filter((c) => c.toLowerCase().includes(q))
+      : metaColumns;
+  }, [colsQuery, metaColumns]);
+
+  // The visible columns the user can reorder (drag list): the shown metadata
+  // columns minus locked ones, which are fixed and never move. This mirrors the
+  // table's metadata-column order; dragging within it re-sequences the table.
+  const reorderable = useMemo(
+    () => visible.filter((c) => !locked.has(c)),
+    [visible, locked],
+  );
+
+  // Union of seq_nums across channels and metadata, descending (newest
+  // first). Including metadata keys means streamed rows appear immediately,
+  // before the (slower) REST channel payload lands.
+  const allSeqNums = useMemo(() => {
+    const s = new Set<number>();
+    for (const seqs of Object.values(payload?.channels ?? {})) {
+      for (const n of seqs) if (typeof n === "number") s.add(n);
+    }
+    for (const key of Object.keys(metadata)) {
+      const n = Number(key);
+      if (Number.isInteger(n)) s.add(n);
+    }
+    return [...s].sort((a, b) => b - a);
+  }, [payload, metadata]);
+
+  // Rows surviving the active filters, then ordered by the active column sort
+  // (default: the newest-first order allSeqNums already carries).
+  const seqNums = useMemo(() => {
+    const filtered =
+      filters.length === 0
+        ? allSeqNums
+        : allSeqNums.filter((n) => matchRow(n, metadata[String(n)], filters));
+    return sortSeqNums(filtered, metadata, sort);
+  }, [allSeqNums, filters, metadata, sort]);
+
+  // Header clocks: the time-since clock shows only on the current (live) date,
+  // for cameras that have one configured, computed from the newest exposure's
+  // "Date begin" timestamp.
+  const isCurrentDate = date !== "" && date === calendar?.dates[0];
+  const sinceLabel =
+    isCurrentDate && cameraInfo?.time_since_clock
+      ? cameraInfo.time_since_clock.label
+      : null;
+  const lastImageTime = useMemo(() => {
+    const newest = allSeqNums[0];
+    if (newest === undefined) return null;
+    const v = metadata[String(newest)]?.["Date begin"];
+    return v == null ? null : String(v);
+  }, [allSeqNums, metadata]);
+
+  // The full ordered column model: sticky seq, channel chips, per-row action
+  // columns (only those configured), then the visible metadata columns. The
+  // angled-header overlay draws a label per non-seq column.
+  const columns = useMemo(() => {
+    const cols: { key: string; label: string }[] = [
+      { key: "seq", label: "Seq.No" },
+      // Column key is the channel's ref name (cells index by it); the header
+      // label is its human title.
+      ...liveChannels.map((c) => ({ key: `ch:${c.name}`, label: c.title })),
+    ];
+    // Per-row action columns carry no header label.
+    if (viewerTmpl) cols.push({ key: "viewer", label: "" });
+    if (quicklookTmpl) cols.push({ key: "quicklook", label: "" });
+    if (copyRowTmpl) cols.push({ key: "copy", label: "" });
+    for (const c of visible) cols.push({ key: `meta:${c}`, label: c });
+    return cols;
+  }, [liveChannels, viewerTmpl, quicklookTmpl, copyRowTmpl, visible]);
+
+  // Live-view cameras (e.g. All Sky) show a single latest-image/latest-movie
+  // panel instead of a per-seq-num table. Delegate once the config has loaded.
+  // Placed after all hooks above so the rules-of-hooks order is unconditional.
+  if (cameraInfo?.live_view) {
+    return <AllSky />;
+  }
+
+  // Honour the user's remembered tab choice: if they were last on Channels,
+  // open a newly-visited camera on its Channels tab too (the tab is otherwise
+  // URL-derived, so the base route always lands on Table). Only from the bare
+  // base route — never a deep link that already carries a seq filter or other
+  // params the redirect would drop.
+  const wantsChannels = getCameraTabPref() === "channels" && !params.toString();
+  if (wantsChannels) {
+    // Hold the table render until the config resolves rather than flashing it
+    // and then navigating away: only the config tells us whether this camera
+    // actually offers a Channels tab to redirect to.
+    if (cameraPending) return null;
+    if (tabsForCamera(cameraInfo).some((t) => t.id === "channels")) {
+      return <Navigate to={`/${location}/${camera}/channels`} replace />;
+    }
+  }
+
+  return (
+    <section className="cam-table">
+      {/* Toolbar: columns, filter, download · clocks, density, night report.
+          The date picker + prev/next steppers now live in the shell topbar
+          (see Layout), so the selected date persists across the Table /
+          Channels / single-channel tabs rather than resetting to the newest
+          day on every tab switch. */}
+      <div className="cam-toolbar">
+        <div className="cols-cluster" ref={colsRef}>
+          <button
+            type="button"
+            className="tb-btn"
+            aria-expanded={colsOpen}
+            onClick={() => setColsOpen((o) => !o)}
+          >
+            <ColumnsIcon />
+            <span>Columns</span>
+            <span className="frac">
+              {visible.length}/{metaColumns.length}
+            </span>
+            <ChevronDownIcon />
+          </button>
+          {/* Kept mounted and toggled with `hidden` rather than conditionally
+              rendered: building the ~150 column rows on click cost ~300ms of
+              jank. They mount once with the table; opening only flips display. */}
+          <div className="cols-pop" hidden={!colsOpen}>
+            <div className="picker-head">
+              <span className="title">Metadata columns</span>
+              <span className="count" title="columns shown">
+                <b>{visible.length}</b> of {metaColumns.length}
+              </span>
+              {/* Switch the body between the show/hide catalogue and the
+                  drag-to-reorder list. */}
+              <div
+                className="picker-mode"
+                role="tablist"
+                aria-label="Column picker view"
+              >
+                {(["select", "reorder"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    aria-selected={colsMode === m}
+                    className={colsMode === m ? "active" : ""}
+                    onClick={() => pickColsMode(m)}
+                  >
+                    {m === "select" ? "Select" : "Reorder"}
+                  </button>
+                ))}
+              </div>
+              {/* Search + bulk actions only make sense for the catalogue. They
+                  share one flex row (search shrinks; bulk stays fixed) so the
+                  bulk buttons stay on the header line rather than wrapping. */}
+              {colsMode === "select" && (
+                <div className="picker-tools">
+                  <input
+                    className="search"
+                    type="text"
+                    placeholder="search columns…"
+                    value={colsQuery}
+                    onChange={(e) => setColsQuery(e.target.value)}
+                    aria-label="Search columns"
+                  />
+                  <div className="bulk">
+                    <button type="button" onClick={showAll} title="Show all metadata columns">
+                      all
+                    </button>
+                    <button type="button" onClick={hideAll} title="Hide all metadata columns">
+                      none
+                    </button>
+                    <button type="button" onClick={reset} title="Restore default columns">
+                      reset
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="picker-body">
+              {colsMode === "reorder" ? (
+                /* Reorder view: just the shown columns, in table order, dragged
+                   to re-sequence. */
+                <div className="order-section">
+                  <div className="order-head">
+                    <span className="sub">Drag to reorder the shown columns</span>
+                  </div>
+                  <ColumnOrderList columns={reorderable} onReorder={reorder} />
+                </div>
+              ) : colsMatches.length === 0 ? (
+                <div className="picker-empty">no columns match “{colsQuery}”</div>
+              ) : (
+                <div className="cols-grid">
+                  {colsMatches.map((col) => {
+                    const isLocked = locked.has(col);
+                    return (
+                      <label
+                        key={col}
+                        className={
+                          isLocked
+                            ? "picker-item locked"
+                            : hidden.has(col)
+                              ? "picker-item dim"
+                              : "picker-item"
+                        }
+                        title={
+                          isLocked ? "Always shown when present" : undefined
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isLocked || !hidden.has(col)}
+                          disabled={isLocked}
+                          onChange={() => toggle(col)}
+                        />
+                        <span className="label-text">{col}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <FilterControl
+          columns={filterColumns}
+          metadata={metadata}
+          filters={filters}
+          setFilters={setFilters}
+        />
+
+        <DownloadMetadata
+          metadata={metadata}
+          filename={`${camera}_${date}_metadata.json`}
+          // Enabled only once metadata is fully loaded: the authoritative REST
+          // payload has resolved AND no WS stream is still arriving (a non-null
+          // metaProgress means more chunks are in flight). Downloading mid-load
+          // would save a partial file.
+          disabled={date === "" || !restMetaLoaded || metaProgress != null}
+        />
+        {metaProgress && metaProgress.rows > 0 && (
+          <span className="metadata-progress" role="status">
+            loading metadata… {metaProgress.rows} rows
+          </span>
+        )}
+
+        <span className="tb-grow" />
+
+        <LiveClocks sinceLabel={sinceLabel} lastImage={lastImageTime} />
+
+        <div className="density-cluster" ref={densityRef}>
+          <button
+            type="button"
+            className="tb-btn"
+            aria-expanded={densityOpen}
+            title="Row density"
+            onClick={() => setDensityOpen((o) => !o)}
+          >
+            <span>Density</span>
+            <ChevronDownIcon />
+          </button>
+          {densityOpen && (
+            <div className="density-pop" role="menu" aria-label="Row density">
+              {(["compact", "regular"] as Density[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={density === d}
+                  className={density === d ? "active" : ""}
+                  onClick={() => {
+                    pickDensity(d);
+                    setDensityOpen(false);
+                  }}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {payload?.has_night_report && (
+          <Link
+            className="tb-btn"
+            to={`/${location}/${camera}/night-report?date=${date}`}
+          >
+            Night report
+          </Link>
+        )}
+      </div>
+
+      <FilterBar metadata={metadata} filters={filters} setFilters={setFilters} />
+
+      {((isPending && date !== "") || (date === "" && calendarPending)) && (
+        <p className="skeleton">Loading…</p>
+      )}
+
+      {payload && Object.keys(payload.per_day).length > 0 && (
+        <div className="per-day">
+          {Object.entries(payload.per_day).map(([chan, seq]) => (
+            <span key={chan} className="per-day-item">
+              {chan}: {seq}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Empty states: no date available for this camera at all, or the
+          resolved date finished loading with no rows. Either way, skip the
+          (tall, angled-header) table and show a tidy notice instead. */}
+      {date === "" ? (
+        /* No resolved date: either the calendar is still loading (the loader
+           above covers it) or it loaded with no dates for this camera. */
+        calendarPending ? null : (
+          <div className="table-empty">
+            No dates with data for this camera yet.
+          </div>
+        )
+      ) : seqNums.length === 0 ? (
+        /* No rows yet. While the payload (or a deep-linked date's on-demand
+           backfill) is still in flight, the loader above stands in — don't
+           also render an empty table or a premature "no data" notice. */
+        isPending ? null : (
+          <div className="table-empty">
+            {allSeqNums.length > 0 && filters.length > 0
+              ? `No rows match the active filter${filters.length === 1 ? "" : "s"}.`
+              : `No data for ${date}.`}
+          </div>
+        )
+      ) : (
+        <CameraDataTable
+          columns={columns}
+          seqNums={seqNums}
+          metadata={metadata}
+          payload={payload}
+          channelColour={channelColour}
+          sort={sort}
+          onSort={onSort}
+          density={density}
+          location={location}
+          camera={camera}
+          date={date}
+          viewerTmpl={viewerTmpl}
+          quicklookTmpl={quicklookTmpl}
+          copyRowTmpl={copyRowTmpl}
+          linkCtx={linkCtx}
+        />
+      )}
+    </section>
+  );
+}
