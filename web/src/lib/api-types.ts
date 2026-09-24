@@ -186,6 +186,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Guide Config */
+        get: operations["guide_config_api_guide_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/guide/programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Program Names */
+        get: operations["program_names_api_guide_programs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/guide/{instrument}/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Guide Blocks */
+        get: operations["guide_blocks_api_guide__instrument__blocks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations/{location}/cameras/{camera}/night-report/{date}": {
         parameters: {
             query?: never;
@@ -556,6 +607,28 @@ export interface components {
             /** Is Admin */
             is_admin: boolean;
         };
+        /**
+         * BlockOut
+         * @description One observing block: a run of exposures of one science program.
+         */
+        BlockOut: {
+            /** Program */
+            program: string;
+            /** Begin */
+            begin: string;
+            /** End */
+            end: string;
+            /** Seq Num 0 */
+            seq_num_0: number;
+            /** Seq Num 1 */
+            seq_num_1: number;
+            /** Day Obs */
+            day_obs: number;
+            /** Day Obs End */
+            day_obs_end: number;
+            /** N Exposures */
+            n_exposures: number;
+        };
         /** CalendarOut */
         CalendarOut: {
             /** Dates */
@@ -775,6 +848,54 @@ export interface components {
             /** Text Colour */
             text_colour: string | null;
         };
+        /** GuideBlocksOut */
+        GuideBlocksOut: {
+            /** Instrument */
+            instrument: string;
+            /** Blocks */
+            blocks: components["schemas"]["BlockOut"][];
+            /** Loading */
+            loading: boolean;
+            /** Updated At */
+            updated_at: string | null;
+            /** Last Exposure Id */
+            last_exposure_id: number;
+            /** Exposures */
+            exposures: number;
+            /** Error */
+            error: string | null;
+        };
+        /**
+         * GuideConfigOut
+         * @description Whether the guide is configured and for which instruments.
+         */
+        GuideConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Instruments */
+            instruments: components["schemas"]["GuideInstrumentOut"][];
+            /** Day Start Utc Hour */
+            day_start_utc_hour: number;
+            /** Max Gap Minutes */
+            max_gap_minutes: number;
+        };
+        /**
+         * GuideInstrumentOut
+         * @description An instrument the guide covers, and where its exposures live in
+         *     RubinTV so a block can link to its camera date page and viewers.
+         */
+        GuideInstrumentOut: {
+            /** Name */
+            name: string;
+            /** Location */
+            location: string | null;
+            /** Camera */
+            camera: string | null;
+            /** Image Viewer Link */
+            image_viewer_link: string | null;
+            /** Quicklook Viewer Link */
+            quicklook_viewer_link: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -921,6 +1042,19 @@ export interface components {
             group: string;
             /** Filename */
             filename: string;
+        };
+        /** ProgramNamesOut */
+        ProgramNamesOut: {
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
+            /** Source */
+            source: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Error */
+            error: string | null;
         };
         /** ReadyResponse */
         ReadyResponse: {
@@ -1241,6 +1375,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    guide_config_api_guide_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideConfigOut"];
+                };
+            };
+        };
+    };
+    program_names_api_guide_programs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramNamesOut"];
+                };
+            };
+        };
+    };
+    guide_blocks_api_guide__instrument__blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instrument: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideBlocksOut"];
                 };
             };
             /** @description Validation Error */
