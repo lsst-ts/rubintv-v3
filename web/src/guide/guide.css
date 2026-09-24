@@ -1,0 +1,213 @@
+/* Observing-block guide. The chart, search and info-panel styles are the
+   RubinTV Guide's (index.html, BSD-2 © Josh Meyers), scoped under
+   .guide-page and mapped onto the app's colour tokens so they follow the
+   light/dark theme. */
+
+.guide-page {
+  position: relative;
+  /* Room for the floating axis pinned to the bottom of the viewport. */
+  padding-bottom: 180px;
+}
+
+.guide-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+.guide-header h1 { margin: 0; }
+
+.guide-instruments { display: flex; gap: 0.25rem; }
+.guide-instrument {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  font: 500 0.8rem var(--hand);
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.guide-instrument--active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.guide-status { margin-left: auto; font: 0.8rem var(--hand); color: var(--ink-soft); }
+.guide-pill {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--line-mid);
+  border-radius: 999px;
+}
+.guide-pill--busy { border-color: var(--accent-line); color: var(--accent); }
+.guide-pill--warn { border-color: var(--warn); color: var(--warn); }
+.guide-pill--bad { border-color: var(--warn); color: var(--warn); }
+
+.guide-notice { color: var(--ink-soft); }
+.guide-empty { color: var(--ink-soft); font-style: italic; }
+
+/* Responsive layout container */
+.guide-main {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+}
+.guide-chart-container {
+  flex: 1;
+  min-width: 0; /* Allow shrinking */
+  overflow-x: auto;
+}
+.guide-chart { padding: 8px; }
+.guide-info-container {
+  width: 300px;
+  min-width: 250px;
+  max-width: 400px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Search */
+.guide-search-container {
+  position: relative;
+  margin: 0 0 10px 0;
+  padding: 8px;
+  border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  background: var(--paper);
+}
+.guide-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--line-mid);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.guide-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--paper);
+  border: 1px solid var(--line-mid);
+  border-top: none;
+  max-height: 400px;
+  overflow-y: auto;
+  display: none;
+  box-shadow: var(--shadow-pop);
+}
+.search-result-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+  line-height: 1.3;
+}
+.search-result-item:hover { background: var(--col-stripe); }
+.search-result-item.search-highlighted { background: var(--accent-soft); }
+.search-program { font-weight: bold; }
+.search-description { font-size: 0.9em; color: var(--ink-soft); margin-top: 2px; }
+.search-versions { font-size: 0.85em; color: var(--accent); margin-top: 2px; }
+
+/* Info panel */
+.guide-info-panel {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  background: var(--col-stripe);
+  border-left: 1px solid var(--line-mid);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.guide-info-panel h3 { margin-top: 0; color: var(--ink); }
+.guide-info-panel .info-item { margin-bottom: 10px; }
+.guide-info-panel .info-label { font-weight: bold; color: var(--ink-soft); }
+.guide-info-panel a { color: var(--accent); text-decoration: none; word-break: break-all; }
+.guide-info-panel a:hover { text-decoration: underline; }
+.guide-info-placeholder {
+  color: var(--ink-soft);
+  font-style: italic;
+  padding: 20px;
+  text-align: center;
+}
+.info-muted { color: var(--ink-soft); }
+.info-italic { font-style: italic; }
+.info-small { font-size: 0.9em; }
+.guide-block-list { font-size: 0.9em; max-height: 300px; overflow-y: auto; }
+.guide-block-item {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.guide-block-item:hover { background: var(--accent-soft); }
+
+/* Floating axes pinned to the viewport bottom */
+.guide-floating-axis {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--paper);
+  border-top: 1px solid var(--line-mid);
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  padding: 8px;
+  overflow-x: hidden;
+}
+.guide-floating-axis-svg { width: 100%; height: 155px; }
+
+/* Chart marks */
+.guide-page .block { stroke: none; cursor: pointer; }
+.guide-page .block.selected { stroke: var(--ink); stroke-width: 4px; }
+.guide-page .block.highlighted { stroke: var(--accent); stroke-width: 4px; }
+.guide-page .block.flash { animation: guideFlash 2s ease-in-out infinite; }
+@keyframes guideFlash {
+  0% { stroke: var(--ink); stroke-width: 6px; }
+  50% { stroke: var(--ink); stroke-width: 4px; opacity: 0.6; }
+  100% { stroke: var(--ink); stroke-width: 6px; }
+}
+.guide-page .x-axis, .guide-page .y-axis { font-size: 11px; }
+.guide-page .x-axis path, .guide-page .y-axis path,
+.guide-page .x-axis line, .guide-page .y-axis line,
+.guide-page .x-axis-minor path, .guide-page .x-axis-minor line { stroke: var(--ink); }
+.guide-page .x-axis text, .guide-page .y-axis text { fill: var(--ink); }
+.guide-page .axis-label { font-size: 12px; font-weight: 500; fill: var(--ink); }
+.guide-page .month-separator { stroke: var(--ink); }
+.guide-page .twilight-background { stroke: none; }
+.guide-page .moon-overlay { stroke: none; }
+
+/* Tooltip lives on <body> so it can sit above the scroll pane */
+.guide-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  z-index: 200;
+}
+
+/* Mobile/tablet: the info column moves above the chart */
+@media (max-width: 1024px) {
+  .guide-main { flex-direction: column; }
+  .guide-info-container {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    position: static;
+    max-height: none;
+  }
+  .guide-info-panel { border-left: none; border-top: 1px solid var(--line-mid); max-height: 300px; }
+}
