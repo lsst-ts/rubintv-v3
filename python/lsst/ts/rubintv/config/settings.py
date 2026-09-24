@@ -107,6 +107,50 @@ class Settings(BaseSettings):
     """Import path of the exp_checker package (must expose ``create_app()``
     or an ``app`` instance)."""
 
+    consdb_url: str | None = None
+    """ConsDB query endpoint (``RUBINTV_CONSDB_URL``), e.g. the in-cluster
+    ``http://consdb-pq.consdb:8080/consdb/query`` (no auth needed there) or
+    an RSP ``https://<host>/consdb/query`` with a token file for local dev.
+    ``None`` disables the observing-block guide."""
+
+    consdb_token_file: Path | None = None
+    """File holding an RSP bearer token for ``consdb_url``. Only needed when
+    the endpoint sits behind Gafaelfawr (i.e. outside the cluster)."""
+
+    guide_instruments: list[str] = Field(default_factory=lambda: ["lsstcam"])
+    """ConsDB instruments (schema ``cdb_<name>``) the guide builds blocks
+    for. From the environment this is a JSON list, e.g.
+    ``RUBINTV_GUIDE_INSTRUMENTS='["lsstcam","latiss"]'``."""
+
+    guide_since: str = "2025-04-01"
+    """Earliest day_obs (``YYYY-MM-DD``) the guide sweeps exposures from."""
+
+    guide_poll_interval_seconds: float = 60.0
+    """How often the guide asks ConsDB for exposures newer than its last."""
+
+    guide_max_gap_minutes: float = 15.0
+    """Longest pause between exposures of one science program that still
+    keeps them in the same observing block (the guide's grouping rule)."""
+
+    guide_page_size: int = 50000
+    """Rows per ConsDB query while sweeping: bounds one response's size and
+    keeps the first cold sweep from holding a whole year in one payload."""
+
+    zephyr_url: str = "https://api.zephyrscale.smartbear.com/v2"
+    """Zephyr Scale Cloud API root. The BLOCK-T test cases that name the
+    observing blocks live there, not in Jira's issue API."""
+
+    zephyr_token_file: Path | None = None
+    """File holding a Zephyr Scale API access token. Unset = no refresh;
+    the guide serves the block names bundled with the package."""
+
+    zephyr_project_key: str = "BLOCK"
+    """Zephyr project whose test cases are the block descriptions."""
+
+    block_names_refresh_seconds: float = 86400.0
+    """How often to re-fetch the block names from Zephyr when a token is
+    configured."""
+
     poll_interval_seconds: float = 1.0
     """Current-day poll cadence."""
 

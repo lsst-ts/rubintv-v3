@@ -1,2 +1,3 @@
 include python/lsst/ts/rubintv/models/models_data.yaml
 include python/lsst/ts/rubintv/py.typed
+include python/lsst/ts/rubintv/models/tblock_names.json

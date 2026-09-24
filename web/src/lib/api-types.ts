@@ -186,6 +186,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Guide Config */
+        get: operations["guide_config_api_guide_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/guide/programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Program Names */
+        get: operations["program_names_api_guide_programs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/guide/{instrument}/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Guide Blocks */
+        get: operations["guide_blocks_api_guide__instrument__blocks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations/{location}/cameras/{camera}/night-report/{date}": {
         parameters: {
             query?: never;
@@ -300,7 +351,11 @@ export interface paths {
         put?: never;
         /**
          * Set Site Control
-         * @description Write an arbitrary control key/value (also used by the menu boxes).
+         * @description Write a control key/value from the admin menu boxes.
+         *
+         *     The key must be one the config defines (see ``allowed_control_keys``): an
+         *     unknown key is rejected 400 rather than blindly SET, so this endpoint can't
+         *     be used to write arbitrary keys into the cluster's control namespace.
          */
         post: operations["set_site_control_api_admin_controls_set_post"];
         delete?: never;
@@ -458,6 +513,8 @@ export interface paths {
         /**
          * Services
          * @description Current liveness of every reporting RA service.
+         *
+         *     ``async`` for loop confinement, same as :func:`post_heartbeat`.
          */
         get: operations["services_api_health_services_get"];
         put?: never;
@@ -480,6 +537,11 @@ export interface paths {
         /**
          * Post Heartbeat
          * @description Record one liveness beat (fire-and-forget).
+         *
+         *     ``async`` on purpose (despite no awaits): the HeartbeatStore and the bus
+         *     queues it publishes to are event-loop-confined — a sync ``def`` would run
+         *     on the threadpool and race the reaper's iteration over the same
+         *     OrderedDict.
          */
         post: operations["post_heartbeat_internal_heartbeats_post"];
         delete?: never;
@@ -591,6 +653,28 @@ export interface components {
             witness_detector_key: string;
             /** Is Admin */
             is_admin: boolean;
+        };
+        /**
+         * BlockOut
+         * @description One observing block: a run of exposures of one science program.
+         */
+        BlockOut: {
+            /** Program */
+            program: string;
+            /** Begin */
+            begin: string;
+            /** End */
+            end: string;
+            /** Seq Num 0 */
+            seq_num_0: number;
+            /** Seq Num 1 */
+            seq_num_1: number;
+            /** Day Obs */
+            day_obs: number;
+            /** Day Obs End */
+            day_obs_end: number;
+            /** N Exposures */
+            n_exposures: number;
         };
         /** CalendarOut */
         CalendarOut: {
@@ -752,7 +836,7 @@ export interface components {
             };
             /** Per Day */
             per_day: {
-                [key: string]: string;
+                [key: string]: components["schemas"]["PerDayOut"];
             };
             /** Has Night Report */
             has_night_report: boolean;
@@ -810,6 +894,54 @@ export interface components {
             logo: string | null;
             /** Text Colour */
             text_colour: string | null;
+        };
+        /** GuideBlocksOut */
+        GuideBlocksOut: {
+            /** Instrument */
+            instrument: string;
+            /** Blocks */
+            blocks: components["schemas"]["BlockOut"][];
+            /** Loading */
+            loading: boolean;
+            /** Updated At */
+            updated_at: string | null;
+            /** Last Exposure Id */
+            last_exposure_id: number;
+            /** Exposures */
+            exposures: number;
+            /** Error */
+            error: string | null;
+        };
+        /**
+         * GuideConfigOut
+         * @description Whether the guide is configured and for which instruments.
+         */
+        GuideConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Instruments */
+            instruments: components["schemas"]["GuideInstrumentOut"][];
+            /** Day Start Utc Hour */
+            day_start_utc_hour: number;
+            /** Max Gap Minutes */
+            max_gap_minutes: number;
+        };
+        /**
+         * GuideInstrumentOut
+         * @description An instrument the guide covers, and where its exposures live in
+         *     RubinTV so a block can link to its camera date page and viewers.
+         */
+        GuideInstrumentOut: {
+            /** Name */
+            name: string;
+            /** Location */
+            location: string | null;
+            /** Camera */
+            camera: string | null;
+            /** Image Viewer Link */
+            image_viewer_link: string | null;
+            /** Quicklook Viewer Link */
+            quicklook_viewer_link: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -956,6 +1088,16 @@ export interface components {
             /** Plots */
             plots: components["schemas"]["PlotOut"][];
         };
+        /**
+         * PerDayOut
+         * @description Where a per-day artifact lives within its channel/date prefix.
+         */
+        PerDayOut: {
+            /** Seq */
+            seq: string;
+            /** Ext */
+            ext: string;
+        };
         /** PlotOut */
         PlotOut: {
             /** Key */
@@ -964,6 +1106,19 @@ export interface components {
             group: string;
             /** Filename */
             filename: string;
+        };
+        /** ProgramNamesOut */
+        ProgramNamesOut: {
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
+            /** Source */
+            source: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Error */
+            error: string | null;
         };
         /** ReadyResponse */
         ReadyResponse: {
@@ -1293,6 +1448,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    guide_config_api_guide_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideConfigOut"];
+                };
+            };
+        };
+    };
+    program_names_api_guide_programs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramNamesOut"];
+                };
+            };
+        };
+    };
+    guide_blocks_api_guide__instrument__blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instrument: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideBlocksOut"];
                 };
             };
             /** @description Validation Error */

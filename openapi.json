@@ -442,6 +442,90 @@
         }
       }
     },
+    "/api/guide": {
+      "get": {
+        "tags": [
+          "guide"
+        ],
+        "summary": "Guide Config",
+        "operationId": "guide_config_api_guide_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideConfigOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/guide/programs": {
+      "get": {
+        "tags": [
+          "guide"
+        ],
+        "summary": "Program Names",
+        "operationId": "program_names_api_guide_programs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramNamesOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/guide/{instrument}/blocks": {
+      "get": {
+        "tags": [
+          "guide"
+        ],
+        "summary": "Guide Blocks",
+        "operationId": "guide_blocks_api_guide__instrument__blocks_get",
+        "parameters": [
+          {
+            "name": "instrument",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Instrument"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideBlocksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/locations/{location}/cameras/{camera}/night-report/{date}": {
       "get": {
         "tags": [
@@ -728,7 +812,7 @@
           "admin"
         ],
         "summary": "Set Site Control",
-        "description": "Write an arbitrary control key/value (also used by the menu boxes).",
+        "description": "Write a control key/value from the admin menu boxes.\n\nThe key must be one the config defines (see ``allowed_control_keys``): an\nunknown key is rejected 400 rather than blindly SET, so this endpoint can't\nbe used to write arbitrary keys into the cluster's control namespace.",
         "operationId": "set_site_control_api_admin_controls_set_post",
         "parameters": [
           {
@@ -1282,7 +1366,7 @@
           "health"
         ],
         "summary": "Services",
-        "description": "Current liveness of every reporting RA service.",
+        "description": "Current liveness of every reporting RA service.\n\n``async`` for loop confinement, same as :func:`post_heartbeat`.",
         "operationId": "services_api_health_services_get",
         "responses": {
           "200": {
@@ -1304,7 +1388,7 @@
           "internal"
         ],
         "summary": "Post Heartbeat",
-        "description": "Record one liveness beat (fire-and-forget).",
+        "description": "Record one liveness beat (fire-and-forget).\n\n``async`` on purpose (despite no awaits): the HeartbeatStore and the bus\nqueues it publishes to are event-loop-confined \u2014 a sync ``def`` would run\non the threadpool and race the reaper's iteration over the same\nOrderedDict.",
         "operationId": "post_heartbeat_internal_heartbeats_post",
         "requestBody": {
           "content": {
@@ -1524,6 +1608,55 @@
         ],
         "title": "AdminStatusOut",
         "description": "Site-wide admin panel header info."
+      },
+      "BlockOut": {
+        "properties": {
+          "program": {
+            "type": "string",
+            "title": "Program"
+          },
+          "begin": {
+            "type": "string",
+            "title": "Begin"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "seq_num_0": {
+            "type": "integer",
+            "title": "Seq Num 0"
+          },
+          "seq_num_1": {
+            "type": "integer",
+            "title": "Seq Num 1"
+          },
+          "day_obs": {
+            "type": "integer",
+            "title": "Day Obs"
+          },
+          "day_obs_end": {
+            "type": "integer",
+            "title": "Day Obs End"
+          },
+          "n_exposures": {
+            "type": "integer",
+            "title": "N Exposures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "program",
+          "begin",
+          "end",
+          "seq_num_0",
+          "seq_num_1",
+          "day_obs",
+          "day_obs_end",
+          "n_exposures"
+        ],
+        "title": "BlockOut",
+        "description": "One observing block: a run of exposures of one science program."
       },
       "CalendarOut": {
         "properties": {
@@ -1993,7 +2126,7 @@
           },
           "per_day": {
             "additionalProperties": {
-              "type": "string"
+              "$ref": "#/components/schemas/PerDayOut"
             },
             "type": "object",
             "title": "Per Day"
@@ -2173,6 +2306,161 @@
           "text_colour"
         ],
         "title": "ExtraButtonOut"
+      },
+      "GuideBlocksOut": {
+        "properties": {
+          "instrument": {
+            "type": "string",
+            "title": "Instrument"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BlockOut"
+            },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "loading": {
+            "type": "boolean",
+            "title": "Loading"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "last_exposure_id": {
+            "type": "integer",
+            "title": "Last Exposure Id"
+          },
+          "exposures": {
+            "type": "integer",
+            "title": "Exposures"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instrument",
+          "blocks",
+          "loading",
+          "updated_at",
+          "last_exposure_id",
+          "exposures",
+          "error"
+        ],
+        "title": "GuideBlocksOut"
+      },
+      "GuideConfigOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "instruments": {
+            "items": {
+              "$ref": "#/components/schemas/GuideInstrumentOut"
+            },
+            "type": "array",
+            "title": "Instruments"
+          },
+          "day_start_utc_hour": {
+            "type": "integer",
+            "title": "Day Start Utc Hour"
+          },
+          "max_gap_minutes": {
+            "type": "number",
+            "title": "Max Gap Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "instruments",
+          "day_start_utc_hour",
+          "max_gap_minutes"
+        ],
+        "title": "GuideConfigOut",
+        "description": "Whether the guide is configured and for which instruments."
+      },
+      "GuideInstrumentOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "image_viewer_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Viewer Link"
+          },
+          "quicklook_viewer_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quicklook Viewer Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "location",
+          "camera",
+          "image_viewer_link",
+          "quicklook_viewer_link"
+        ],
+        "title": "GuideInstrumentOut",
+        "description": "An instrument the guide covers, and where its exposures live in\nRubinTV so a block can link to its camera date page and viewers."
       },
       "HTTPValidationError": {
         "properties": {
@@ -2571,6 +2859,25 @@
         ],
         "title": "NightReportOut"
       },
+      "PerDayOut": {
+        "properties": {
+          "seq": {
+            "type": "string",
+            "title": "Seq"
+          },
+          "ext": {
+            "type": "string",
+            "title": "Ext"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "ext"
+        ],
+        "title": "PerDayOut",
+        "description": "Where a per-day artifact lives within its channel/date prefix."
+      },
       "PlotOut": {
         "properties": {
           "key": {
@@ -2593,6 +2900,52 @@
           "filename"
         ],
         "title": "PlotOut"
+      },
+      "ProgramNamesOut": {
+        "properties": {
+          "names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Names"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "names",
+          "source",
+          "updated_at",
+          "error"
+        ],
+        "title": "ProgramNamesOut"
       },
       "ReadyResponse": {
         "properties": {

@@ -55,7 +55,7 @@ where = ["python"]
 # treat the installed package as typed.
 [tool.setuptools.package-data]
 "lsst.ts.rubintv" = ["py.typed"]
-"lsst.ts.rubintv.models" = ["*.yaml"]
+"lsst.ts.rubintv.models" = ["*.yaml", "*.json"]
 
 [tool.setuptools_scm]
 # Version derived from git tags; written into the package for runtime/import.

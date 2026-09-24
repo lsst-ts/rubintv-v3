@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from importlib.resources import as_file, files
 from pathlib import Path
 
@@ -16,11 +17,24 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 from lsst.ts.rubintv import __version__, legacy_redirects
-from lsst.ts.rubintv.api import admin, data, health, internal, nightreport, proxy
+from lsst.ts.rubintv.api import (
+    admin,
+    data,
+    health,
+    internal,
+    nightreport,
+    proxy,
+)
+from lsst.ts.rubintv.api import (
+    guide as guide_api,
+)
 from lsst.ts.rubintv.config.loader import load_models
 from lsst.ts.rubintv.config.settings import Settings, get_settings
+from lsst.ts.rubintv.data.blocknames import BlockNameService, load_snapshot
 from lsst.ts.rubintv.data.cache import DiskCache
+from lsst.ts.rubintv.data.consdb import ConsDbClient, read_token
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
+from lsst.ts.rubintv.data.guide import GuideService
 from lsst.ts.rubintv.data.heartbeats import HeartbeatStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
@@ -57,6 +71,42 @@ def _resolve_models_path(configured: Path | None) -> Path:
     # as_file also covers the zipped-import case by materialising a temp copy.
     with as_file(resource) as path:
         return path
+
+
+def _build_guide(settings: Settings) -> tuple[BlockNameService, GuideService | None]:
+    """The observing-block guide's two services.
+
+    The block names always exist (a snapshot ships in the package); the
+    ConsDB-backed guide itself only when ``RUBINTV_CONSDB_URL`` is set. A
+    token file that can't be read is a configuration error worth failing
+    loudly on, so it isn't caught here.
+    """
+    block_names = BlockNameService(
+        load_snapshot(),
+        zephyr_url=settings.zephyr_url,
+        zephyr_token=read_token(settings.zephyr_token_file),
+        project_key=settings.zephyr_project_key,
+        refresh_interval=settings.block_names_refresh_seconds,
+    )
+    if not settings.consdb_url:
+        log.info("guide.disabled", reason="no consdb_url configured")
+        return block_names, None
+    client = ConsDbClient(settings.consdb_url, read_token(settings.consdb_token_file))
+    guide = GuideService(
+        client,
+        list(settings.guide_instruments),
+        since_day_obs=settings.guide_since,
+        max_gap=timedelta(minutes=settings.guide_max_gap_minutes),
+        poll_interval=settings.guide_poll_interval_seconds,
+        page_size=settings.guide_page_size,
+        cache_dir=settings.cache_dir,
+    )
+    log.info(
+        "guide.enabled",
+        consdb_url=settings.consdb_url,
+        instruments=list(settings.guide_instruments),
+    )
+    return block_names, guide
 
 
 @asynccontextmanager
@@ -125,6 +175,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     heartbeats = HeartbeatStore()
     ws_service = WsService(store, metadata, controls, detectors, heartbeats)
     heartbeat_svc = HeartbeatService(store.bus, heartbeats)
+    block_names, guide = _build_guide(settings)
     state = AppState(
         settings=settings,
         models=models,
@@ -137,6 +188,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         heartbeats=heartbeats,
         ws=ws_service,
         heartbeat_svc=heartbeat_svc,
+        block_names=block_names,
+        guide=guide,
         cache_enabled=cache.enabled,
         warm_start=warm_start,
     )
@@ -253,6 +306,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine.start()
     ws_service.start()
     heartbeat_svc.start()
+    block_names.start()
+    if guide is not None:
+        guide.start()
     await redis_inputs.start()
     log.info("startup.complete", locations=[loc.name for loc in models.locations])
 
@@ -261,6 +317,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         log.info("shutdown.begin")
         await redis_inputs.stop()
+        if guide is not None:
+            await guide.stop()
+        await block_names.stop()
         await heartbeat_svc.stop()
         await ws_service.stop()
         await engine.stop()
@@ -298,6 +357,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router, prefix=f"{prefix}/api/health", tags=["health"])
     app.include_router(data.router, prefix=f"{prefix}/api", tags=["data"])
+    app.include_router(guide_api.router, prefix=f"{prefix}/api", tags=["guide"])
     app.include_router(
         nightreport.router, prefix=f"{prefix}/api", tags=["night-report"]
     )

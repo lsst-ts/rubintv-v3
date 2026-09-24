@@ -36,6 +36,17 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | `RUBINTV_WITNESS_DETECTOR_KEY` | `RUBINTV_CONTROL_WITNESS_DETECTOR` | Redis control key the admin "Witness Detector" box writes to. |
 | `RUBINTV_RESET_HEAD_NODE_KEY` | `RUBINTV_CONTROL_RESET_HEAD_NODE` | Redis control key the admin "Reset Head Node" button writes to. |
 | `RUBINTV_RESET_HEAD_NODE_VALUE` | `1`                      | Value written to that key to trigger the reset.               |
+| `RUBINTV_CONSDB_URL`          | unset                      | ConsDB query endpoint. In-cluster: `http://consdb-pq.consdb:8080/consdb/query` (no auth). **Unset = the observing guide is disabled** and hidden from the nav. |
+| `RUBINTV_CONSDB_TOKEN_FILE`   | unset                      | File holding an RSP bearer token for `RUBINTV_CONSDB_URL`. Only for an endpoint behind Gafaelfawr (local dev against `https://usdf-rsp.slac.stanford.edu/consdb/query`); in-cluster leave unset. |
+| `RUBINTV_GUIDE_INSTRUMENTS`   | `["lsstcam"]`              | JSON list of ConsDB instruments (`cdb_<name>` schemas) the guide builds blocks for. |
+| `RUBINTV_GUIDE_SINCE`         | `2025-04-01`               | Earliest day_obs the guide sweeps.                            |
+| `RUBINTV_GUIDE_POLL_INTERVAL_SECONDS` | `60`               | How often the guide asks ConsDB for exposures newer than its last. |
+| `RUBINTV_GUIDE_MAX_GAP_MINUTES` | `15`                     | Longest pause between exposures of one program that keeps them in one block. |
+| `RUBINTV_GUIDE_PAGE_SIZE`     | `50000`                    | Rows per ConsDB query during the sweep.                       |
+| `RUBINTV_ZEPHYR_TOKEN_FILE`   | unset                      | Zephyr Scale API token file. Set = block descriptions refresh from the `BLOCK` project daily; unset = the snapshot bundled in the package is served. |
+| `RUBINTV_ZEPHYR_URL`          | `https://api.zephyrscale.smartbear.com/v2` | Zephyr Scale Cloud API root.                  |
+| `RUBINTV_ZEPHYR_PROJECT_KEY`  | `BLOCK`                    | Zephyr project holding the BLOCK-T test cases.               |
+| `RUBINTV_BLOCK_NAMES_REFRESH_SECONDS` | `86400`            | Zephyr refresh cadence.                                       |
 | `RUBINTV_LOG_LEVEL`           | `INFO`                     | Log level.                                                    |
 | `RUBINTV_JSON_LOGS`           | `false` (dev), `true` (img)| JSON logs in production.                                      |
 
@@ -59,6 +70,22 @@ comes up without the sub-app and logs why.
 | `EXP_CHECKER_REF`       | `main`                                           | Branch or tag of `lsst-sitcom/rubin_exp_checker` to install when `RUBINTV_EXP_CHECKER_ENABLED` is true. |
 | `EXP_CHECKER_DIR`       | `/app/exp-checker-src`                           | Where that clone lands; its `python/` tree is put on `PYTHONPATH`. |
 | `RUBINTV_HTTP_PORT`     | `8080`                                           | Port uvicorn listens on. Not `RUBINTV_PORT`: a Kubernetes Service named `rubintv` injects `RUBINTV_PORT=tcp://...` into every pod in the namespace, so that name is deliberately ignored. |
+
+## Observing guide (ConsDB)
+
+`/guide` is a port of the RubinTV Guide timeline: every science program's
+run of exposures drawn as a block per observing night. It needs
+`RUBINTV_CONSDB_URL`. On startup the app sweeps `cdb_<instrument>.exposure`
+from `RUBINTV_GUIDE_SINCE` in `RUBINTV_GUIDE_PAGE_SIZE` pages (the page
+shows "Sweeping ConsDB…" until it catches up), then polls for newer
+exposures every `RUBINTV_GUIDE_POLL_INTERVAL_SECONDS`. The grouped blocks
+are persisted under `RUBINTV_CACHE_DIR/guide/` so a restart is warm; a
+ConsDB outage keeps serving the last blocks with a warning pill.
+
+The ConsDB pods accept in-cluster traffic from any namespace, so the
+in-cluster URL needs no secret. The block descriptions (BLOCK-T test-case
+names) come from Zephyr Scale; without a token the bundled snapshot is
+used.
 
 ## Health & readiness
 
