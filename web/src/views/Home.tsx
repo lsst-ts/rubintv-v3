@@ -5,6 +5,7 @@ import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useSubapps } from "../lib/useSubapps";
+import { useGuideConfig } from "../lib/useGuide";
 import { NavMenu } from "../components/NavMenu";
 import { RubinMark } from "../components/RubinMark";
 import type { LocationSummary } from "../lib/types";
@@ -49,6 +50,7 @@ export function Home() {
     staleTime: STALE.config,
   });
   const subapps = useSubapps();
+  const guideEnabled = useGuideConfig()?.enabled ?? false;
 
   const locations = data ?? [];
 
@@ -135,6 +137,17 @@ export function Home() {
                 </span>
               </div>
               <div className="loc-label">redis · worker health</div>
+            </Link>
+          )}
+          {guideEnabled && (
+            <Link className="loc-card" to="/guide">
+              <div className="loc-card-top">
+                <span className="loc-name">Observing guide</span>
+                <span className="loc-arrow" aria-hidden="true">
+                  →
+                </span>
+              </div>
+              <div className="loc-label">blocks per night · ConsDB</div>
             </Link>
           )}
           {/* Sub-apps live outside the SPA router, so plain anchors. */}

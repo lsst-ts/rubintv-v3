@@ -13,6 +13,7 @@ import { Detectors } from "./views/Detectors";
 import { Admin } from "./views/Admin";
 import { Mosaic } from "./views/Mosaic";
 import { Status } from "./views/Status";
+import { Guide } from "./views/Guide";
 import { NotFound } from "./views/NotFound";
 
 // Every route carrying a :location/:camera/:channel param is wrapped so a URL
@@ -40,6 +41,9 @@ export const routes: RouteObject[] = [
       { path: "status", element: <Status /> },
       { path: "detectors", element: <Detectors /> },
       { path: "admin", element: <Admin /> },
+      // Observing-block guide: deployment-wide, per ConsDB instrument.
+      { path: "guide", element: <Guide /> },
+      { path: "guide/:instrument", element: <Guide /> },
       { path: ":location", element: guarded(<Location />) },
       { path: ":location/:camera", element: guarded(<CameraTable />) },
       // The Channels tab: a browser of the camera's channels. Precedes the

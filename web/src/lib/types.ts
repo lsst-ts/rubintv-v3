@@ -35,3 +35,10 @@ export type Metadata = Record<string, Record<string, unknown>>;
 // from the cache by the Cluster Status view. The per-set shape is defined in
 // lib/detectorUtils (SetPayload).
 export type DetectorStatus = Record<string, import("./detectorUtils").SetPayload>;
+
+// Observing-block guide.
+export type GuideConfigOut = Schemas["GuideConfigOut"];
+export type GuideInstrumentOut = Schemas["GuideInstrumentOut"];
+export type GuideBlocksOut = Schemas["GuideBlocksOut"];
+export type BlockOut = Schemas["BlockOut"];
+export type ProgramNamesOut = Schemas["ProgramNamesOut"];

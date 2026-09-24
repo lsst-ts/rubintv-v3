@@ -11,10 +11,13 @@ import type {
   ControlsOut,
   DatePayload,
   DetectorsConfigOut,
+  GuideBlocksOut,
+  GuideConfigOut,
   LocationOut,
   LocationSummary,
   Metadata,
   NightReportOut,
+  ProgramNamesOut,
   StatusResponse,
 } from "./types";
 
@@ -75,6 +78,12 @@ export const api = {
   subapps: () => getJson<{ mounted: string[] }>("/subapps"),
 
   status: () => getJson<StatusResponse>("/health/status"),
+
+  // Observing-block guide (ConsDB-backed).
+  guideConfig: () => getJson<GuideConfigOut>("/guide"),
+  guideBlocks: (instrument: string) =>
+    getJson<GuideBlocksOut>(`/guide/${enc(instrument)}/blocks`),
+  guidePrograms: () => getJson<ProgramNamesOut>("/guide/programs"),
 
   location: (loc: string) => getJson<LocationOut>(`/locations/${enc(loc)}`),
 
