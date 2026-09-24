@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useSubapps } from "../lib/useSubapps";
+import { useGuideConfig } from "../lib/useGuide";
 
 // NavMenu — a single hamburger button that opens a compact drawer, replacing
 // the app-shell sidebar. It consolidates wayfinding (Home, every location, and
@@ -52,6 +53,7 @@ export function NavMenu() {
     staleTime: STALE.config,
   });
   const subapps = useSubapps();
+  const guideEnabled = useGuideConfig()?.enabled ?? false;
 
   const locs = Array.isArray(locations) ? locations : [];
   // Cluster status is offered by the drawer when any visible location advertises
@@ -146,6 +148,16 @@ export function NavMenu() {
               {subappLabel(path)}
             </a>
           ))}
+          {guideEnabled && (
+            <Link
+              className="navmenu-link"
+              to="/guide"
+              role="menuitem"
+              onClick={close}
+            >
+              Observing guide
+            </Link>
+          )}
           <Link
             className="navmenu-link"
             to="/status"
