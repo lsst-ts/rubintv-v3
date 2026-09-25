@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { STALE } from "../lib/queryClient";
 import { fillTemplate, isDevInstance } from "../lib/links";
+import { SEQ_COL, filtersToSeqFilter } from "../lib/filters";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useGuideConfig } from "../lib/useGuide";
 import { renderGuide } from "../guide/timeline";
@@ -44,6 +45,29 @@ function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): Gu
     });
   }
   return out;
+}
+
+// The camera table for the block's night, filtered to its exposures via the
+// table's own ?seq_filter syntax. A block that straddles the day_obs rollover
+// (seq numbers restart at 1) is open-ended on each of its nights: the part on
+// the first night runs from seq_num_0 up, the part on the last night up to
+// seq_num_1, and the same row's link is what the panel shows.
+function rangeHrefFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): string | null {
+  if (!inst.location || !inst.camera) return null;
+  const spans = d.day_obs != null && d.day_obs_end != null && d.day_obs !== d.day_obs_end;
+  const dayInt = Number(day.replace(/-/g, ""));
+  let filter: { col: string; op: string; value: string };
+  if (!spans) {
+    filter = { col: SEQ_COL, op: "between", value: `${d.seq_num_0},${d.seq_num_1}` };
+  } else if (dayInt === d.day_obs) {
+    filter = { col: SEQ_COL, op: ">=", value: String(d.seq_num_0) };
+  } else if (dayInt === d.day_obs_end) {
+    filter = { col: SEQ_COL, op: "<=", value: String(d.seq_num_1) };
+  } else {
+    return `/${inst.location}/${inst.camera}?date=${day}`;
+  }
+  const seqFilter = filtersToSeqFilter([filter]);
+  return `/${inst.location}/${inst.camera}?date=${day}&seq_filter=${seqFilter}`;
 }
 
 function fmtUpdated(iso: string | null | undefined): string {
@@ -95,6 +119,7 @@ export function Guide() {
       names: names ?? {},
       dayStartUtcHour: dayStart,
       links: (d, day) => linksFor(inst, d, day),
+      rangeHref: (d, day) => rangeHrefFor(inst, d, day),
       onNavigate: (path) => navigate(path),
     });
     return () => handle.dispose();
