@@ -311,3 +311,16 @@ def test_instrument_names_are_validated() -> None:
             page_size=1,
             cache_dir=None,
         )
+
+
+def test_missing_or_blank_token_file_means_no_token(tmp_path: Path) -> None:
+    from lsst.ts.rubintv.data.consdb import read_token
+
+    assert read_token(None) is None
+    assert read_token(tmp_path / "absent") is None  # logged, not raised
+    blank = tmp_path / "blank"
+    blank.write_text("  \n")
+    assert read_token(blank) is None
+    real = tmp_path / "real"
+    real.write_text("gt-secret\n")
+    assert read_token(real) == "gt-secret"
