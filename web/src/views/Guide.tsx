@@ -17,7 +17,8 @@ import "../guide/guide.css";
 // overlays. The chart is the vendored RubinTV Guide timeline (guide/
 // timeline.js); this view fetches the blocks the backend groups from ConsDB
 // and the program descriptions, and tells the timeline where a block's links
-// should go (this deployment's camera date page and the camera's viewers).
+// should go: the observing day and seq range open this deployment's camera
+// table, the external links are the camera's configured viewers.
 
 const BLOCK_REFRESH_MS = 60_000;
 const SWEEP_REFRESH_MS = 5_000;
@@ -25,13 +26,6 @@ const SWEEP_REFRESH_MS = 5_000;
 function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): GuideLink[] {
   const ctx = { siteLocation: inst.location ?? "", isDevInstance: isDevInstance() };
   const out: GuideLink[] = [];
-  if (inst.location && inst.camera) {
-    out.push({
-      label: "RubinTV",
-      href: `/${inst.location}/${inst.camera}?date=${day}`,
-      internal: true,
-    });
-  }
   if (inst.quicklook_viewer_link) {
     out.push({
       label: "Quick Look viewer",
@@ -45,6 +39,11 @@ function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): Gu
     });
   }
   return out;
+}
+
+function dayHrefFor(inst: GuideInstrumentOut, day: string): string | null {
+  if (!inst.location || !inst.camera) return null;
+  return `/${inst.location}/${inst.camera}?date=${day}`;
 }
 
 // The camera table for the block's night, filtered to its exposures via the
@@ -119,6 +118,7 @@ export function Guide() {
       names: names ?? {},
       dayStartUtcHour: dayStart,
       links: (d, day) => linksFor(inst, d, day),
+      dayHref: (day) => dayHrefFor(inst, day),
       rangeHref: (d, day) => rangeHrefFor(inst, d, day),
       onNavigate: (path) => navigate(path),
     });
