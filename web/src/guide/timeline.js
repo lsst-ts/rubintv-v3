@@ -38,6 +38,7 @@ const HOUR_MS = 3600000;
  * @param {number} opts.dayStartUtcHour  UTC hour a day_obs row begins at
  * @param {(d: object, day: string) => Array<{label: string, href: string, internal?: boolean}>} opts.links
  * @param {(d: object, day: string) => string | null} [opts.rangeHref]  in-app route for a block's seq range
+ * @param {(d: object, day: string) => string | null} [opts.dayHref]  in-app route for a block's observing day
  * @param {(path: string) => void} opts.onNavigate  in-app navigation for internal links
  * @param {number} [opts.minBlockMinutes=5]  hide blocks shorter than this
  * @param {number} [opts.futureMonths=6]  empty rows to draw past the last block
@@ -48,6 +49,7 @@ export function renderGuide(root, opts) {
         names: tblockNames,
         dayStartUtcHour: DAY_START,
         links,
+        dayHref,
         rangeHref,
         onNavigate,
         minBlockMinutes = 5,
@@ -648,6 +650,14 @@ export function renderGuide(root, opts) {
             .replace(/"/g, "&quot;");
     }
 
+    // The observing day as a link to that night's camera page (the original
+    // listed a "RubinTV" link instead).
+    function renderDay(day) {
+        const href = dayHref ? dayHref(day) : null;
+        if (!href) return day;
+        return `<a href="${escapeHtml(href)}" data-internal="1" title="Open this night in RubinTV">${day}</a>`;
+    }
+
     // The seq range as a link into the camera table (an addition over the
     // original, which showed it as plain text).
     function renderRange(d, day) {
@@ -664,7 +674,7 @@ export function renderGuide(root, opts) {
         if (items.length === 0) return '';
         return `
             <div class="info-item">
-                <div class="info-label">Links:</div>
+                <div class="info-label">External links:</div>
                 <div>${items.join('<br>')}</div>
             </div>`;
     }
@@ -692,7 +702,7 @@ export function renderGuide(root, opts) {
             ` : ''}
             <div class="info-item">
                 <div class="info-label">Observation Day:</div>
-                <div>${d.day}</div>
+                <div>${renderDay(d.day)}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Sequence Range:</div>

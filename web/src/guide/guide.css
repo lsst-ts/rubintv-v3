@@ -58,7 +58,7 @@
   min-width: 0; /* Allow shrinking */
   overflow-x: auto;
 }
-.guide-chart { padding: 8px; }
+.guide-chart { padding: 8px; overflow-x: hidden; }
 .guide-info-container {
   width: 300px;
   min-width: 250px;

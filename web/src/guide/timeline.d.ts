@@ -35,6 +35,8 @@ export interface RenderGuideOptions {
   names: Record<string, string>;
   dayStartUtcHour: number;
   links?: (block: GuideBlockDatum, day: string) => GuideLink[];
+  /** In-app route for a block's observing day; null/absent leaves it as text. */
+  dayHref?: (day: string) => string | null;
   /** In-app route for a block's seq range; null/absent leaves it as text. */
   rangeHref?: (block: GuideBlockDatum, day: string) => string | null;
   onNavigate?: (path: string) => void;
