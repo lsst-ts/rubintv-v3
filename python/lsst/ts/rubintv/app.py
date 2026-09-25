@@ -78,8 +78,8 @@ def _build_guide(settings: Settings) -> tuple[BlockNameService, GuideService | N
 
     The block names always exist (a snapshot ships in the package); the
     ConsDB-backed guide itself only when ``RUBINTV_CONSDB_URL`` is set. A
-    token file that can't be read is a configuration error worth failing
-    loudly on, so it isn't caught here.
+    token file that can't be read is logged and treated as "no token"
+    (see ``read_token``) so an unpopulated secret never blocks startup.
     """
     block_names = BlockNameService(
         load_snapshot(),

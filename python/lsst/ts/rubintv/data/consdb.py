@@ -42,16 +42,23 @@ class QueryResult:
 
 
 def read_token(path: Path | None) -> str | None:
-    """Read a bearer token from ``path``; ``None`` when unset or empty.
+    """Read a bearer token from ``path``; ``None`` when unset, missing or
+    empty.
 
-    A missing file is an error (the operator asked for auth and it isn't
-    there), an empty one is treated as "no token" so a mounted-but-blank
-    secret reads as the in-cluster no-auth case rather than sending a
-    bare ``Bearer`` header the server would reject outright.
+    A missing or unreadable file is logged, not raised: the token gates an
+    optional feature (a Zephyr refresh, an out-of-cluster ConsDB), and a
+    site whose secret hasn't been populated yet should come up without it
+    rather than crash-loop. An empty file is "no token" for the same
+    reason, and so a mounted-but-blank secret never sends a bare
+    ``Bearer`` header the server would reject outright.
     """
     if path is None:
         return None
-    token = Path(path).expanduser().read_text().strip()
+    try:
+        token = Path(path).expanduser().read_text().strip()
+    except OSError as exc:
+        log.warning("token.unreadable", path=str(path), error=str(exc))
+        return None
     return token or None
 
 
