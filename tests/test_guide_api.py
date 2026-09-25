@@ -73,6 +73,9 @@ def test_blocks_are_served_once_the_sweep_completes(
         # The test site's one location carries an lsstcam camera.
         assert lsstcam["location"] == "test" and lsstcam["camera"] == "lsstcam"
         assert "{dayObs}" in lsstcam["image_viewer_link"]
+        # ConsDB's latiss is RubinTV's auxtel camera.
+        latiss = cfg["instruments"][1]
+        assert (latiss["location"], latiss["camera"]) == ("test", "auxtel")
 
         deadline = time.monotonic() + 5
         while True:
