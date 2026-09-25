@@ -132,12 +132,16 @@ test("clicking a block fills the info panel with its details and links", async (
   expect(range.getAttribute("href")).toBe(
     "/test/lsstcam?date=2025-04-12&seq_filter=between10_50",
   );
-  const rubintv = screen.getByText("RubinTV") as HTMLAnchorElement;
+  // The observing day is the link to that night's camera page.
+  // (getByRole: the same date is also a y-axis tick label.)
+  const rubintv = screen.getByRole("link", { name: "2025-04-12" }) as HTMLAnchorElement;
   expect(rubintv.getAttribute("href")).toBe("/test/lsstcam?date=2025-04-12");
+  expect(screen.getByText("External links:")).toBeDefined();
+  expect(screen.queryByText("RubinTV")).toBeNull();
   const fits = screen.getByText("FITS image viewer") as HTMLAnchorElement;
   expect(fits.getAttribute("href")).toBe("http://fits.example/20250412_000010");
   expect(fits.getAttribute("target")).toBe("_blank");
-  // The RubinTV link is an in-app route, so it navigates without a reload.
+  // The day link is an in-app route, so it navigates without a reload.
   fireEvent.click(rubintv);
   expect(await screen.findByText("camera page")).toBeDefined();
 });
