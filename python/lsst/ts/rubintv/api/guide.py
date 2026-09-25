@@ -27,19 +27,25 @@ router = APIRouter()
 # draws each day_obs row as the 24 h starting then.
 DAY_START_UTC_HOUR = 12
 
+# ConsDB instrument -> the RubinTV camera names that show its exposures, where
+# they differ. LATISS is the AuxTel camera; everything else matches by name.
+_CAMERA_ALIASES: dict[str, tuple[str, ...]] = {"latiss": ("auxtel", "latiss")}
+
 
 def _instrument_out(models: Models, name: str) -> GuideInstrumentOut:
     """Pair a ConsDB instrument with the camera that shows its data.
 
-    Camera names match ConsDB instrument names (``lsstcam``, ``latiss``);
+    Camera names match ConsDB instrument names (``lsstcam``) except where
+    :data:`_CAMERA_ALIASES` says otherwise (``latiss`` -> ``auxtel``);
     prefer a real observing site over a test stand so the block links
     land on the page observers actually use.
     """
+    camera_names = _CAMERA_ALIASES.get(name, (name,))
     hits = [
         (loc, cam)
         for loc in models.locations
         for cam in loc.cameras
-        if cam.name == name
+        if cam.name in camera_names
     ]
     hits.sort(key=lambda pair: pair[0].is_teststand)
     if not hits:
