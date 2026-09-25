@@ -7,6 +7,9 @@ export interface GuideBlockInput {
   end: string;
   seq_num_0: number;
   seq_num_1: number;
+  /** YYYYMMDD of the first / last exposure; present on API blocks. */
+  day_obs?: number;
+  day_obs_end?: number;
 }
 
 /** A block as the timeline sees it once parsed: dates are Dates and the
@@ -32,6 +35,8 @@ export interface RenderGuideOptions {
   names: Record<string, string>;
   dayStartUtcHour: number;
   links?: (block: GuideBlockDatum, day: string) => GuideLink[];
+  /** In-app route for a block's seq range; null/absent leaves it as text. */
+  rangeHref?: (block: GuideBlockDatum, day: string) => string | null;
   onNavigate?: (path: string) => void;
   minBlockMinutes?: number;
   futureMonths?: number;

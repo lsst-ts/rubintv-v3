@@ -126,7 +126,12 @@ test("clicking a block fills the info panel with its details and links", async (
   expect(screen.getByText("Block Information")).toBeDefined();
   expect(screen.getByText("BLOCK-T1")).toBeDefined();
   expect(screen.getByText("A named block")).toBeDefined();
-  expect(screen.getByText("10 - 50")).toBeDefined();
+  // The seq range links into the camera table, filtered to those exposures.
+  const range = screen.getByText("10 - 50") as HTMLAnchorElement;
+  expect(range.tagName).toBe("A");
+  expect(range.getAttribute("href")).toBe(
+    "/test/lsstcam?date=2025-04-12&seq_filter=between10_50",
+  );
   const rubintv = screen.getByText("RubinTV") as HTMLAnchorElement;
   expect(rubintv.getAttribute("href")).toBe("/test/lsstcam?date=2025-04-12");
   const fits = screen.getByText("FITS image viewer") as HTMLAnchorElement;
