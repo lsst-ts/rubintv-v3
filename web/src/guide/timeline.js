@@ -37,6 +37,7 @@ const HOUR_MS = 3600000;
  * @param {Record<string,string>} opts.names  program key → description
  * @param {number} opts.dayStartUtcHour  UTC hour a day_obs row begins at
  * @param {(d: object, day: string) => Array<{label: string, href: string, internal?: boolean}>} opts.links
+ * @param {(d: object, day: string) => string | null} [opts.rangeHref]  in-app route for a block's seq range
  * @param {(path: string) => void} opts.onNavigate  in-app navigation for internal links
  * @param {number} [opts.minBlockMinutes=5]  hide blocks shorter than this
  * @param {number} [opts.futureMonths=6]  empty rows to draw past the last block
@@ -47,6 +48,7 @@ export function renderGuide(root, opts) {
         names: tblockNames,
         dayStartUtcHour: DAY_START,
         links,
+        rangeHref,
         onNavigate,
         minBlockMinutes = 5,
         futureMonths = 6,
@@ -646,6 +648,15 @@ export function renderGuide(root, opts) {
             .replace(/"/g, "&quot;");
     }
 
+    // The seq range as a link into the camera table (an addition over the
+    // original, which showed it as plain text).
+    function renderRange(d, day) {
+        const text = `${d.seq_num_0} - ${d.seq_num_1}`;
+        const href = rangeHref ? rangeHref(d, day) : null;
+        if (!href) return text;
+        return `<a href="${escapeHtml(href)}" data-internal="1" title="Open these exposures in the camera table">${text}</a>`;
+    }
+
     function renderLinks(d, day) {
         const items = (links ? links(d, day) : []).map(l =>
             `<a href="${escapeHtml(l.href)}"${l.internal ? ' data-internal="1"' : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(l.label)}</a>`
@@ -685,7 +696,7 @@ export function renderGuide(root, opts) {
             </div>
             <div class="info-item">
                 <div class="info-label">Sequence Range:</div>
-                <div>${d.seq_num_0} - ${d.seq_num_1}</div>
+                <div>${renderRange(d, d.day)}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Duration:</div>
@@ -1129,8 +1140,21 @@ export function renderGuide(root, opts) {
         .attr("width", width)
         .attr("height", 155);
 
-    const floatingG = floatingAxisSvg.append("g")
-        .attr("transform", `translate(${margin.left},15)`);
+    // The axis SVG is fixed to the viewport while the chart sits inside the
+    // page's padding, so its origin is measured from the chart rather than
+    // assumed: whatever is left of the chart (app padding, chart padding)
+    // is added to the chart's own left margin.
+    const floatingG = floatingAxisSvg.append("g");
+    function alignFloatingAxis() {
+        const chartLeft = svg.node().getBoundingClientRect().left;
+        const axisLeft = floatingAxisSvg.node().getBoundingClientRect().left;
+        const shift = Math.round(chartLeft - axisLeft);
+        floatingAxisSvg.attr("width", width + Math.max(0, shift));
+        floatingG.attr("transform", `translate(${margin.left + shift},15)`);
+    }
+    alignFloatingAxis();
+    window.addEventListener("resize", alignFloatingAxis);
+    disposers.push(() => window.removeEventListener("resize", alignFloatingAxis));
 
     // Determine which Chilean timezone is currently active
     // Chile uses CLST (UTC-3) from second Saturday of September to first Saturday of April
