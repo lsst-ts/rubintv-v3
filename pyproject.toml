@@ -12,6 +12,13 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",
     "boto3>=1.35",
+    # botocore falls back to its own bundled cacert.pem when certifi is absent
+    # (try/except ImportError in botocore.httpsession), and that bundle carries
+    # no emSign roots. The USDF embargo gateway moved to an emSign chain on
+    # 2026-09-29, so without certifi every embargo request fails TLS
+    # verification ("self-signed certificate in certificate chain") while the
+    # USERTrust-chained teststand endpoints keep working.
+    "certifi>=2026.5.20",
     "orjson>=3.10",
     "structlog>=24.4",
     "redis>=5.1",
