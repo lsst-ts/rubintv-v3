@@ -34,3 +34,8 @@ cache/
 
 # setuptools_scm generated version file
 python/lsst/ts/rubintv/_version.py
+.pre-commit-config.yaml
+.LICENSE.txt
+.flake8
+.isort.cfg
+.mypy.ini
