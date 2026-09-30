@@ -34,6 +34,7 @@ from datetime import timedelta
 from importlib.resources import as_file, files
 from pathlib import Path
 
+import lsst.ts.rubintv.api.guide as guide_api
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
@@ -45,9 +46,6 @@ from lsst.ts.rubintv.api import (
     internal,
     nightreport,
     proxy,
-)
-from lsst.ts.rubintv.api import (
-    guide as guide_api,
 )
 from lsst.ts.rubintv.config.loader import load_models
 from lsst.ts.rubintv.config.settings import Settings, get_settings

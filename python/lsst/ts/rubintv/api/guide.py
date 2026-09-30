@@ -92,9 +92,11 @@ def guide_config(state: AppState = Depends(get_app_state)) -> GuideConfigOut:
     guide = state.guide
     return GuideConfigOut(
         enabled=guide is not None,
-        instruments=[_instrument_out(state.models, n) for n in guide.instruments]
-        if guide
-        else [],
+        instruments=(
+            [_instrument_out(state.models, n) for n in guide.instruments]
+            if guide
+            else []
+        ),
         day_start_utc_hour=DAY_START_UTC_HOUR,
         max_gap_minutes=state.settings.guide_max_gap_minutes,
     )

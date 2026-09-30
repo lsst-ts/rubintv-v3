@@ -64,7 +64,7 @@ def fake_zephyr(pages: dict[int, dict[str, Any]], seen: list[Any]):  # type: ign
 
 def test_fetch_follows_next_links(monkeypatch: pytest.MonkeyPatch) -> None:
     base = "https://zephyr.example/v2"
-    pages = {
+    pages: dict[int, dict[str, Any]] = {
         0: {
             "values": [{"key": "BLOCK-T1", "name": "One"}, {"key": "BLOCK-T2"}],
             "next": f"{base}/testcases?projectKey=BLOCK&maxResults=2&startAt=2",

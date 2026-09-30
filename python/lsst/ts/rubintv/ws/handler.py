@@ -101,7 +101,8 @@ class WsService:
             async for change in stream:
                 try:
                     self._fan_out(change)
-                except Exception:  # noqa: BLE001 - one bad change must not kill the pump
+                # One bad change must not kill the pump.
+                except Exception:  # noqa: BLE001
                     log.exception("ws.pump.fan_out.error", change_type=change.type)
 
     def _fan_out(self, change: StoreChange) -> None:
