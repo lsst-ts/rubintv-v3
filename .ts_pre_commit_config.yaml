@@ -6,3 +6,4 @@ format-xmllint: false
 isort: true
 mypy: true
 ruff: false
+insert-license: true
