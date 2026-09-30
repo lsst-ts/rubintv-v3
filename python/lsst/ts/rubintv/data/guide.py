@@ -211,16 +211,18 @@ class BlockGrouper:
         return {
             "closed": [b.to_dict() for b in self.closed],
             "open": self.open.to_dict() if self.open else None,
-            "last": None
-            if last is None
-            else {
-                "exposure_id": last.exposure_id,
-                "day_obs": last.day_obs,
-                "seq_num": last.seq_num,
-                "program": last.program,
-                "begin": _iso(last.begin),
-                "end": _iso(last.end),
-            },
+            "last": (
+                None
+                if last is None
+                else {
+                    "exposure_id": last.exposure_id,
+                    "day_obs": last.day_obs,
+                    "seq_num": last.seq_num,
+                    "program": last.program,
+                    "begin": _iso(last.begin),
+                    "end": _iso(last.end),
+                }
+            ),
         }
 
     def load_dict(self, raw: dict[str, Any]) -> None:
