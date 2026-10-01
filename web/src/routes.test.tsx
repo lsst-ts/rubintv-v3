@@ -944,6 +944,63 @@ test("table filter narrows the rows and a chip clears it", async () => {
   await waitFor(() => expect(screen.getByText("11")).toBeDefined());
 });
 
+test("filter bar counts rows and a chip edits its filter in place", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: { Filter: "The filter" },
+      };
+    } else if (/\/metadata\//.test(url)) {
+      body = {
+        "10": { Filter: "z_20" },
+        "11": { Filter: "r_03" },
+        "12": { Filter: "z_20" },
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { c: [10, 11, 12] },
+        extensions: {},
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/auxtel?date=2026-04-10");
+  expect(await screen.findByText("11")).toBeDefined();
+
+  fireEvent.click(screen.getByRole("button", { name: "Add or edit filters" }));
+  const add = await screen.findByRole("dialog", { name: "Add filter" });
+  fireEvent.change(within(add).getByLabelText("Filter value"), {
+    target: { value: "z_20" },
+  });
+  fireEvent.click(within(add).getByRole("button", { name: "add filter" }));
+  await waitFor(() => expect(screen.queryByText("11")).toBeNull());
+  expect(screen.getByText("2 of 3 rows")).toBeDefined();
+
+  // Clicking the chip opens the form seeded with the filter; updating it
+  // replaces the filter rather than adding a second one.
+  fireEvent.click(screen.getByTitle("Edit filter"));
+  const edit = await screen.findByRole("dialog", { name: "Edit filter" });
+  const value = within(edit).getByLabelText("Filter value") as HTMLInputElement;
+  expect(value.value).toBe("z_20");
+  fireEvent.change(value, { target: { value: "r_03" } });
+  fireEvent.click(within(edit).getByRole("button", { name: "update filter" }));
+
+  await waitFor(() => expect(screen.queryByText("10")).toBeNull());
+  expect(screen.getByText("11")).toBeDefined();
+  expect(document.querySelectorAll(".filter-chip")).toHaveLength(1);
+  expect(screen.getByText("1 of 3 rows")).toBeDefined();
+});
+
 test("a Seq.No filter with a non-range operator (=) narrows the rows", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);

@@ -1490,10 +1490,8 @@ h1, h2 {
 /* Active-filter chip strip below the toolbar. */
 .filter-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 6px 0;
+  padding: 0 0 6px;
   margin-bottom: 4px;
-  border-bottom: 1px solid var(--line-soft);
-  min-height: 32px;
 }
 .filter-bar > .label {
   font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
@@ -1506,6 +1504,13 @@ h1, h2 {
   background: var(--paper-2);
   font-family: var(--mono); font-size: 11px; color: var(--ink); line-height: 1;
 }
+.filter-chip .edit {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 0; border: none; background: none; cursor: pointer;
+  font: inherit; color: inherit;
+}
+.filter-chip:hover,
+.filter-chip.editing { border-color: var(--accent); }
 .filter-chip .col { font-family: var(--hand); font-weight: 600; color: var(--ink-soft); }
 .filter-chip .op { font-family: var(--mono); color: var(--ink-soft); padding: 0 2px; }
 .filter-chip .val { color: var(--ink); font-weight: 600; }
@@ -1521,6 +1526,10 @@ h1, h2 {
   font-family: var(--hand); font-size: 12px; color: var(--ink-soft);
   cursor: pointer; margin-left: 2px;
   border-bottom: 1px solid var(--line-soft);
+}
+.filter-count {
+  margin-left: auto;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
 }
 .filter-clear:hover { color: var(--accent); border-bottom-color: var(--accent); }
 

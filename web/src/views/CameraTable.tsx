@@ -26,6 +26,7 @@ import {
   SEQ_COL,
   seqFilterToFilters,
   filtersToSeqFilter,
+  isFilterable,
   type Filter,
 } from "../lib/filters";
 import {
@@ -295,7 +296,12 @@ export function CameraTable() {
   // Columns offered in the filter popover: the metadata columns plus the
   // synthetic Seq.No. Seq.No goes last so the popover defaults to a metadata
   // column (the common case) while a seq-range filter is still selectable.
-  const filterColumns = useMemo(() => [...metaColumns, SEQ_COL], [metaColumns]);
+  // Columns holding structured (object) values can't be filtered, so they're
+  // left out.
+  const filterColumns = useMemo(
+    () => [...metaColumns.filter((c) => isFilterable(metadata, c)), SEQ_COL],
+    [metaColumns, metadata],
+  );
 
   // Keep ?seq_filter in sync with the current Seq.No clauses so the filter stays
   // shareable.
@@ -602,7 +608,14 @@ export function CameraTable() {
         )}
       </div>
 
-      <FilterBar metadata={metadata} filters={filters} setFilters={setFilters} />
+      <FilterBar
+        columns={filterColumns}
+        metadata={metadata}
+        filters={filters}
+        setFilters={setFilters}
+        shown={seqNums.length}
+        total={allSeqNums.length}
+      />
 
       {((isPending && date !== "") || (date === "" && calendarPending)) && (
         <p className="skeleton">Loading…</p>

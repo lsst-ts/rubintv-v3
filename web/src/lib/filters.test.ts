@@ -2,6 +2,7 @@ import {
   SEQ_COL,
   filtersToSeqFilter,
   inferType,
+  isFilterable,
   matchRow,
   opLabel,
   sampleValues,
@@ -20,6 +21,17 @@ test("inferType: numeric column vs string column", () => {
   expect(inferType(meta, "filter")).toBe("string");
   // A column with no present values defaults to string.
   expect(inferType(meta, "missing")).toBe("string");
+});
+
+test("isFilterable: object and array columns are excluded", () => {
+  const m = {
+    "1": { exp: "30", hdr: { a: 1 }, tags: null },
+    "2": { exp: "15", tags: ["x"] },
+  } as unknown as Metadata;
+  expect(isFilterable(m, "exp")).toBe(true);
+  expect(isFilterable(m, "hdr")).toBe(false);
+  expect(isFilterable(m, "tags")).toBe(false);
+  expect(isFilterable(m, "missing")).toBe(true);
 });
 
 test("matchRow: empty filters match everything", () => {
