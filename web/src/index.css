@@ -1559,10 +1559,11 @@ h1, h2 {
   border-collapse: collapse;
   font-family: var(--mono);
   table-layout: fixed;
-  /* Exactly the sum of the colgroup widths — NOT min-width:100%, which would
-     make a narrow table fill the wrapper and stretch the fixed columns to
-     absorb the surplus. The wrapper scrolls when the table overflows. */
-  width: max-content;
+  /* Width is set inline to exactly the sum of the colgroup widths — NOT
+     min-width:100%, which would make a narrow table fill the wrapper and
+     stretch the fixed columns to absorb the surplus, and NOT max-content,
+     under which browsers ignore table-layout:fixed and size columns to the
+     rows currently mounted. The wrapper scrolls when the table overflows. */
 }
 .data-table th,
 .data-table td {
