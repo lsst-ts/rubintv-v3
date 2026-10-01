@@ -117,37 +117,38 @@ function ColumnCombo({
   );
 }
 
-// The "filter" button + add-filter popover.
-export function FilterControl({
+// The add/edit form shown inside a filter popover. Seeded from `initial` when
+// editing an existing filter; otherwise the column defaults to the first one
+// offered (by the time a popover opens, the async metadata columns have loaded).
+function FilterForm({
   columns,
   metadata,
-  filters,
-  setFilters,
+  initial,
+  title,
+  submitLabel,
+  onSubmit,
 }: {
   columns: string[];
   metadata: Metadata;
-  filters: Filter[];
-  setFilters: (f: Filter[]) => void;
+  initial?: Filter;
+  title: string;
+  submitLabel: string;
+  onSubmit: (f: Filter) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draftCol, setDraftCol] = useState("");
-  const [draftOp, setDraftOp] = useState("=");
-  const [draftVal, setDraftVal] = useState("");
-  const rootRef = useRef<HTMLSpanElement | null>(null);
-  useDismiss(open, rootRef, () => setOpen(false));
+  const [draftCol, setDraftCol] = useState(initial?.col ?? "");
+  const [draftOp, setDraftOp] = useState(initial?.op ?? "=");
+  const [draftVal, setDraftVal] = useState(initial?.value ?? "");
 
   const typeOf = useMemo(
     () => (c: string) => inferType(metadata, c),
     [metadata],
   );
 
-  // Default the draft column to the first available one when the popover opens
-  // (by then the async metadata columns have loaded), and re-default if the
-  // current draft column is no longer offered.
+  // Re-default the draft column if it is unset or no longer offered.
   useEffect(() => {
-    if (!open || columns.length === 0) return;
+    if (columns.length === 0) return;
     if (!draftCol || !columns.includes(draftCol)) setDraftCol(columns[0]);
-  }, [open, columns, draftCol]);
+  }, [columns, draftCol]);
 
   const draftType = draftCol ? typeOf(draftCol) : "string";
   const availableOps = OPS_BY_TYPE[draftType];
@@ -164,11 +165,9 @@ export function FilterControl({
     [metadata, draftCol],
   );
 
-  const apply = () => {
+  const submit = () => {
     if (!draftCol || !draftVal.trim()) return;
-    setFilters([...filters, { col: draftCol, op: draftOp, value: draftVal.trim() }]);
-    setDraftVal("");
-    setOpen(false);
+    onSubmit({ col: draftCol, op: draftOp, value: draftVal.trim() });
   };
 
   const placeholder =
@@ -177,6 +176,91 @@ export function FilterControl({
       : draftOp === "in"
         ? "a, b, c"
         : (suggestions[0] ?? "value");
+
+  return (
+    <div className="filter-pop" role="dialog" aria-label={title}>
+      <h4>{title}</h4>
+      <div className="col-row">
+        <label>column</label>
+        <ColumnCombo
+          columns={columns}
+          typeOf={typeOf}
+          value={draftCol}
+          onChange={(k) => {
+            setDraftCol(k);
+            setDraftVal("");
+          }}
+        />
+      </div>
+      <div className="row">
+        <label>op</label>
+        <select
+          className="op"
+          aria-label="Operator"
+          value={draftOp}
+          onChange={(e) => setDraftOp(e.target.value)}
+        >
+          {availableOps.map(([op, lbl]) => (
+            <option key={op} value={op}>
+              {lbl}
+            </option>
+          ))}
+        </select>
+        <input
+          placeholder={placeholder}
+          value={draftVal}
+          aria-label="Filter value"
+          onChange={(e) => setDraftVal(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+      </div>
+      {suggestions.length > 0 && draftOp !== "between" && (
+        <>
+          <div className="hint">common values:</div>
+          <div className="suggestions">
+            {suggestions.map((s) => (
+              <span
+                key={s}
+                className="suggestion"
+                onClick={() =>
+                  setDraftVal((prev) =>
+                    draftOp === "in" && prev ? `${prev}, ${s}` : s,
+                  )
+                }
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        className="apply"
+        disabled={!draftVal.trim()}
+        onClick={submit}
+      >
+        {submitLabel}
+      </button>
+    </div>
+  );
+}
+
+// The "filter" button + add-filter popover.
+export function FilterControl({
+  columns,
+  metadata,
+  filters,
+  setFilters,
+}: {
+  columns: string[];
+  metadata: Metadata;
+  filters: Filter[];
+  setFilters: (f: Filter[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  useDismiss(open, rootRef, () => setOpen(false));
 
   return (
     <span className="filter-cluster" ref={rootRef}>
@@ -194,110 +278,116 @@ export function FilterControl({
       </button>
 
       {open && (
-        <div className="filter-pop" role="dialog" aria-label="Add filter">
-          <h4>Add filter</h4>
-          <div className="col-row">
-            <label>column</label>
-            <ColumnCombo
-              columns={columns}
-              typeOf={typeOf}
-              value={draftCol}
-              onChange={(k) => {
-                setDraftCol(k);
-                setDraftVal("");
-              }}
-            />
-          </div>
-          <div className="row">
-            <label>op</label>
-            <select
-              className="op"
-              aria-label="Operator"
-              value={draftOp}
-              onChange={(e) => setDraftOp(e.target.value)}
-            >
-              {availableOps.map(([op, lbl]) => (
-                <option key={op} value={op}>
-                  {lbl}
-                </option>
-              ))}
-            </select>
-            <input
-              placeholder={placeholder}
-              value={draftVal}
-              aria-label="Filter value"
-              onChange={(e) => setDraftVal(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && apply()}
-            />
-          </div>
-          {suggestions.length > 0 && draftOp !== "between" && (
-            <>
-              <div className="hint">common values:</div>
-              <div className="suggestions">
-                {suggestions.map((s) => (
-                  <span
-                    key={s}
-                    className="suggestion"
-                    onClick={() =>
-                      setDraftVal((prev) =>
-                        draftOp === "in" && prev ? `${prev}, ${s}` : s,
-                      )
-                    }
-                  >
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-          <button
-            type="button"
-            className="apply"
-            disabled={!draftVal.trim()}
-            onClick={apply}
-          >
-            add filter
-          </button>
-        </div>
+        <FilterForm
+          columns={columns}
+          metadata={metadata}
+          title="Add filter"
+          submitLabel="add filter"
+          onSubmit={(f) => {
+            setFilters([...filters, f]);
+            setOpen(false);
+          }}
+        />
       )}
     </span>
   );
 }
 
-// The active-filter chip strip.
+// One active filter as a chip. Clicking its body opens the same form, seeded
+// with the filter, to edit it in place; the × removes it.
+function FilterChip({
+  filter,
+  columns,
+  metadata,
+  onChange,
+  onRemove,
+}: {
+  filter: Filter;
+  columns: string[];
+  metadata: Metadata;
+  onChange: (f: Filter) => void;
+  onRemove: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  useDismiss(editing, rootRef, () => setEditing(false));
+
+  return (
+    <span className="filter-cluster" ref={rootRef}>
+      <span className={"filter-chip" + (editing ? " editing" : "")}>
+        <button
+          type="button"
+          className="edit"
+          title="Edit filter"
+          aria-expanded={editing}
+          onClick={() => setEditing((v) => !v)}
+        >
+          <span className="col">{filter.col}</span>
+          <span className="op">
+            {opLabel(inferType(metadata, filter.col), filter.op)}
+          </span>
+          <span className="val">{filter.value}</span>
+        </button>
+        <span className="x" role="button" title="Remove filter" onClick={onRemove}>
+          ×
+        </span>
+      </span>
+      {editing && (
+        <FilterForm
+          columns={columns}
+          metadata={metadata}
+          initial={filter}
+          title="Edit filter"
+          submitLabel="update filter"
+          onSubmit={(f) => {
+            onChange(f);
+            setEditing(false);
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+// The active-filter chip strip, with a count of the rows the filters let
+// through.
 export function FilterBar({
+  columns,
   metadata,
   filters,
   setFilters,
+  shown,
+  total,
 }: {
+  columns: string[];
   metadata: Metadata;
   filters: Filter[];
   setFilters: (f: Filter[]) => void;
+  shown: number;
+  total: number;
 }) {
   if (filters.length === 0) return null;
   return (
     <div className="filter-bar">
       <span className="label">filters</span>
       {filters.map((f, i) => (
-        <span key={i} className="filter-chip">
-          <span className="col">{f.col}</span>
-          <span className="op">{opLabel(inferType(metadata, f.col), f.op)}</span>
-          <span className="val">{f.value}</span>
-          <span
-            className="x"
-            role="button"
-            title="Remove filter"
-            onClick={() => setFilters(filters.filter((_, j) => j !== i))}
-          >
-            ×
-          </span>
-        </span>
+        <FilterChip
+          key={i}
+          filter={f}
+          columns={columns}
+          metadata={metadata}
+          onChange={(nf) => setFilters(filters.map((g, j) => (j === i ? nf : g)))}
+          onRemove={() => setFilters(filters.filter((_, j) => j !== i))}
+        />
       ))}
       {filters.length > 1 && (
         <span className="filter-clear" role="button" onClick={() => setFilters([])}>
           clear all
         </span>
       )}
+      <span className="filter-count" role="status">
+        {shown} of {total} row{total === 1 ? "" : "s"}
+      </span>
     </div>
   );
 }

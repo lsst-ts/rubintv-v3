@@ -56,6 +56,16 @@ export function inferType(metadata: Metadata, col: string): FilterType {
   return sawValue ? "number" : "string";
 }
 
+// Is a column filterable? Columns carrying structured (object / array) values
+// can't be matched by any operator, so they're kept out of the filter picker.
+export function isFilterable(metadata: Metadata, col: string): boolean {
+  for (const row of Object.values(metadata)) {
+    const v = row[col];
+    if (v !== null && typeof v === "object") return false;
+  }
+  return true;
+}
+
 // Parse into a finite number, or null if the string isn't fully numeric.
 function asNumber(s: string): number | null {
   const t = s.trim();
