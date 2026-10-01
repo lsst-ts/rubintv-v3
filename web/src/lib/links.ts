@@ -25,6 +25,15 @@ const SITE_LOC_TO_DOMAIN: Record<string, string> = {
   base: "ls",
 };
 
+// The image viewer (ccs.lsst.org / lsstcam-mcm.{siteLoc}.lsst.org) lives on the
+// observatory's internal networks, so its links only resolve at the summit and
+// the base. Elsewhere — the USDF sites, Tucson, test — the link would be dead,
+// so the column is dropped rather than rendered broken. The same two sites are
+// the only ones {siteLoc} maps to a domain.
+export function hasImageViewer(siteLocation: string): boolean {
+  return siteLocation in SITE_LOC_TO_DOMAIN;
+}
+
 function padSeq(spec: string, seqNum: string): string {
   // spec is "{seqNum:0N}"; pull N and left-pad with zeros.
   const m = spec.match(/:0?(\d+)/);
