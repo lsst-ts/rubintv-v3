@@ -141,9 +141,14 @@ cameras:
       "http://lsstcam-mcm.{siteLoc}.lsst.org/FITSInfo/view.html\
       ?image=MC_{controller:default=O}_{dayObs}_{seqNum:06}&raft=all&color=grey\
       &bias=Simple+Overscan+Correction&scale=Per-Segment&source=raw"
+    # fov-quicklook visit id: {repo}:{collection}:{dataset_type}:{dim=value},
+    # with "/" in the collection escaped as "!-" (lsst-sqre/fov-quicklook,
+    # backend/src/quicklook/types.py VisitName). The old 3-part
+    # "embargo:raw:<id>" form no longer resolves. Exposure id is
+    # dayObs*100000 + seqNum, as before.
     quicklook_viewer_link:
       "https://usdf-rsp{dev}.slac.stanford.edu/fov-quicklook/\
-      visits/embargo:raw:{dayObs}{seqNum:05}"
+      visits/embargo:LSSTCam!-raw!-all:raw:exposure={dayObs}{seqNum:05}"
     channels:
       - name: witness_detector
         title: Witness Detector
