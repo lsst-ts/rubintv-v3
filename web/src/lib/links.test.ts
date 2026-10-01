@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { fillTemplate, instanceEnv, processingBanner } from "./links";
+import {
+  fillTemplate,
+  hasImageViewer,
+  instanceEnv,
+  processingBanner,
+} from "./links";
 
 describe("fillTemplate", () => {
   test("fills dayObs (hyphens stripped) and zero-padded seqNum", () => {
@@ -62,6 +67,17 @@ describe("fillTemplate", () => {
     expect(out).toBe(
       'dataId = {"day_obs": 20260410, "seq_num": 000252, "detector": 0}',
     );
+  });
+});
+
+describe("hasImageViewer", () => {
+  test("is true at summit/base only — the sites the viewer host resolves on", () => {
+    expect(hasImageViewer("summit")).toBe(true);
+    expect(hasImageViewer("base")).toBe(true);
+    const away = ["usdf", "summit-usdf", "base-usdf", "tucson", "test", "local", ""];
+    for (const loc of away) {
+      expect(hasImageViewer(loc)).toBe(false);
+    }
   });
 });
 

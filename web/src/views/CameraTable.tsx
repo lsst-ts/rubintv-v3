@@ -12,7 +12,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
-import { isDevInstance } from "../lib/links";
+import { hasImageViewer, isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { tabsForCamera } from "../lib/useShellNav";
 import { getCameraTabPref } from "../lib/cameraTabPref";
@@ -206,7 +206,12 @@ export function CameraTable() {
   // only when its template is configured. {dev} and {siteLoc} are fixed for the
   // running instance; {dayObs}/{seqNum}/{controller} vary per row and are
   // filled inside the row map below.
-  const viewerTmpl = cameraInfo?.image_viewer_link ?? null;
+  // The image viewer only resolves on the summit/base internal networks, so the
+  // column is dropped at every other location even when the camera config
+  // carries a template (see hasImageViewer).
+  const viewerTmpl = hasImageViewer(location)
+    ? (cameraInfo?.image_viewer_link ?? null)
+    : null;
   const quicklookTmpl = cameraInfo?.quicklook_viewer_link ?? null;
   const copyRowTmpl = cameraInfo?.copy_row_template ?? null;
   const dev = isDevInstance();

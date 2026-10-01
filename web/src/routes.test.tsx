@@ -282,10 +282,10 @@ test("channel /current route follows the newest exposure", async () => {
   ).toBeNull();
 });
 
-test("camera table shows per-row viewer, quicklook, and copy-row controls", async () => {
-  // A camera configured with all three per-row link templates, one date with a
-  // single seq carrying a "controller" metadata value (which feeds the
-  // {controller:default=O} placeholder).
+// A camera configured with all three per-row link templates, one date with a
+// single seq carrying a "controller" metadata value (which feeds the
+// {controller:default=O} placeholder).
+function mockPerRowLinkCamera() {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
@@ -318,8 +318,12 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
+}
 
-  renderAt("/local/auxtel?date=2026-04-10");
+test("camera table shows per-row viewer, quicklook, and copy-row controls", async () => {
+  mockPerRowLinkCamera();
+  // The summit resolves the image viewer's internal host, so its column shows.
+  renderAt("/summit/auxtel?date=2026-04-10");
 
   // The channel column header shows the human title, not the ref name. Scope to
   // the <th> (columnheader role): the angled-header overlay also draws the
@@ -371,6 +375,23 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
   } finally {
     HTMLAnchorElement.prototype.click = realClick;
   }
+});
+
+// The image viewer sits on the observatory's internal networks, so away from
+// the summit and the base its column is dropped — the other per-row links,
+// which point at public hosts, stay.
+test("camera table hides the viewer link away from summit/base", async () => {
+  mockPerRowLinkCamera();
+  renderAt("/usdf/auxtel?date=2026-04-10");
+
+  // Wait on a link that does survive, so the viewer's absence isn't just the
+  // table not having rendered yet.
+  const quicklook = await screen.findByRole("link", { name: "Quicklook" });
+  expect(quicklook.getAttribute("href")).toBe(
+    "https://usdf-rsp.slac.stanford.edu/q/2026041000252",
+  );
+  expect(screen.getByRole("button", { name: "Copy row" })).toBeDefined();
+  expect(screen.queryByRole("link", { name: "Viewer" })).toBeNull();
 });
 
 // A camera whose mosaic_view_meta drives the live grid: one image tile
