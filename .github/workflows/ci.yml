@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    # Deployable refs (everything but main) also trigger the image build
+    # below, matching the original rubintv repo's convention: ticket
+    # branches, deploy branches, develop, and release tags.
+    branches: ["main", "tickets/**", "deploy**", "develop"]
+    tags: ["*"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # setuptools_scm derives the version from git history/tags.
+          fetch-depth: 0
+      - name: Install uv
+        # Pinned to a full version: astral-sh/setup-uv publishes specific
+        # v8.x.y tags but does not maintain a floating `v8` major tag (they
+        # dropped their major-tag-update workflow in v8), so `@v8` is
+        # unresolvable. Bump this explicitly on new releases.
+        uses: astral-sh/setup-uv@v8.3.2
+      - name: Sync deps
+        run: uv sync --locked --extra dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy -p lsst.ts.rubintv
+      - name: pytest
+        run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm run test
+      - name: Build
+        run: npm run build
+
+  # Build the container image and push it to GHCR, mirroring V2's pipeline so
+  # ArgoCD can deploy the same way. Runs only on deploy-style refs (ticket
+  # branches, deploy branches, develop, main, release tags) to avoid pushing
+  # images for every PR. The SPA is built inside the Dockerfile (stage 1),
+  # so no npm step is needed here.
+  build:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    if: >
+      github.event_name == 'push'
+      && (startsWith(github.ref, 'refs/tags/')
+          || startsWith(github.ref, 'refs/heads/tickets/')
+          || startsWith(github.ref, 'refs/heads/deploy')
+          || startsWith(github.ref, 'refs/heads/develop')
+          || github.ref == 'refs/heads/main')
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # setuptools_scm derives the version from git history/tags.
+          fetch-depth: 0
+
+      - name: Compute version (setuptools_scm)
+        id: version
+        run: |
+          pipx run setuptools-scm >> /tmp/v.txt 2>/dev/null || true
+          echo "value=$(cat /tmp/v.txt 2>/dev/null || echo 0.0.0)" >> "$GITHUB_OUTPUT"
+
+      - name: Define the Docker tag and build provenance
+        id: vars
+        run: |
+          echo "tag=$(scripts/docker-tag.sh)" >> "$GITHUB_OUTPUT"
+          echo "git_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "git_date=$(git log -1 --format=%cd --date=format:%Y-%m-%d)" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Print the tag
+        run: echo ${{ steps.vars.outputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.tag }}
+          build-args: |
+            RUBINTV_VERSION=${{ steps.version.outputs.value }}
+            GIT_SHA=${{ steps.vars.outputs.git_sha }}
+            GIT_DATE=${{ steps.vars.outputs.git_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
