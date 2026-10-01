@@ -35,12 +35,18 @@ function sortDirFor(key: string, sort: SortState | null): "asc" | "desc" | null 
   return sortColForKey(key) === sort.col ? sort.dir : null;
 }
 
+// Widest a metadata column grows to fit its values, in characters. Longer
+// values truncate with an ellipsis (and a full-value tooltip) so one outlier
+// string can't blow a column out.
+export const MAX_META_CH = 40;
+
 // Fixed per-column width (the table is table-layout:fixed). Channel columns are
 // just one image chip + padding; without an explicit width they stretch to
 // absorb leftover space. Action columns size to their link text; metadata
-// columns get a compact default (values are short — angled labels float above
-// in an overlay, so the column needn't fit the label).
-function widthFor(key: string, density: Density): string {
+// columns get a compact default (angled labels float above in an overlay, so
+// the column needn't fit the label), widened to `chars` — the column's widest
+// value, from metaColumnChars — when that needs more room.
+function widthFor(key: string, density: Density, chars = 0): string {
   if (key === "seq") return "64px";
   if (key.startsWith("ch:")) return "44px"; // one chip + padding
   if (key === "viewer" || key === "quicklook" || key === "copy") return "34px";
@@ -49,7 +55,44 @@ function widthFor(key: string, density: Density): string {
   // fixed, so any surplus over the value pools as empty space on the right of
   // the left-aligned text — dropping 64px→52px is what actually removes the
   // "gap to the right of the value", which isn't padding but unused column.
-  return density === "compact" ? "52px" : "92px";
+  const floor = density === "compact" ? "52px" : "92px";
+  if (!chars) return floor;
+  // The table font is monospace, so `ch` sizes the column to its text; the px
+  // term is the cell's horizontal padding (ROW_PAD) + border, plus 1px slack
+  // against sub-pixel rounding tripping the ellipsis.
+  const chrome = density === "compact" ? 12 : 18;
+  return `max(${floor}, calc(${chars}ch + ${chrome}px))`;
+}
+
+// The length in characters of each metadata column's widest displayed value,
+// scanned across every row for the date (not just the rows in view), capped at
+// MAX_META_CH. Rows are virtualized, so sizing columns from the mounted rows
+// would make widths jump as differently-sized values scroll in and out; sizing
+// from the whole date keeps them put. Keyed by column model key ("meta:<col>").
+export function metaColumnChars(
+  columns: Column[],
+  metadata: Metadata,
+): Record<string, number> {
+  const cols = columns
+    .filter((c) => c.key.startsWith("meta:"))
+    .map((c) => ({ key: c.key, col: c.key.slice(5) }));
+  const chars: Record<string, number> = {};
+  for (const row of Object.values(metadata)) {
+    for (const { key, col } of cols) {
+      const value = row[col];
+      let n: number;
+      if (value !== null && typeof value === "object") {
+        // Foldout cell: a labelled button (its padding + border is ~2ch), or a
+        // bare icon that fits the default width.
+        const label = foldoutLabel(value as Record<string, unknown> | unknown[]);
+        n = label ? label.length + 2 : 0;
+      } else {
+        n = formatCell(value).display.length;
+      }
+      if (n > (chars[key] ?? 0)) chars[key] = Math.min(n, MAX_META_CH);
+    }
+  }
+  return chars;
 }
 
 // Truncate float-like metadata to 3dp for display, keeping the full value for a
@@ -252,7 +295,9 @@ const Row = memo(function Row({
           <td
             key={c.key}
             className={flag}
-            title={title}
+            title={
+              title ?? (display.length > MAX_META_CH ? display : undefined)
+            }
             style={{
               color: flag
                 ? undefined
@@ -314,11 +359,27 @@ function CameraDataTableInner({
   copyRowTmpl,
   linkCtx,
 }: Props) {
+  // Column widths, fixed for the whole date: metadata columns are sized to
+  // their widest value across all rows (see metaColumnChars). The table's own
+  // width is their explicit sum — table-layout:fixed only applies to a table
+  // with a definite width; under `auto`/`max-content` browsers fall back to
+  // content-sized columns, which resize as virtualized rows mount and unmount.
+  const colChars = useMemo(
+    () => metaColumnChars(columns, metadata),
+    [columns, metadata],
+  );
+  const colWidths = useMemo(
+    () => columns.map((c) => widthFor(c.key, density, colChars[c.key])),
+    [columns, density, colChars],
+  );
+  const widthsKey = colWidths.join(" + ");
+
   // Angled header labels are drawn in a measured overlay layer. Owning the hook
   // here keeps the reflow scoped to this component's own re-renders.
   const { wrapRef, headRef, positions, tableWidth } = useAngledHeaders(true, [
     columns,
     density,
+    widthsKey,
   ]);
 
   // Vertical-stripe parity by metadata-column order: every other metadata
@@ -478,14 +539,17 @@ function CameraDataTableInner({
 
       <table
         className={`data-table hs-angled dens-${density}`}
-        style={{ ["--row-pad" as string]: ROW_PAD[density] }}
+        style={{
+          ["--row-pad" as string]: ROW_PAD[density],
+          width: `calc(${widthsKey})`,
+        }}
       >
         <colgroup>
-          {columns.map((c) => (
+          {columns.map((c, i) => (
             <col
               key={c.key}
               className={metaAltKeys.has(c.key) ? "col-stripe" : undefined}
-              style={{ width: widthFor(c.key, density) }}
+              style={{ width: colWidths[i] }}
             />
           ))}
         </colgroup>
