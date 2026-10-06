@@ -23,7 +23,8 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | `RUBINTV_PATH_PREFIX`         | `/rubintv`                 | URL prefix everything is served under: API, WebSockets, sub-apps, SPA. Leading `/`, no trailing slash; `""` serves at the root. |
 | `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
 | `RUBINTV_CACHE_DIR`           | `/scratch`                 | PVC dir for warm-start cache. Missing/unwritable dir (no PVC) disables the cache with one warning. |
-| `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = disabled.     |
+| `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = built from `RA_REDIS_HOST` if that is set, else disabled. |
+| `RA_REDIS_HOST` / `RA_REDIS_PASSWORD` / `RA_REDIS_PORT` | unset / unset / `6379` | Rapid Analysis Redis as the Phalanx chart supplies it (**not** `RUBINTV_`-prefixed; password from a secret). Used only when `RUBINTV_REDIS_URL` is unset. |
 | `RUBINTV_POLL_INTERVAL_SECONDS` | `1.0`                    | Current-day S3 poll cadence.                                  |
 | `RUBINTV_RECENT_WINDOW_DAYS`  | `30`                       | Cold start scans this many recent observing days per camera before the full back-catalogue sweep. `0` = full sweep only. |
 | `RUBINTV_METADATA_PRELOAD_DAYS` | `3`                      | Cold start pre-fetches `metadata.json` for this many recent dates per camera. `0` = on demand only. |
@@ -84,7 +85,7 @@ A PVC write failure mid-run is non-fatal — caching is best-effort.
 
 ## Redis (optional)
 
-If `RUBINTV_REDIS_URL` is unset or the server is unreachable, detector
+If neither `RUBINTV_REDIS_URL` nor `RA_REDIS_HOST` is set, or the server is unreachable, detector
 status and admin control-readback live updates are disabled with a logged
 warning. The rest of the app serves S3 data normally — there is no silent,
 total degradation. Keyspace notifications must be enabled on the Redis

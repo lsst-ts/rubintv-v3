@@ -31,8 +31,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The Rapid Analysis environment sets ``RAPID_ANALYSIS_LOCATION`` to its own
@@ -111,7 +112,36 @@ class Settings(BaseSettings):
     warning. ``None`` disables it explicitly."""
 
     redis_url: str | None = None
-    """Redis connection URL. ``None`` disables detector/admin live updates."""
+    """Redis connection URL. ``None`` disables detector/admin live updates,
+    unless ``RA_REDIS_HOST`` is set (see below)."""
+
+    ra_redis_host: str | None = Field(None, validation_alias="RA_REDIS_HOST")
+    """Rapid Analysis Redis host. The Phalanx chart supplies the connection
+    as ``RA_REDIS_HOST``/``RA_REDIS_PASSWORD``/``RA_REDIS_PORT`` (unprefixed,
+    the names the previous app read) rather than as one URL, because the
+    password comes from a secret. When ``RUBINTV_REDIS_URL`` is unset these
+    are assembled into ``redis_url``."""
+
+    ra_redis_password: str | None = Field(None, validation_alias="RA_REDIS_PASSWORD")
+    """Password for ``ra_redis_host`` (default user). Empty = no auth."""
+
+    ra_redis_port: int = Field(6379, validation_alias="RA_REDIS_PORT")
+    """Port for ``ra_redis_host``."""
+
+    @model_validator(mode="after")
+    def _redis_url_from_ra_parts(self) -> Settings:
+        """Build ``redis_url`` from the ``RA_REDIS_*`` parts when no explicit
+        URL is given. An explicit ``RUBINTV_REDIS_URL`` always wins."""
+        if not self.redis_url and self.ra_redis_host:
+            # The password is a generated secret: quote it so characters
+            # like ``@``/``/``/``:`` can't corrupt the URL.
+            auth = (
+                f":{quote(self.ra_redis_password, safe='')}@"
+                if self.ra_redis_password
+                else ""
+            )
+            self.redis_url = f"redis://{auth}{self.ra_redis_host}:{self.ra_redis_port}"
+        return self
 
     spa_dist: Path | None = None
     """Directory of the built SPA (web/dist). ``None`` (dev) skips serving
