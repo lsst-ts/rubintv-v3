@@ -86,3 +86,29 @@ def test_configure_logging_accepts_trace() -> None:
     configure_logging(json_logs=False, level="trace")
     configure_logging(json_logs=False, level="unknown-level")  # degrades to INFO
     configure_logging(json_logs=False, level="INFO")  # restore default
+
+
+def test_json_logs_render_the_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
+    # JSONRenderer leaves exc_info as a bare ``true`` unless a processor
+    # formats it first — which hid the reason for every poll failure in
+    # production logs.
+    import io
+    import json
+
+    from lsst.ts.rubintv.logging import configure_logging, get_logger
+
+    # The logger factory binds sys.stdout at configure time, so swap it only
+    # for the JSON configuration and restore before reconfiguring: a logger
+    # left bound to a per-test stream breaks later tests when it is closed.
+    out = io.StringIO()
+    with monkeypatch.context() as patched:
+        patched.setattr("sys.stdout", out)
+        configure_logging(json_logs=True)
+        try:
+            raise ConnectionError("endpoint unreachable")
+        except ConnectionError:
+            get_logger("test").exception("poll.current.error")
+    configure_logging(json_logs=False, level="INFO")  # restore default
+    record = json.loads(out.getvalue())
+    assert "exc_info" not in record
+    assert "ConnectionError: endpoint unreachable" in record["exception"]
