@@ -12,10 +12,16 @@ function utcNow(now: number): string {
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
+const DAY_S = 86400;
+
 // Elapsed HH:MM:SS since `from` (ms), or null if `from` is unknown/invalid.
+// Past three days the seconds stop mattering, so it reads as days and hours.
 function elapsed(now: number, from: number | null): string | null {
   if (from === null) return null;
   const s = Math.max(0, Math.floor((now - from) / 1000));
+  if (s >= 3 * DAY_S) {
+    return `${Math.floor(s / DAY_S)}d ${Math.floor((s % DAY_S) / 3600)}h`;
+  }
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
 }
 
