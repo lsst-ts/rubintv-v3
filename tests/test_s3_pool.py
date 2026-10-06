@@ -91,3 +91,29 @@ def test_poller_client_uses_tight_timeouts(locations: list[Location]) -> None:
     assert dcfg.retries["total_max_attempts"] == 4
 
     pool.close()
+
+
+def test_default_endpoint_fills_only_locations_without_their_own() -> None:
+    # The chart's S3_ENDPOINT_URL is a fallback: a location that declares an
+    # endpoint keeps it; one that doesn't would otherwise hit real AWS.
+    pool = S3ClientPool(
+        [
+            Location(name="bare", title="Bare", bucket="b"),
+            Location(
+                name="own", title="Own", bucket="b", endpoint="https://own.example"
+            ),
+        ],
+        default_endpoint="https://fallback.example",
+    )
+    assert pool.client_for("bare").meta.endpoint_url == "https://fallback.example"
+    assert pool.poller_client_for("bare").meta.endpoint_url == (
+        "https://fallback.example"
+    )
+    assert pool.client_for("own").meta.endpoint_url == "https://own.example"
+
+
+def test_empty_default_endpoint_counts_as_unset() -> None:
+    pool = S3ClientPool(
+        [Location(name="bare", title="Bare", bucket="b")], default_endpoint=""
+    )
+    assert "amazonaws.com" in pool.client_for("bare").meta.endpoint_url

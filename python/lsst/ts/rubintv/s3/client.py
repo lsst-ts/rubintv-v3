@@ -59,8 +59,13 @@ log = get_logger(__name__)
 class S3ClientPool:
     """Holds default and poller S3 clients per location."""
 
-    def __init__(self, locations: list[Location]) -> None:
+    def __init__(
+        self, locations: list[Location], *, default_endpoint: str | None = None
+    ) -> None:
         self._locations = {loc.name: loc for loc in locations}
+        # Used for a location that declares no endpoint of its own (the
+        # deployment's ``S3_ENDPOINT_URL``). Empty counts as unset.
+        self._default_endpoint = default_endpoint or None
         self._clients: dict[str, S3Client] = {}
         self._poller_clients: dict[str, S3Client] = {}
 
@@ -90,6 +95,7 @@ class S3ClientPool:
         if location is None:
             raise KeyError(f"unknown location: {location_name}")
         session = boto3.session.Session(profile_name=location.profile)
+        endpoint = location.endpoint or self._default_endpoint
         # The poller runs on a ~1s cadence, so a hung connection must fail fast
         # rather than block on botocore's 60s default connect timeout (×3
         # retries = a minute-plus before a dead endpoint/tunnel surfaces as an
@@ -111,10 +117,15 @@ class S3ClientPool:
             )
         client = session.client(
             "s3",
-            endpoint_url=location.endpoint,
+            endpoint_url=endpoint,
             config=config,
         )
-        log.info("s3.client.created", location=location_name, role=role)
+        log.info(
+            "s3.client.created",
+            location=location_name,
+            role=role,
+            endpoint=endpoint or "default",
+        )
         return client
 
     async def warm_up(self) -> None:

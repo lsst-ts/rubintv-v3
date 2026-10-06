@@ -105,6 +105,12 @@ class Settings(BaseSettings):
     ``lsst.ts.rubintv.models``; set ``RUBINTV_MODELS_PATH`` to override with an
     on-disk file (e.g. a site-specific mount)."""
 
+    s3_endpoint_url: str | None = Field(None, validation_alias="S3_ENDPOINT_URL")
+    """Fallback S3 endpoint for any location that declares no
+    ``endpoint_url`` of its own. Read from ``S3_ENDPOINT_URL`` (unprefixed:
+    the name the Phalanx chart sets per site and the previous app read). A
+    location's own endpoint always wins."""
+
     cache_dir: Path | None = Path("/scratch")
     """PVC cache directory for warm starts. Defaults to /scratch, the PVC
     mount used in deployments; when the directory is missing or unwritable

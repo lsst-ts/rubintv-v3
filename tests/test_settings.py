@@ -112,3 +112,8 @@ def test_redis_stays_disabled_without_a_host(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("RUBINTV_REDIS_URL", raising=False)
     monkeypatch.setenv("RA_REDIS_PASSWORD", "orphan")
     assert Settings(_env_file=None).redis_url is None
+
+
+def test_s3_endpoint_url_is_read_unprefixed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("S3_ENDPOINT_URL", "https://s3.ls.lsst.org")
+    assert Settings(_env_file=None).s3_endpoint_url == "https://s3.ls.lsst.org"

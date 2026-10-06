@@ -97,7 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         site=settings.site,
         allow_admin_wildcard=settings.allow_admin_wildcard,
     )
-    s3 = S3ClientPool(models.locations)
+    s3 = S3ClientPool(models.locations, default_endpoint=settings.s3_endpoint_url)
     # Cold-init every client up front in parallel so the first poll cycle
     # (and the first API request that lands during it) doesn't pay the
     # boto3 session-creation cost for each location serially.

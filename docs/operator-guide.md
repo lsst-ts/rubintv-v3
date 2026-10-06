@@ -22,6 +22,7 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | `RAPID_ANALYSIS_LOCATION`     | `local`                    | Deployment site name (set by the Rapid Analysis environment; note: **not** `RUBINTV_`-prefixed). |
 | `RUBINTV_PATH_PREFIX`         | `/rubintv`                 | URL prefix everything is served under: API, WebSockets, sub-apps, SPA. Leading `/`, no trailing slash; `""` serves at the root. |
 | `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
+| `S3_ENDPOINT_URL`             | unset                      | Fallback S3 endpoint for a location with no `endpoint_url` in the models YAML (**not** `RUBINTV_`-prefixed; the name the Phalanx chart sets). A location's own endpoint wins. |
 | `RUBINTV_CACHE_DIR`           | `/scratch`                 | PVC dir for warm-start cache. Missing/unwritable dir (no PVC) disables the cache with one warning. |
 | `RUBINTV_REDIS_URL`           | unset                      | Redis for detector/admin live updates. Unset = built from `RA_REDIS_HOST` if that is set, else disabled. |
 | `RA_REDIS_HOST` / `RA_REDIS_PASSWORD` / `RA_REDIS_PORT` | unset / unset / `6379` | Rapid Analysis Redis as the Phalanx chart supplies it (**not** `RUBINTV_`-prefixed; password from a secret). Used only when `RUBINTV_REDIS_URL` is unset. |
