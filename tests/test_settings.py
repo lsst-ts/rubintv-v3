@@ -79,3 +79,36 @@ def test_usdf_pod_loads_its_locations_without_crashing() -> None:
         "base-usdf",
         "tucson-usdf",
     }
+
+
+def test_redis_url_is_built_from_the_chart_ra_redis_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The Phalanx chart passes host + secret password separately (the names
+    # the previous app read), not a URL; without this Redis stayed disabled.
+    monkeypatch.setenv("RA_REDIS_HOST", "redis-service.rapid-analysis.svc")
+    assert (
+        Settings(_env_file=None).redis_url
+        == "redis://redis-service.rapid-analysis.svc:6379"
+    )
+    monkeypatch.setenv("RA_REDIS_PASSWORD", "p@ss/w:rd")
+    monkeypatch.setenv("RA_REDIS_PORT", "6380")
+    assert (
+        Settings(_env_file=None).redis_url
+        == "redis://:p%40ss%2Fw%3Ard@redis-service.rapid-analysis.svc:6380"
+    )
+
+
+def test_explicit_redis_url_beats_the_ra_redis_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RA_REDIS_HOST", "ignored")
+    monkeypatch.setenv("RUBINTV_REDIS_URL", "redis://explicit:6379/2")
+    assert Settings(_env_file=None).redis_url == "redis://explicit:6379/2"
+
+
+def test_redis_stays_disabled_without_a_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RA_REDIS_HOST", raising=False)
+    monkeypatch.delenv("RUBINTV_REDIS_URL", raising=False)
+    monkeypatch.setenv("RA_REDIS_PASSWORD", "orphan")
+    assert Settings(_env_file=None).redis_url is None

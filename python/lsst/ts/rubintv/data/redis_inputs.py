@@ -210,7 +210,10 @@ class RedisInputs:
         """Connect and launch readers. No-op (warns) if
         disabled/unreachable."""
         if not self._url:
-            log.warning("redis.disabled", reason="no RUBINTV_REDIS_URL configured")
+            log.warning(
+                "redis.disabled",
+                reason="no RUBINTV_REDIS_URL or RA_REDIS_HOST configured",
+            )
             return
         try:
             from redis.asyncio import Redis
