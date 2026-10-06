@@ -26,6 +26,28 @@ test("time-since clock shows elapsed from Date begin when a label is given", () 
   expect(screen.getByText("00:03:48")).toBeDefined();
 });
 
+test("time-since clock stays HH:MM:SS just short of three days", () => {
+  // One second under 3 days → 71:59:59.
+  render(
+    <LiveClocks
+      sinceLabel="Time since last image"
+      lastImage="2026-04-28T14:01:24"
+    />,
+  );
+  expect(screen.getByText("71:59:59")).toBeDefined();
+});
+
+test("time-since clock switches to days and hours after three days", () => {
+  // Last image 4d 5h 3m before now → 4d 5h.
+  render(
+    <LiveClocks
+      sinceLabel="Time since last image"
+      lastImage="2026-04-27T08:58:00"
+    />,
+  );
+  expect(screen.getByText("4d 5h")).toBeDefined();
+});
+
 test("no time-since clock without a label", () => {
   render(<LiveClocks sinceLabel={null} lastImage="2026-05-01T13:57:35" />);
   expect(screen.queryByText(/time since/i)).toBeNull();
