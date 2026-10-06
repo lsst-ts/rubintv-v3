@@ -48,11 +48,15 @@ def configure_logging(*, json_logs: bool, level: str = "INFO") -> None:
         structlog.processors.StackInfoRenderer(),
     ]
 
-    renderer: structlog.types.Processor = (
-        structlog.processors.JSONRenderer()
-        if json_logs
-        else structlog.dev.ConsoleRenderer()
-    )
+    renderer: structlog.types.Processor
+    if json_logs:
+        # JSONRenderer does not render tracebacks itself: without this every
+        # ``log.exception`` serialises as a bare ``"exc_info": true`` and the
+        # actual error is lost. ConsoleRenderer formats exc_info on its own.
+        shared_processors.append(structlog.processors.format_exc_info)
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer()
 
     # uvicorn (and run_rubintv's --log-level choices) accept "trace", but the
     # stdlib has no TRACE level — map it to DEBUG rather than KeyError-ing the
