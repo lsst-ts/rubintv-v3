@@ -263,9 +263,16 @@ class PollEngine:
                         "poll.current.heartbeat",
                         day=self._current_day,
                         cycle=cycle,
-                        events_last_cycle=total,
+                        keys_last_cycle=total,
                         cycle_seconds=round(elapsed, 2),
                     )
+                log.debug(
+                    "poll.current.cycle",
+                    day=self._current_day,
+                    cycle=cycle,
+                    keys=total,
+                    cycle_seconds=round(elapsed, 3),
+                )
                 # A slow-but-successful cycle warns of a degrading link before
                 # it fails outright — log the transition into the slow state.
                 slow = elapsed > SLOW_CYCLE_SECONDS
@@ -403,28 +410,37 @@ class PollEngine:
             prefix = f"{camera.name}/{day}/"
             result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
             total += len(result.events)
-            if result.events:
-                log.info(
-                    "poll.scan",
-                    scope="day",
-                    location=location.name,
-                    prefix=prefix,
-                    events=len(result.events),
-                )
-                touched = await self._store.apply(result.events)
-                await self._persist_slices(touched)
-            else:
-                log.debug(
-                    "poll.scan.empty",
-                    scope="day",
-                    location=location.name,
-                    prefix=prefix,
-                )
+            await self._apply_scan("day", location.name, prefix, result)
             # This listing is authoritative for exactly one date, so scope
             # reconciliation to it — an empty result legitimately means
             # "everything for today was deleted" and must still be applied.
             await self._reconcile_day(location.name, camera.name, day, result)
         return total
+
+    async def _apply_scan(
+        self, scope: str, location: str, prefix: str, result: ScanResult
+    ) -> set[tuple[str, str, str]]:
+        """Apply one listing to the store, persist what changed, and log it.
+
+        ``poll.scan`` is info only when something changed. The poller
+        re-lists every prefix each cycle, so an unchanged listing is the
+        routine case and goes to debug — at info it would be one line per
+        camera per second, all saying nothing happened.
+        """
+        touched: set[tuple[str, str, str]] = set()
+        if result.events:
+            touched = await self._store.apply(result.events)
+            await self._persist_slices(touched)
+        emit = log.info if touched else log.debug
+        emit(
+            "poll.scan",
+            scope=scope,
+            location=location,
+            prefix=prefix,
+            keys=len(result.keys),
+            slices_touched=len(touched),
+        )
+        return touched
 
     async def _reconcile_day(
         self, location: str, camera: str, day: str, result: ScanResult
@@ -464,16 +480,7 @@ class PollEngine:
                     self._poller.scan, location.name, prefix
                 )
                 total += len(result.events)
-                if result.events:
-                    log.info(
-                        "poll.scan",
-                        scope="recent",
-                        location=location.name,
-                        prefix=prefix,
-                        events=len(result.events),
-                    )
-                    touched = await self._store.apply(result.events)
-                    await self._persist_slices(touched)
+                await self._apply_scan("recent", location.name, prefix, result)
                 await self._reconcile_day(location.name, camera.name, day, result)
             self._mark(location.name, camera.name, "recent_ready")
             await self._warm_metadata(location.name, camera.name)
@@ -498,16 +505,7 @@ class PollEngine:
             prefix = f"{camera.name}/"
             result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
             total += len(result.events)
-            log.info(
-                "poll.scan",
-                scope="historical",
-                location=location.name,
-                prefix=prefix,
-                events=len(result.events),
-            )
-            if result.events:
-                touched = await self._store.apply(result.events)
-                await self._persist_slices(touched)
+            await self._apply_scan("historical", location.name, prefix, result)
             # The full {camera}/ listing is authoritative for the whole
             # camera, so reconcile with an unbounded scope: dates the listing
             # didn't see are gone (e.g. stale warm-start slices whose keys
@@ -575,9 +573,7 @@ class PollEngine:
         try:
             async with self._on_demand_sem:
                 result = await asyncio.to_thread(self._poller.scan, location, prefix)
-            if result.events:
-                touched = await self._store.apply(result.events)
-                await self._persist_slices(touched)
+            await self._apply_scan("on-demand", location, prefix, result)
             await self._reconcile_day(location, camera, date, result)
         except Exception:  # noqa: BLE001 - on-demand is best-effort
             log.exception(
@@ -586,13 +582,6 @@ class PollEngine:
             return 0
         if not result.events:
             self._remember_empty((location, camera, date))
-        log.info(
-            "poll.scan",
-            scope="on-demand",
-            location=location,
-            prefix=prefix,
-            events=len(result.events),
-        )
         return len(result.events)
 
     def _remember_empty(self, key: tuple[str, str, str]) -> None:

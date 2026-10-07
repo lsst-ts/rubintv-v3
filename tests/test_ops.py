@@ -31,6 +31,7 @@ import boto3
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.cache import CACHE_VERSION
+from lsst.ts.rubintv.middleware import response_bytes
 from moto import mock_aws
 
 from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
@@ -173,3 +174,18 @@ def test_spa_catch_all_does_not_shadow_api(tmp_path: Path) -> None:
         assert "SPA" not in resp.text
         # A real API path still works.
         assert client.get("/api/locations").status_code == 200
+
+
+def test_response_bytes_reads_content_length_or_none() -> None:
+    from starlette.responses import Response, StreamingResponse
+
+    assert response_bytes(Response(content=b"abc")) == 3
+    # A chunked stream has no Content-Length: reported as unknown, not 0.
+    assert response_bytes(StreamingResponse(iter([b"a", b"b"]))) is None
+
+
+def test_requests_still_carry_the_correlation_id_when_timed() -> None:
+    with run_app(log_level="DEBUG") as client:
+        resp = client.get("/api/health/live", headers={"X-Request-ID": "t-1"})
+        assert resp.status_code == 200
+        assert resp.headers["X-Request-ID"] == "t-1"

@@ -52,6 +52,10 @@ class Connection:
         default_factory=lambda: asyncio.Queue(maxsize=_SEND_QUEUE_MAX)
     )
     topics: set[str] = field(default_factory=set)
+    # Running totals of what the send loop has put on the wire, reported on
+    # disconnect so a session's WebSocket cost is one log line.
+    frames_sent: int = 0
+    bytes_sent: int = 0
 
 
 class ConnectionManager:
@@ -76,7 +80,13 @@ class ConnectionManager:
                 if not subs:
                     del self._by_topic[topic]
         self._connections.pop(conn.id, None)
-        log.info("ws.disconnect", conn=conn.id, total=len(self._connections))
+        log.info(
+            "ws.disconnect",
+            conn=conn.id,
+            total=len(self._connections),
+            frames_sent=conn.frames_sent,
+            bytes_sent=conn.bytes_sent,
+        )
 
     def subscribe(self, conn: Connection, topic_key: str) -> None:
         conn.topics.add(topic_key)

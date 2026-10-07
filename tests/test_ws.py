@@ -30,6 +30,7 @@ import pytest
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.events import StoreChange
+from lsst.ts.rubintv.ws.handler import WsService
 from lsst.ts.rubintv.ws.manager import Connection, ConnectionManager
 from lsst.ts.rubintv.ws.protocol import ServerMessage, SubscribeRequest
 from moto import mock_aws
@@ -255,3 +256,61 @@ def test_ws_streams_metadata_in_chunks(ws_client, monkeypatch) -> None:  # type:
             chunks += 1
             received.update(msg["data"])
         assert received == rows
+
+
+async def test_send_loop_counts_frames_and_bytes() -> None:
+    # The send loop records what it put on the wire so ws.disconnect can
+    # report a connection's total cost.
+    sent: list[str] = []
+
+    class FakeSocket:
+        async def send_text(self, text: str) -> None:
+            sent.append(text)
+
+    conn = Connection(id="1", socket=FakeSocket())  # type: ignore[arg-type]
+    svc = WsService.__new__(WsService)  # _send_loop touches no service state
+    task = asyncio.create_task(svc._send_loop(conn))
+    conn.queue.put_nowait(ServerMessage(type="channelData", camera="lsstcam"))
+    conn.queue.put_nowait(ServerMessage(type="perDay", data={"k": "v"}))
+    await asyncio.sleep(0.01)
+    task.cancel()
+    assert conn.frames_sent == 2
+    assert conn.bytes_sent == sum(len(t.encode()) for t in sent)
+    assert conn.bytes_sent > 0
+
+
+def test_connection_deregistered_when_handler_is_cancelled() -> None:
+    # The test client cancels the handler task on close (as a server shutdown
+    # would), rather than delivering WebSocketDisconnect. Deregistration must
+    # not sit behind an await in that path, or the registry keeps a dead
+    # connection and ws.disconnect is never logged.
+    import boto3
+    from lsst.ts.rubintv.app import create_app
+    from lsst.ts.rubintv.config.settings import Settings
+    from moto import mock_aws
+
+    from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
+
+    settings = Settings(
+        models_path=CONFIG_PATH,
+        site="test",
+        cache_dir=None,
+        poll_interval_seconds=0.5,
+    )
+    with mock_aws():
+        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
+        app = create_app(settings)
+        with PrefixedTestClient(app) as client:
+            manager = app.state.app_state.ws.manager
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json(
+                    {
+                        "action": "subscribe",
+                        "topic": "camera",
+                        "location": "test",
+                        "camera": "lsstcam",
+                    }
+                )
+                ws.receive_json()
+                assert manager.connection_count == 1
+            assert manager.connection_count == 0

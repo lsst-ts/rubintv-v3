@@ -140,12 +140,17 @@ class WsService:
         except WebSocketDisconnect:
             pass
         finally:
+            # Deregister before any await: if this task is being cancelled
+            # (server shutdown, or a test client's close) every await below
+            # re-raises, and a disconnect that followed them would be skipped
+            # — leaving a dead connection in the registry and no
+            # ws.disconnect log line.
+            self.manager.disconnect(conn)
             sender.cancel()
             stream_tasks = list(streams.values())
             for task in stream_tasks:
                 task.cancel()
             await asyncio.gather(sender, *stream_tasks, return_exceptions=True)
-            self.manager.disconnect(conn)
 
     async def _recv_loop(
         self, conn: Connection, streams: dict[str, asyncio.Task[None]]
@@ -293,17 +298,21 @@ class WsService:
     async def _send_loop(self, conn: Connection) -> None:
         while True:
             msg = await conn.queue.get()
-            await conn.socket.send_text(msg.model_dump_json())
-            if msg.type in ("metadataChunk", "metadataComplete"):
-                log.debug(
-                    "ws.frame.sent",
-                    conn=conn.id,
-                    type=msg.type,
-                    camera=msg.camera,
-                    date=msg.date,
-                    seq=msg.seq,
-                    total=msg.total,
-                )
+            payload = msg.model_dump_json()
+            await conn.socket.send_text(payload)
+            size = len(payload.encode())
+            conn.frames_sent += 1
+            conn.bytes_sent += size
+            log.debug(
+                "ws.frame.sent",
+                conn=conn.id,
+                type=msg.type,
+                bytes=size,
+                camera=msg.camera,
+                date=msg.date,
+                seq=msg.seq,
+                total=msg.total,
+            )
 
     def _send_snapshot(self, conn: Connection, req: SubscribeRequest) -> None:
         """Push the current state for a freshly subscribed topic.

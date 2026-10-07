@@ -192,6 +192,10 @@ class EventStore:
                 changes.add(change)
             if i and i % self._YIELD_EVERY == 0:
                 await asyncio.sleep(0)
+        if events:
+            # The ratio of changes to events is what "silent re-listing"
+            # looks like in the logs: thousands of events, zero changes.
+            log.debug("store.apply", events=len(events), changes=len(changes))
         for i, change in enumerate(changes):
             self._bus.publish(change)
             if i and i % self._PUBLISH_YIELD_EVERY == 0:
