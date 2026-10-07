@@ -77,6 +77,7 @@ def test_summary_folds_paths_and_reports_each_flow() -> None:
     # Both date requests fold into one endpoint row with p50/p95 and bytes.
     assert "GET /rubintv/api/locations/usdf/cameras/lsstcam/dates/{date}" in text
     assert "/proxy/usdf/lsstcam/{date}/monitor/{n}" in text
+    assert "streamed  GET /rubintv/api/proxy" in text
     assert "6144" in text  # 2048 + 4096 bytes on the dates row
     assert "metadataChunk" in text and "50000" in text
     assert "1 connection(s) closed: 2 frames, 50120 bytes" in text

@@ -110,7 +110,10 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
             ]
             row.count += 1
             row.values.append(float(r.get("duration_ms") or 0))
-            row.total_bytes += int(r.get("bytes") or 0)
+            if r.get("bytes") is None:
+                row.extra += 1  # streamed without Content-Length
+            else:
+                row.total_bytes += int(r["bytes"])
         elif event == "ws.frame.sent":
             row = ws_types[str(r.get("type"))]
             row.count += 1
@@ -142,10 +145,15 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
         f"  {'count':>6} {'p50':>8} {'p95':>8} {'max':>8} {'bytes':>10}  endpoint"
     )
     for name, row in sorted(http.items(), key=lambda kv: -kv[1].count):
+        # A streamed body (proxied object) has no Content-Length: say so
+        # rather than counting it as nothing.
+        size = (
+            f"{row.total_bytes:>10}" if row.extra < row.count else f"{'streamed':>10}"
+        )
         out.append(
             f"  {row.count:>6} {percentile(row.values, 50):>8.1f}"
             f" {percentile(row.values, 95):>8.1f} {max(row.values):>8.1f}"
-            f" {row.total_bytes:>10}  {name}"
+            f" {size}  {name}"
         )
     if not http:
         out.append("  (none)")
