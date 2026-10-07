@@ -25,9 +25,10 @@ All tasks push into the store via the same ``DataSource``, so they share one
 code path and differ only in *what* they scan and *how often*:
 
 - current-day poller: today's prefixes, fast loop (~1s)
-- historical scanner: recent window then the full back-catalogue on startup,
-  then both again on one periodic refresh (12h) — recent dates are not
-  re-checked any more often than old ones
+- historical scanner: recent window then the full back-catalogue on startup;
+  afterwards the recent window is re-scanned every ``recent_refresh`` (2h)
+  and the full sweep repeats every 12h — recent dates are mutable, old ones
+  rarely are
 - on-demand scan: one camera-date, for a request that hits an unindexed date
 
 The previous day gets a single extra scan at rollover, to catch per-day
@@ -119,7 +120,8 @@ _ON_DEMAND_EMPTY_MAX = 4096
 # the current-day loop retries every second; history retries on this backoff.
 _HISTORICAL_RETRY_SECONDS = 60.0
 
-# Cadence of the periodic historical refresh after a successful sweep.
+# Cadence of the periodic full-catalogue refresh after a successful sweep.
+# The recent window refreshes more often (``recent_refresh``) in between.
 _HISTORICAL_REFRESH_SECONDS = 12 * 60 * 60
 
 
@@ -148,6 +150,7 @@ class PollEngine:
         *,
         poll_interval: float = 1.0,
         recent_window_days: int = 30,
+        recent_refresh: float = 2 * 60 * 60,
         on_ready: ReadyCallback | None = None,
         cache_writer: Callable[[], Awaitable[None]] | None = None,
         cache_slice_writer: (
@@ -163,6 +166,7 @@ class PollEngine:
         self._poller = poller
         self._interval = poll_interval
         self._recent_window_days = recent_window_days
+        self._recent_refresh = recent_refresh
         self._on_ready = on_ready
         self._cache_writer = cache_writer
         self._cache_slice_writer = cache_slice_writer
@@ -285,9 +289,10 @@ class PollEngine:
             await self._sleep(self._interval)
 
     async def _historical_loop(self) -> None:
-        # Recent-window-first, then a full sweep, then refresh on a slow
-        # cadence. The recent phase makes the last N days viewable in seconds
-        # while the full back-catalogue continues to load in the background.
+        # Recent-window-first, then a full sweep. The recent phase makes the
+        # last N days viewable in seconds while the full back-catalogue
+        # continues to load in the background. Between full sweeps the recent
+        # window is re-scanned on its own, shorter cadence.
         while not self._stop.is_set():
             try:
                 cameras = sum(len(loc.cameras) for loc in self._models.locations)
@@ -316,18 +321,50 @@ class PollEngine:
             if self.historical_loading:
                 self.historical_loading = False
                 log.info("poll.historical.idle")
-            # Sleep until the next refresh cycle, an explicit rescan trigger,
-            # or shutdown. A triggered rescan clears the flag and loops at
-            # once.
-            await self._pause(_HISTORICAL_REFRESH_SECONDS)
+            # Until the next full sweep, an explicit rescan trigger, or
+            # shutdown: keep the recent window fresh. A triggered rescan
+            # loops at once.
+            await self._refresh_recent_until(_HISTORICAL_REFRESH_SECONDS)
 
-    async def _pause(self, seconds: float) -> None:
-        """Historical-loop sleep that also honours a triggered rescan."""
+    async def _refresh_recent_until(self, seconds: float) -> None:
+        """Wait ``seconds``, re-scanning the recent window every
+        ``recent_refresh`` meanwhile.
+
+        Returns early on a rescan trigger or stop. A failed recent pass is
+        logged and retried at the next tick — the current-day loop already
+        surfaces S3 health, and the full sweep's own retry covers the
+        catalogue — so one blip can't stall the refresh cadence.
+        """
+        deadline = time.monotonic() + seconds
+        periodic = self._recent_window_days > 0 and self._recent_refresh > 0
+        while not self._stop.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            step = min(remaining, self._recent_refresh) if periodic else remaining
+            if await self._pause(step) or self._stop.is_set():
+                return
+            if time.monotonic() >= deadline:
+                return
+            try:
+                events = await self._scan_recent_window()
+                log.info("poll.recent.refresh", events=events)
+            except Exception:  # noqa: BLE001 - a bad pass must not kill loop
+                log.exception("poll.recent.error")
+
+    async def _pause(self, seconds: float) -> bool:
+        """Historical-loop sleep that also honours a triggered rescan.
+
+        Returns True if a rescan was requested, so the caller can drop
+        whatever it was waiting on and let the loop start a fresh sweep.
+        """
         await self._sleep_or_rescan(seconds)
         if self._rescan.is_set():
             self._rescan.clear()
             self.historical_loading = True
             log.info("poll.historical.rescan")
+            return True
+        return False
 
     # -- scanning --------------------------------------------------------
 
