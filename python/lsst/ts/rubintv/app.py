@@ -37,12 +37,11 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 from lsst.ts.rubintv import __version__, legacy_redirects
-from lsst.ts.rubintv.api import admin, data, health, internal, nightreport, proxy
+from lsst.ts.rubintv.api import admin, data, health, nightreport, proxy
 from lsst.ts.rubintv.config.loader import load_models
 from lsst.ts.rubintv.config.settings import Settings, get_settings
 from lsst.ts.rubintv.data.cache import DiskCache
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
-from lsst.ts.rubintv.data.heartbeats import HeartbeatStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.redis_inputs import RedisInputs
@@ -57,7 +56,6 @@ from lsst.ts.rubintv.state import AppState
 from lsst.ts.rubintv.subapps import mount_subapps
 from lsst.ts.rubintv.ws.ddv import DdvBridge
 from lsst.ts.rubintv.ws.handler import WsService
-from lsst.ts.rubintv.ws.internal import HeartbeatService
 
 log = get_logger(__name__)
 
@@ -143,9 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     metadata = MetadataCache(s3, buckets)
     controls = ControlStore()
     detectors = DetectorStore()
-    heartbeats = HeartbeatStore()
-    ws_service = WsService(store, metadata, controls, detectors, heartbeats)
-    heartbeat_svc = HeartbeatService(store.bus, heartbeats)
+    ws_service = WsService(store, metadata, controls, detectors)
     state = AppState(
         settings=settings,
         models=models,
@@ -155,9 +151,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nightreport=NightReportFetcher(s3, buckets),
         controls=controls,
         detectors=detectors,
-        heartbeats=heartbeats,
         ws=ws_service,
-        heartbeat_svc=heartbeat_svc,
         cache_enabled=cache.enabled,
         warm_start=warm_start,
     )
@@ -271,7 +265,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     engine.start()
     ws_service.start()
-    heartbeat_svc.start()
     await redis_inputs.start()
     log.info("startup.complete", locations=[loc.name for loc in models.locations])
 
@@ -280,7 +273,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         log.info("shutdown.begin")
         await redis_inputs.stop()
-        await heartbeat_svc.stop()
         await ws_service.stop()
         await engine.stop()
         await write_cache()
@@ -322,20 +314,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(admin.router, prefix=f"{prefix}/api", tags=["admin"])
     app.include_router(proxy.router, prefix=f"{prefix}/api", tags=["proxy"])
-    # GET {prefix}/api/health/services for probes; the internal heartbeat
-    # ingest stays pod-local under {prefix}/internal.
-    app.include_router(internal.status_router, prefix=f"{prefix}/api")
-    app.include_router(internal.internal_router, prefix=prefix)
 
     @app.websocket(f"{prefix}/ws")
     async def ws_endpoint(socket: WebSocket) -> None:
         state: AppState = app.state.app_state
         await state.ws.handle(socket)
-
-    @app.websocket(f"{prefix}/internal/heartbeats")
-    async def heartbeat_endpoint(socket: WebSocket) -> None:
-        state: AppState = app.state.app_state
-        await state.heartbeat_svc.handle(socket)
 
     # DDV job relay. The client path matches the address baked into the DDV
     # build (DDV_CLIENT_WS_ADDRESS, default rubintv/ws/ddv, plus /client).

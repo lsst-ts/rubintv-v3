@@ -448,46 +448,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/health/services": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Services
-         * @description Current liveness of every reporting RA service.
-         */
-        get: operations["services_api_health_services_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/internal/heartbeats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Post Heartbeat
-         * @description Record one liveness beat (fire-and-forget).
-         */
-        post: operations["post_heartbeat_internal_heartbeats_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/subapps": {
         parameters: {
             query?: never;
@@ -816,21 +776,6 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /**
-         * Heartbeat
-         * @description One liveness report from an RA service.
-         */
-        Heartbeat: {
-            /** Service */
-            service: string;
-            /**
-             * Ttl
-             * @default 30
-             */
-            ttl: number;
-            /** Location */
-            location?: string | null;
-        };
         /** KeyValuesText */
         KeyValuesText: {
             /**
@@ -891,8 +836,6 @@ export interface components {
             is_teststand: boolean;
             /** Has Cluster Status */
             has_cluster_status: boolean;
-            /** Services */
-            services: string[];
             /** Camera Groups */
             camera_groups: components["schemas"]["CameraGroupOut"][];
         };
@@ -969,15 +912,6 @@ export interface components {
         ReadyResponse: {
             /** Ready */
             ready: boolean;
-        };
-        /** ServicesResponse */
-        ServicesResponse: {
-            /** Services */
-            services: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            };
         };
         /** StatusResponse */
         StatusResponse: {
@@ -1758,61 +1692,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    services_api_health_services_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ServicesResponse"];
-                };
-            };
-        };
-    };
-    post_heartbeat_internal_heartbeats_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Heartbeat"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
                 };
             };
             /** @description Validation Error */

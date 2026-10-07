@@ -136,7 +136,6 @@ async def get_location_detail(
         text_shadow=location.text_shadow,
         is_teststand=location.is_teststand,
         has_cluster_status=location.has_cluster_status,
-        services=location.services,
         camera_groups=groups,
     )
 

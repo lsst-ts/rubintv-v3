@@ -39,13 +39,11 @@ if TYPE_CHECKING:
     from lsst.ts.rubintv.data.tasks import CameraScanState
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
-from lsst.ts.rubintv.data.heartbeats import HeartbeatStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.s3.client import S3ClientPool
 from lsst.ts.rubintv.ws.handler import WsService
-from lsst.ts.rubintv.ws.internal import HeartbeatService
 
 
 @dataclass
@@ -60,9 +58,7 @@ class AppState:
     nightreport: NightReportFetcher
     controls: ControlStore
     detectors: DetectorStore
-    heartbeats: HeartbeatStore
     ws: WsService
-    heartbeat_svc: HeartbeatService
     ready: bool = field(default=False)
     cache_enabled: bool = field(default=False)
     """Whether a disk cache is configured. When false, every restart is a
