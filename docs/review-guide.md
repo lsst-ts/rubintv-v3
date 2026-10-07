@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 274 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 277 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,7 +384,8 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  `d673fcd`, `49fe56b`, `f50907b`, and the commit that added group 44.
+  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, and the commit that added
+  group 45.
 
 ---
 
@@ -634,6 +635,19 @@ per camera per second since the poller became stateless), and
 `finally`, so a cancelled handler no longer leaks a registry entry.
 - `01ecaf8` Log the timing and size of every hop so the data flow can be
   measured
+- `8fceca6` Report streamed responses as such in flow_summary, not as 0
+  bytes
+
+### 45. Metadata by the stream alone; calendar on new dates only
+What the first capture showed: the REST metadata request duplicated the
+WebSocket stream (98% of session bytes) and, sharing the server's
+per-date lock, queued 18–28s behind the stream's download on a slow
+link; the calendar was refetched on every exposure. Review
+`web/src/lib/useMetadata.ts` (the backstop rule), the chunk accounting in
+`liveQuery.ts`, the `refresh` action in `ws/handler.py`, and
+`calendarUpdate` on a new date in `EventStore.apply`.
+- `40d1220` Deliver metadata by the stream alone; refresh the calendar only
+  on a new date
 
 ---
 
