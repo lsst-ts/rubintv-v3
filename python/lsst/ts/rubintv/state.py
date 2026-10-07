@@ -41,13 +41,11 @@ from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.blocknames import BlockNameService
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.guide import GuideService
-from lsst.ts.rubintv.data.heartbeats import HeartbeatStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.s3.client import S3ClientPool
 from lsst.ts.rubintv.ws.handler import WsService
-from lsst.ts.rubintv.ws.internal import HeartbeatService
 
 
 @dataclass
@@ -62,9 +60,7 @@ class AppState:
     nightreport: NightReportFetcher
     controls: ControlStore
     detectors: DetectorStore
-    heartbeats: HeartbeatStore
     ws: WsService
-    heartbeat_svc: HeartbeatService
     block_names: BlockNameService
     """Science-program key -> description, for the observing-block guide."""
     guide: GuideService | None = field(default=None)

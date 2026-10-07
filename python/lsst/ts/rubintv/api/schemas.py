@@ -95,7 +95,6 @@ class LocationOut(BaseModel):
     text_shadow: bool
     is_teststand: bool
     has_cluster_status: bool
-    services: list[str]
     camera_groups: list[CameraGroupOut]
 
 

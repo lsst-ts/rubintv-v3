@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     slash (``/rubintv``, not ``rubintv/``); ``""`` serves at the root."""
 
     models_path: Path | None = None
-    """Path to the YAML defining locations, cameras, channels, services.
+    """Path to the YAML defining locations, cameras and channels.
     ``None`` (the default) uses the copy packaged inside
     ``lsst.ts.rubintv.models``; set ``RUBINTV_MODELS_PATH`` to override with an
     on-disk file (e.g. a site-specific mount)."""

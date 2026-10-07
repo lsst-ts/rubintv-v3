@@ -1,4 +1,4 @@
-# RubinTV configuration: locations, cameras, channels, services.
+# RubinTV configuration: locations, cameras, channels.
 #
 # The loader (rubintv/config/loader.py) validates this into typed models at
 # startup. A location's camera_groups must reference cameras defined below;
@@ -53,7 +53,6 @@ locations:
     logo: bts_720.jpg
     text_colour: "#fff"
     text_shadow: true
-    services: [auxtel, tma]
     camera_groups:
       Telescope Mounted:
         [auxtel, lsstcam, lsstcam_aos, lsstcam_guider, ra_performance]
@@ -527,37 +526,6 @@ cameras:
         label: "Movie for "
         per_day: true
         colour: "#83daee"
-
-services:
-  auxtel:
-    display_name: AuxTel
-    channels: auxtel
-    services:
-      auxtel_metadata: Metadata
-      auxtel_isr_runner: ISR Runner
-
-  startracker_narrow:
-    display_name: StarTracker Narrow
-    channels: startracker_narrow
-    services:
-      startracker_narrow_metadata: Metadata
-
-  allsky:
-    display_name: All Sky
-    services:
-      allsky: All Sky
-
-  comcam:
-    display_name: ComCam
-    channels: comcam
-
-  tma:
-    channels: tma
-
-  background:
-    display_name: Background Services
-    services:
-      backgroundService: Background
 
 metadata_columns:
   fake_auxtel:

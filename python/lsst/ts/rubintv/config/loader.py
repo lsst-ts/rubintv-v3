@@ -49,8 +49,6 @@ from lsst.ts.rubintv.config.models import (
     Models,
     MosaicViewEntry,
     RedisDetector,
-    Service,
-    ServiceItem,
     TimeSinceClock,
 )
 from lsst.ts.rubintv.logging import get_logger
@@ -99,7 +97,6 @@ def load_models(
     global_locked = _global_locked_columns(raw.get("locked_columns", {}))
     cameras = _parse_cameras(raw.get("cameras", []), global_metadata, global_locked)
 
-    services = _parse_services(raw.get("services", {}))
     admin_for = _parse_admin_for(raw.get("admin_for", {}))
     bucket_configurations = _parse_bucket_configurations(
         raw.get("bucket_configurations", {})
@@ -111,7 +108,6 @@ def load_models(
     locations = _parse_locations(
         location_rows,
         cameras,
-        services,
         admin_for,
         site,
         allow_admin_wildcard=allow_admin_wildcard,
@@ -124,7 +120,6 @@ def load_models(
 
     return Models(
         locations=locations,
-        services=list(services.values()),
         redis_detectors=redis_detectors,
         admin_redis_menus=admin_redis_menus,
     )
@@ -181,8 +176,8 @@ def _parse_cameras(
     # Apply top-level metadata_columns (overlays the camera's own definitions).
     for name, columns in global_metadata.items():
         if name not in cameras:
-            # The top-level map carries some entries (e.g. service-only names)
-            # that don't correspond to a camera — that's fine, just skip.
+            # The top-level map may carry entries that don't correspond to a
+            # camera — that's fine, just skip.
             continue
         merged = {**cameras[name].metadata_columns, **columns}
         cameras[name] = cameras[name].model_copy(update={"metadata_columns": merged})
@@ -311,7 +306,6 @@ def _filter_location_rows(
 def _parse_locations(
     rows: list[dict[str, Any]],
     cameras: dict[str, Camera],
-    services: dict[str, Service],
     admin_for: dict[str, list[str]],
     site: str | None,
     *,
@@ -352,14 +346,6 @@ def _parse_locations(
                     seen.add(name)
         body["cameras"] = resolved
 
-        # Validate per-location service references against the registry.
-        for service_name in body.get("services", []):
-            if service_name not in services:
-                raise ConfigError(
-                    f"location {body.get('name')!r} references unknown service "
-                    f"{service_name!r}"
-                )
-
         # admin_users: the per-site list from admin_for. ``["*"]`` is a
         # wildcard meaning 'any authenticated user'; preserved verbatim and
         # honoured by the admin gate.
@@ -379,33 +365,6 @@ def _normalise_location(row: dict[str, Any]) -> dict[str, Any]:
     if "endpoint_url" in body:
         body["endpoint"] = body.pop("endpoint_url")
     return body
-
-
-def _parse_services(raw: Any) -> dict[str, Service]:
-    """Parse the top-level services registry.
-
-    Accepts either a list of objects (new style) or a mapping of name to body
-    (legacy style)."""
-    if isinstance(raw, list):
-        rows = [dict(r) for r in raw]
-    elif isinstance(raw, dict):
-        rows = [{"name": name, **(body or {})} for name, body in raw.items()]
-    else:
-        rows = []
-    services: dict[str, Service] = {}
-    for row in rows:
-        items_raw = row.pop("services", None)
-        items: list[ServiceItem] = []
-        if isinstance(items_raw, dict):
-            items = [
-                ServiceItem(name=str(k), title=str(v)) for k, v in items_raw.items()
-            ]
-        elif isinstance(items_raw, list):
-            items = [ServiceItem.model_validate(r) for r in items_raw]
-        row["services"] = items
-        service = Service.model_validate(row)
-        services[service.name] = service
-    return services
 
 
 def _parse_admin_for(raw: Any) -> dict[str, list[str]]:

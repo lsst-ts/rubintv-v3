@@ -147,16 +147,6 @@ class Camera(BaseModel):
         return next((c for c in self.channels if c.name == name), None)
 
 
-class LocationService(BaseModel):
-    """A heartbeat-monitored service declared at a location.
-
-    Locations name the services they expect to be reporting; the top-level
-    ``Service`` registry describes what each service *is*.
-    """
-
-    name: str
-
-
 class Location(BaseModel):
     """A deployment-visible location with its cameras, grouped for display."""
 
@@ -174,8 +164,6 @@ class Location(BaseModel):
     """Group label -> ordered list of camera names."""
     cameras: list[Camera] = Field(default_factory=list)
     """Resolved Camera objects (populated by the loader from camera_groups)."""
-    services: list[str] = Field(default_factory=list)
-    """Names referencing the top-level service registry."""
     admin_users: list[str] = Field(default_factory=list)
     """Resolved admin usernames (the loader copies these from the global
     ``admin_for`` map, expanding ``*`` to mean 'any authenticated user')."""
@@ -183,30 +171,6 @@ class Location(BaseModel):
     def camera(self, name: str) -> Camera | None:
         """Return the named camera, or ``None`` if not at this location."""
         return next((c for c in self.cameras if c.name == name), None)
-
-
-class ServiceItem(BaseModel):
-    """A sub-service within a service group (e.g. metadata, ISR runner)."""
-
-    name: str
-    title: str
-
-
-class Service(BaseModel):
-    """A heartbeat-monitored service group used by the operator UI."""
-
-    name: str
-    display_name: str = ""
-    channels: str | None = None
-    """Camera name whose channel heartbeats are watched alongside this
-    group."""
-    services: list[ServiceItem] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _default_display(self) -> Service:
-        if not self.display_name:
-            object.__setattr__(self, "display_name", self.name)
-        return self
 
 
 class RedisDetector(BaseModel):
@@ -243,7 +207,6 @@ class Models(BaseModel):
     """The fully-resolved configuration tree loaded from YAML."""
 
     locations: list[Location] = Field(default_factory=list)
-    services: list[Service] = Field(default_factory=list)
     redis_detectors: list[RedisDetector] = Field(default_factory=list)
     admin_redis_menus: list[AdminRedisMenu] = Field(default_factory=list)
 

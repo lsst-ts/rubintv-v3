@@ -35,7 +35,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-TopicKind = Literal["camera", "nightReport", "detectors", "admin", "services"]
+TopicKind = Literal["camera", "nightReport", "detectors", "admin"]
 
 
 class SubscribeRequest(BaseModel):
@@ -66,7 +66,6 @@ ServerMessageType = Literal[
     "dayChange",
     "detectorStatus",
     "controlReadback",
-    "serviceStatus",
     "calendarUpdate",
     "error",
 ]
