@@ -43,11 +43,17 @@ class ExtInfo:
     default: str | None = None
     exceptions: dict[SeqNum, str] = field(default_factory=dict)
 
-    def record(self, seq_num: SeqNum, ext: str) -> None:
+    def record(self, seq_num: SeqNum, ext: str) -> bool:
+        """Record an extension; True if it changed what ``for_seq`` answers."""
         if self.default is None:
             self.default = ext
-        elif ext != self.default:
-            self.exceptions[seq_num] = ext
+            return True
+        if ext == self.default:
+            return self.exceptions.pop(seq_num, None) is not None
+        if self.exceptions.get(seq_num) == ext:
+            return False
+        self.exceptions[seq_num] = ext
+        return True
 
     def for_seq(self, seq_num: SeqNum) -> str | None:
         return self.exceptions.get(seq_num, self.default)
@@ -96,7 +102,16 @@ class DateIndex:
     # folding both into one ExtInfo would let whichever arrived last decide.
     per_day: dict[str, PerDayRef] = field(default_factory=dict)
     night_report_keys: set[str] = field(default_factory=set)
+    # ETag of the date's metadata.json as last listed. The content lives in
+    # the MetadataCache; this is only so a rewrite of the file (same key,
+    # new content) still registers as a change worth telling clients about.
+    metadata_etag: str | None = None
 
     @property
     def is_empty(self) -> bool:
+        """No channel data, per-day artifact or night report.
+
+        A metadata ETag alone does not count: metadata is served only for
+        dates that have data, so an index holding nothing else is gone.
+        """
         return not (self.channels or self.per_day or self.night_report_keys)

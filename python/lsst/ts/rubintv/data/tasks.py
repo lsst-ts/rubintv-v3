@@ -393,17 +393,15 @@ class PollEngine:
         self, location: str, camera: str, day: str, result: ScanResult
     ) -> None:
         """Reconcile a single-date listing against the store."""
-        dropped = await self._store.reconcile(
+        outcome = await self._store.reconcile(
             (location, camera),
             result.keys,
             ScanScope(dates=frozenset({day})),
         )
-        await self._evict_slices(location, camera, dropped)
-        # A date that survived may still have lost slots; its slice is
-        # rewritten by the caller's _persist_slices only when events landed,
-        # so persist it here too when the listing was empty of new events.
-        if not dropped and not result.events:
-            await self._persist_slices({(location, camera, day)})
+        await self._evict_slices(location, camera, outcome.dropped)
+        # apply persisted the slices it inserted into; a date that only lost
+        # slots is stale on disk until rewritten here.
+        await self._persist_slices({(location, camera, d) for d in outcome.changed})
 
     async def _scan_recent_window(self) -> int:
         # The recent window per camera: scan {camera}/{date}/ for the last N
@@ -480,12 +478,15 @@ class PollEngine:
             # day — the fast current-day loop may have inserted today's first
             # keys *after* this sweep listed the prefix, so the listing
             # wouldn't include them and reconciliation would wrongly drop them.
-            pruned = await self._store.reconcile(
+            outcome = await self._store.reconcile(
                 (location.name, camera.name),
                 result.keys,
                 ScanScope(protect=frozenset({get_current_day_obs()})),
             )
-            await self._evict_slices(location.name, camera.name, pruned)
+            await self._evict_slices(location.name, camera.name, outcome.dropped)
+            await self._persist_slices(
+                {(location.name, camera.name, d) for d in outcome.changed}
+            )
             # Recent may not have run (window=0); the full sweep also makes
             # recent data present, so mark both as it finishes each camera.
             self._mark(location.name, camera.name, "recent_ready")

@@ -85,6 +85,19 @@ class ScanScope:
         return self.dates is None or date in self.dates
 
 
+@dataclass(frozen=True, slots=True)
+class ReconcileResult:
+    """What a reconciliation removed.
+
+    ``dropped`` are dates whose index emptied and was deleted; ``changed``
+    are dates that lost entries but survive, so their cache slice is stale
+    and must be rewritten by the caller.
+    """
+
+    dropped: set[str]
+    changed: set[str]
+
+
 class EventStore:
     """In-memory index of all channel data, keyed by (location, camera)."""
 
@@ -147,20 +160,29 @@ class EventStore:
 
         Batched so a poll cycle's worth of changes are applied under the
         lock once per affected (loc, cam), and duplicate StoreChanges are
-        coalesced before publishing.
+        coalesced before publishing. Only an event that actually altered the
+        index publishes: the poller re-lists everything every cycle, so an
+        unchanged listing must be silent or every subscribed tab would
+        refetch each second.
 
         Returns the set of ``(location, camera, date)`` slices touched, so a
         caller (e.g. the poll engine) can persist exactly those to disk.
         """
         changes: set[StoreChange] = set()
-        for i, event in enumerate(events):
+        # metadata.json records against an existing date index (see
+        # _insert), so apply it after the channel keys that create one —
+        # listing order is by key, which sorts "metadata.json" in among the
+        # channel directories.
+        ordered = [e for e in events if not e.key.endswith("/metadata.json")]
+        ordered += [e for e in events if e.key.endswith("/metadata.json")]
+        for i, event in enumerate(ordered):
             parsed = self._classify(event)
             if parsed is None:
                 continue  # non-conforming key — safely ignored
             loc_cam, change = parsed
             async with self._locks[loc_cam]:
-                self._mutate(event.kind, loc_cam, event)
-            if change is not None:
+                altered = self._mutate(event.kind, loc_cam, event)
+            if altered and change is not None:
                 changes.add(change)
             if i and i % self._YIELD_EVERY == 0:
                 await asyncio.sleep(0)
@@ -187,43 +209,67 @@ class EventStore:
             )
         return None
 
-    def _mutate(self, kind: ObjectKind, loc_cam: LocCam, event: ObjectEvent) -> None:
+    def _mutate(self, kind: ObjectKind, loc_cam: LocCam, event: ObjectEvent) -> bool:
         """Insert a single object into the indexes (lock held).
 
         Only CREATED does anything. Deletion is reconciliation's job (see
         :meth:`reconcile`) — a per-key REMOVED can't be applied safely on its
         own, because within one diff batch a rename emits CREATED(new) before
         REMOVED(old) and both name the same logical slot.
+
+        Returns True if the index changed.
         """
         if kind is ObjectKind.CREATED:
-            self._insert(loc_cam, event)
+            return self._insert(loc_cam, event)
+        return False
 
-    def _insert(self, loc_cam: LocCam, event: ObjectEvent) -> None:
+    def _insert(self, loc_cam: LocCam, event: ObjectEvent) -> bool:
         key = event.key
         if (ev := parse_channel_event(key)) is not None:
             idx = self._date_index(loc_cam, ev.day_obs)
+            self._calendar[loc_cam].add(ev.day_obs)
             if ev.is_per_day:
                 # Presence + seq + extension is the whole payload: the rest of
                 # the key is {camera}/{date}/{channel}/, which every caller
                 # already has, and the proxy lists that prefix to find the
                 # actual filename.
-                idx.per_day[ev.channel] = PerDayRef(seq=str(ev.seq_num), ext=ev.ext)
-            else:
-                idx.channels.setdefault(ev.channel, set()).add(ev.seq_num)
-                idx.extensions.setdefault(ev.channel, ExtInfo()).record(
-                    ev.seq_num, ev.ext
-                )
-            self._calendar[loc_cam].add(ev.day_obs)
-        elif (nr := parse_night_report(key)) is not None:
+                ref = PerDayRef(seq=str(ev.seq_num), ext=ev.ext)
+                if idx.per_day.get(ev.channel) == ref:
+                    return False
+                idx.per_day[ev.channel] = ref
+                return True
+            seqs = idx.channels.setdefault(ev.channel, set())
+            added = ev.seq_num not in seqs
+            seqs.add(ev.seq_num)
+            ext = idx.extensions.setdefault(ev.channel, ExtInfo())
+            return ext.record(ev.seq_num, ev.ext) or added
+        if (nr := parse_night_report(key)) is not None:
             idx = self._date_index(loc_cam, nr.day_obs)
-            idx.night_report_keys.add(key)
             self._calendar[loc_cam].add(nr.day_obs)
-        # metadata.json content is fetched separately; its presence alone
-        # doesn't change the structured index.
+            if key in idx.night_report_keys:
+                return False
+            idx.night_report_keys.add(key)
+            return True
+        if (md := parse_metadata(key)) is not None:
+            # metadata.json content is fetched separately; only its ETag is
+            # kept, so the producer rewriting today's file (same key) still
+            # publishes. A date with no indexed data isn't served, so there
+            # is nothing to record against — and a source that reports no
+            # ETag can't signal rewrites at all.
+            existing = self._dates[loc_cam].get(md.day_obs)
+            if (
+                existing is None
+                or event.etag is None
+                or existing.metadata_etag == event.etag
+            ):
+                return False
+            existing.metadata_etag = event.etag
+            return True
+        return False
 
     async def reconcile(
         self, loc_cam: LocCam, observed: set[str], scope: ScanScope
-    ) -> set[str]:
+    ) -> ReconcileResult:
         """Drop indexed data absent from an authoritative listing.
 
         ``observed`` is every object key the listing returned. Within
@@ -245,8 +291,9 @@ class EventStore:
         deployment can be watched before it is trusted.
 
         Publishes a ``calendarUpdate`` per dropped date so listeners refresh,
-        and returns the dropped dates so the caller can evict cache slices.
-        Takes the per-(loc, cam) lock, like ``apply``.
+        and returns the dropped and surviving-but-changed dates so the caller
+        can evict or rewrite their cache slices. Takes the per-(loc, cam)
+        lock, like ``apply``.
         """
         wanted = _index_keys(observed)
         dropped: set[str] = set()
@@ -254,7 +301,7 @@ class EventStore:
         async with self._locks[loc_cam]:
             dates = self._dates.get(loc_cam)
             if not dates:
-                return set()
+                return ReconcileResult(dropped=set(), changed=set())
             for date in list(dates):
                 if not scope.covers(date) or date in scope.protect:
                     continue
@@ -294,7 +341,7 @@ class EventStore:
         # A date that lost slots but still exists needs a data refresh too.
         for date in changed - dropped:
             self._bus.publish(StoreChange("channelData", loc_cam[0], loc_cam[1], date))
-        return dropped
+        return ReconcileResult(dropped=dropped, changed=changed - dropped)
 
     def _date_index(self, loc_cam: LocCam, date: str) -> DateIndex:
         dates = self._dates[loc_cam]

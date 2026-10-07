@@ -152,6 +152,7 @@ def _encode(index: DateIndex) -> dict[str, object]:
             ch: {"seq": ref.seq, "ext": ref.ext} for ch, ref in index.per_day.items()
         },
         "night_report_keys": sorted(index.night_report_keys),
+        "metadata_etag": index.metadata_etag,
     }
 
 
@@ -176,6 +177,8 @@ def _decode(raw: dict[str, Any]) -> DateIndex:
             for ch, v in raw["per_day"].items()
         },
         night_report_keys=set(raw["night_report_keys"]),
+        # Added within v3; slices written before it simply have none.
+        metadata_etag=raw.get("metadata_etag"),
     )
 
 
