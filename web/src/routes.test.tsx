@@ -338,10 +338,13 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
   expect(screen.queryByRole("columnheader", { name: "Quicklook" })).toBeNull();
 
   // Viewer link fills the row's controller ("C"), the 8-digit date, and the
-  // zero-padded seq.
+  // zero-padded seq. The controller comes from metadata, which lands a beat
+  // after the grid (the stream backstop fetch), so wait for the filled href.
   const viewer = await screen.findByRole("link", { name: "Viewer" });
-  expect(viewer.getAttribute("href")).toBe(
-    "http://ccs.lsst.org/view?image=AT_C_20260410_000252",
+  await waitFor(() =>
+    expect(viewer.getAttribute("href")).toBe(
+      "http://ccs.lsst.org/view?image=AT_C_20260410_000252",
+    ),
   );
   // Quicklook fills {seqNum:05}.
   const quicklook = screen.getByRole("link", { name: "Quicklook" });
@@ -435,7 +438,8 @@ test("mosaic suffix route wins over the channel catch-all", async () => {
     "/channels/monitor/2026-04-10/000252/image.png",
   );
   expect(screen.getByText("Exposure")).toBeDefined();
-  expect(screen.getByText("30")).toBeDefined();
+  // The value comes from metadata, which lands a beat after the tile.
+  expect(await screen.findByText("30")).toBeDefined();
 });
 
 test("headerless=true hides the app shell (no breadcrumbs/tabs)", async () => {

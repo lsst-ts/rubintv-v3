@@ -24,6 +24,21 @@ test("channelData invalidates date payload and calendar", () => {
   // The REST metadata query is a separate cache entry; it must be invalidated
   // too or the single-channel view / table never pick up new seqs' rows.
   expect(keys).toContain(JSON.stringify(queryKeys.metadata("local", "lsstcam", "2026-04-10")));
+  // The calendar refreshes on calendarUpdate alone (the store announces a
+  // new date), not on every exposure.
+  expect(keys).not.toContain(JSON.stringify(queryKeys.calendar("local", "lsstcam")));
+});
+
+test("calendarUpdate invalidates the calendar", () => {
+  const qc = new QueryClient();
+  const calls = spyInvalidate(qc);
+  applyLiveMessage(qc, {
+    type: "calendarUpdate",
+    location: "local",
+    camera: "lsstcam",
+    date: "2026-04-10",
+  });
+  const keys = calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
   expect(keys).toContain(JSON.stringify(queryKeys.calendar("local", "lsstcam")));
 });
 
@@ -61,15 +76,20 @@ test("metadataChunk accumulates into the stream slot and tracks rows", () => {
     "1": { exp_time: 30 },
     "2": { exp_time: 31 },
   });
-  // Progress is the running row count.
-  expect(qc.getQueryData(progKey)).toEqual({ rows: 2 });
+  // Progress is the running row and chunk count; the stream is in flight.
+  expect(qc.getQueryData(progKey)).toEqual({ rows: 2, chunks: 2 });
+  expect(
+    qc.getQueryData(queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10")),
+  ).toBe("streaming");
 });
 
-test("metadataComplete clears progress but keeps streamed rows", () => {
+test("metadataComplete with chunks missing keeps rows and flags incomplete", () => {
   const qc = new QueryClient();
   const pkey = queryKeys.metadataProgress("local", "lsstcam", "2026-04-10");
   const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
-  qc.setQueryData(pkey, { rows: 2 });
+  const statusKey = queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10");
+  // One chunk arrived of two sent: the server dropped one for a slow client.
+  qc.setQueryData(pkey, { rows: 1, chunks: 1 });
   qc.setQueryData(skey, { "1": { exp_time: 30 } });
   applyLiveMessage(qc, {
     type: "metadataComplete",
@@ -79,8 +99,28 @@ test("metadataComplete clears progress but keeps streamed rows", () => {
     total: 2,
   });
   expect(qc.getQueryData(pkey)).toBeNull();
-  // Streamed rows survive completion (the table still renders them).
+  // Streamed rows survive (the table still renders them)...
   expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 } });
+  // ...and the gap is flagged, which is what enables the REST backstop.
+  expect(qc.getQueryData(statusKey)).toBe("incomplete");
+});
+
+test("a complete re-stream replaces the shown rows, dropping deleted ones", () => {
+  const qc = new QueryClient();
+  const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
+  const statusKey = queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10");
+  // An earlier stream showed rows 1 and 2; row 2 has since been deleted
+  // server-side and the file rewritten.
+  qc.setQueryData(skey, { "1": { exp_time: 30 }, "2": { exp_time: 31 } });
+  const msg = { location: "local", camera: "lsstcam", date: "2026-04-10" };
+  applyLiveMessage(qc, { type: "metadataChunk", ...msg, seq: 0, data: { "1": { exp_time: 30 } } });
+  // Mid-stream the old rows are still shown (no blanking while it fills).
+  expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 }, "2": { exp_time: 31 } });
+  applyLiveMessage(qc, { type: "metadataChunk", ...msg, seq: 1, data: { "3": { exp_time: 32 } } });
+  applyLiveMessage(qc, { type: "metadataComplete", ...msg, total: 2 });
+  // Every chunk arrived: the stream is the whole document, so row 2 goes.
+  expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 }, "3": { exp_time: 32 } });
+  expect(qc.getQueryData(statusKey)).toBe("complete");
 });
 
 test("resetMetadataStream clears the accumulation; later chunks re-accumulate", () => {

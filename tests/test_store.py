@@ -313,13 +313,14 @@ async def test_apply_publishes_coalesced_changes() -> None:
                 created("lsstcam/2026-04-10/c/000002/b.png"),
             ]
         )
-        # Two events, same (loc, cam, date, type) -> one coalesced change.
-        change = await stream.__anext__()
-        received.append(change)
+        # Two events, same (loc, cam, date, type) -> one coalesced change,
+        # plus the calendar announcing its new date.
+        for _ in range(2):
+            received.append(await stream.__anext__())
 
-    assert received[0].type == "channelData"
-    assert received[0].camera == "lsstcam"
-    assert received[0].date == "2026-04-10"
+    types = {c.type for c in received}
+    assert types == {"channelData", "calendarUpdate"}
+    assert all(c.camera == "lsstcam" and c.date == "2026-04-10" for c in received)
 
 
 async def test_non_conforming_keys_are_ignored() -> None:
@@ -543,12 +544,13 @@ async def test_reapplying_an_unchanged_listing_publishes_nothing() -> None:
     async with bus.subscribe() as stream:
         touched = await store.apply(events)
         assert touched == {("local", "lsstcam", "2026-04-10")}
-        first = await _collect(bus, 4, stream)
+        first = await _collect(bus, 5, stream)
         assert {c.type for c in first} == {
             "channelData",
             "perDay",
             "nightReport",
             "metadata",
+            "calendarUpdate",
         }
         # Same listing again: nothing touched, nothing published.
         assert await store.apply(events) == set()
@@ -568,8 +570,8 @@ async def test_metadata_publishes_only_when_its_etag_changes() -> None:
                 created("lsstcam/2026-04-11/c/000001/a.png"),
             ]
         )
-        types = {c.type for c in await _collect(bus, 2, stream)}
-        assert types == {"channelData", "metadata"}
+        types = {c.type for c in await _collect(bus, 3, stream)}
+        assert types == {"channelData", "metadata", "calendarUpdate"}
         # Re-listed with the same ETag: silent.
         await store.apply([created("lsstcam/2026-04-11/metadata.json", etag="m1")])
         assert next(iter(bus._queues)).empty()  # noqa: SLF001
@@ -671,4 +673,21 @@ async def test_large_apply_does_not_overflow_a_draining_subscriber(
         await store.apply(events)
         await asyncio.sleep(0)
         task.cancel()
-    assert len(received) == len(events) == 336
+    # Every date is new: one channelData plus one calendarUpdate each.
+    assert len(events) == 336
+    assert len(received) == 2 * len(events)
+
+
+async def test_new_date_publishes_calendar_update_once() -> None:
+    # Clients refresh the calendar only on calendarUpdate (not on every
+    # channelData), so a date's first key must announce it — and only once.
+    bus = EventBus()
+    store = EventStore(bus)
+    async with bus.subscribe() as stream:
+        await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
+        first = {c.type for c in await _collect(bus, 2, stream)}
+        assert first == {"channelData", "calendarUpdate"}
+        await store.apply([created("lsstcam/2026-04-10/c/000002/b.png")])
+        (second,) = await _collect(bus, 1, stream)
+        assert second.type == "channelData"
+        assert next(iter(bus._queues)).empty()  # noqa: SLF001

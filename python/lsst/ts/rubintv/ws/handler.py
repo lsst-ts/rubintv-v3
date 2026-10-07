@@ -173,6 +173,12 @@ class WsService:
                 camera=req.camera,
                 date=req.date,
             )
+            if req.action == "refresh":
+                # The client learned the date's metadata.json was rewritten;
+                # stream it again. A refresh for anything else is a no-op.
+                if req.topic == "camera" and req.camera and req.date:
+                    self._start_metadata_stream(conn, req, streams)
+                continue
             if req.action == "subscribe":
                 self.manager.subscribe(conn, req.topic_key())
                 self._send_snapshot(conn, req)
