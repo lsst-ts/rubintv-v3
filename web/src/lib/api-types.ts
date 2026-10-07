@@ -300,7 +300,11 @@ export interface paths {
         put?: never;
         /**
          * Set Site Control
-         * @description Write an arbitrary control key/value (also used by the menu boxes).
+         * @description Write a control key/value from the admin menu boxes.
+         *
+         *     The key must be one the config defines (see ``allowed_control_keys``): an
+         *     unknown key is rejected 400 rather than blindly SET, so this endpoint can't
+         *     be used to write arbitrary keys into the cluster's control namespace.
          */
         post: operations["set_site_control_api_admin_controls_set_post"];
         delete?: never;
@@ -712,7 +716,7 @@ export interface components {
             };
             /** Per Day */
             per_day: {
-                [key: string]: string;
+                [key: string]: components["schemas"]["PerDayOut"];
             };
             /** Has Night Report */
             has_night_report: boolean;
@@ -898,6 +902,16 @@ export interface components {
             text: (components["schemas"]["MultilineText"] | components["schemas"]["KeyValuesText"] | components["schemas"]["LinksText"])[];
             /** Plots */
             plots: components["schemas"]["PlotOut"][];
+        };
+        /**
+         * PerDayOut
+         * @description Where a per-day artifact lives within its channel/date prefix.
+         */
+        PerDayOut: {
+            /** Seq */
+            seq: string;
+            /** Ext */
+            ext: string;
         };
         /** PlotOut */
         PlotOut: {

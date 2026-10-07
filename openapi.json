@@ -728,7 +728,7 @@
           "admin"
         ],
         "summary": "Set Site Control",
-        "description": "Write an arbitrary control key/value (also used by the menu boxes).",
+        "description": "Write a control key/value from the admin menu boxes.\n\nThe key must be one the config defines (see ``allowed_control_keys``): an\nunknown key is rejected 400 rather than blindly SET, so this endpoint can't\nbe used to write arbitrary keys into the cluster's control namespace.",
         "operationId": "set_site_control_api_admin_controls_set_post",
         "parameters": [
           {
@@ -1925,7 +1925,7 @@
           },
           "per_day": {
             "additionalProperties": {
-              "type": "string"
+              "$ref": "#/components/schemas/PerDayOut"
             },
             "type": "object",
             "title": "Per Day"
@@ -2463,6 +2463,25 @@
           "plots"
         ],
         "title": "NightReportOut"
+      },
+      "PerDayOut": {
+        "properties": {
+          "seq": {
+            "type": "string",
+            "title": "Seq"
+          },
+          "ext": {
+            "type": "string",
+            "title": "Ext"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "ext"
+        ],
+        "title": "PerDayOut",
+        "description": "Where a per-day artifact lives within its channel/date prefix."
       },
       "PlotOut": {
         "properties": {
