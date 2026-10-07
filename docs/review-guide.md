@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 263 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 267 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -383,8 +383,8 @@ Safe to skim.
   `08596e0`, `0c2e434`, `0dfd491`, `bbd789c`, `bb44b6d`, `1287e8b`,
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
-- This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, and the
-  commit that brought it current alongside group 42.
+- This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
+  and the commit that added group 43.
 
 ---
 
@@ -597,6 +597,23 @@ Dead surface removed once the running app showed what was actually used.
   registry (undoes group 8's `/internal/heartbeats` and the
   `services:` YAML it was for — Rapid Analysis never reported to it, and
   the Cluster Status page covers worker liveness from Redis)
+
+### 43. Polling: silent re-listings and a two-hour recent refresh
+Found by tracing the poll → bus → WebSocket path: because the poller is
+stateless (`ba63985`) and `apply` published for every classified event,
+every 1s cycle re-published every camera with data today and every
+subscribed tab refetched its payload, metadata and calendar each second.
+Review `EventStore._insert`/`apply` and `ReconcileResult` in
+`data/store.py`, then `_refresh_recent_until` in `data/tasks.py`.
+- `40ee3ff` Publish a store change only when the index actually changed:
+  inserts report whether they altered the index; `metadata.json` (same
+  key, new content) is tracked by the ETag the listing already carries,
+  persisted in the cache slice; reconcile also returns surviving dates
+  that lost entries so their slices are rewritten.
+- `4491599` Re-scan the recent window every two hours between full
+  sweeps (`RUBINTV_RECENT_REFRESH_SECONDS`, default 7200). Previously
+  recent dates refreshed only with the 12h full sweep, despite the module
+  docstring saying otherwise.
 
 ---
 
