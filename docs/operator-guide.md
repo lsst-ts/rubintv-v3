@@ -177,6 +177,36 @@ response). Key log events: `startup.*`, `poll.ready`, `poll.historical.idle`,
 `day.rollover`, `ws.connect`/`ws.disconnect`, `redis.*`, `cache.*`,
 `subapp.*`, `spa.*`.
 
+### Watching the data flow
+
+At `DEBUG` the logs carry the timing and size of every hop, so a local
+session can be measured without a profiler:
+
+| Event | Fields | What it measures |
+|---|---|---|
+| `http.request` | `method`, `path`, `status`, `duration_ms`, `bytes` | every REST/proxy request: time to response headers, uncompressed body size (`null` for a chunked stream) |
+| `ws.frame.sent` | `type`, `bytes`, `camera`, `date`, `seq` | every WebSocket frame put on the wire |
+| `ws.disconnect` | `frames_sent`, `bytes_sent` | a connection's lifetime totals |
+| `poll.current.cycle` | `cycle_seconds`, `keys` | each 1s current-day cycle: wall time and keys listed |
+| `poll.scan` | `scope`, `prefix`, `keys`, `slices_touched` | each S3 listing; `info` only when it changed the index, `debug` when it was a silent re-listing |
+| `store.apply` | `events`, `changes` | how much of a listing was actually new |
+
+Capture a session and summarise it:
+
+```bash
+RUBINTV_JSON_LOGS=1 RUBINTV_LOG_LEVEL=DEBUG uv run uvicorn lsst.ts.rubintv.main:app \
+  2>&1 | tee /tmp/rubintv.jsonl
+# ... click around the app ...
+python scripts/flow_summary.py /tmp/rubintv.jsonl
+```
+
+`flow_summary.py` prints p50/p95 request times and bytes per endpoint,
+WebSocket bytes per message type, poll cycle times, and the ratio of events
+seen to changes published. Ad hoc: `jq -c 'select(.event=="ws.frame.sent")'`.
+On the browser side, `localStorage.setItem("rubintv:debug","1")` turns on
+the SPA's `[rubintv:*]` console logging, and DevTools' Network tab shows the
+same requests and WebSocket frames from the client's end.
+
 ## Migration / cutover
 
 Run old and new side by side against the same buckets. Diff the API/table
