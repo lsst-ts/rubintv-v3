@@ -172,6 +172,13 @@ class Settings(BaseSettings):
     the full back-catalogue sweep, so recent history is viewable in seconds.
     ``0`` disables the recent-first phase (full sweep only)."""
 
+    recent_refresh_seconds: float = 2 * 60 * 60
+    """How often the recent window is re-scanned between full sweeps. Recent
+    dates are mutable (yesterday churns as analysis backlogs clear), so they
+    are re-checked far more often than the 12h back-catalogue refresh. ``0``
+    disables the periodic recent pass (recent dates then refresh only with
+    the full sweep)."""
+
     reconcile_dry_run: bool = False
     """Log what reconciliation *would* remove from the index, without removing
     it. Deletion is driven by set difference against an S3 listing, so a

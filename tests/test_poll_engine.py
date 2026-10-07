@@ -79,13 +79,16 @@ def _models() -> Models:
 def _engine(
     window: int,
     metadata_warmer: object | None = None,
+    recent_refresh: float = 2 * 60 * 60,
+    poller: FakePoller | None = None,
 ) -> tuple[PollEngine, FakePoller]:
-    poller = FakePoller()
+    poller = poller or FakePoller()
     engine = PollEngine(
         _models(),
         EventStore(),
         poller,  # type: ignore[arg-type]  # duck-typed DataSource
         recent_window_days=window,
+        recent_refresh=recent_refresh,
         metadata_warmer=metadata_warmer,  # type: ignore[arg-type]
     )
     return engine, poller
@@ -465,3 +468,58 @@ async def test_s3_slow_cleared_when_cycle_fails() -> None:
     # A failed cycle has no meaningful duration, so the last *successful*
     # latency is retained rather than zeroed.
     assert engine.s3_last_cycle_seconds == 6.0
+
+
+# -- periodic recent-window refresh between full sweeps -----------------------
+
+
+async def test_pause_reports_a_triggered_rescan() -> None:
+    engine, _ = _engine(window=1)
+    assert await engine._pause(0.01) is False
+    engine.trigger_rescan()
+    # Wakes at once rather than waiting out the sleep, and says why.
+    assert await asyncio.wait_for(engine._pause(60), timeout=1.0) is True
+    assert engine.historical_loading is True
+    assert not engine._rescan.is_set()  # consumed
+
+
+async def test_recent_refresh_rescans_the_window_between_full_sweeps() -> None:
+    engine, poller = _engine(window=1, recent_refresh=0.01)
+    await asyncio.wait_for(engine._refresh_recent_until(0.06), timeout=2.0)
+    # Several recent passes ran, each scanning the per-date prefix only —
+    # never the bare {camera}/ prefix, which is the full sweep's job.
+    assert len(poller.scanned) >= 2
+    assert all(p.count("/") == 2 for _, p in poller.scanned)
+
+
+async def test_recent_refresh_waits_out_the_period_when_disabled() -> None:
+    # recent_refresh=0 (or no window) means recent dates refresh only with
+    # the full sweep: the wait is one plain sleep, no scans.
+    for window, refresh in ((0, 0.01), (1, 0.0)):
+        engine, poller = _engine(window=window, recent_refresh=refresh)
+        await asyncio.wait_for(engine._refresh_recent_until(0.03), timeout=1.0)
+        assert poller.scanned == []
+
+
+async def test_recent_refresh_returns_early_on_rescan_trigger() -> None:
+    engine, poller = _engine(window=1, recent_refresh=60)
+    task = asyncio.create_task(engine._refresh_recent_until(600))
+    await asyncio.sleep(0.01)
+    engine.trigger_rescan()
+    # Drops the wait so the loop can start the fresh cold sweep at once; the
+    # recent pass is not run on the way out.
+    await asyncio.wait_for(task, timeout=1.0)
+    assert engine.historical_loading is True
+    assert poller.scanned == []
+
+
+async def test_recent_refresh_survives_a_failed_pass() -> None:
+    class FlakyPoller(FakePoller):
+        def scan(self, location: str, prefix: str) -> ScanResult:
+            self.scanned.append((location, prefix))
+            raise RuntimeError("s3 blip")
+
+    engine, poller = _engine(window=1, recent_refresh=0.01, poller=FlakyPoller())
+    await asyncio.wait_for(engine._refresh_recent_until(0.06), timeout=2.0)
+    # Each failure is logged and the next tick tries again.
+    assert len(poller.scanned) >= 2

@@ -230,6 +230,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         poller,
         poll_interval=settings.poll_interval_seconds,
         recent_window_days=settings.recent_window_days,
+        recent_refresh=settings.recent_refresh_seconds,
         on_ready=lambda: setattr(state, "ready", True),
         cache_writer=write_cache,
         cache_slice_writer=write_slices,
