@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 270 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 272 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,7 +384,7 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  `d673fcd`, and the commit that noted the per-day fix.
+  `d673fcd`, `49fe56b`, and the commit that added the bus-overflow fix.
 
 ---
 
@@ -618,6 +618,10 @@ Review `EventStore._insert`/`apply` and `ReconcileResult` in
   sweeps (`RUBINTV_RECENT_REFRESH_SECONDS`, default 7200). Previously
   recent dates refreshed only with the 12h full sweep, despite the module
   docstring saying otherwise.
+- `d7a9d45` Yield while publishing so a bulk apply can't overflow the bus:
+  a cold full sweep publishes thousands of changes in one apply, past
+  the 1000-entry bus queue, and the overflow was dropped — tabs on those
+  dates never learned they had changed.
 
 ---
 
