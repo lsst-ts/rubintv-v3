@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 272 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 274 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,7 +384,7 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  `d673fcd`, `49fe56b`, and the commit that added the bus-overflow fix.
+  `d673fcd`, `49fe56b`, `f50907b`, and the commit that added group 44.
 
 ---
 
@@ -622,6 +622,18 @@ Review `EventStore._insert`/`apply` and `ReconcileResult` in
   a cold full sweep publishes thousands of changes in one apply, past
   the 1000-entry bus queue, and the overflow was dropped — tabs on those
   dates never learned they had changed.
+
+### 44. Data-flow instrumentation
+Debug-level timing and size for every hop (`http.request`,
+`ws.frame.sent`, `poll.current.cycle`, `store.apply`, `poll.scan` with
+`keys`/`slices_touched`), the `scripts/flow_summary.py` aggregator, and
+the operator-guide recipe. Two behaviour changes ride along: `poll.scan`
+is info only when a listing changed the index (it had been one info line
+per camera per second since the poller became stateless), and
+`WsService.handle` deregisters the connection before awaiting in its
+`finally`, so a cancelled handler no longer leaks a registry entry.
+- `01ecaf8` Log the timing and size of every hop so the data flow can be
+  measured
 
 ---
 
