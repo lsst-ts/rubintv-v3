@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 267 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 270 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,7 +384,7 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  and the commit that added group 43.
+  `d673fcd`, and the commit that noted the per-day fix.
 
 ---
 
@@ -473,6 +473,10 @@ set-difference reconciliation. Review `ba63985`'s end state — the store,
   date changes.
 - `8f6422c` Keep the ws pump's except line in a form black and ruff both
   accept (formatter tie-break, no behaviour change)
+- `352e424` Read per-day entries as {seq, ext}, as the API now sends them
+  (the frontend half of `ba63985`; moved here from `tickets/DM-56222`)
+- `340ce55` Regenerate openapi.json and api-types to catch up with landed
+  code (mechanical)
 
 ---
 
@@ -629,8 +633,5 @@ Review `EventStore._insert`/`apply` and `ReconcileResult` in
 - The API artifacts (`openapi.json`, `web/src/lib/api-types.ts`) are
   generated. Regen recipe: export `create_app().openapi()` with
   `RUBINTV_PATH_PREFIX=""`, pin `info.version` to `3.0.0`, then
-  `npm run gen:api` in `web/`. They agree with each other at the branch
-  tip but lag the code in two places: the `controls/set` description from
-  `17195f7`, and the per-day entry shape (`{seq, ext}`) from `ba63985`.
-  Regenerating needs the matching frontend change, which is carried on
-  `tickets/DM-56222` (`28b8d84`), so it is left for that branch to land.
+  `npm run gen:api` in `web/`. They are verified in sync at the branch
+  tip.
