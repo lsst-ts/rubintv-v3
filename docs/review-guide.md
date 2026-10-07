@@ -1,23 +1,25 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — ~230 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 263 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
 later commits revisit files introduced earlier, so the diff of a group
 is not always self-contained.
 
-**Reviewers, start with Part V (group 32).** The four newest commits fix
-critical bugs found by a post-implementation adversarial review. They are
-small, self-contained, each carries regression tests, and every commit message
-states the failure and the fix — so they are the fastest-to-review and
-highest-value part of this PR. Because `main`/`develop` are stubs (the whole
-project lands in this one merge), these fixes could not be split into a separate
-earlier PR: the code they fix exists only inside this branch. They are folded in
-here deliberately, not by oversight.
+**Reviewers, start with Part V (groups 32–33).** Those commits fix
+critical bugs found by two rounds of adversarial review of the finished
+branch, plus the production OOM fix. They are small, self-contained, each
+carries regression tests, and every commit message states the failure and
+the fix — so they are the fastest-to-review and highest-value part of this
+PR. Because `main`/`develop` are stubs (the whole project lands in this one
+merge), these fixes could not be split into a separate earlier PR: the code
+they fix exists only inside this branch. They are folded in here
+deliberately, not by oversight. Part VI is the design polish and deployment
+hardening that followed, as the app ran on phalanx.
 
 Groups 10–25 are carried over from the retired stacked-PR plan
-(`docs/pr-plan.md`, deleted in `2c87f6b`; this document preserves its
+(`docs/pr-plan.md`, deleted in `5c42eb9`; this document preserves its
 final content). Commits are listed oldest-first within each group.
 
 Regenerate the raw list with:
@@ -108,6 +110,8 @@ Large-day metadata streamed to the browser instead of blocking the grid.
 - `2b17f93` Serve night-report plots, type text items, backfill deep links
 - `8f72292` Preserve whitespace in multiline night-report text
 - `2da1691` Add pod-local heartbeat endpoint for RA service liveness
+  (removed again in group 42 — nothing in Rapid Analysis ever reported
+  to it; skim rather than review)
 - `ba28985` Prune stale warm-start dates on full historical sweep
 
 ### 9. Test quality
@@ -204,7 +208,7 @@ Another iterative arc landing on the `?seq_filter` catch-all + its docs.
 - `ec7a6ac` Fix empty-table loading state and add S3 connectivity
   indicators (bundles two concerns in one atomic commit: the empty-table
   loading fix and the S3 indicators)
-- `2e67340` Move the live pill to Status, scope the S3 pill, rename the
+- `2d0f6ea` Move the live pill to Status, scope the S3 pill, rename the
   site env var (also relocates the WebSocket/live indicator to the
   Status page — overlaps group 19's liveness cues; kept here since it
   edits the same ConnectionStatus/S3Status components)
@@ -239,38 +243,38 @@ Everything that signals "is this the live observing day / is this fresh".
 ### 21. Camera table: virtualization, sorting, config-locked columns
 - `20db80d` Virtualize camera table rows and clip overhanging headers
 - `86564d9` Let cell colour flags show through the newest-row highlight
-- `e705206` Drive locked metadata columns from config
-- `ae2e081` Add ascending/descending sort to orderable table columns
-- `632b22c` Pin camera table scroll position during live updates
-- `b7b6194` Floor @tanstack/virtual-core at >=3.16.0 for anchorTo
-- `74a39d4` Cap cell-modal key column so short values aren't shredded
+- `73effc4` Drive locked metadata columns from config
+- `84e0e4a` Add ascending/descending sort to orderable table columns
+- `282bd32` Pin camera table scroll position during live updates
+- `b8a0e58` Floor @tanstack/virtual-core at >=3.16.0 for anchorTo
+- `7b34ea9` Cap cell-modal key column so short values aren't shredded
 
 ### 22. Channel view enrichment
-- `e58d0b3` Subscribe the channel browser to live camera updates
-- `8f87ab4` Enrich the single-channel metadata sidebar
-- `e775c6d` Link empty channel cards to their last known plot
-- `1a822fc` Add a sibling-channel strip and image-load spinner to the
+- `f1f946b` Subscribe the channel browser to live camera updates
+- `cde5078` Enrich the single-channel metadata sidebar
+- `e1788fd` Link empty channel cards to their last known plot
+- `2e9be56` Add a sibling-channel strip and image-load spinner to the
   channel view
-- `e6fe3a2` Show a loading spinner on channel grid cards
+- `066dbc2` Show a loading spinner on channel grid cards
 
 ### 23. Path prefix, legacy redirects, shell header, site banners
 Backend routing parity with V2 deployments plus the header work built on
 it.
-- `afd4a43` Serve the whole app under a configurable path prefix
-- `a2e7985` Redirect legacy deep links to the new SPA routes
-- `444eccc` Clarify metadata LRU cap is global, not per-camera
-- `dc3bd98` Hoist the date picker into the shell header
-- `2fec1f0` Add site processing banners and a non-prod header strip
+- `bb774c5` Serve the whole app under a configurable path prefix
+- `215a4bf` Redirect legacy deep links to the new SPA routes
+- `c2ea0d4` Clarify metadata LRU cap is global, not per-camera
+- `755a7a2` Hoist the date picker into the shell header
+- `8f3fafc` Add site processing banners and a non-prod header strip
 
 ### 24. Sub-apps: DDV websocket bridge + container-start builds
 Replaces v2's start-daemon.sh: the DDV client/worker relay, plus a
 start.sh entrypoint that builds DDV / installs exp_checker at container
 start (kept at container start, as in v2, so pod restarts pick up new
 DDV commits without an image rebuild).
-- `fdbdff1` Replace v2's start-daemon steps: DDV bridge, image-time
+- `a0da1b3` Replace v2's start-daemon steps: DDV bridge, image-time
   subapp builds
-- `2967d0b` Build DDV at container start again, not at image build
-- `c27fed0` Fix image build and exp_checker install found by a real
+- `ec65201` Build DDV at container start again, not at image build
+- `cf7c2b4` Fix image build and exp_checker install found by a real
   docker run
 
 ### 25. Landing pages: location/camera/app logos
@@ -285,7 +289,7 @@ becomes a matching logo button. Bundles the logo images under
 `web/public/logos/` and adds logo/text_colour/text_shadow to
 CameraSummary + has_cluster_status to LocationSummary (openapi.json +
 api-types regenerated in the same commit).
-- `1f0e133` Incorporate location/camera/app logos as full-bleed buttons
+- `35d37ca` Incorporate location/camera/app logos as full-bleed buttons
 
 ---
 
@@ -293,9 +297,9 @@ api-types regenerated in the same commit).
 
 ### 26. CI and dependency chores
 - `ff7f010` Apply npm audit fix and ignore the Vite cache
-- `9bcc7b0` Bump CI actions off the deprecated Node 20 runtime
-- `6ebbbdd` Bump setup-uv off the deprecated Node 20 runtime
-- `d6c757e` Inject X-Auth-User in the Vite dev proxy for local admin
+- `b638da2` Bump CI actions off the deprecated Node 20 runtime
+- `da213b1` Bump setup-uv off the deprecated Node 20 runtime
+- `16d1f94` Inject X-Auth-User in the Vite dev proxy for local admin
   access
 
 ### 27. Version 3.0.0 + build provenance + image-build CI
@@ -305,8 +309,8 @@ the Admin page (baked in as Docker build args — the runtime image has no
 develop, tags → ghcr). The drift-sync commit is mechanical (the
 committed openapi.json/api-types had gone stale); review the feature
 commit for the real schema change.
-- `b65de07` Regenerate the stale openapi.json and api-types
-- `29f585b` Bump to 3.0.0 and show git provenance on the Admin page
+- `1f3b7d7` Regenerate the stale openapi.json and api-types
+- `99ce8ac` Bump to 3.0.0 and show git provenance on the Admin page
 
 ### 28. Package as `lsst.ts.rubintv` for conda/EUPS install parity
 Repackages the app the way lsst-ts builds and deploys V2: relocates the
@@ -318,26 +322,26 @@ version gives way to the tag-derived one (cut a v3.0.0 tag at release);
 `scripts/start.sh` stays the entrypoint — carrying the container-start
 DDV/exp_checker logic — but launches via the `run_rubintv` console
 script.
-- `72ca084` Package as lsst.ts.rubintv for conda/EUPS install parity
-- `54537a6` Fix pre-existing ruff errors in dev scripts
-- `8014ed5` Fix pre-existing mypy errors exposed by the new check target
-- `d3998b4` Document the tag-driven release procedure in the operator
+- `07f3015` Package as lsst.ts.rubintv for conda/EUPS install parity
+- `30f1e8c` Fix pre-existing ruff errors in dev scripts
+- `6b324b4` Fix pre-existing mypy errors exposed by the new check target
+- `7e277fa` Document the tag-driven release procedure in the operator
   guide
-- `0155e97` Adopt the TSSW pre-commit config for Jenkins CI
-- `168493c` Conform doc lines and benchmark lambdas to the TSSW hooks
-- `fcb1ae1` Make the test suite hermetic to the developer's AWS config
-- `485711c` Survive Kubernetes service links and listen on 8080 in the
+- `25fd05a` Adopt the TSSW pre-commit config for Jenkins CI
+- `ae86180` Conform doc lines and benchmark lambdas to the TSSW hooks
+- `b31dbd7` Make the test suite hermetic to the developer's AWS config
+- `bc99d9d` Survive Kubernetes service links and listen on 8080 in the
   container
-- `8ea9cb4` Answer the readiness probe at bare / with a redirect into the
+- `f14e373` Answer the readiness probe at bare / with a redirect into the
   prefix
-- `4f716b9` Merge branch 'design-port' into conda-parity (brings the
+- `a757abe` Merge branch 'design-port' into conda-parity (brings the
   logos + dev-proxy header work into the packaging lineage)
-- `121bdc7` Rewrap a merged doc line to the TSSW 79-char doc limit
-- `6213513` Default the cache to /scratch and serve public assets from
+- `59c9836` Rewrap a merged doc line to the TSSW 79-char doc limit
+- `6c2a1a9` Default the cache to /scratch and serve public assets from
   the SPA dist
-- `a48c8ae` Redirect bare sub-app paths into their mounts; drop the
+- `9f86c55` Redirect bare sub-app paths into their mounts; drop the
   header links
-- `5e59bce` Stop reading RUBINTV_HOST/RUBINTV_PORT; host and port are
+- `255bc31` Stop reading RUBINTV_HOST/RUBINTV_PORT; host and port are
   flags only
 
 ---
@@ -346,12 +350,12 @@ script.
 
 ### 29. Fixes from running the deployed app
 Polish and fixes found while iterating on the real phalanx deployment.
-- `8f764d5` Show table floats to 3 decimal places instead of 2
-- `0fd38b8` Rewrap the settings comment to the 79-char doc limit
-- `310971c` Add shift-arrow channel navigation to the single-channel view
-- `28fcefc` Surface S3 poll-cycle latency and link the header pill to
+- `8d3a21c` Show table floats to 3 decimal places instead of 2
+- `69cf5d9` Rewrap the settings comment to the 79-char doc limit
+- `6c852d0` Add shift-arrow channel navigation to the single-channel view
+- `cd1ef0b` Surface S3 poll-cycle latency and link the header pill to
   Status
-- `9c4d476` Regenerate openapi.json/api-types to catch up with landed
+- `04b6c15` Regenerate openapi.json/api-types to catch up with landed
   code (mechanical; recipe in the commit message)
 
 ### 30. Cluster Status: seed from retained stream entries
@@ -366,19 +370,21 @@ its `maxlen=2` retained entry (XREVRANGE) before tailing.
 
 ### 31. Docs, merges and housekeeping
 Safe to skim.
-- `5c187f3` Document the branch model and main's protection ruleset
-- `fe132cc` Nudge webhooks for Jenkins CI (no content)
-- `b723a83` Merge branch 'deploy' into tickets/DM-55435
-- `0cd9e5c` Merge branch 'redis-detector-seed' into tickets/DM-55435
+- `24bb403` Document the branch model and main's protection ruleset
+- `7439d82` Nudge webhooks for Jenkins CI (no content)
+- `b00ef5f` Merge branch 'deploy' into tickets/DM-55435
+- `3cf8be5` Merge branch 'redis-detector-seed' into tickets/DM-55435
   (resolution also fixes the seed test's monkeypatch target to the
   `lsst.ts.rubintv` module path and rewraps for W505)
-- `2c87f6b` Drop the stacked-PR plan; DM-55435 lands as one reviewed
+- `5c42eb9` Drop the stacked-PR plan; DM-55435 lands as one reviewed
   merge
 - Plan bookkeeping, docs-only (edits to the now-deleted
-  `docs/pr-plan.md`): `e768300`, `3277c95`, `13069c6`, `12faf36`,
-  `48ddd62`, `8364a93`, `fba07b6`, `540eebc`, `64cb792`, `7636242`,
-  `8e5c46f`, `fab1a92`, `025f747`, `37c97a1`, `6184241`, `32f23cf`,
-  `7e88159`
+  `docs/pr-plan.md`): `e768300`, `3277c95`, `13069c6`, `87ce19f`,
+  `08596e0`, `0c2e434`, `0dfd491`, `bbd789c`, `bb44b6d`, `1287e8b`,
+  `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
+  `7adcb03`
+- This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, and the
+  commit that brought it current alongside group 42.
 
 ---
 
@@ -391,9 +397,9 @@ bugs — two of them silent and process-wide. Each commit is self-contained
 and adds regression tests for what it fixes; review these commits directly
 (their diffs are small and standalone, unlike the feature groups above).
 Highest-risk items to scrutinise: the WebSocket-pump death and the
-`site="local"` admin default in `3f82ac5`.
+`site="local"` admin default in `27d71a4`.
 
-- `3f82ac5` Fix backend runtime, security, and API robustness bugs. The
+- `27d71a4` Fix backend runtime, security, and API robustness bugs. The
   load-bearing ones:
   - **WS bus pump death**: `prune_dates` published a `StoreChange` whose
     type (`"calendar"`) had no `ServerMessage` counterpart, so `_fan_out`
@@ -415,26 +421,182 @@ Highest-risk items to scrutinise: the WebSocket-pump death and the
     URLs scheme-validated (XSS); proxy path segments validated; on-demand
     backfill capped + memoised; `prune_dates` race fixed; blocking cache I/O
     moved off the event loop; `/admin` redirect loop removed; Range→416.
-- `ac58000` Fix frontend data-layer bugs: column prefs no longer leak/corrupt
+- `9c932ad` Fix frontend data-layer bugs: column prefs no longer leak/corrupt
   across cameras (the route doesn't remount on a param change); corrupt
   localStorage no longer crashes the table; numeric `=`/`between` filters
   compare by value (a leading `-` no longer breaks a range); WS reconnect
   refetches missed data; `staleTimeForDate` uses day_obs space; integers
   render without a spurious `.000`.
-- `f2bd515` Fix frontend UI bugs: DatePicker "today" tracks the live
+- `f2a76f0` Fix frontend UI bugs: DatePicker "today" tracks the live
   observing day (was frozen at mount); selectable day cells are keyboard-
   operable; the newest-row highlight tracks max seq not visual row 0; image
   cards re-arm on a live frame swap; the Channel viewer resets its latch on
   rollover and no longer dead-ends on a missing seq; AllSky/Mosaic guard
   partial configs; stacked overlays close one Escape at a time.
-- `58748a8` Use the non-deprecated `HTTP_416_RANGE_NOT_SATISFIABLE`
+- `1c20fe2` Use the non-deprecated `HTTP_416_RANGE_NOT_SATISFIABLE`
   constant (silences a Starlette deprecation warning from the Range fix).
 
-Kept separate on purpose: `53d0b46` (ignore the `.vite` prebundled-dependency
+Kept separate on purpose: `bcbf552` (ignore the `.vite` prebundled-dependency
 cache in eslint) is a generated-cache config tidy, not a bug fix, so it is its
 own commit and the fix commits stay pure. A handful of lower-severity review
 findings were judged already-safe on closer inspection (SPA traversal guard,
 legacy redirect, sort comparator).
+
+### 33. Second review round and the production memory fix
+A second adversarial pass once the app was running at USDF, plus the fix
+for the pod being OOMKilled after ~4 days. `fea95f3` and `ba63985` are an
+arc: the first tracked backing files per index slot so a rename could not
+erase a live seq; the second replaced that whole approach (and the poller's
+retained listings that were eating ~4GB) with a presence-only index and
+set-difference reconciliation. Review `ba63985`'s end state — the store,
+`S3Poller` and `ScanScope` — rather than the pair.
+- `fea95f3` Track backing files per index slot so renames can't erase
+  live data (superseded by `ba63985`)
+- `ba63985` Index presence, not object identity, to stop unbounded memory
+  growth. The OOM fix: `S3Poller` is stateless, `EventStore.reconcile`
+  prunes by set difference within a `ScanScope`, and the cache slice
+  format is v3.
+- `7ee75ab` Fix thread-safety and lifecycle hazards around the event loop:
+  sync endpoints that iterated poller-mutated dicts on the threadpool are
+  now async; a failed historical sweep retries on a 60s backoff instead of
+  sleeping 12h and reporting "loaded"; per-location scan workers barrier
+  before a failure propagates.
+- `17195f7` Harden input validation, admin writes, and operator-facing
+  config: `valid_date` requires a real calendar date (each impossible date
+  used to buy an S3 listing); per-location control writes share the
+  site-wide key allow-list; night-report links reject protocol-relative
+  URLs; `RUBINTV_LOG_LEVEL=trace` no longer crashes startup.
+- `6d78f52` Fix SPA state-hygiene bugs: refcounted WS subscriptions (one
+  consumer's unsubscribe killed another's live updates); the streamed
+  metadata slot resets when a REST fetch lands (no ghost rows); stable
+  escape-stack ordering in `useDismiss`; AllSky keeps `headerless` across
+  date changes.
+- `8f6422c` Keep the ws pump's except line in a form black and ruff both
+  accept (formatter tie-break, no behaviour change)
+
+---
+
+## Part VI — Design polish and deployment hardening
+
+Smaller UI and operational commits made while the app ran on phalanx.
+Most are independent; the arcs worth reviewing by end state are called
+out.
+
+### 34. Shell, header and chrome, second pass
+- `71331d0` Replace app-shell sidebar with NavMenu drawer and launcher
+  home
+- `7368414` Turn channel-head links into icons; serve images inline
+- `172a5cc` Move env warning into the topbar strip; align status pills
+- `b09547d` Align processing banner with title; slant it as a
+  parallelogram
+- `244b617` Enlarge the topbar date picker without growing the topbar
+- `2b161a9` Remove topbar-main on app pages
+- `e7ab116` Seat the topbar date picker in line with the tabs
+- `3f9409e` Pin sort arrow to bottom of angled headers so it survives
+  truncation
+- `e043b70` Add favicon
+- `3088b59` Add a Simon Krughoff memorial to the home page
+- `0751ea0` Tint the memorial plaque in the mark's own teal
+
+### 35. Location and Channels cards
+- `9396183` Hide Previously Used Channels group on USDF Summit
+- `4343548` Border stale Channels cards in the indicative orange
+- `dd0bdc4` Represent each camera card by its primary channel's latest
+  image
+- `49a8149` Share the Channels grid's image-loading logic on location
+  cards
+- `0c0efcf` Distinguish no-data cameras from stale ones on location cards
+- `49547f8` Remember the camera Table/Channels tab across cameras
+- `e5fa4e7` Store Table as the wanted tab when a date is applied
+
+### 36. Camera table and column picker, second pass
+`32e9549` → `22cdffb` → `481035f` is an arc (pick order, then drag to
+reorder, then the picker split into Select / Reorder views); review the
+final `ColumnOrderList` and `useColumnPrefs`.
+- `c8c8b77` Guard CameraTable against a camera payload missing channels
+- `265d393` Tighten the compact table's horizontal spacing
+- `45fd1b2` Stripe alternate metadata columns for readability
+- `32e9549` Order table columns by the sequence they're picked
+- `22cdffb` Let users drag table columns into a custom order
+- `481035f` Split the column picker into Select / Reorder views
+- `98a9574` Show filtered row count, edit filters in place, drop object
+  columns
+- `6fc2481` Fix camera table column widths so they don't jump while
+  scrolling
+- `264367e` Show the time-since clock in days and hours after three days
+- `19e3ba9` Point the lsstcam quicklook link at fov-quicklook's current
+  visit-id format
+- `b952ec3` Show the image-viewer link only at summit and base
+
+### 37. Channel viewer zoom and keyboard
+- `1641994` Click-to-zoom the single-channel image (fill/fit toggle)
+- `7363e06` Persist the fit/fill zoom across image changes
+- `07206dd` Stop arrow-key nav from selecting text
+- `f16379d` Disable image zoom when it already fits vertically
+
+### 38. Status, Cluster Status and Admin pages
+- `651bd3b` Tidy the Scan Status page into per-location cards
+- `aed5de7` Give WebSocket and S3 status their own sections
+- `2a1f3c4` Consolidate scan notices and location cards into one section
+- `90880ef` Grid the Cluster Status rows so panels align and share width
+- `c35f938` Gate Cluster Status restart on admin; align + Esc the confirm
+- `580978b` Fix confirm/cancel alignment and overflow in narrow cards
+- `4b624be` Disable all Redis-writing admin actions when Redis is off (one
+  `redisDown` flag gates every write consistently; flush-historical stays
+  enabled since it clears the disk cache, not Redis)
+- `9b0e699` Reword Redis-off warning now that writes are blocked, not
+  failed
+- `d4c2e83` Show full version only on deployed builds; sha+date locally
+
+### 39. Route validation and the 404 page
+- `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
+  (no trailing slash) rendered a blank page because the router's basename
+  kept Vite's slash; unknown locations/cameras now resolve against the
+  fetched config through a `RouteGuard` instead of rendering a half-built
+  shell.
+
+### 40. Deployment config, DDV and operations
+Facts learned from the real phalanx/USDF deployment, each small.
+- `3555f21` Normalise RAPID_ANALYSIS_LOCATION codes to internal site names
+  (the RA env sets BTS/TTS/SUMMIT/USDF; a USDF pod failed startup with
+  "unknown site")
+- `e9a96eb` Declare certifi so boto trusts the USDF embargo gateway
+- `46c1b88` Operator guide: document the entrypoint variables and the
+  missing settings
+- `def7716` Render tracebacks in JSON logs
+- `31d48bf` Set the S3 endpoints for the base, tucson and summit locations
+- `d28337b` Build the Redis URL from the chart's RA_REDIS_* variables
+- `99f1643` Fall back to S3_ENDPOINT_URL for locations without an endpoint
+- `811cae1` Take the base, tucson and summit S3 endpoints from the
+  environment
+- `35ab80a` Don't mount DDV from a half-built Flutter bundle
+- `db9f323` Keep a DDV worker busy after its client disconnects mid-job
+- `20567ba` Build the web DDV (rubintv-ddv) at container start instead of
+  the Flutter app (the runtime image carries Node 24 instead of the
+  Flutter SDK)
+
+### 41. CI, licensing and tooling
+Safe to skim.
+- `2cc3672` Let ruff own test_settings formatting (unwrap the parametrize
+  line)
+- `eee827a` Wrap two W505-flagged comment lines in test_api
+- `94f29f2` Address CI: ruff format, stabilize a hook dep, bump CI action
+  versions
+- `6cca159` Pin setup-uv to v8.3.2 (no floating v8 tag exists)
+- `887eb48` Enable the mandatory insert-license pre-commit hook
+- `b17284d` Add COPYRIGHT and adopt GPL licence in project file
+- `1efac3f` Add run-rubintv skill: launch and drive the dev stack
+
+### 42. Protocol tidy-up: unused topics and the heartbeat removal
+Dead surface removed once the running app showed what was actually used.
+- `775b098` Drop the unused channel topic and the stale poller-diff
+  comments (the `channel` topic and `event`/`subscribed` message types
+  were never published; comments still described the pre-`ba63985`
+  listing diff)
+- `bce07e0` Remove the RA heartbeat endpoint and the config service
+  registry (undoes group 8's `/internal/heartbeats` and the
+  `services:` YAML it was for — Rapid Analysis never reported to it, and
+  the Cluster Status page covers worker liveness from Redis)
 
 ---
 
@@ -450,5 +612,8 @@ legacy redirect, sort comparator).
 - The API artifacts (`openapi.json`, `web/src/lib/api-types.ts`) are
   generated. Regen recipe: export `create_app().openapi()` with
   `RUBINTV_PATH_PREFIX=""`, pin `info.version` to `3.0.0`, then
-  `npm run gen:api` in `web/`. They are verified in sync at the branch
-  tip.
+  `npm run gen:api` in `web/`. They agree with each other at the branch
+  tip but lag the code in two places: the `controls/set` description from
+  `17195f7`, and the per-day entry shape (`{seq, ext}`) from `ba63985`.
+  Regenerating needs the matching frontend change, which is carried on
+  `tickets/DM-56222` (`28b8d84`), so it is left for that branch to land.
