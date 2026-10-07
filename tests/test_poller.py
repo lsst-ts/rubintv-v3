@@ -58,8 +58,8 @@ def poller() -> Iterator[PollerFixture]:
         p = S3Poller(pool.client_for)
         p.register_bucket("local", BUCKET)
 
-        def put(key: str) -> None:
-            s3.put_object(Bucket=BUCKET, Key=key, Body=b"x")
+        def put(key: str, body: bytes = b"x") -> None:
+            s3.put_object(Bucket=BUCKET, Key=key, Body=body)
 
         def delete(key: str) -> None:
             s3.delete_object(Bucket=BUCKET, Key=key)
@@ -128,3 +128,15 @@ def test_events_are_emitted_in_sorted_key_order(poller: PollerFixture) -> None:
     poller.put("lsstcam/2026-04-10/c/000003/c.png")  # type: ignore[operator]
     emitted = [e.key for e in poller.poller.scan("local", "lsstcam/").events]
     assert emitted == sorted(emitted)
+
+
+def test_scan_carries_each_objects_etag(poller: PollerFixture) -> None:
+    # The ETag is on every listing entry; the store uses it to notice a
+    # rewritten metadata.json, whose key never changes.
+    poller.put("lsstcam/2026-04-10/metadata.json")  # type: ignore[operator]
+    (event,) = poller.poller.scan("local", "lsstcam/").events
+    first = event.etag
+    assert first
+    poller.put("lsstcam/2026-04-10/metadata.json", body=b"changed")  # type: ignore[operator]
+    (event,) = poller.poller.scan("local", "lsstcam/").events
+    assert event.etag and event.etag != first

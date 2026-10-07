@@ -28,8 +28,9 @@ whether the source polls S3 or (future) consumes a Kafka topic.
 ``S3Poller`` implements the interface by listing a prefix and emitting a
 ``CREATED`` per object found. It holds no state between scans: the store is
 idempotent (inserts are upserts into presence sets), so re-emitting
-unchanged keys is a no-op, and deletion is handled by the store
-reconciling against the same listing rather than by a synthesised REMOVED.
+unchanged keys is a no-op that publishes nothing, and deletion is handled
+by the store reconciling against the same listing rather than by a
+synthesised REMOVED.
 
 That statelessness is deliberate. The previous design cached each prefix's
 last listing to diff against, which meant retaining every object key in the
@@ -119,20 +120,27 @@ class S3Poller:
         bucket = self._buckets.get(location)
         if bucket is None:
             raise KeyError(f"no bucket registered for location {location!r}")
-        keys = self._list(location, bucket, prefix)
+        etags = self._list(location, bucket, prefix)
         events = [
-            ObjectEvent(kind=ObjectKind.CREATED, location=location, key=key)
-            for key in sorted(keys)
+            ObjectEvent(
+                kind=ObjectKind.CREATED, location=location, key=key, etag=etags[key]
+            )
+            for key in sorted(etags)
         ]
-        return ScanResult(events=events, keys=keys)
+        return ScanResult(events=events, keys=set(etags))
 
-    def _list(self, location: str, bucket: str, prefix: str) -> set[str]:
+    def _list(self, location: str, bucket: str, prefix: str) -> dict[str, str | None]:
+        """Keys under ``prefix`` with their ETags.
+
+        The ETag is free (it is on every listing entry) and is what lets the
+        store notice a rewritten ``metadata.json``, whose key never changes.
+        """
         client: S3Client = self._client_for(location)
         paginator = client.get_paginator("list_objects_v2")
-        result: set[str] = set()
+        result: dict[str, str | None] = {}
         for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
             for obj in page.get("Contents", []):
-                result.add(obj["Key"])
+                result[obj["Key"]] = obj.get("ETag")
         return result
 
 

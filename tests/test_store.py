@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 from lsst.ts.rubintv.data.bus import EventBus
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
-from lsst.ts.rubintv.data.index import DateIndex, PerDayRef
+from lsst.ts.rubintv.data.index import DateIndex, ExtInfo, PerDayRef
 from lsst.ts.rubintv.data.store import (
     EventStore,
     ScanScope,
@@ -179,10 +179,10 @@ async def test_reconcile_prunes_empty_date_from_calendar() -> None:
     store = EventStore()
     await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
     assert store.calendar("local", "lsstcam") == ["2026-04-10"]
-    dropped = await store.reconcile(
+    outcome = await store.reconcile(
         ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
     )
-    assert dropped == {"2026-04-10"}
+    assert outcome.dropped == {"2026-04-10"}
     assert store.calendar("local", "lsstcam") == []
     assert store.date_index("local", "lsstcam", "2026-04-10") is None
 
@@ -254,12 +254,12 @@ async def test_reconcile_drops_unobserved_dates_on_a_full_sweep() -> None:
     )
     # A full {camera}/ sweep is authoritative for every date (unbounded
     # scope); it observed only the real one, so the epoch slice is stale.
-    pruned = await store.reconcile(
+    outcome = await store.reconcile(
         ("local", "auxtel"),
         {"auxtel/2026-04-10/monitor/000001/b.png"},
         ScanScope(),
     )
-    assert pruned == {"1970-01-01"}
+    assert outcome.dropped == {"1970-01-01"}
     assert store.calendar("local", "auxtel") == ["2026-04-10"]
     assert store.date_index("local", "auxtel", "1970-01-01") is None
 
@@ -279,7 +279,9 @@ async def test_reconcile_publishes_calendar_change_per_dropped_date() -> None:
 
 async def test_reconcile_noop_for_unknown_camera() -> None:
     store = EventStore()
-    assert await store.reconcile(("local", "nope"), set(), ScanScope()) == set()
+    outcome = await store.reconcile(("local", "nope"), set(), ScanScope())
+    assert outcome.dropped == set()
+    assert outcome.changed == set()
 
 
 async def test_reconcile_keeps_protected_dates() -> None:
@@ -289,10 +291,10 @@ async def test_reconcile_keeps_protected_dates() -> None:
     store = EventStore()
     await store.apply([created("auxtel/1970-01-01/monitor/000001/a.png")])
     await store.apply([created("auxtel/2026-04-10/monitor/000001/b.png")])
-    pruned = await store.reconcile(
+    outcome = await store.reconcile(
         ("local", "auxtel"), set(), ScanScope(protect=frozenset({"2026-04-10"}))
     )
-    assert pruned == {"1970-01-01"}
+    assert outcome.dropped == {"1970-01-01"}
     assert store.calendar("local", "auxtel") == ["2026-04-10"]
 
 
@@ -481,10 +483,10 @@ async def test_dry_run_logs_but_keeps_the_index_intact() -> None:
             created("lsstcam/2026-04-10/c/000002/b.png"),
         ]
     )
-    dropped = await store.reconcile(
+    outcome = await store.reconcile(
         ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
     )
-    assert dropped == set()
+    assert outcome.dropped == set()
     idx = store.date_index("local", "lsstcam", "2026-04-10")
     assert idx is not None
     assert idx.channels["c"] == {1, 2}
@@ -513,3 +515,128 @@ async def test_stale_entries_empty_when_consistent() -> None:
     idx = DateIndex(channels={"c": {1}})
     wanted = _IndexSlice(channels={"c": {1}}, per_day=set(), night_report_keys=set())
     assert _stale_entries(idx, wanted).is_empty
+
+
+# -- change gating: an unchanged listing must publish nothing -----------------
+
+
+async def _collect(bus: EventBus, n: int, stream: object) -> list[StoreChange]:
+    out: list[StoreChange] = []
+    for _ in range(n):
+        out.append(await stream.__anext__())  # type: ignore[attr-defined]
+    return out
+
+
+async def test_reapplying_an_unchanged_listing_publishes_nothing() -> None:
+    # The poller re-lists every prefix each cycle; only the first apply of a
+    # key is a change. Otherwise every subscribed tab refetches per second.
+    bus = EventBus()
+    store = EventStore(bus)
+    events = [
+        created("lsstcam/2026-04-10/c/000001/a.png"),
+        created("lsstcam/2026-04-10/movies/final/m.mp4"),
+        created("lsstcam/2026-04-10/night_report/s_md.json"),
+        created("lsstcam/2026-04-10/metadata.json", etag="m1"),
+    ]
+    async with bus.subscribe() as stream:
+        touched = await store.apply(events)
+        assert touched == {("local", "lsstcam", "2026-04-10")}
+        first = await _collect(bus, 4, stream)
+        assert {c.type for c in first} == {
+            "channelData",
+            "perDay",
+            "nightReport",
+            "metadata",
+        }
+        # Same listing again: nothing touched, nothing published.
+        assert await store.apply(events) == set()
+        assert bus._queues and next(iter(bus._queues)).empty()  # noqa: SLF001
+
+
+async def test_metadata_publishes_only_when_its_etag_changes() -> None:
+    bus = EventBus()
+    store = EventStore(bus)
+    await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
+    async with bus.subscribe() as stream:
+        # metadata.json sorts before the channel dirs in a listing; apply
+        # still records it, because metadata is applied after channel keys.
+        await store.apply(
+            [
+                created("lsstcam/2026-04-11/metadata.json", etag="m1"),
+                created("lsstcam/2026-04-11/c/000001/a.png"),
+            ]
+        )
+        types = {c.type for c in await _collect(bus, 2, stream)}
+        assert types == {"channelData", "metadata"}
+        # Re-listed with the same ETag: silent.
+        await store.apply([created("lsstcam/2026-04-11/metadata.json", etag="m1")])
+        assert next(iter(bus._queues)).empty()  # noqa: SLF001
+        # The producer rewrote the file: the key is unchanged, the ETag isn't.
+        touched = await store.apply(
+            [created("lsstcam/2026-04-11/metadata.json", etag="m2")]
+        )
+        assert touched == {("local", "lsstcam", "2026-04-11")}
+        (change,) = await _collect(bus, 1, stream)
+        assert change.type == "metadata"
+        idx = store.date_index("local", "lsstcam", "2026-04-11")
+        assert idx is not None and idx.metadata_etag == "m2"
+
+
+async def test_metadata_without_an_indexed_date_is_ignored() -> None:
+    # A date with no channel data isn't served, so a lone metadata.json
+    # neither creates an index nor publishes.
+    bus = EventBus()
+    store = EventStore(bus)
+    async with bus.subscribe():
+        touched = await store.apply(
+            [created("lsstcam/2026-04-10/metadata.json", etag="m1")]
+        )
+    assert touched == set()
+    assert store.date_index("local", "lsstcam", "2026-04-10") is None
+    assert store.calendar("local", "lsstcam") == []
+
+
+async def test_metadata_without_an_etag_never_publishes() -> None:
+    # A source that reports no ETag can't tell a rewrite from a re-listing.
+    store = EventStore()
+    await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
+    touched = await store.apply(
+        [ObjectEvent(ObjectKind.CREATED, "local", "lsstcam/2026-04-10/metadata.json")]
+    )
+    assert touched == set()
+
+
+async def test_reconcile_reports_surviving_changed_dates() -> None:
+    # A date that lost a slot but still exists is `changed`, not `dropped`,
+    # so the engine rewrites its cache slice instead of evicting it.
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-10/c/000001/a.png"),
+            created("lsstcam/2026-04-10/c/000002/b.png"),
+        ]
+    )
+    outcome = await store.reconcile(
+        ("local", "lsstcam"),
+        {"lsstcam/2026-04-10/c/000001/a.png"},
+        ScanScope(dates=frozenset({"2026-04-10"})),
+    )
+    assert outcome.dropped == set()
+    assert outcome.changed == {"2026-04-10"}
+    # Consistent listing: neither.
+    again = await store.reconcile(
+        ("local", "lsstcam"),
+        {"lsstcam/2026-04-10/c/000001/a.png"},
+        ScanScope(dates=frozenset({"2026-04-10"})),
+    )
+    assert again.dropped == set() and again.changed == set()
+
+
+def test_ext_info_record_reports_changes() -> None:
+    ext = ExtInfo()
+    assert ext.record(1, "png") is True  # sets the default
+    assert ext.record(2, "png") is False  # matches the default
+    assert ext.record(3, "jpg") is True  # new exception
+    assert ext.record(3, "jpg") is False  # same exception again
+    assert ext.record(3, "png") is True  # reverted to the default
+    assert ext.for_seq(3) == "png"
