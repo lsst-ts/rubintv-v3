@@ -25,9 +25,13 @@ All tasks push into the store via the same ``DataSource``, so they share one
 code path and differ only in *what* they scan and *how often*:
 
 - current-day poller: today's prefixes, fast loop (~1s)
-- historical scanner: full back-catalogue on startup, then periodic refresh
-  that re-checks recent dates (data is mutable) more often than old ones
-- yesterday poller: catches delayed per-day artifacts after rollover
+- historical scanner: recent window then the full back-catalogue on startup,
+  then both again on one periodic refresh (12h) — recent dates are not
+  re-checked any more often than old ones
+- on-demand scan: one camera-date, for a request that hits an unindexed date
+
+The previous day gets a single extra scan at rollover, to catch per-day
+artifacts that landed late; after that it is only seen by the refresh.
 
 Day rollover (UTC-12) is detected by the current-day loop and published as a
 ``dayChange`` so clients reset their live views.
@@ -333,8 +337,8 @@ class PollEngine:
 
         A bare ``gather`` raises as soon as one location fails, leaving the
         others running detached — the next cycle would then scan the same
-        prefixes concurrently with the abandoned workers, racing on the
-        poller's diff state and doubling S3 load. Barrier first (so every
+        prefixes concurrently with the abandoned workers, doubling S3 load
+        and interleaving their store updates. Barrier first (so every
         worker has finished), then propagate.
         """
         results = await asyncio.gather(*coros, return_exceptions=True)
@@ -449,12 +453,11 @@ class PollEngine:
         )
 
     async def _scan_history_for_location(self, location: Location) -> int:
-        # Scan each camera's whole prefix; the poller diffs against last time
-        # so unchanged history produces no churn. The recent window uses
-        # {camera}/{date}/ prefixes, which the poller tracks independently of
-        # this {camera}/ prefix, so the first full sweep re-emits those recent
-        # keys once — harmless, the store upserts. Recent dates change, so the
-        # periodic re-scan is what keeps yesterday/last-week current.
+        # Scan each camera's whole prefix. The poller is stateless, so every
+        # sweep re-emits every key (including the recent window's, already
+        # scanned by date) — harmless to the index, the store upserts. Recent
+        # dates change, so the periodic re-scan is what keeps
+        # yesterday/last-week current.
         total = 0
         for camera in location.cameras:
             prefix = f"{camera.name}/"

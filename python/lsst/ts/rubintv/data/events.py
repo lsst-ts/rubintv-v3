@@ -23,7 +23,7 @@
 
 ``Event`` is a parsed channel artifact. ``ObjectEvent`` is the normalised
 created/removed signal a ``DataSource`` emits — nothing downstream cares
-whether it came from a poll diff or a Kafka message. ``StoreChange`` is the
+whether it came from a poll listing or a Kafka message. ``StoreChange`` is the
 coarse "something changed" the ``EventStore`` publishes to the bus.
 """
 
@@ -71,8 +71,8 @@ class ObjectKind(StrEnum):
 class ObjectEvent:
     """A normalised object change from a ``DataSource``.
 
-    ``etag`` lets the store detect a content change (update) vs. a no-op
-    re-listing of the same object.
+    ``etag`` and ``size`` are optional and currently unset by ``S3Poller``:
+    the store indexes presence only, so it does not look at them.
     """
 
     kind: ObjectKind

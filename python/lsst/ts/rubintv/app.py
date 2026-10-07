@@ -311,10 +311,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # admin request (and everything else) isn't stalled for its duration.
         removed = await asyncio.to_thread(cache.clear)
         store.clear()
-        # Drop the poller's diff state with the store it described — without
-        # this the rescan diffs against the retained listings, emits nothing,
-        # and the store stays empty until a restart.
-        poller.reset()
+        # The poller is stateless, so the rescan re-lists the bucket and
+        # refills the emptied store with nothing further to undo here.
         engine.trigger_rescan()
         log.warning("admin.flush_historical", slices_removed=removed)
         return removed

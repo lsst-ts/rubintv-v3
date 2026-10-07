@@ -11,7 +11,6 @@ export interface ServerMessage {
   type: string;
   location?: string;
   camera?: string;
-  channel?: string;
   date?: string;
   data?: Record<string, unknown>;
   // Metadata streaming progress (metadataChunk / metadataComplete).
@@ -19,7 +18,7 @@ export interface ServerMessage {
   total?: number;
 }
 
-// Query key builders shared with the views (Phase 5 imports these too).
+// Query key builders shared with the views.
 export const queryKeys = {
   locations: () => ["locations"] as const,
   location: (loc: string) => ["location", loc] as const,

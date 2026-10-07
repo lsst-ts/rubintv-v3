@@ -22,7 +22,7 @@
 """In-process pub/sub for store changes.
 
 The ``EventStore`` publishes ``StoreChange``s here; subscribers (the
-WebSocket handler in Phase 4, cache-invalidation hints) react. This is the
+WebSocket handler's pump) react. This is the
 seam that keeps the data path from knowing a WebSocket exists.
 
 Delivery is best-effort and isolated: a slow or failing subscriber must not

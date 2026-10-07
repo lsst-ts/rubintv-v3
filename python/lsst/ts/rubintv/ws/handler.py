@@ -114,11 +114,11 @@ class WsService:
         # subscription key. Their payload travels with the message so a
         # subscriber updates without a follow-up fetch.
         if topic_kind in ("detectors", "admin", "services"):
-            topic_key = "|".join([topic_kind, "", "", ""])
+            topic_key = "|".join([topic_kind, "", ""])
             msg = ServerMessage(type=change.type, data=self._site_payload(change.type))
             self.manager.publish_to_topic(topic_key, msg)
             return
-        topic_key = "|".join([topic_kind, change.location, change.camera or "", ""])
+        topic_key = "|".join([topic_kind, change.location, change.camera or ""])
         msg = ServerMessage(
             type=change.type,
             location=change.location,
@@ -346,8 +346,8 @@ class WsService:
             )
             return
         if req.topic != "camera" or req.camera is None:
-            # Channel snapshots are added with their data sources; camera is
-            # the one the store can answer directly.
+            # nightReport has no snapshot: its view loads over REST and the
+            # topic only signals when to refetch.
             return
         self._queue(
             conn,

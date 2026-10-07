@@ -48,7 +48,7 @@ def test_topic_key_stable() -> None:
     )
     # Action doesn't affect identity; topic+loc+cam+chan does.
     assert a.topic_key() == b.topic_key()
-    assert a.topic_key() == "camera|test|lsstcam|"
+    assert a.topic_key() == "camera|test|lsstcam"
 
 
 def test_manager_fanout_only_to_subscribers() -> None:
@@ -57,10 +57,10 @@ def test_manager_fanout_only_to_subscribers() -> None:
     c1 = Connection(id="1", socket=None)  # type: ignore[arg-type]
     c2 = Connection(id="2", socket=None)  # type: ignore[arg-type]
     mgr._connections.update({"1": c1, "2": c2})  # noqa: SLF001 - test setup
-    mgr.subscribe(c1, "camera|test|lsstcam|")
+    mgr.subscribe(c1, "camera|test|lsstcam")
 
     msg = ServerMessage(type="channelData", location="test", camera="lsstcam")
-    mgr.publish_to_topic("camera|test|lsstcam|", msg)
+    mgr.publish_to_topic("camera|test|lsstcam", msg)
 
     assert c1.queue.qsize() == 1
     assert c2.queue.qsize() == 0
@@ -70,10 +70,10 @@ def test_manager_unsubscribe_removes_topic_index() -> None:
     mgr = ConnectionManager()
     c1 = Connection(id="1", socket=None)  # type: ignore[arg-type]
     mgr._connections["1"] = c1  # noqa: SLF001
-    mgr.subscribe(c1, "camera|test|lsstcam|")
-    mgr.unsubscribe(c1, "camera|test|lsstcam|")
+    mgr.subscribe(c1, "camera|test|lsstcam")
+    mgr.unsubscribe(c1, "camera|test|lsstcam")
     msg = ServerMessage(type="channelData")
-    mgr.publish_to_topic("camera|test|lsstcam|", msg)
+    mgr.publish_to_topic("camera|test|lsstcam", msg)
     assert c1.queue.qsize() == 0
 
 
@@ -83,8 +83,8 @@ def test_manager_disconnect_cleans_topic_index() -> None:
     mgr = ConnectionManager()
     c1 = Connection(id="1", socket=None)  # type: ignore[arg-type]
     mgr._connections["1"] = c1  # noqa: SLF001
-    mgr.subscribe(c1, "camera|test|lsstcam|")
-    mgr.subscribe(c1, "detectors|||")
+    mgr.subscribe(c1, "camera|test|lsstcam")
+    mgr.subscribe(c1, "detectors||")
     assert mgr.connection_count == 1
     mgr.disconnect(c1)
     assert mgr.connection_count == 0
@@ -95,8 +95,8 @@ def test_manager_publish_skips_stale_connection_ids() -> None:
     # A topic set referencing an id with no live connection is skipped, not an
     # error (disconnect raced with publish).
     mgr = ConnectionManager()
-    mgr._by_topic["camera|test|lsstcam|"] = {"ghost"}  # noqa: SLF001
-    mgr.publish_to_topic("camera|test|lsstcam|", ServerMessage(type="channelData"))
+    mgr._by_topic["camera|test|lsstcam"] = {"ghost"}  # noqa: SLF001
+    mgr.publish_to_topic("camera|test|lsstcam", ServerMessage(type="channelData"))
 
 
 def test_manager_drops_message_for_slow_client() -> None:
@@ -109,7 +109,7 @@ def test_manager_drops_message_for_slow_client() -> None:
         queue=asyncio.Queue(maxsize=1),
     )
     mgr.send_to(c1, ServerMessage(type="channelData"))
-    mgr.send_to(c1, ServerMessage(type="event"))  # dropped, no raise
+    mgr.send_to(c1, ServerMessage(type="perDay"))  # dropped, no raise
     assert c1.queue.qsize() == 1
     assert c1.queue.get_nowait().type == "channelData"
 

@@ -49,7 +49,7 @@ const SETS = {
 export function Detectors() {
   usePageTitle("Cluster Status");
   const qc = useQueryClient();
-  // Site-wide subscription (empty location keys the detectors||| topic).
+  // Site-wide subscription (empty location keys the detectors|| topic).
   useLiveTopic({ topic: "detectors", location: "" });
 
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(

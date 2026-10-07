@@ -2,10 +2,9 @@
 // independent SPA instance; this hook owns that tab's single socket, handles
 // reconnection, and lets views subscribe to topics driven by the route.
 //
-// The server protocol is typed (Phase 4); here we model the message shapes
-// and the connection lifecycle. Until the backend /ws endpoint exists, the
-// hook connects, retries with backoff, and surfaces status without error
-// spam.
+// The server protocol is typed (ws/protocol.py); here we model the message
+// shapes and the connection lifecycle: connect, retry with backoff, and
+// surface status.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE } from "./basePath";
@@ -17,7 +16,6 @@ export interface Subscription {
   topic: string;
   location?: string;
   camera?: string;
-  channel?: string;
   // When set on a camera subscription, the server streams that date's
   // metadata to this tab as metadataChunk frames (progressive fill).
   date?: string;

@@ -22,7 +22,7 @@ export function Admin() {
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
-  // Site-wide subscription (empty location keys the admin||| topic).
+  // Site-wide subscription (empty location keys the admin|| topic).
   useLiveTopic({ topic: "admin", location: "" });
 
   const { data: status } = useQuery({
