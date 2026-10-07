@@ -83,16 +83,6 @@ def test_repeat_scan_re_emits_the_same_keys(poller: PollerFixture) -> None:
     assert [c.key for c in poller.poller.scan("local", "lsstcam/").events] == [key]
 
 
-def test_reset_is_a_noop(poller: PollerFixture) -> None:
-    key = "lsstcam/2026-04-10/c/000001/a.png"
-    poller.put(key)  # type: ignore[operator]
-    poller.poller.scan("local", "lsstcam/")
-    # The flush-historical path calls reset(); with no cross-scan state there
-    # is nothing to undo, and the next scan rebuilds the cleared store anyway.
-    poller.poller.reset()
-    assert [c.key for c in poller.poller.scan("local", "lsstcam/").events] == [key]
-
-
 def test_deleted_object_absent_from_next_listing(poller: PollerFixture) -> None:
     key = "lsstcam/2026-04-10/c/000001/a.png"
     poller.put(key)  # type: ignore[operator]

@@ -25,8 +25,8 @@ Both directions are Pydantic models so the schema is shared with the
 frontend the same way REST types are (no stringly-typed messages).
 
 A *topic* is what a client subscribes to. It is identified by a
-``(kind, location, camera, channel?)`` tuple and rendered to a stable string
-key for the subscription registry.
+``(kind, location, camera?)`` tuple and rendered to a stable string key for
+the subscription registry.
 """
 
 from __future__ import annotations
@@ -35,9 +35,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-TopicKind = Literal[
-    "camera", "channel", "nightReport", "detectors", "admin", "services"
-]
+TopicKind = Literal["camera", "nightReport", "detectors", "admin", "services"]
 
 
 class SubscribeRequest(BaseModel):
@@ -45,7 +43,6 @@ class SubscribeRequest(BaseModel):
     topic: TopicKind
     location: str
     camera: str | None = None
-    channel: str | None = None
     date: str | None = None
     """Optional date for a camera subscription. When present, the server
     streams that date's metadata to this client as ``metadataChunk`` frames.
@@ -54,16 +51,13 @@ class SubscribeRequest(BaseModel):
 
     def topic_key(self) -> str:
         """Stable string key identifying this topic for the registry."""
-        return "|".join(
-            [self.topic, self.location, self.camera or "", self.channel or ""]
-        )
+        return "|".join([self.topic, self.location, self.camera or ""])
 
 
 # --- server -> client messages ---
 
 ServerMessageType = Literal[
     "channelData",
-    "event",
     "metadata",
     "metadataChunk",
     "metadataComplete",
@@ -75,7 +69,6 @@ ServerMessageType = Literal[
     "serviceStatus",
     "calendarUpdate",
     "error",
-    "subscribed",
 ]
 
 
@@ -83,7 +76,6 @@ class ServerMessage(BaseModel):
     type: ServerMessageType
     location: str | None = None
     camera: str | None = None
-    channel: str | None = None
     date: str | None = None
     data: dict[str, object] | None = None
     message: str | None = None

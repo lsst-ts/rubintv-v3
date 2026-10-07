@@ -107,14 +107,6 @@ class S3Poller:
         """Tell the poller which bucket backs a location."""
         self._buckets[location] = bucket
 
-    def reset(self) -> None:
-        """No-op, kept for API compatibility with the admin flush action.
-
-        The poller holds no cross-scan state, so a flush of the store needs
-        nothing undone here: the next scan re-lists the bucket and re-emits
-        everything regardless.
-        """
-
     def scan(self, location: str, prefix: str) -> ScanResult:
         """List ``prefix`` and emit a CREATED for every object under it.
 

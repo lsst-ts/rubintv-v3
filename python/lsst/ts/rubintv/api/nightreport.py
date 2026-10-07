@@ -69,9 +69,9 @@ async def get_night_report(
         # either no index at all (cold start before the full sweep reaches it)
         # or an index with structured data but no report yet (the report landed
         # after the last sweep). One bounded on-demand scan of {camera}/{date}/
-        # fills the night-report keys (~0.4-1s, one listing). The poller diffs
-        # against its last listing, so a re-request for a date that genuinely
-        # has no report still lists once but applies nothing. Concurrent
+        # fills the night-report keys (~0.4-1s, one listing). A re-request
+        # for a date that genuinely has no report lists again unless the
+        # whole date scanned empty (which the engine remembers). Concurrent
         # requests share the scan. Best-effort: failures fall through to empty.
         await state.backfill_date(location.name, camera.name, date)
         idx = state.store.date_index(location.name, camera.name, date)
