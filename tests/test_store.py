@@ -23,6 +23,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from lsst.ts.rubintv.data.bus import EventBus
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
@@ -640,3 +642,33 @@ def test_ext_info_record_reports_changes() -> None:
     assert ext.record(3, "jpg") is False  # same exception again
     assert ext.record(3, "png") is True  # reverted to the default
     assert ext.for_seq(3) == "png"
+
+
+async def test_large_apply_does_not_overflow_a_draining_subscriber(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A cold full sweep publishes one change per camera-date in one apply,
+    # more than the bus queue holds. apply yields while publishing so the
+    # pump can drain between bursts; nothing is dropped.
+    import lsst.ts.rubintv.data.bus as bus_mod
+
+    monkeypatch.setattr(bus_mod, "_QUEUE_MAXSIZE", 150)
+    bus = EventBus()
+    store = EventStore(bus)
+    received: list[StoreChange] = []
+
+    async def drain(stream: object) -> None:
+        async for change in stream:  # type: ignore[attr-defined]
+            received.append(change)
+
+    events = [
+        created(f"lsstcam/2026-{m:02d}-{d:02d}/c/000001/a.png")
+        for m in range(1, 13)
+        for d in range(1, 29)
+    ]
+    async with bus.subscribe() as stream:
+        task = asyncio.create_task(drain(stream))
+        await store.apply(events)
+        await asyncio.sleep(0)
+        task.cancel()
+    assert len(received) == len(events) == 336

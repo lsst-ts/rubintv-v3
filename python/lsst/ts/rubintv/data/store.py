@@ -154,6 +154,12 @@ class EventStore:
     # current-day scan can return 6000+ events for a busy camera) doesn't
     # monopolise the loop and starve in-flight API requests.
     _YIELD_EVERY = 200
+    # Yield every N publishes too. The bus queue is bounded (1000) and the
+    # pump drains it only when it gets the loop, so a cold full sweep — one
+    # change per camera-date, thousands in one apply — would otherwise
+    # overflow it and silently drop invalidations. Must stay well under the
+    # queue size; the pump empties the whole queue each time it runs.
+    _PUBLISH_YIELD_EVERY = 100
 
     async def apply(self, events: list[ObjectEvent]) -> set[tuple[str, str, str]]:
         """Apply a batch of object events and publish resulting changes.
@@ -186,8 +192,10 @@ class EventStore:
                 changes.add(change)
             if i and i % self._YIELD_EVERY == 0:
                 await asyncio.sleep(0)
-        for change in changes:
+        for i, change in enumerate(changes):
             self._bus.publish(change)
+            if i and i % self._PUBLISH_YIELD_EVERY == 0:
+                await asyncio.sleep(0)
         return {(c.location, c.camera, c.date) for c in changes if c.date is not None}
 
     def _classify(self, event: ObjectEvent) -> tuple[LocCam, StoreChange | None] | None:
