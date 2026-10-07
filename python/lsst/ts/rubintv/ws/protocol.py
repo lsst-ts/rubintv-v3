@@ -39,7 +39,10 @@ TopicKind = Literal["camera", "nightReport", "detectors", "admin"]
 
 
 class SubscribeRequest(BaseModel):
-    action: Literal["subscribe", "unsubscribe"]
+    action: Literal["subscribe", "unsubscribe", "refresh"]
+    """``refresh`` re-runs the metadata stream for an already-subscribed
+    camera/date (the client saw a ``metadata`` change: the file was
+    rewritten) without re-sending the snapshot or touching the registry."""
     topic: TopicKind
     location: str
     camera: str | None = None

@@ -1,12 +1,12 @@
 import { useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
-import type { Metadata } from "../lib/types";
+import { useMetadata } from "../lib/useMetadata";
 
 // Live mosaic: a grid of channels, each tile showing that channel's *latest*
 // plot beside a few chosen metadata values for the same exposure. Built for
@@ -21,7 +21,6 @@ import type { Metadata } from "../lib/types";
 // the latest-seq resolution AllSky uses.
 export function Mosaic() {
   const { location = "", camera = "" } = useParams();
-  const qc = useQueryClient();
   usePageTitle("Mosaic / Movies", camera);
 
   const { data: cameraInfo } = useQuery({
@@ -48,25 +47,9 @@ export function Mosaic() {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  // Metadata for the chosen columns: streamed rows merged with the REST
-  // backstop, exactly as the table does — the stream usually arrives first,
-  // REST fills any dropped chunk (and covers clients with no stream).
-  const streamKey = queryKeys.metadataStream(location, camera, date);
-  const { data: streamedMeta } = useQuery<Metadata>({
-    queryKey: streamKey,
-    queryFn: () => qc.getQueryData<Metadata>(streamKey) ?? {},
-    staleTime: Infinity,
-  });
-  const { data: restMeta } = useQuery<Metadata>({
-    queryKey: queryKeys.metadata(location, camera, date),
-    queryFn: () => api.metadata(location, camera, date),
-    enabled: date !== "",
-    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
-  });
-  const metadata = useMemo<Metadata>(
-    () => ({ ...(streamedMeta ?? {}), ...(restMeta ?? {}) }),
-    [streamedMeta, restMeta],
-  );
+  // Metadata for the chosen columns: streamed over the WebSocket with a
+  // REST backstop, exactly as the table does; see useMetadata.
+  const { metadata } = useMetadata(location, camera, date);
 
   // Channel title lookup, so a tile can label itself from config.
   const channelTitle = useMemo(() => {

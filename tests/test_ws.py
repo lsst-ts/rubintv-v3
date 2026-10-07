@@ -314,3 +314,44 @@ def test_connection_deregistered_when_handler_is_cancelled() -> None:
                 ws.receive_json()
                 assert manager.connection_count == 1
             assert manager.connection_count == 0
+
+
+def test_ws_refresh_restreams_without_a_snapshot(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    from lsst.ts.rubintv.data import metadata as metadata_mod
+
+    client, s3 = ws_client
+    rows = {str(n): {"exp_time": n} for n in range(1, 4)}
+    s3.put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps(rows).encode(),
+    )
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    sub = {"topic": "camera", "location": "test", "camera": "lsstcam", "date": DATE}
+
+    def drain_stream(ws) -> list[str]:  # type: ignore[no-untyped-def]
+        types: list[str] = []
+        while True:
+            msg = ws.receive_json()
+            types.append(msg["type"])
+            if msg["type"] == "metadataComplete":
+                return types
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe", **sub})
+        assert ws.receive_json()["type"] == "channelData"  # the snapshot
+        assert drain_stream(ws) == [
+            "metadataChunk",
+            "metadataChunk",
+            "metadataComplete",
+        ]
+        # The client heard the file was rewritten: refresh re-runs just the
+        # stream — no second snapshot, no registry churn.
+        ws.send_json({"action": "refresh", **sub})
+        assert drain_stream(ws) == [
+            "metadataChunk",
+            "metadataChunk",
+            "metadataComplete",
+        ]

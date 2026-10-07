@@ -180,6 +180,25 @@ export function useWebSocket(
     [send],
   );
 
+  // Ask the server to re-run the metadata stream for a held camera/date
+  // subscription (its metadata.json was rewritten). Sends only for
+  // subscriptions this tab actually holds; nothing else changes server-side.
+  const refresh = useCallback(
+    (match: { location?: string; camera?: string; date?: string }) => {
+      for (const { sub } of subscriptionsRef.current.values()) {
+        if (
+          sub.topic === "camera" &&
+          sub.location === match.location &&
+          sub.camera === match.camera &&
+          sub.date === match.date
+        ) {
+          send({ action: "refresh", ...sub });
+        }
+      }
+    },
+    [send],
+  );
+
   const onMessage = useCallback((handler: MessageHandler) => {
     handlersRef.current.add(handler);
     return () => {
@@ -187,5 +206,5 @@ export function useWebSocket(
     };
   }, []);
 
-  return { status, subscribe, onMessage };
+  return { status, subscribe, refresh, onMessage };
 }

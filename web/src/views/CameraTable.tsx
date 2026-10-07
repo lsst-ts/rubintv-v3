@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import {
-  queryKeys,
-  resetMetadataStream,
-  type MetadataProgress,
-} from "../lib/liveQuery";
-import type { Metadata } from "../lib/types";
+import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import { useMetadata } from "../lib/useMetadata";
 import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
 import { hasImageViewer, isDevInstance } from "../lib/links";
@@ -44,7 +40,6 @@ import { CameraDataTable, type Density } from "./CameraDataTable";
 export function CameraTable() {
   const { location = "", camera = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const qc = useQueryClient();
 
   const { data: cameraInfo, isPending: cameraPending } = useQuery({
     queryKey: queryKeys.camera(location, camera),
@@ -74,28 +69,12 @@ export function CameraTable() {
   // big REST round-trip.
   useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
 
-  // Progress of the streamed metadata (null once complete / not streaming).
-  // These two values are PUSHED by applyLiveMessage via setQueryData; their
-  // fetcher must only reflect the cache, never produce a default — a queryFn
-  // returning `null`/`{}` would run on mount and clobber the value the WS
-  // stream just pushed (the bug that hid the progress indicator). Returning
-  // the cached value keeps the fetcher inert while still registering one (no
-  // "missing queryFn" warning) and staleTime:Infinity stops refetches.
-  const progressKey = queryKeys.metadataProgress(location, camera, date);
-  const { data: metaProgress } = useQuery<MetadataProgress | null>({
-    queryKey: progressKey,
-    queryFn: () => qc.getQueryData<MetadataProgress | null>(progressKey) ?? null,
-    staleTime: Infinity,
-  });
-  // Metadata streamed over the WebSocket, accumulated as chunks arrive. Kept
-  // separate from the REST payload and merged below, so streamed rows show up
-  // immediately even before the (also slow) REST payload lands.
-  const streamKey = queryKeys.metadataStream(location, camera, date);
-  const { data: streamedMeta } = useQuery<Metadata>({
-    queryKey: streamKey,
-    queryFn: () => qc.getQueryData<Metadata>(streamKey) ?? {},
-    staleTime: Infinity,
-  });
+  // Streamed over the WebSocket with a REST backstop; see useMetadata.
+  const {
+    metadata,
+    progress: metaProgress,
+    loaded: metaLoaded,
+  } = useMetadata(location, camera, date);
 
   const { data: payload, isPending } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -104,36 +83,6 @@ export function CameraTable() {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  // Metadata is fetched independently of the structured payload so the grid
-  // (channels/seqs) renders immediately from cache without waiting on this
-  // large, live-from-S3 download. It's the backstop for the WS stream.
-  const {
-    data: restMeta,
-    isSuccess: restMetaLoaded,
-    dataUpdatedAt: restMetaUpdatedAt,
-  } = useQuery<Metadata>({
-    queryKey: queryKeys.metadata(location, camera, date),
-    queryFn: () => api.metadata(location, camera, date),
-    enabled: date !== "",
-    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
-  });
-
-  // Each fresh REST metadata fetch is complete as of its fetch time, so drop
-  // the stream accumulation then (dataUpdatedAt changes per successful fetch).
-  // Without this, a seq deleted server-side lingers as a ghost row: the merge
-  // below unions the stream slot back in, and that slot is only ever added to.
-  useEffect(() => {
-    if (!restMetaUpdatedAt) return;
-    resetMetadataStream(qc, location, camera, date);
-  }, [qc, location, camera, date, restMetaUpdatedAt]);
-
-  // The metadata the table renders: streamed rows merged with the REST
-  // backstop. The stream usually arrives first on slow links; REST fills any
-  // chunk that was dropped (and covers clients whose stream never connects).
-  const metadata = useMemo<Metadata>(
-    () => ({ ...(streamedMeta ?? {}), ...(restMeta ?? {}) }),
-    [streamedMeta, restMeta],
-  );
 
   // Guard `channels` like the rest of the shell (useShellNav, columns): the
   // OpenAPI type says it's always an array, but a fetch stub or a backend
@@ -550,11 +499,11 @@ export function CameraTable() {
         <DownloadMetadata
           metadata={metadata}
           filename={`${camera}_${date}_metadata.json`}
-          // Enabled only once metadata is fully loaded: the authoritative REST
-          // payload has resolved AND no WS stream is still arriving (a non-null
-          // metaProgress means more chunks are in flight). Downloading mid-load
+          // Enabled only once a full document has arrived (stream complete
+          // or REST resolved) AND no stream is still in flight (a non-null
+          // metaProgress means more chunks are coming). Downloading mid-load
           // would save a partial file.
-          disabled={date === "" || !restMetaLoaded || metaProgress != null}
+          disabled={date === "" || !metaLoaded || metaProgress != null}
         />
         {metaProgress && metaProgress.rows > 0 && (
           <span className="metadata-progress" role="status">

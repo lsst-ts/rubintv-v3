@@ -30,13 +30,23 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const onReconnect = useCallback(() => {
     qc.invalidateQueries();
   }, [qc]);
-  const { status, subscribe, onMessage } = useWebSocket(undefined, {
+  const { status, subscribe, refresh, onMessage } = useWebSocket(undefined, {
     onReconnect,
   });
 
   useEffect(
-    () => onMessage((msg) => applyLiveMessage(qc, msg as ServerMessage)),
-    [onMessage, qc],
+    () =>
+      onMessage((raw) => {
+        const msg = raw as ServerMessage;
+        // metadata.json was rewritten: the stream is the delivery path, so
+        // re-run it for any held subscription on that date. applyLiveMessage
+        // still invalidates the REST query for the case where REST is active.
+        if (msg.type === "metadata" && msg.date) {
+          refresh({ location: msg.location, camera: msg.camera, date: msg.date });
+        }
+        applyLiveMessage(qc, msg);
+      }),
+    [onMessage, refresh, qc],
   );
 
   return (

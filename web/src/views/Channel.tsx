@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
-import type { Metadata } from "../lib/types";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import { useMetadata } from "../lib/useMetadata";
 import { usePageTitle } from "../lib/usePageTitle";
 import { cellFlagClass } from "../lib/metaCells";
 import { usePersistentToggle } from "../lib/usePersistentToggle";
@@ -31,7 +31,6 @@ import {
 export function Channel({ live = false }: { live?: boolean }) {
   const { location = "", camera = "", channel = "" } = useParams();
   const [params] = useSearchParams();
-  const qc = useQueryClient();
 
   // Metadata sidebar collapse, remembered globally across channels/sessions.
   const [metaCollapsed, setMetaCollapsed] = usePersistentToggle(
@@ -69,30 +68,9 @@ export function Channel({ live = false }: { live?: boolean }) {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  // Metadata for the sidebar, composed like the table: the streamed rows
-  // (accumulated from metadataChunk frames into this dedicated cache slot)
-  // merged with the REST metadata.json backstop. The stream surfaces new seqs'
-  // rows live; REST fills any dropped chunk and covers a refetch after a
-  // metadata-update live message invalidates it.
-  const streamKey = queryKeys.metadataStream(location, camera, date);
-  const { data: streamedMeta } = useQuery<Metadata>({
-    queryKey: streamKey,
-    queryFn: () => qc.getQueryData<Metadata>(streamKey) ?? {},
-    staleTime: Infinity,
-    enabled: date !== "",
-  });
-
-  const { data: restMeta } = useQuery<Metadata>({
-    queryKey: queryKeys.metadata(location, camera, date),
-    queryFn: () => api.metadata(location, camera, date),
-    enabled: date !== "",
-    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
-  });
-
-  const metadata = useMemo<Metadata>(
-    () => ({ ...(streamedMeta ?? {}), ...(restMeta ?? {}) }),
-    [streamedMeta, restMeta],
-  );
+  // Metadata for the sidebar: streamed over the WebSocket with a REST
+  // backstop, exactly as the table does; see useMetadata.
+  const { metadata } = useMetadata(location, camera, date);
 
   const seqs = useMemo(() => {
     const present = (payload?.channels[channel] ?? []).filter(

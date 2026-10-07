@@ -186,10 +186,23 @@ class EventStore:
             if parsed is None:
                 continue  # non-conforming key — safely ignored
             loc_cam, change = parsed
+            # A date the calendar hasn't seen is a calendar change as well as
+            # a data change; clients refresh the calendar only on that.
+            new_date = (
+                change is not None
+                and change.date is not None
+                and change.date not in self._calendar[loc_cam]
+            )
             async with self._locks[loc_cam]:
                 altered = self._mutate(event.kind, loc_cam, event)
             if altered and change is not None:
                 changes.add(change)
+                if new_date and change.date in self._calendar[loc_cam]:
+                    changes.add(
+                        StoreChange(
+                            "calendarUpdate", loc_cam[0], loc_cam[1], change.date
+                        )
+                    )
             if i and i % self._YIELD_EVERY == 0:
                 await asyncio.sleep(0)
         if events:
