@@ -2082,13 +2082,15 @@ h1, h2 {
 .chc-card--stale:hover .chc-frame video {
   filter: saturate(1) opacity(1);
 }
+/* "N behind" pill on a stale live card: how far its seq trails the frontier. */
 .chc-lag {
   margin-left: auto;
   color: var(--ink-soft);
   font-weight: 600;
+  white-space: nowrap;
   border: 1px solid var(--line-mid);
   border-radius: 999px;
-  padding: 0 5px;
+  padding: 0 7px;
   line-height: 1.4;
 }
 
