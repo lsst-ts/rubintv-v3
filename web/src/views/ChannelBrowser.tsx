@@ -163,7 +163,7 @@ function ChannelCard({
         {media.seqLabel && <span className="chc-seq">{media.seqLabel}</span>}
         {stale && (
           <span className="chc-lag" title={`${lag} frames behind the latest channel`}>
-            −{lag}
+            {lag} behind
           </span>
         )}
       </div>
