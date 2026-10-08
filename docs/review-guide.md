@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 289 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 291 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -385,7 +385,7 @@ Safe to skim.
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
-  `c6873f2`, `6da0777`, and the commit that noted the picker flow.
+  `c6873f2`, `6da0777`, `4dcf193`, and the commit that noted the card foot.
 
 ---
 
@@ -516,6 +516,8 @@ out.
 - `0c0efcf` Distinguish no-data cameras from stale ones on location cards
 - `49547f8` Remember the camera Table/Channels tab across cameras
 - `e5fa4e7` Store Table as the wanted tab when a date is applied
+- `58ddb90` Label the seq on channel cards and drop the duplicated channel
+  label
 
 ### 36. Camera table and column picker, second pass
 `32e9549` → `22cdffb` → `481035f` is an arc (pick order, then drag to
