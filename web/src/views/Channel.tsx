@@ -7,7 +7,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useMetadata } from "../lib/useMetadata";
 import { usePageTitle } from "../lib/usePageTitle";
-import { cellFlagClass } from "../lib/metaCells";
+import { cellFlagClass, formatCell } from "../lib/metaCells";
 import { usePersistentToggle } from "../lib/usePersistentToggle";
 import {
   ViewerIcon,
@@ -568,12 +568,19 @@ export function Channel({ live = false }: { live?: boolean }) {
               <p className="skeleton">No metadata for this exposure.</p>
             ) : (
               <div className="chv-meta-grid">
-                {metaEntries.map(({ k, v, flag }) => (
-                  <Fragment key={k}>
-                    <div className="k">{k}</div>
-                    <div className={flag ? `v ${flag}` : "v"}>{String(v)}</div>
-                  </Fragment>
-                ))}
+                {metaEntries.map(({ k, v, flag }) => {
+                  // Floats truncate to 3dp like the table's cells, with the
+                  // full value on hover.
+                  const { display, title } = formatCell(v);
+                  return (
+                    <Fragment key={k}>
+                      <div className="k">{k}</div>
+                      <div className={flag ? `v ${flag}` : "v"} title={title}>
+                        {display}
+                      </div>
+                    </Fragment>
+                  );
+                })}
               </div>
             )}
           </>
