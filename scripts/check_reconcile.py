@@ -69,6 +69,7 @@ from botocore.config import Config
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind  # noqa: E402
+from lsst.ts.rubintv.data.index import DateIndex
 from lsst.ts.rubintv.data.store import EventStore, ScanScope  # noqa: E402
 
 LOCATION = "check"
@@ -114,16 +115,22 @@ async def check_prefix(
     print(f"  not indexed:     {unparsed} keys (metadata.json, non-conforming)")
 
     # The core assertion: reconciling a listing against itself changes nothing.
-    dropped = await store.reconcile((LOCATION, camera), keys, ScanScope())
+    outcome = await store.reconcile((LOCATION, camera), keys, ScanScope())
     after = store.snapshot().get((LOCATION, camera), {})
     after_seqs = sum(len(s) for idx in after.values() for s in idx.channels.values())
 
-    ok = not dropped and after_seqs == indexed_seqs and len(after) == indexed_dates
+    ok = (
+        not outcome.dropped
+        and not outcome.changed
+        and after_seqs == indexed_seqs
+        and len(after) == indexed_dates
+    )
     if ok:
         print("  self-reconcile:  OK (no-op, as required)")
     else:
         print("  self-reconcile:  FAILED — would delete live data:")
-        print(f"    dates dropped: {sorted(dropped)}")
+        print(f"    dates dropped: {sorted(outcome.dropped)}")
+        print(f"    dates changed: {sorted(outcome.changed)}")
         print(f"    seqs: {indexed_seqs} -> {after_seqs}")
         print(f"    dates: {indexed_dates} -> {len(after)}")
 
@@ -144,7 +151,7 @@ async def check_prefix(
     return ok
 
 
-def _countable(snapshot: dict) -> int:
+def _countable(snapshot: dict[str, DateIndex]) -> int:
     """Object keys the index accounts for, to size the 'not indexed' figure."""
     total = 0
     for idx in snapshot.values():
