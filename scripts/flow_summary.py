@@ -147,13 +147,13 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
     for name, row in sorted(http.items(), key=lambda kv: -kv[1].count):
         # A streamed body (proxied object) has no Content-Length: say so
         # rather than counting it as nothing.
-        size = (
+        size_col = (
             f"{row.total_bytes:>10}" if row.extra < row.count else f"{'streamed':>10}"
         )
         out.append(
             f"  {row.count:>6} {percentile(row.values, 50):>8.1f}"
             f" {percentile(row.values, 95):>8.1f} {max(row.values):>8.1f}"
-            f" {size}  {name}"
+            f" {size_col}  {name}"
         )
     if not http:
         out.append("  (none)")
