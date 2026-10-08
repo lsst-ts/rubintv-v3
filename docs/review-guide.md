@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 279 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 281 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,8 +384,8 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, and the commit that
-  noted the delta.
+  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, and the
+  commit that noted the test fix.
 
 ---
 
@@ -619,6 +619,8 @@ Review `EventStore._insert`/`apply` and `ReconcileResult` in
   sweeps (`RUBINTV_RECENT_REFRESH_SECONDS`, default 7200). Previously
   recent dates refreshed only with the 12h full sweep, despite the module
   docstring saying otherwise.
+- `636f562` Make the recent-refresh tests count passes, not wall-clock time
+  (a Jenkins box blew through the 60ms budget in one pass)
 - `d7a9d45` Yield while publishing so a bulk apply can't overflow the bus:
   a cold full sweep publishes thousands of changes in one apply, past
   the 1000-entry bus queue, and the overflow was dropped — tabs on those
