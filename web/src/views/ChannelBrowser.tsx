@@ -82,7 +82,7 @@ function latestFor(
     String(seq).padStart(6, "0"),
     `image.${fileExt}`,
   );
-  return { src, isVideo, seqLabel: String(seq), seq };
+  return { src, isVideo, seqLabel: `Seq num ${seq}`, seq };
 }
 
 function ChannelCard({
@@ -161,7 +161,6 @@ function ChannelCard({
       </div>
       <div className="chc-foot">
         {media.seqLabel && <span className="chc-seq">{media.seqLabel}</span>}
-        <span>{ch.label}</span>
         {stale && (
           <span className="chc-lag" title={`${lag} frames behind the latest channel`}>
             −{lag}
