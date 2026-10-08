@@ -82,10 +82,29 @@ class MetadataBatch:
     etag: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class MetadataDelta:
+    """What changed between two versions of a date's metadata.
+
+    ``rows`` are the added or altered rows (seq -> row); ``removed`` the seqs
+    that disappeared. ``etag`` is the version the delta brings the reader up
+    to, ``since`` the version it applies on top of.
+    """
+
+    since: str | None
+    etag: str | None
+    rows: Metadata
+    removed: list[str]
+
+
 @dataclass(slots=True)
 class _Entry:
     etag: str | None
     data: Metadata
+    # The change from the version this one replaced, so a client holding that
+    # version can be brought current without the whole document (the producer
+    # rewrites the file per exposure; the difference is usually one row).
+    delta: MetadataDelta | None = None
 
 
 class MetadataCache:
@@ -220,11 +239,40 @@ class MetadataCache:
         if batch:
             yield MetadataBatch(rows=batch, done=False)
 
-        self._entries[cache_key] = _Entry(etag=etag, data=assembled)
+        self._store(cache_key, etag, assembled)
+        yield MetadataBatch(rows={}, done=True, etag=etag)
+
+    def _store(
+        self, cache_key: tuple[str, str, str], etag: str | None, data: Metadata
+    ) -> None:
+        """Cache a fetched version, diffed against the one it replaces."""
+        previous = self._entries.get(cache_key)
+        delta = _diff(previous, etag, data) if previous is not None else None
+        self._entries[cache_key] = _Entry(etag=etag, data=data, delta=delta)
         self._entries.move_to_end(cache_key)
         while len(self._entries) > _MAX_ENTRIES:
             self._entries.popitem(last=False)
-        yield MetadataBatch(rows={}, done=True, etag=etag)
+
+    async def delta_since(
+        self, location: str, camera: str, date: str, since_etag: str
+    ) -> MetadataDelta | None:
+        """The change from ``since_etag`` to the current version, if known.
+
+        Brings the cache current first (one HEAD; a download if the file was
+        rewritten), then answers from the retained diff. ``None`` when the
+        reader's version isn't the one just replaced — two rewrites between
+        refreshes, or an evicted entry — and the caller must send the whole
+        document instead. A reader already current gets an empty delta.
+        """
+        etag, _ = await self.get_with_etag(location, camera, date)
+        entry = self._entries.get((location, camera, date))
+        if entry is None or etag is None:
+            return None
+        if since_etag == etag:
+            return MetadataDelta(since=etag, etag=etag, rows={}, removed=[])
+        if entry.delta is not None and entry.delta.since == since_etag:
+            return entry.delta
+        return None
 
     @staticmethod
     def _batches(data: Metadata, abort: threading.Event) -> Iterator[MetadataBatch]:
@@ -273,8 +321,13 @@ class MetadataCache:
             if cached is not None:
                 return cached.etag, cached.data
             return None, {}
-        self._entries[cache_key] = _Entry(etag=etag, data=data)
-        self._entries.move_to_end(cache_key)
-        while len(self._entries) > _MAX_ENTRIES:
-            self._entries.popitem(last=False)
+        self._store(cache_key, etag, data)
         return etag, data
+
+
+def _diff(previous: _Entry, etag: str | None, data: Metadata) -> MetadataDelta:
+    """Rows added or altered since ``previous``, and seqs that vanished."""
+    old = previous.data
+    rows = {seq: row for seq, row in data.items() if old.get(seq) != row}
+    removed = [seq for seq in old if seq not in data]
+    return MetadataDelta(since=previous.etag, etag=etag, rows=rows, removed=removed)

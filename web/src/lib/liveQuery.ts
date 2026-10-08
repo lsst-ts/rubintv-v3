@@ -16,6 +16,7 @@ export interface ServerMessage {
   // Metadata streaming progress (metadataChunk / metadataComplete).
   seq?: number;
   total?: number;
+  etag?: string;
 }
 
 // Query key builders shared with the views.
@@ -54,6 +55,11 @@ export const queryKeys = {
   // drops frames for a slow client) — the one case the REST backstop is for.
   metadataStreamStatus: (loc: string, cam: string, date: string) =>
     ["metadataStreamStatus", loc, cam, date] as const,
+  // The version (S3 ETag) of the metadata the shown rows represent, from the
+  // last complete stream or delta. Handed back on refresh so the server can
+  // send just the difference.
+  metadataEtag: (loc: string, cam: string, date: string) =>
+    ["metadataEtag", loc, cam, date] as const,
   // Site-wide live state pushed over the WS. Both are written by
   // applyLiveMessage via setQueryData (snapshot on subscribe, then deltas)
   // and read by the Detectors / Admin views with an inert cache-only queryFn.
@@ -104,7 +110,18 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
     return;
   }
   if (type === "metadataComplete" && date) {
-    completeMetadataStream(qc, location, camera, date, msg.total ?? 0);
+    completeMetadataStream(
+      qc,
+      location,
+      camera,
+      date,
+      msg.total ?? 0,
+      msg.etag,
+    );
+    return;
+  }
+  if (type === "metadataDelta" && date) {
+    applyMetadataDelta(qc, location, camera, date, msg);
     return;
   }
 
@@ -195,7 +212,10 @@ function mergeMetadataChunk(
       "streaming",
     );
   }
-  qc.setQueryData<Metadata>(pendingKey, (prev) => ({ ...(prev ?? {}), ...chunk }));
+  qc.setQueryData<Metadata>(pendingKey, (prev) => ({
+    ...(prev ?? {}),
+    ...chunk,
+  }));
 
   // Also straight into the shown slot, so cells fill progressively.
   const streamKey = queryKeys.metadataStream(location, camera, date);
@@ -204,7 +224,8 @@ function mergeMetadataChunk(
     ...chunk,
   }));
   const rows = next ? Object.keys(next).length : Object.keys(chunk).length;
-  const chunks = (qc.getQueryData<MetadataProgress>(progressKey)?.chunks ?? 0) + 1;
+  const chunks =
+    (qc.getQueryData<MetadataProgress>(progressKey)?.chunks ?? 0) + 1;
   qc.setQueryData<MetadataProgress>(progressKey, { rows, chunks });
 
   debugLog("liveQuery.metadataChunk", {
@@ -223,6 +244,7 @@ function completeMetadataStream(
   camera: string,
   date: string,
   total: number,
+  etag: string | undefined,
 ): void {
   const progressKey = queryKeys.metadataProgress(location, camera, date);
   const pendingKey = queryKeys.metadataPending(location, camera, date);
@@ -240,7 +262,67 @@ function completeMetadataStream(
     queryKeys.metadataStreamStatus(location, camera, date),
     complete ? "complete" : "incomplete",
   );
+  // Only a complete document is a version we can be brought forward from.
+  qc.setQueryData<string | null>(
+    queryKeys.metadataEtag(location, camera, date),
+    complete ? (etag ?? null) : null,
+  );
   qc.setQueryData<Metadata>(pendingKey, {});
   qc.setQueryData<MetadataProgress | null>(progressKey, null);
-  debugLog("liveQuery.metadataComplete", { camera, date, chunks, total, complete });
+  debugLog("liveQuery.metadataComplete", {
+    camera,
+    date,
+    chunks,
+    total,
+    complete,
+  });
+}
+
+/** Bring the shown rows forward by a server-computed difference. */
+function applyMetadataDelta(
+  qc: QueryClient,
+  location: string,
+  camera: string,
+  date: string,
+  msg: ServerMessage,
+): void {
+  const rows = (msg.data?.rows ?? {}) as Metadata;
+  const removed = (msg.data?.removed ?? []) as string[];
+  qc.setQueryData<Metadata>(
+    queryKeys.metadataStream(location, camera, date),
+    (prev) => {
+      const next = { ...(prev ?? {}), ...rows };
+      for (const seq of removed) delete next[seq];
+      return next;
+    },
+  );
+  qc.setQueryData<MetadataStreamStatus>(
+    queryKeys.metadataStreamStatus(location, camera, date),
+    "complete",
+  );
+  qc.setQueryData<string | null>(
+    queryKeys.metadataEtag(location, camera, date),
+    msg.etag ?? null,
+  );
+  debugLog("liveQuery.metadataDelta", {
+    camera,
+    date,
+    rows: Object.keys(rows).length,
+    removed: removed.length,
+    etag: msg.etag,
+  });
+}
+
+/** The metadata version the shown rows represent, for a refresh request. */
+export function metadataEtag(
+  qc: QueryClient,
+  location: string,
+  camera: string,
+  date: string,
+): string | null {
+  return (
+    qc.getQueryData<string | null>(
+      queryKeys.metadataEtag(location, camera, date),
+    ) ?? null
+  );
 }

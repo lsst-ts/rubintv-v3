@@ -51,6 +51,10 @@ class SubscribeRequest(BaseModel):
     streams that date's metadata to this client as ``metadataChunk`` frames.
     It is *not* part of the topic key — the live-change subscription is per
     camera, while metadata streaming is a one-shot per (camera, date)."""
+    since_etag: str | None = None
+    """On ``refresh``: the metadata version the client already holds. When
+    the server can diff from it, the reply is one ``metadataDelta`` instead
+    of a re-stream of the whole document."""
 
     def topic_key(self) -> str:
         """Stable string key identifying this topic for the registry."""
@@ -64,6 +68,7 @@ ServerMessageType = Literal[
     "metadata",
     "metadataChunk",
     "metadataComplete",
+    "metadataDelta",
     "perDay",
     "nightReport",
     "dayChange",
@@ -83,8 +88,9 @@ class ServerMessage(BaseModel):
     message: str | None = None
     # Metadata streaming: a metadataChunk carries one slice of the date's
     # metadata dict with its position (seq of total) for client progress; the
-    # final metadataComplete carries the S3 etag so the client can skip a
-    # re-stream on resubscribe of an unchanged date.
+    # final metadataComplete carries the S3 etag, which the client hands back
+    # on refresh so the server can answer with a metadataDelta (data =
+    # {"rows": changed, "removed": [seqs]}, etag = the new version).
     seq: int | None = None
     total: int | None = None
     etag: str | None = None

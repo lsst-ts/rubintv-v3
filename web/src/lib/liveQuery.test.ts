@@ -1,5 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
-import { applyLiveMessage, queryKeys, resetMetadataStream } from "./liveQuery";
+import {
+  applyLiveMessage,
+  metadataEtag,
+  queryKeys,
+  resetMetadataStream,
+} from "./liveQuery";
 
 function spyInvalidate(qc: QueryClient) {
   const calls: unknown[][] = [];
@@ -19,14 +24,22 @@ test("channelData invalidates date payload and calendar", () => {
     camera: "lsstcam",
     date: "2026-04-10",
   });
-  const keys = calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
-  expect(keys).toContain(JSON.stringify(queryKeys.datePayload("local", "lsstcam", "2026-04-10")));
+  const keys = calls.map((c) =>
+    JSON.stringify((c[0] as { queryKey: unknown }).queryKey),
+  );
+  expect(keys).toContain(
+    JSON.stringify(queryKeys.datePayload("local", "lsstcam", "2026-04-10")),
+  );
   // The REST metadata query is a separate cache entry; it must be invalidated
   // too or the single-channel view / table never pick up new seqs' rows.
-  expect(keys).toContain(JSON.stringify(queryKeys.metadata("local", "lsstcam", "2026-04-10")));
+  expect(keys).toContain(
+    JSON.stringify(queryKeys.metadata("local", "lsstcam", "2026-04-10")),
+  );
   // The calendar refreshes on calendarUpdate alone (the store announces a
   // new date), not on every exposure.
-  expect(keys).not.toContain(JSON.stringify(queryKeys.calendar("local", "lsstcam")));
+  expect(keys).not.toContain(
+    JSON.stringify(queryKeys.calendar("local", "lsstcam")),
+  );
 });
 
 test("calendarUpdate invalidates the calendar", () => {
@@ -38,8 +51,12 @@ test("calendarUpdate invalidates the calendar", () => {
     camera: "lsstcam",
     date: "2026-04-10",
   });
-  const keys = calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
-  expect(keys).toContain(JSON.stringify(queryKeys.calendar("local", "lsstcam")));
+  const keys = calls.map((c) =>
+    JSON.stringify((c[0] as { queryKey: unknown }).queryKey),
+  );
+  expect(keys).toContain(
+    JSON.stringify(queryKeys.calendar("local", "lsstcam")),
+  );
 });
 
 test("messages without location/camera are ignored", () => {
@@ -79,7 +96,9 @@ test("metadataChunk accumulates into the stream slot and tracks rows", () => {
   // Progress is the running row and chunk count; the stream is in flight.
   expect(qc.getQueryData(progKey)).toEqual({ rows: 2, chunks: 2 });
   expect(
-    qc.getQueryData(queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10")),
+    qc.getQueryData(
+      queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10"),
+    ),
   ).toBe("streaming");
 });
 
@@ -87,7 +106,11 @@ test("metadataComplete with chunks missing keeps rows and flags incomplete", () 
   const qc = new QueryClient();
   const pkey = queryKeys.metadataProgress("local", "lsstcam", "2026-04-10");
   const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
-  const statusKey = queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10");
+  const statusKey = queryKeys.metadataStreamStatus(
+    "local",
+    "lsstcam",
+    "2026-04-10",
+  );
   // One chunk arrived of two sent: the server dropped one for a slow client.
   qc.setQueryData(pkey, { rows: 1, chunks: 1 });
   qc.setQueryData(skey, { "1": { exp_time: 30 } });
@@ -108,18 +131,38 @@ test("metadataComplete with chunks missing keeps rows and flags incomplete", () 
 test("a complete re-stream replaces the shown rows, dropping deleted ones", () => {
   const qc = new QueryClient();
   const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
-  const statusKey = queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10");
+  const statusKey = queryKeys.metadataStreamStatus(
+    "local",
+    "lsstcam",
+    "2026-04-10",
+  );
   // An earlier stream showed rows 1 and 2; row 2 has since been deleted
   // server-side and the file rewritten.
   qc.setQueryData(skey, { "1": { exp_time: 30 }, "2": { exp_time: 31 } });
   const msg = { location: "local", camera: "lsstcam", date: "2026-04-10" };
-  applyLiveMessage(qc, { type: "metadataChunk", ...msg, seq: 0, data: { "1": { exp_time: 30 } } });
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    ...msg,
+    seq: 0,
+    data: { "1": { exp_time: 30 } },
+  });
   // Mid-stream the old rows are still shown (no blanking while it fills).
-  expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 }, "2": { exp_time: 31 } });
-  applyLiveMessage(qc, { type: "metadataChunk", ...msg, seq: 1, data: { "3": { exp_time: 32 } } });
+  expect(qc.getQueryData(skey)).toEqual({
+    "1": { exp_time: 30 },
+    "2": { exp_time: 31 },
+  });
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    ...msg,
+    seq: 1,
+    data: { "3": { exp_time: 32 } },
+  });
   applyLiveMessage(qc, { type: "metadataComplete", ...msg, total: 2 });
   // Every chunk arrived: the stream is the whole document, so row 2 goes.
-  expect(qc.getQueryData(skey)).toEqual({ "1": { exp_time: 30 }, "3": { exp_time: 32 } });
+  expect(qc.getQueryData(skey)).toEqual({
+    "1": { exp_time: 30 },
+    "3": { exp_time: 32 },
+  });
   expect(qc.getQueryData(statusKey)).toBe("complete");
 });
 
@@ -147,4 +190,63 @@ test("resetMetadataStream clears the accumulation; later chunks re-accumulate", 
     data: { "3": { exp_time: 32 } },
   });
   expect(qc.getQueryData(skey)).toEqual({ "3": { exp_time: 32 } });
+});
+
+test("a complete stream records its version; a delta brings rows forward", () => {
+  const qc = new QueryClient();
+  const msg = { location: "local", camera: "lsstcam", date: "2026-04-10" };
+  const skey = queryKeys.metadataStream("local", "lsstcam", "2026-04-10");
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    ...msg,
+    seq: 0,
+    data: { "1": { exp_time: 30 }, "2": { exp_time: 31 } },
+  });
+  applyLiveMessage(qc, {
+    type: "metadataComplete",
+    ...msg,
+    total: 1,
+    etag: '"v1"',
+  });
+  // The version the shown rows represent, to hand back on refresh.
+  expect(metadataEtag(qc, "local", "lsstcam", "2026-04-10")).toBe('"v1"');
+
+  // The producer rewrote the file: one row added, one changed, one gone.
+  applyLiveMessage(qc, {
+    type: "metadataDelta",
+    ...msg,
+    data: {
+      rows: { "2": { exp_time: 32 }, "3": { exp_time: 33 } },
+      removed: ["1"],
+    },
+    etag: '"v2"',
+  });
+  expect(qc.getQueryData(skey)).toEqual({
+    "2": { exp_time: 32 },
+    "3": { exp_time: 33 },
+  });
+  expect(metadataEtag(qc, "local", "lsstcam", "2026-04-10")).toBe('"v2"');
+  expect(
+    qc.getQueryData(
+      queryKeys.metadataStreamStatus("local", "lsstcam", "2026-04-10"),
+    ),
+  ).toBe("complete");
+});
+
+test("an incomplete stream records no version (nothing to diff from)", () => {
+  const qc = new QueryClient();
+  const msg = { location: "local", camera: "lsstcam", date: "2026-04-10" };
+  applyLiveMessage(qc, {
+    type: "metadataChunk",
+    ...msg,
+    seq: 1,
+    data: { "2": {} },
+  });
+  applyLiveMessage(qc, {
+    type: "metadataComplete",
+    ...msg,
+    total: 2,
+    etag: '"v1"',
+  });
+  expect(metadataEtag(qc, "local", "lsstcam", "2026-04-10")).toBeNull();
 });
