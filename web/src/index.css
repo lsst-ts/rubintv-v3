@@ -1284,17 +1284,22 @@ h1, h2 {
   padding: 20px; text-align: center;
   font-family: var(--hand); font-style: italic; color: var(--ink-soft);
 }
+/* Column names flow down each column before starting the next (multicol),
+   so an alphabetical or configured order reads top-to-bottom like a list,
+   not left-to-right across rows. Column count follows the popover width. */
 .cols-pop .cols-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 2px 14px;
+  column-width: 180px;
+  column-gap: 14px;
 }
 .cols-pop .picker-item {
   display: flex; align-items: center; gap: 6px;
   font-family: var(--hand); font-size: 13px;
   padding: 4px; border-radius: 3px;
+  margin-bottom: 2px;
   cursor: pointer;
   user-select: none;
+  /* Keep each name on one side of a column break. */
+  break-inside: avoid;
 }
 .cols-pop .picker-item:hover { background: var(--paper-3); }
 .cols-pop .picker-item.dim { color: var(--ink-soft); }
