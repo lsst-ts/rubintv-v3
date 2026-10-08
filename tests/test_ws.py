@@ -316,7 +316,7 @@ def test_connection_deregistered_when_handler_is_cancelled() -> None:
             assert manager.connection_count == 0
 
 
-def test_ws_refresh_restreams_without_a_snapshot(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_ws_refresh_restreams(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 
     from lsst.ts.rubintv.data import metadata as metadata_mod
@@ -357,7 +357,7 @@ def test_ws_refresh_restreams_without_a_snapshot(ws_client, monkeypatch) -> None
         ]
 
 
-def test_ws_refresh_with_known_version_sends_a_delta(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_ws_refresh_sends_a_delta(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 
     client, s3 = ws_client
