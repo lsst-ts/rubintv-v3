@@ -267,15 +267,52 @@ export function Layout() {
               they render their own <h1> in the view body — so this row would be
               an empty padded strip. Only mount it when it has content. */}
           {(title || hasTabs) && (
-          <div className="topbar-main">
-            {/* Title + tabs stack in a left column that shrinks to its content
-                so the date picker can sit at the far right of the row, level
-                with the tabs (rather than spanning the full width and pushing
-                the picker up onto the title line). */}
-            <div className="topbar-main-lead">
-              {title && (
+            <div className="topbar-main">
+              {/* Title row: camera name, then the date stepper, then the
+                processing-mode chip. The date sits in the headline because it
+                is page scope (it applies across every view tab, and switching
+                tabs carries it along) rather than a view switcher — it was
+                previously seated at the end of the tabs row, where a trailing
+                control read as a utility and users missed it. */}
+              {(title || showDatePicker) && (
                 <div className="title-row">
-                  <h2>{title}</h2>
+                  {title && <h2>{title}</h2>}
+                  {showDatePicker && (
+                    <span className="topbar-datepicker date-stepper">
+                      <button
+                        type="button"
+                        className="tb-btn step"
+                        aria-label="Previous day with data"
+                        title="Previous day with data"
+                        disabled={!nav.olderDate}
+                        onClick={() =>
+                          nav.olderDate && applyDate(nav.olderDate)
+                        }
+                      >
+                        ‹
+                      </button>
+                      <DatePicker
+                        dates={nav.pickerDates}
+                        counts={nav.calendar?.counts ?? {}}
+                        maxSeq={nav.calendar?.max_seq ?? {}}
+                        value={nav.date}
+                        isCurrentDayObs={nav.isCurrentDayObs}
+                        onChange={applyDate}
+                      />
+                      <button
+                        type="button"
+                        className="tb-btn step"
+                        aria-label="Next day with data"
+                        title="Next day with data"
+                        disabled={!nav.newerDate}
+                        onClick={() =>
+                          nav.newerDate && applyDate(nav.newerDate)
+                        }
+                      >
+                        ›
+                      </button>
+                    </span>
+                  )}
                   {banner && (
                     <span
                       className={`processing-banner site-${location}`}
@@ -320,42 +357,6 @@ export function Layout() {
                 </div>
               )}
             </div>
-
-            {/* Date picker sits at the end of topbar-main, pushed right and
-                aligned to the bottom so it reads in line with the tabs. */}
-            {showDatePicker && (
-              <span className="topbar-datepicker date-stepper">
-                <button
-                  type="button"
-                  className="tb-btn step"
-                  aria-label="Previous day with data"
-                  title="Previous day with data"
-                  disabled={!nav.olderDate}
-                  onClick={() => nav.olderDate && applyDate(nav.olderDate)}
-                >
-                  ‹
-                </button>
-                <DatePicker
-                  dates={nav.pickerDates}
-                  counts={nav.calendar?.counts ?? {}}
-                  maxSeq={nav.calendar?.max_seq ?? {}}
-                  value={nav.date}
-                  isCurrentDayObs={nav.isCurrentDayObs}
-                  onChange={applyDate}
-                />
-                <button
-                  type="button"
-                  className="tb-btn step"
-                  aria-label="Next day with data"
-                  title="Next day with data"
-                  disabled={!nav.newerDate}
-                  onClick={() => nav.newerDate && applyDate(nav.newerDate)}
-                >
-                  ›
-                </button>
-              </span>
-            )}
-          </div>
           )}
         </header>
 

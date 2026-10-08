@@ -230,20 +230,14 @@ h1, h2 {
   display: flex; flex-direction: row; align-items: center; gap: 10px;
 }
 
-/* Title + tabs below the strip, laid out as a row: the title/tabs stack in a
-   left column (topbar-main-lead) that fills the width, with the date picker
-   sitting at the end, in line with the tabs. */
+/* Title row + tabs below the strip. The date stepper lives in the title row
+   (see Layout.tsx), so this is a plain block: title row, then tabs. */
 .topbar-main {
   padding: 12px 22px 0;
-  display: flex; align-items: flex-end; gap: 14px;
 }
 /* No tabs row to fill the gap, so the title/date would otherwise sit flush on
    the bottom border — give it its own bottom padding. */
 .topbar.no-tabs .topbar-main { padding-bottom: 12px; }
-/* The title + tabs column takes the available space so it — not the date
-   picker — owns the empty stretch of the row (the picker just sits at the end).
-   The tabs' bottom border then spans the full width up to the picker. */
-.topbar-main-lead { flex: 1; min-width: 0; }
 
 /* Breadcrumbs */
 .crumb,
@@ -271,8 +265,11 @@ h1, h2 {
 .crumb .here,
 .breadcrumbs .here { color: var(--ink); font-weight: 600; }
 
+/* Camera name, date stepper, processing chip — centred on one line, wrapping
+   on narrow widths so the chip (last) drops first. */
 .title-row {
   display: flex; align-items: center; gap: 14px; margin-top: 4px;
+  flex-wrap: wrap;
 }
 .title-row h2 { font-family: var(--display); font-weight: 700; font-size: 30px; margin: 0; }
 .title-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
@@ -355,7 +352,6 @@ h1, h2 {
    level with the tab labels. The stepper buttons need their own rule here because
    the shared .tb-btn styles are scoped to .cam-toolbar. */
 .topbar-datepicker {
-  margin-bottom: 6px;
   display: inline-flex; align-items: center; gap: 6px;
 }
 .topbar-datepicker .tb-btn.step {
@@ -989,7 +985,7 @@ h1, h2 {
 
 .date-pop {
   position: absolute;
-  top: calc(100% + 6px); right: 0;
+  top: calc(100% + 6px); left: 0;
   width: max-content; max-width: calc(100vw - 24px);
   background: var(--paper);
   border: 1.5px solid var(--stroke);
