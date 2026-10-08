@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 287 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 289 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -385,7 +385,7 @@ Safe to skim.
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
-  `c6873f2`, and the commit that noted the Jenkins fixes.
+  `c6873f2`, `6da0777`, and the commit that noted the picker flow.
 
 ---
 
@@ -535,6 +535,7 @@ final `ColumnOrderList` and `useColumnPrefs`.
 - `19e3ba9` Point the lsstcam quicklook link at fov-quicklook's current
   visit-id format
 - `b952ec3` Show the image-viewer link only at summit and base
+- `b5b6fb8` Flow the column picker's names down columns, not across rows
 
 ### 37. Channel viewer zoom and keyboard
 - `1641994` Click-to-zoom the single-channel image (fill/fit toggle)
