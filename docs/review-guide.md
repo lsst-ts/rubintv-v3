@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 281 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 287 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,8 +384,8 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, and the
-  commit that noted the test fix.
+  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
+  `c6873f2`, and the commit that noted the Jenkins fixes.
 
 ---
 
@@ -497,6 +497,9 @@ out.
 - `244b617` Enlarge the topbar date picker without growing the topbar
 - `2b161a9` Remove topbar-main on app pages
 - `e7ab116` Seat the topbar date picker in line with the tabs
+- `388c6de` Seat the date stepper in the title row, not the tab bar
+  (supersedes `e7ab116`: the date is page scope, so it sits after the
+  camera name; the tab row is view switching only)
 - `3f9409e` Pin sort arrow to bottom of angled headers so it survives
   truncation
 - `e043b70` Add favicon
@@ -639,6 +642,14 @@ per camera per second since the poller became stateless), and
   measured
 - `8fceca6` Report streamed responses as such in flow_summary, not as 0
   bytes
+- `4861e5a` Satisfy the Jenkins flake8 and mypy hooks on the newest tests
+  and script (flake8 counts a line ending in a type-ignore pragma; the
+  Jenkins mypy hook covers `scripts/`)
+- `88c259a` Read ReconcileResult in check_reconcile, which still expected
+  a set — a script break from `40ee3ff` that the looser Jenkins mypy
+  config did not catch
+- `90ccb29` Mark the late import in check_reconcile for flake8 like its
+  neighbours
 
 ### 45. Metadata by the stream alone; calendar on new dates only
 What the first capture showed: the REST metadata request duplicated the
