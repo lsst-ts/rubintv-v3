@@ -87,6 +87,7 @@ node .claude/skills/run-rubintv/driver.mjs status /tmp/s.png --port 5175  # tria
 | `[out.png]` | output file (default `rubintv-shot.png` in cwd) |
 | `--port N` | vite port (default 5173) |
 | `--dark` | stamps `data-theme="dark"` on `<html>` before the shot |
+| `--width N` | viewport width (default 1280) |
 | `--height N` | viewport height (default 900) — see Gotchas on why not fullPage |
 | `--wait SEL` | extra CSS selector to await |
 

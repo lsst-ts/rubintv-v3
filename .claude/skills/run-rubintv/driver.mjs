@@ -9,6 +9,7 @@
 //   out.png    output file (default: rubintv-shot.png in the cwd)
 //   --port N   vite dev-server port (default 5173)
 //   --dark     stamp data-theme="dark" on <html> before shooting
+//   --width N  viewport width (default 1280)
 //   --height N viewport height (default 900). The app shell is a 100vh
 //              internal scroll container, so Playwright's fullPage cannot
 //              capture below the fold — use a tall viewport instead.
@@ -30,6 +31,7 @@ const positional = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--dark") flags.dark = true;
   else if (args[i] === "--port") flags.port = args[++i];
+  else if (args[i] === "--width") flags.width = parseInt(args[++i], 10);
   else if (args[i] === "--height") flags.height = parseInt(args[++i], 10);
   else if (args[i] === "--wait") flags.wait = args[++i];
   else positional.push(args[i]);
@@ -42,7 +44,7 @@ const url = route.startsWith("http")
 
 const browser = await chromium.launch();
 const page = await (
-  await browser.newContext({ viewport: { width: 1280, height: flags.height ?? 900 } })
+  await browser.newContext({ viewport: { width: flags.width ?? 1280, height: flags.height ?? 900 } })
 ).newPage();
 const errors = [];
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
