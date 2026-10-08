@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 283 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 287 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -385,7 +385,7 @@ Safe to skim.
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
-  and the commit that noted the date-stepper move.
+  `c6873f2`, and the commit that noted the Jenkins fixes.
 
 ---
 
@@ -642,6 +642,14 @@ per camera per second since the poller became stateless), and
   measured
 - `8fceca6` Report streamed responses as such in flow_summary, not as 0
   bytes
+- `4861e5a` Satisfy the Jenkins flake8 and mypy hooks on the newest tests
+  and script (flake8 counts a line ending in a type-ignore pragma; the
+  Jenkins mypy hook covers `scripts/`)
+- `88c259a` Read ReconcileResult in check_reconcile, which still expected
+  a set — a script break from `40ee3ff` that the looser Jenkins mypy
+  config did not catch
+- `90ccb29` Mark the late import in check_reconcile for flake8 like its
+  neighbours
 
 ### 45. Metadata by the stream alone; calendar on new dates only
 What the first capture showed: the REST metadata request duplicated the
