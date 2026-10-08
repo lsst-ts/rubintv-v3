@@ -69,7 +69,7 @@ from botocore.config import Config
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind  # noqa: E402
-from lsst.ts.rubintv.data.index import DateIndex
+from lsst.ts.rubintv.data.index import DateIndex  # noqa: E402
 from lsst.ts.rubintv.data.store import EventStore, ScanScope  # noqa: E402
 
 LOCATION = "check"
