@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 277 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 279 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -384,8 +384,8 @@ Safe to skim.
   `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
-  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, and the commit that added
-  group 45.
+  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, and the commit that
+  noted the delta.
 
 ---
 
@@ -648,6 +648,11 @@ link; the calendar was refetched on every exposure. Review
 `calendarUpdate` on a new date in `EventStore.apply`.
 - `40d1220` Deliver metadata by the stream alone; refresh the calendar only
   on a new date
+- `252a73c` Send a metadata delta on refresh when the client's version
+  allows: the cache diffs each version against the one it replaced;
+  `refresh` carries `since_etag`; a `metadataDelta` (rows + removed)
+  replaces the full re-stream when the versions line up, else it falls
+  back to the stream.
 
 ---
 
