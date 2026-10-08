@@ -355,3 +355,38 @@ def test_ws_refresh_restreams_without_a_snapshot(ws_client, monkeypatch) -> None
             "metadataChunk",
             "metadataComplete",
         ]
+
+
+def test_ws_refresh_with_known_version_sends_a_delta(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    client, s3 = ws_client
+    rows = {str(n): {"exp_time": n} for n in range(1, 4)}
+    key = f"lsstcam/{DATE}/metadata.json"
+    s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=json.dumps(rows).encode())
+    sub = {"topic": "camera", "location": "test", "camera": "lsstcam", "date": DATE}
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe", **sub})
+        assert ws.receive_json()["type"] == "channelData"
+        while (msg := ws.receive_json())["type"] != "metadataComplete":
+            pass
+        etag = msg["etag"]
+        assert etag
+        # The producer appends a row and rewrites the file.
+        s3.put_object(
+            Bucket=TEST_BUCKET,
+            Key=key,
+            Body=json.dumps({**rows, "4": {"exp_time": 4}}).encode(),
+        )
+        ws.send_json({"action": "refresh", **sub, "since_etag": etag})
+        msg = ws.receive_json()
+        assert msg["type"] == "metadataDelta"
+        assert msg["data"] == {"rows": {"4": {"exp_time": 4}}, "removed": []}
+        assert msg["etag"] and msg["etag"] != etag
+        # A version the server can't diff from falls back to the full stream.
+        ws.send_json({"action": "refresh", **sub, "since_etag": "stale"})
+        types = []
+        while (msg := ws.receive_json())["type"] != "metadataComplete":
+            types.append(msg["type"])
+        assert types and set(types) == {"metadataChunk"}

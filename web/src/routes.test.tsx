@@ -10,11 +10,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
 import { LiveProvider } from "./lib/LiveContext";
-import {
-  openLiveSockets,
-  pushLiveMessage,
-  sentLiveFrames,
-} from "./test-setup";
+import { openLiveSockets, pushLiveMessage, sentLiveFrames } from "./test-setup";
 import { routes } from "./routes";
 
 // Views fetch on mount; in jsdom those calls fail, but headings still render
@@ -57,9 +53,8 @@ function seedLocationForPath(path: string) {
     return Promise.resolve(inner(input, init)).then(async (resp) => {
       const body = await resp.json();
       // Already a populated list: the test is asserting on it, so keep it.
-      const seeded = Array.isArray(body) && body.length > 0
-        ? body
-        : [{ name, title: name }];
+      const seeded =
+        Array.isArray(body) && body.length > 0 ? body : [{ name, title: name }];
       return { ok: true, json: () => Promise.resolve(seeded) };
     });
   }) as unknown as typeof fetch;
@@ -96,9 +91,7 @@ test("a single-location deployment redirects Home to that location", async () =>
   }) as unknown as typeof fetch;
 
   const { router } = renderAt("/");
-  await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/summit"),
-  );
+  await waitFor(() => expect(router.state.location.pathname).toBe("/summit"));
 });
 
 // With more than one location, Home stays put and lists the grouped sections.
@@ -295,9 +288,7 @@ function mockPerRowLinkCamera() {
       body = {
         name: "auxtel",
         title: "AuxTel",
-        channels: [
-          { name: "monitor", title: "Monitor Image", per_day: false },
-        ],
+        channels: [{ name: "monitor", title: "Monitor Image", per_day: false }],
         metadata_columns: {},
         image_viewer_link:
           "http://ccs.lsst.org/view?image=AT_{controller:default=O}_{dayObs}_{seqNum:06}",
@@ -412,7 +403,11 @@ function mockMosaicCamera() {
         title: "LSSTCam",
         channels: [{ name: "monitor", title: "Monitor", per_day: false }],
         mosaic_view_meta: [
-          { channel: "monitor", media_type: "image", meta_columns: ["Exposure"] },
+          {
+            channel: "monitor",
+            media_type: "image",
+            meta_columns: ["Exposure"],
+          },
         ],
       };
     } else if (/\/metadata\//.test(url)) {
@@ -623,12 +618,16 @@ test("single-channel metadata folds away and remembers its state globally", asyn
 
   // Open by default: the metadata value shows and a hide button is present.
   await screen.findByText("30");
-  fireEvent.click(screen.getByRole("button", { name: "Hide exposure metadata" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide exposure metadata" }),
+  );
 
   // Collapsed: the values are gone, only the reopen button remains, and the
   // choice is persisted globally.
   expect(screen.queryByText("30")).toBeNull();
-  expect(screen.getByRole("button", { name: "Show exposure metadata" })).toBeDefined();
+  expect(
+    screen.getByRole("button", { name: "Show exposure metadata" }),
+  ).toBeDefined();
   expect(localStorage.getItem("rubintv.channel.metaCollapsed")).toBe("true");
 
   // Remounting (a fresh visit) restores the collapsed state from storage.
@@ -745,7 +744,12 @@ test("date picker opens a year heatmap; selecting a data day sets ?date", async 
         max_seq: { "2026-04-10": 1340, "2025-08-30": 174 },
       };
     } else if (/\/cameras\/auxtel$/.test(url)) {
-      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+      };
     } else if (/\/dates\//.test(url)) {
       body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
     }
@@ -814,7 +818,12 @@ test("prev/next-day steppers move to adjacent dates with data", async () => {
       // Newest-first: 04-10 (newest), 04-08, 04-05 (oldest).
       body = { dates: ["2026-04-10", "2026-04-08", "2026-04-05"] };
     } else if (/\/cameras\/auxtel$/.test(url)) {
-      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+      };
     } else if (/\/dates\//.test(url)) {
       body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
     }
@@ -825,7 +834,9 @@ test("prev/next-day steppers move to adjacent dates with data", async () => {
 
   // On the newest date: "next day" (newer) is disabled; "previous day" enables
   // once the calendar loads.
-  const next = await screen.findByRole("button", { name: /Next day with data/ });
+  const next = await screen.findByRole("button", {
+    name: /Next day with data/,
+  });
   const prev = screen.getByRole("button", { name: /Previous day with data/ });
   expect((next as HTMLButtonElement).disabled).toBe(true);
   await waitFor(() => expect((prev as HTMLButtonElement).disabled).toBe(false));
@@ -844,9 +855,19 @@ test("a ?seq_filter range narrows the table and surfaces as chips", async () => 
     if (/\/cameras\/auxtel\/calendar$/.test(url)) {
       body = { dates: ["2026-04-10"] };
     } else if (/\/cameras\/auxtel$/.test(url)) {
-      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+      };
     } else if (/\/dates\//.test(url)) {
-      body = { per_day: {}, metadata: {}, channels: { c: [10, 11, 12] }, extensions: {} };
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { c: [10, 11, 12] },
+        extensions: {},
+      };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
@@ -866,8 +887,12 @@ test("a ?seq_filter range narrows the table and surfaces as chips", async () => 
   const chips = [...document.querySelectorAll(".filter-chip")].map(
     (c) => c.textContent,
   );
-  expect(chips.some((t) => t?.includes("Seq.No") && t.includes("11"))).toBe(true);
-  expect(chips.some((t) => t?.includes("Seq.No") && t.includes("12"))).toBe(true);
+  expect(chips.some((t) => t?.includes("Seq.No") && t.includes("11"))).toBe(
+    true,
+  );
+  expect(chips.some((t) => t?.includes("Seq.No") && t.includes("12"))).toBe(
+    true,
+  );
 });
 
 test("a ?seq_filter with a non-range operator (>) narrows the table", async () => {
@@ -877,9 +902,19 @@ test("a ?seq_filter with a non-range operator (>) narrows the table", async () =
     if (/\/cameras\/auxtel\/calendar$/.test(url)) {
       body = { dates: ["2026-04-10"] };
     } else if (/\/cameras\/auxtel$/.test(url)) {
-      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+      };
     } else if (/\/dates\//.test(url)) {
-      body = { per_day: {}, metadata: {}, channels: { c: [10, 11, 12] }, extensions: {} };
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { c: [10, 11, 12] },
+        extensions: {},
+      };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
@@ -1012,9 +1047,19 @@ test("a Seq.No filter with a non-range operator (=) narrows the rows", async () 
     if (/\/cameras\/auxtel\/calendar$/.test(url)) {
       body = { dates: ["2026-04-10"] };
     } else if (/\/cameras\/auxtel$/.test(url)) {
-      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+      };
     } else if (/\/dates\//.test(url)) {
-      body = { per_day: {}, metadata: {}, channels: { c: [10, 11, 12] }, extensions: {} };
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { c: [10, 11, 12] },
+        extensions: {},
+      };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
@@ -1066,7 +1111,12 @@ test("column picker dismisses on Escape and on an outside click", async () => {
     if (/\/cameras\/auxtel\/calendar$/.test(url)) {
       body = { dates: ["2026-04-10"] };
     } else if (/\/cameras\/auxtel$/.test(url)) {
-      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+      };
     } else if (/\/metadata\//.test(url)) {
       body = { "1": { exposure_time: "30" } };
     } else if (/\/dates\//.test(url)) {
@@ -1411,7 +1461,11 @@ test("an unknown camera 404s and offers its location as the way back", async () 
     }
     // The backend 404s an unknown camera; the guard reads that as "missing".
     if (/\/cameras\/nosuchcam$/.test(url)) {
-      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({}),
+      });
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   }) as unknown as typeof fetch;
@@ -1511,4 +1565,82 @@ test("a failed locations fetch does not 404 a real page", async () => {
 
   renderAt("/local/auxtel");
   await waitFor(() => expect(screen.queryByText("404")).toBeNull());
+});
+
+test("a metadata change asks the server for a delta from the held version", async () => {
+  // The stream delivers the document and its version; when the server says
+  // metadata.json was rewritten, the tab refreshes citing that version so the
+  // server can answer with just the difference, and merges what comes back.
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/lsstcam\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [
+          { name: "monitor", title: "Monitor", label: "raw", per_day: false },
+        ],
+        metadata_columns: { Exposure: "Exposure time" },
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        date: "2026-04-10",
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [250] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/lsstcam?date=2026-04-10");
+  await screen.findByRole("columnheader", { name: "Monitor" });
+  act(() => openLiveSockets());
+  await waitFor(() =>
+    expect(sentLiveFrames()).toContainEqual(
+      expect.objectContaining({ action: "subscribe", date: "2026-04-10" }),
+    ),
+  );
+
+  const frame = { location: "local", camera: "lsstcam", date: "2026-04-10" };
+  act(() => {
+    pushLiveMessage({
+      type: "metadataChunk",
+      ...frame,
+      seq: 0,
+      data: { "250": { Exposure: 30 } },
+    });
+    pushLiveMessage({
+      type: "metadataComplete",
+      ...frame,
+      total: 1,
+      etag: '"v1"',
+    });
+  });
+  expect(await screen.findByText("30")).toBeDefined();
+
+  act(() => pushLiveMessage({ type: "metadata", ...frame }));
+  await waitFor(() =>
+    expect(sentLiveFrames()).toContainEqual(
+      expect.objectContaining({
+        action: "refresh",
+        date: "2026-04-10",
+        since_etag: '"v1"',
+      }),
+    ),
+  );
+
+  act(() =>
+    pushLiveMessage({
+      type: "metadataDelta",
+      ...frame,
+      data: { rows: { "250": { Exposure: 31 } }, removed: [] },
+      etag: '"v2"',
+    }),
+  );
+  expect(await screen.findByText("31")).toBeDefined();
 });

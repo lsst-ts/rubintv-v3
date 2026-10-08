@@ -54,7 +54,8 @@ export function useMetadata(
   const progressKey = queryKeys.metadataProgress(location, camera, date);
   const { data: progress } = useQuery<MetadataProgress | null>({
     queryKey: progressKey,
-    queryFn: () => qc.getQueryData<MetadataProgress | null>(progressKey) ?? null,
+    queryFn: () =>
+      qc.getQueryData<MetadataProgress | null>(progressKey) ?? null,
     staleTime: Infinity,
   });
   const streamKey = queryKeys.metadataStream(location, camera, date);
@@ -66,7 +67,8 @@ export function useMetadata(
   const statusKey = queryKeys.metadataStreamStatus(location, camera, date);
   const { data: streamStatus } = useQuery<MetadataStreamStatus | null>({
     queryKey: statusKey,
-    queryFn: () => qc.getQueryData<MetadataStreamStatus | null>(statusKey) ?? null,
+    queryFn: () =>
+      qc.getQueryData<MetadataStreamStatus | null>(statusKey) ?? null,
     staleTime: Infinity,
   });
 

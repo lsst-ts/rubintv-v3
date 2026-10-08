@@ -174,8 +174,10 @@ class WsService:
                 date=req.date,
             )
             if req.action == "refresh":
-                # The client learned the date's metadata.json was rewritten;
-                # stream it again. A refresh for anything else is a no-op.
+                # The client learned the date's metadata.json was rewritten.
+                # With the version it holds we can usually send just the
+                # difference; otherwise stream the whole document again. A
+                # refresh for anything else is a no-op.
                 if req.topic == "camera" and req.camera and req.date:
                     self._start_metadata_stream(conn, req, streams)
                 continue
@@ -219,7 +221,9 @@ class WsService:
         key = req.topic_key()
         self._cancel_stream(streams, key)
         task = asyncio.create_task(
-            self._stream_metadata(conn, req.location, req.camera or "", req.date or "")
+            self._deliver_metadata(
+                conn, req.location, req.camera or "", req.date or "", req.since_etag
+            )
         )
         streams[key] = task
 
@@ -234,6 +238,47 @@ class WsService:
         task = streams.pop(key, None)
         if task is not None:
             task.cancel()
+
+    async def _deliver_metadata(
+        self,
+        conn: Connection,
+        location: str,
+        camera: str,
+        date: str,
+        since_etag: str | None,
+    ) -> None:
+        """Send a date's metadata: as a delta when the client's version
+        allows, else as a stream of the whole document."""
+        if since_etag is not None:
+            try:
+                delta = await self._metadata.delta_since(
+                    location, camera, date, since_etag
+                )
+            except Exception:  # noqa: BLE001 - fall back to the full stream
+                log.exception("ws.metadata.delta.error", camera=camera, date=date)
+                delta = None
+            if delta is not None:
+                self.manager.send_to(
+                    conn,
+                    ServerMessage(
+                        type="metadataDelta",
+                        location=location,
+                        camera=camera,
+                        date=date,
+                        data={"rows": delta.rows, "removed": delta.removed},
+                        etag=delta.etag,
+                    ),
+                )
+                log.debug(
+                    "ws.metadata.delta",
+                    conn=conn.id,
+                    camera=camera,
+                    date=date,
+                    rows=len(delta.rows),
+                    removed=len(delta.removed),
+                )
+                return
+        await self._stream_metadata(conn, location, camera, date)
 
     async def _stream_metadata(
         self, conn: Connection, location: str, camera: str, date: str

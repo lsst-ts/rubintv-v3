@@ -228,3 +228,59 @@ async def test_cache_evicts_oldest_entries(
     assert list(cache._entries) == [  # noqa: SLF001 - test introspection
         ("test", "lsstcam", other_date)
     ]
+
+
+async def _rewrite(cache: MetadataCache, rows: Metadata) -> None:
+    # The producer rewrites the whole file; only the content differs.
+    client = cache._pool.client_for("test")  # noqa: SLF001
+    client.put_object(  # type: ignore[attr-defined]
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps(rows).encode(),
+    )
+
+
+async def test_delta_since_the_replaced_version_is_the_difference(
+    cache: MetadataCache,
+) -> None:
+    etag1, rows = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag1 is not None
+    # One row added, one altered, one removed: the usual per-exposure shape
+    # plus the rarer reprocessing cases.
+    rewritten = {**rows, "6": {"Exposure time": 6.0}}
+    rewritten["3"] = {"Exposure time": 3.5}
+    del rewritten["1"]
+    await _rewrite(cache, rewritten)
+
+    delta = await cache.delta_since("test", "lsstcam", DATE, etag1)
+    assert delta is not None
+    assert delta.since == etag1 and delta.etag not in (None, etag1)
+    assert delta.rows == {"6": {"Exposure time": 6.0}, "3": {"Exposure time": 3.5}}
+    assert delta.removed == ["1"]
+    # The cache is current as a side effect, so the next reader is cheap.
+    etag2, data = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag2 == delta.etag and data == rewritten
+
+
+async def test_delta_since_the_current_version_is_empty(
+    cache: MetadataCache,
+) -> None:
+    etag, _ = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag is not None
+    delta = await cache.delta_since("test", "lsstcam", DATE, etag)
+    assert delta is not None
+    assert delta.rows == {} and delta.removed == [] and delta.etag == etag
+
+
+async def test_delta_since_an_unknown_version_is_none(
+    cache: MetadataCache,
+) -> None:
+    # Two rewrites between refreshes: the client's version is not the one
+    # just replaced, so the caller must send the whole document.
+    etag1, rows = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag1 is not None
+    await _rewrite(cache, {**rows, "6": {"Exposure time": 6.0}})
+    await cache.get_with_etag("test", "lsstcam", DATE)
+    await _rewrite(cache, {**rows, "7": {"Exposure time": 7.0}})
+    assert await cache.delta_since("test", "lsstcam", DATE, etag1) is None
+    assert await cache.delta_since("test", "lsstcam", DATE, "never-seen") is None
