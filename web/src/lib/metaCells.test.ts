@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { formatCell } from "./CameraDataTable";
+import { formatCell } from "../lib/metaCells";
 
 test("integers render without a spurious .000 suffix", () => {
   // Regression: the old unconditional toFixed(3) rendered every JSON number
