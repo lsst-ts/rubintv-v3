@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 293 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 295 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -385,8 +385,8 @@ Safe to skim.
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
-  `c6873f2`, `6da0777`, `4dcf193`, `8175288`, and the commit that noted the
-  lag pill.
+  `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, and the commit that
+  noted the 3dp change.
 
 ---
 
@@ -521,6 +521,9 @@ out.
   label
 - `40385e5` Word the channel-card lag pill as "N behind", not a negative
   number
+- `c33ff61` Show event-page metadata floats to 3dp like the table
+  (formatCell moves from CameraDataTable into lib/metaCells; its test
+  moves with it)
 
 ### 36. Camera table and column picker, second pass
 `32e9549` → `22cdffb` → `481035f` is an arc (pick order, then drag to
