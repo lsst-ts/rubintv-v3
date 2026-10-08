@@ -483,12 +483,43 @@ async def test_pause_reports_a_triggered_rescan() -> None:
     assert not engine._rescan.is_set()  # consumed
 
 
+class _StopAfter(FakePoller):
+    """A poller that stops the engine after ``n`` scans.
+
+    Lets the refresh-wait tests run for a fixed number of passes rather than
+    a wall-clock budget, which a slow CI box (thread-pool spin-up, traceback
+    formatting) blows through with a single pass.
+    """
+
+    def __init__(self, n: int, fail: bool = False) -> None:
+        super().__init__()
+        self.n = n
+        self.fail = fail
+        self.engine: PollEngine | None = None
+
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        if len(self.scanned) + 1 >= self.n and self.engine is not None:
+            self.engine._stop.set()
+        if self.fail:
+            self.scanned.append((location, prefix))
+            raise RuntimeError("s3 blip")
+        return super().scan(location, prefix)
+
+
+async def _no_wait(_seconds: float) -> bool:
+    # Stand-in for PollEngine._pause: tick immediately, no rescan requested.
+    return False
+
+
 async def test_recent_refresh_rescans_the_window_between_full_sweeps() -> None:
-    engine, poller = _engine(window=1, recent_refresh=0.01)
-    await asyncio.wait_for(engine._refresh_recent_until(0.06), timeout=2.0)
+    poller = _StopAfter(3)
+    engine, _ = _engine(window=1, recent_refresh=1.0, poller=poller)
+    poller.engine = engine
+    engine._pause = _no_wait  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
     # Several recent passes ran, each scanning the per-date prefix only —
     # never the bare {camera}/ prefix, which is the full sweep's job.
-    assert len(poller.scanned) >= 2
+    assert len(poller.scanned) == 3
     assert all(p.count("/") == 2 for _, p in poller.scanned)
 
 
@@ -514,12 +545,10 @@ async def test_recent_refresh_returns_early_on_rescan_trigger() -> None:
 
 
 async def test_recent_refresh_survives_a_failed_pass() -> None:
-    class FlakyPoller(FakePoller):
-        def scan(self, location: str, prefix: str) -> ScanResult:
-            self.scanned.append((location, prefix))
-            raise RuntimeError("s3 blip")
-
-    engine, poller = _engine(window=1, recent_refresh=0.01, poller=FlakyPoller())
-    await asyncio.wait_for(engine._refresh_recent_until(0.06), timeout=2.0)
+    poller = _StopAfter(3, fail=True)
+    engine, _ = _engine(window=1, recent_refresh=1.0, poller=poller)
+    poller.engine = engine
+    engine._pause = _no_wait  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
     # Each failure is logged and the next tick tries again.
-    assert len(poller.scanned) >= 2
+    assert len(poller.scanned) == 3
