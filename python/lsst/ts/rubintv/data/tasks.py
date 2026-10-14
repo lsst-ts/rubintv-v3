@@ -26,9 +26,9 @@ code path and differ only in *what* they scan and *how often*:
 
 - current-day poller: today's prefixes, fast loop (~1s)
 - historical scanner: recent window then the full back-catalogue on startup;
-  afterwards the recent window is re-scanned every ``recent_refresh`` (2h)
-  and the full sweep repeats every 12h — recent dates are mutable, old ones
-  rarely are
+  afterwards the recent window — plus each camera's few most recent data
+  days outside it — is re-scanned every ``recent_refresh`` (2h) and the full
+  sweep repeats every 12h: recent dates are mutable, old ones rarely are
 - on-demand scan: one camera-date, for a request that hits an unindexed date
 
 The previous day gets a single extra scan at rollover, to catch per-day
@@ -151,6 +151,7 @@ class PollEngine:
         poll_interval: float = 1.0,
         recent_window_days: int = 30,
         recent_refresh: float = 2 * 60 * 60,
+        recent_known_days: int = 5,
         on_ready: ReadyCallback | None = None,
         cache_writer: Callable[[], Awaitable[None]] | None = None,
         cache_slice_writer: (
@@ -167,6 +168,7 @@ class PollEngine:
         self._interval = poll_interval
         self._recent_window_days = recent_window_days
         self._recent_refresh = recent_refresh
+        self._recent_known_days = recent_known_days
         self._on_ready = on_ready
         self._cache_writer = cache_writer
         self._cache_slice_writer = cache_slice_writer
@@ -354,7 +356,7 @@ class PollEngine:
             if time.monotonic() >= deadline:
                 return
             try:
-                events = await self._scan_recent_window()
+                events = await self._scan_recent_window(warm=False)
                 log.info("poll.recent.refresh", events=events)
             except Exception:  # noqa: BLE001 - a bad pass must not kill loop
                 log.exception("poll.recent.error")
@@ -456,24 +458,58 @@ class PollEngine:
         # slots is stale on disk until rewritten here.
         await self._persist_slices({(location, camera, d) for d in outcome.changed})
 
-    async def _scan_recent_window(self) -> int:
-        # The recent window per camera: scan {camera}/{date}/ for the last N
-        # observing-days first so recent history is viewable while the full
-        # sweep runs. Locations parallel, cameras serial (same client-pool
-        # reasoning as the full sweep).
-        days = recent_day_obs(self._recent_window_days)
+    async def _scan_recent_window(self, *, warm: bool = True) -> int:
+        """Scan every camera's recent dates: the window, plus known data days.
+
+        The window is the last N observing days whether or not they hold
+        data, so new data landing on a quiet recent day is still found. On
+        top of that each camera gets its ``recent_known_days`` most recent
+        dates *with* data outside the window, from its calendar — a camera
+        that observes rarely would otherwise list thirty empty days and never
+        re-check the days that matter until the full sweep.
+
+        Locations run in parallel, cameras serially within one (same
+        client-pool reasoning as the full sweep). ``warm`` pre-fetches recent
+        metadata afterwards; only the cold start wants that — the periodic
+        pass would otherwise re-download today's file per camera every tick.
+        """
+        window = recent_day_obs(self._recent_window_days)
+        known = {
+            (loc.name, cam.name): self._known_days(loc.name, cam.name, window)
+            for loc in self._models.locations
+            for cam in loc.cameras
+        }
+        log.debug(
+            "poll.recent.plan",
+            window_days=len(window),
+            known_days=sum(len(d) for d in known.values()),
+        )
         return await self._gather_locations(
             [
-                self._scan_recent_for_location(loc, days)
+                self._scan_recent_for_location(loc, window, known, warm=warm)
                 for loc in self._models.locations
             ]
         )
 
+    def _known_days(self, location: str, camera: str, window: list[str]) -> list[str]:
+        """A camera's most recent data days that the window doesn't cover."""
+        if self._recent_known_days <= 0:
+            return []
+        inside = set(window)
+        calendar = self._store.calendar(location, camera)  # newest first
+        return [d for d in calendar if d not in inside][: self._recent_known_days]
+
     async def _scan_recent_for_location(
-        self, location: Location, days: list[str]
+        self,
+        location: Location,
+        window: list[str],
+        known: dict[LocCam, list[str]],
+        *,
+        warm: bool,
     ) -> int:
         total = 0
         for camera in location.cameras:
+            days = window + known.get((location.name, camera.name), [])
             for day in days:
                 prefix = f"{camera.name}/{day}/"
                 result = await asyncio.to_thread(
@@ -483,7 +519,8 @@ class PollEngine:
                 await self._apply_scan("recent", location.name, prefix, result)
                 await self._reconcile_day(location.name, camera.name, day, result)
             self._mark(location.name, camera.name, "recent_ready")
-            await self._warm_metadata(location.name, camera.name)
+            if warm:
+                await self._warm_metadata(location.name, camera.name)
         return total
 
     async def _scan_all_history(self) -> int:
