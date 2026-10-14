@@ -29,6 +29,7 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | `RUBINTV_POLL_INTERVAL_SECONDS` | `1.0`                    | Current-day S3 poll cadence.                                  |
 | `RUBINTV_RECENT_WINDOW_DAYS`  | `30`                       | Cold start scans this many recent observing days per camera before the full back-catalogue sweep. `0` = full sweep only. |
 | `RUBINTV_RECENT_REFRESH_SECONDS` | `7200`                  | Re-scan the recent window this often between full sweeps (recent dates are mutable). `0` = only with the 12h full sweep. |
+| `RUBINTV_RECENT_KNOWN_DAYS`   | `5`                        | Each recent pass also re-scans this many of a camera's newest dates *with data* outside the window (from its calendar), so rarely-observing cameras stay fresh. `0` = window only. |
 | `RUBINTV_METADATA_PRELOAD_DAYS` | `3`                      | Cold start pre-fetches `metadata.json` for this many recent dates per camera. `0` = on demand only. |
 | `RUBINTV_RECONCILE_DRY_RUN`   | `false`                    | Log what reconciliation *would* remove from the index without removing it. Stale entries stay while set. |
 | `RUBINTV_SPA_DIST`            | unset                      | Built SPA dir to serve. Unset (dev) = Vite serves the SPA.    |

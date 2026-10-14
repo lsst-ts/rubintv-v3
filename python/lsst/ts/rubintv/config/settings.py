@@ -179,6 +179,13 @@ class Settings(BaseSettings):
     disables the periodic recent pass (recent dates then refresh only with
     the full sweep)."""
 
+    recent_known_days: int = 5
+    """Each recent pass also re-scans this many of a camera's most recent
+    dates *with data* that fall outside the window, from its calendar. A
+    camera that observes rarely has nothing inside the window, so this is
+    what keeps its real data days fresh between full sweeps. ``0`` disables
+    it (window only)."""
+
     reconcile_dry_run: bool = False
     """Log what reconciliation *would* remove from the index, without removing
     it. Deletion is driven by set difference against an S3 listing, so a

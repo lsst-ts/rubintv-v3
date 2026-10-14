@@ -34,7 +34,7 @@ import time
 import pytest
 from lsst.ts.rubintv.config.models import Camera, Location, Models
 from lsst.ts.rubintv.data import tasks
-from lsst.ts.rubintv.data.dayobs import get_current_day_obs
+from lsst.ts.rubintv.data.dayobs import get_current_day_obs, recent_day_obs
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind
 from lsst.ts.rubintv.data.source import ScanResult
 from lsst.ts.rubintv.data.store import EventStore
@@ -81,6 +81,7 @@ def _engine(
     metadata_warmer: object | None = None,
     recent_refresh: float = 2 * 60 * 60,
     poller: FakePoller | None = None,
+    known_days: int = 0,
 ) -> tuple[PollEngine, FakePoller]:
     poller = poller or FakePoller()
     engine = PollEngine(
@@ -89,9 +90,25 @@ def _engine(
         poller,  # type: ignore[arg-type]  # duck-typed DataSource
         recent_window_days=window,
         recent_refresh=recent_refresh,
+        recent_known_days=known_days,
         metadata_warmer=metadata_warmer,  # type: ignore[arg-type]
     )
     return engine, poller
+
+
+async def _seed_dates(engine: PollEngine, dates: list[str]) -> None:
+    # Give the store (and so the camera's calendar) data on these dates.
+    await engine._store.apply(
+        [
+            ObjectEvent(
+                kind=ObjectKind.CREATED,
+                location="loc",
+                key=f"cam/{d}/c/000001/a.png",
+                etag="e",
+            )
+            for d in dates
+        ]
+    )
 
 
 async def test_recent_scanned_before_full() -> None:
@@ -552,3 +569,49 @@ async def test_recent_refresh_survives_a_failed_pass() -> None:
     await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
     # Each failure is logged and the next tick tries again.
     assert len(poller.scanned) == 3
+
+
+# -- known data days outside the window ---------------------------------------
+
+
+async def test_recent_pass_adds_a_cameras_newest_data_days_outside_window() -> None:
+    engine, poller = _engine(window=1, known_days=2)
+    # Data on four old dates (well outside a 1-day window) and one in it.
+    await _seed_dates(engine, ["2020-01-01", "2020-03-01", "2020-02-01", "2020-04-01"])
+    today = get_current_day_obs()
+    await _seed_dates(engine, [today])
+    await engine._scan_recent_window()
+    prefixes = [p for _, p in poller.scanned]
+    # The window day, then the two newest known data days — not the older two.
+    assert prefixes == [f"cam/{today}/", "cam/2020-04-01/", "cam/2020-03-01/"]
+
+
+async def test_known_days_skip_dates_the_window_already_covers() -> None:
+    engine, poller = _engine(window=3, known_days=5)
+    days = recent_day_obs(3)
+    # Data on a window day and on one older day: the window day must not be
+    # listed twice.
+    await _seed_dates(engine, [days[1], "2020-01-01"])
+    await engine._scan_recent_window()
+    prefixes = [p for _, p in poller.scanned]
+    assert prefixes == [f"cam/{d}/" for d in days] + ["cam/2020-01-01/"]
+
+
+async def test_known_days_disabled_scans_the_window_only() -> None:
+    engine, poller = _engine(window=1, known_days=0)
+    await _seed_dates(engine, ["2020-01-01"])
+    await engine._scan_recent_window()
+    assert [p for _, p in poller.scanned] == [f"cam/{get_current_day_obs()}/"]
+
+
+async def test_periodic_recent_pass_does_not_rewarm_metadata() -> None:
+    warmed: list[tuple[str, str]] = []
+
+    async def warmer(location: str, camera: str) -> None:
+        warmed.append((location, camera))
+
+    engine, _ = _engine(window=1, metadata_warmer=warmer)
+    await engine._scan_recent_window()  # cold start: warms
+    assert warmed == [("loc", "cam")]
+    await engine._scan_recent_window(warm=False)  # periodic tick: doesn't
+    assert warmed == [("loc", "cam")]
