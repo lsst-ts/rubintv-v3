@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
 from pydantic import Field, field_validator, model_validator
@@ -96,8 +97,33 @@ class Settings(BaseSettings):
 
     The deployment mounts everything — API, WebSockets, sub-apps, and the SPA
     — beneath this prefix, matching the previous app's ``/rubintv`` root, so
-    external deep links resolve. Must start with ``/`` and carry no trailing
-    slash (``/rubintv``, not ``rubintv/``); ``""`` serves at the root."""
+    external deep links resolve. A deployment sharing its host with another
+    picks its own (summit dev serves at ``/rubintv-dev``). Normalised to a
+    leading ``/`` and no trailing one (``rubintv-dev/`` reads as
+    ``/rubintv-dev``); ``""`` or ``/`` serves at the root."""
+
+    @field_validator("path_prefix")
+    @classmethod
+    def _normalise_path_prefix(cls, value: str) -> str:
+        """Give the prefix one leading slash and no trailing one.
+
+        Every mount is built as ``f"{prefix}/api"`` and the SPA is handed the
+        prefix verbatim, so a stray trailing slash would double up in every
+        URL.
+        """
+        stripped = value.strip().strip("/")
+        return f"/{stripped}" if stripped else ""
+
+    instance_env: Literal["prod", "dev"] = "prod"
+    """Whether this deployment is production or a development instance
+    (``RUBINTV_INSTANCE_ENV``).
+
+    Declared per deployment because nothing else can tell: summit dev runs
+    the same site (``RAPID_ANALYSIS_LOCATION``) as summit prod on the same
+    host. The SPA receives it in ``index.html`` (see ``spa.py``) and on
+    ``dev`` shows the "Development instance" strip and points ``{dev}`` link
+    templates at the ``-dev`` services. Local, CI and test runs are flagged
+    by their site regardless."""
 
     models_path: Path | None = None
     """Path to the YAML defining locations, cameras and channels.

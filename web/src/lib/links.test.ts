@@ -113,11 +113,25 @@ describe("processingBanner", () => {
 
 describe("instanceEnv", () => {
   // jsdom's default location is http://localhost/, so the hostname branch
-  // resolves to "localhost" when no non-prod site is passed.
+  // resolves to "localhost" when no non-prod site or declared env applies.
   test("a non-prod backend site wins over the hostname", () => {
     expect(instanceEnv("gha")).toBe("ci");
     expect(instanceEnv("test")).toBe("test");
     expect(instanceEnv("local")).toBe("localhost");
+  });
+
+  test("a deployment declared dev is dev on a prod-shaped site", () => {
+    // Summit dev: site "summit", same host as prod — only the declaration
+    // (RUBINTV_INSTANCE_ENV, via the index.html block) can tell.
+    expect(instanceEnv("summit", { env: "dev" })).toBe("dev");
+    expect(instanceEnv(undefined, { env: "dev" })).toBe("dev");
+    // The non-deployment sites still name themselves.
+    expect(instanceEnv("test", { env: "dev" })).toBe("test");
+  });
+
+  test("a deployment declared prod is not dev", () => {
+    // Only the localhost check (jsdom) remains to flag it.
+    expect(instanceEnv("summit", { env: "prod" })).toBe("localhost");
   });
 
   test("a prod site falls back to the hostname heuristic", () => {

@@ -117,3 +117,36 @@ def test_redis_stays_disabled_without_a_host(monkeypatch: pytest.MonkeyPatch) ->
 def test_s3_endpoint_url_is_read_unprefixed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_ENDPOINT_URL", "https://s3.ls.lsst.org")
     assert Settings(_env_file=None).s3_endpoint_url == "https://s3.ls.lsst.org"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("/rubintv", "/rubintv"),
+        ("/rubintv-dev", "/rubintv-dev"),
+        ("rubintv-dev/", "/rubintv-dev"),
+        ("/rubintv-dev/", "/rubintv-dev"),
+        ("", ""),
+        ("/", ""),
+    ],
+)
+def test_path_prefix_is_normalised(raw: str, expected: str) -> None:
+    # Every mount is built as f"{prefix}/api" and the SPA is handed the prefix
+    # verbatim, so a stray slash would double up in every URL.
+    assert Settings(path_prefix=raw).path_prefix == expected
+
+
+def test_instance_env_defaults_to_prod_and_reads_the_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RUBINTV_INSTANCE_ENV", raising=False)
+    assert Settings(_env_file=None).instance_env == "prod"
+    monkeypatch.setenv("RUBINTV_INSTANCE_ENV", "dev")
+    assert Settings(_env_file=None).instance_env == "dev"
+
+
+def test_instance_env_rejects_unknown_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A typo fails startup loudly rather than silently serving as prod.
+    monkeypatch.setenv("RUBINTV_INSTANCE_ENV", "staging")
+    with pytest.raises(ValueError, match="instance_env"):
+        Settings(_env_file=None)

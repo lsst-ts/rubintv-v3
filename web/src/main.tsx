@@ -9,15 +9,15 @@ import { routes } from "./routes";
 import "./index.css";
 
 const queryClient = createQueryClient();
-// The app is served under a path prefix (Vite `base`, e.g. /rubintv/), so the
-// router lives under the same basename — deep links and generated <Link> URLs
-// all carry the prefix.
+// The app is served under a path prefix (e.g. /rubintv), so the router lives
+// under the same basename — deep links and generated <Link> URLs all carry
+// the prefix.
 //
-// The basename must NOT keep the base's trailing slash: react-router compares
-// the URL against it literally, so a basename of "/rubintv/" fails to match a
-// visit to the bare "/rubintv" and the router renders nothing at all — the
-// root page appeared blank unless you typed the trailing slash. BASE is
-// import.meta.env.BASE_URL with that slash stripped, and matches both spellings.
+// The basename must NOT keep a trailing slash: react-router compares the URL
+// against it literally, so a basename of "/rubintv/" fails to match a visit
+// to the bare "/rubintv" and the router renders nothing at all — the root
+// page appeared blank unless you typed the trailing slash. BASE never carries
+// that slash (see lib/basePath.ts), and matches both spellings.
 const router = createBrowserRouter(routes, { basename: BASE });
 
 createRoot(document.getElementById("root")!).render(

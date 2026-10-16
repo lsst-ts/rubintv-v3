@@ -377,6 +377,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Serve the built SPA last so its deep-link catch-all never shadows the
     # API, WebSocket, or sub-app routes registered above.
-    mount_spa(app, settings.spa_dist, prefix)
+    mount_spa(app, settings.spa_dist, prefix, settings.instance_env)
 
     return app

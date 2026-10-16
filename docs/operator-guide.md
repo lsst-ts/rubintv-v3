@@ -20,7 +20,8 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | Variable                      | Default                    | Purpose                                                       |
 | ----------------------------- | -------------------------- | ------------------------------------------------------------- |
 | `RAPID_ANALYSIS_LOCATION`     | `local`                    | Deployment site name (set by the Rapid Analysis environment; note: **not** `RUBINTV_`-prefixed). |
-| `RUBINTV_PATH_PREFIX`         | `/rubintv`                 | URL prefix everything is served under: API, WebSockets, sub-apps, SPA. Leading `/`, no trailing slash; `""` serves at the root. |
+| `RUBINTV_PATH_PREFIX`         | `/rubintv`                 | URL prefix everything is served under: API, WebSockets, sub-apps, SPA. One image serves any prefix (the SPA is told its prefix as `index.html` is served), so set it per deployment, e.g. `/rubintv-dev` for summit dev. Normalised to a leading `/` and no trailing slash; `""` serves at the root. |
+| `RUBINTV_INSTANCE_ENV`        | `prod`                     | `prod` or `dev`. `dev` shows the "Development instance" strip and points `{dev}` link templates at the `-dev` services. Set it on every dev deployment: nothing else tells a dev instance from prod (summit dev runs the same site on the same host). Local, CI and test sites are flagged by `RAPID_ANALYSIS_LOCATION` regardless. |
 | `RUBINTV_MODELS_PATH`         | packaged copy              | Validated cameras/locations/channels config. Unset = the copy shipped in the `lsst.ts.rubintv.models` package; set to override with an on-disk file. |
 | `S3_ENDPOINT_URL`             | unset                      | Fallback S3 endpoint for a location with no `endpoint_url` in the models YAML (**not** `RUBINTV_`-prefixed; the name the Phalanx chart sets). A location's own endpoint wins. |
 | `RUBINTV_CACHE_DIR`           | `/scratch`                 | PVC dir for warm-start cache. Missing/unwritable dir (no PVC) disables the cache with one warning. |
@@ -56,8 +57,8 @@ comes up without the sub-app and logs why.
 | ----------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
 | `DDV_DEPLOY_BRANCH`     | unset                                            | Branch of the DDV repo to build. **Unset = no DDV build**, so `/ddv` is not mounted. Names a branch of `DDV_REPO` (the web app), not of the analysis service. |
 | `DDV_REPO`              | `https://github.com/ugyballoons/rubintv-ddv`     | Repository the DDV web app is cloned from. Its charting library, rubin-charts, is a git dependency in the app's lockfile and needs no setting here. |
-| `DDV_BASE_HREF`         | `/rubintv/ddv/`                                  | URL path the DDV build is served under (baked into the build). Bookended by `/`; must match `RUBINTV_PATH_PREFIX` + `/ddv/`. |
-| `DDV_CLIENT_WS_ADDRESS` | `rubintv/ws/ddv`                                 | WebSocket path baked into the DDV client, relative to the page's host; the client appends `/client`. Must match `RUBINTV_PATH_PREFIX` + `/ws/ddv`. |
+| `DDV_BASE_HREF`         | `RUBINTV_PATH_PREFIX` + `/ddv/`                  | URL path the DDV build is served under (baked into the build). Bookended by `/`. The default follows the app's prefix; override only if DDV is served elsewhere. |
+| `DDV_CLIENT_WS_ADDRESS` | `RUBINTV_PATH_PREFIX` + `/ws/ddv`, no leading `/` | WebSocket path baked into the DDV client, relative to the page's host; the client appends `/client`. The default follows the app's prefix. |
 | `DDV_BUILD_DIR`         | `/app/ddv-build`                                 | Scratch dir for the clone and build. `RUBINTV_DDV_PATH` (set in the image to `$DDV_BUILD_DIR/ddv/dist`) must point inside it. |
 | `DDV_BUILD_TIMEOUT`     | `600`                                            | Seconds allowed for the clone + build before it is abandoned and the app starts without `/ddv`. |
 | `EXP_CHECKER_REF`       | `main`                                           | Branch or tag of `lsst-sitcom/rubin_exp_checker` to install when `RUBINTV_EXP_CHECKER_ENABLED` is true. |

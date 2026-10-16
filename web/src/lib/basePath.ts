@@ -1,13 +1,16 @@
-// The app's path prefix (Vite `base`, e.g. "/rubintv/") without its trailing
-// slash, so it concatenates cleanly with absolute paths: `${BASE}/api/...`,
-// `${BASE}/ws`.
+import { DEPLOYMENT } from "./deployment";
+
+// The app's path prefix (e.g. "/rubintv") without a trailing slash, so it
+// concatenates cleanly with absolute paths: `${BASE}/api/...`, `${BASE}/ws`.
 //
 // Client-side <Link>/navigation URLs go through the router basename and must
 // NOT include this — react-router adds it. But `fetch()` and `new WebSocket()`
-// take absolute same-origin paths that bypass both the router and Vite's base
-// rewriting, so those call sites prepend BASE explicitly. This is the single
-// source of truth for that; the value ultimately comes from Vite's `base`.
-export const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+// take absolute same-origin paths that bypass the router, so those call sites
+// prepend BASE explicitly. This is the single source of truth for that. The
+// value comes from the backend (RUBINTV_PATH_PREFIX, written into index.html)
+// when it serves the built SPA, else from Vite's dev-server `base`.
+export const BASE =
+  DEPLOYMENT.prefix ?? import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // URL for a camera/location logo image, bundled with the SPA under
 // `public/logos/` and served at `${BASE}/logos/<file>`. The `logo` config value
