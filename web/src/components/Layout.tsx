@@ -20,8 +20,8 @@ import { useRouteValid } from "../lib/useRouteValid";
 import { setCameraTabPref } from "../lib/cameraTabPref";
 
 // The deployment site (RAPID_ANALYSIS_LOCATION) from /api/config, used to label the
-// header. Undefined until it resolves — the env strip falls back to the
-// hostname heuristic meanwhile, so a non-prod host still flags immediately.
+// header. Undefined until it resolves — the env strip goes by the declared
+// instance env (and a localhost check) meanwhile, so dev still flags at once.
 function useSite(): string | undefined {
   const { data } = useQuery({
     queryKey: ["config"],
@@ -68,11 +68,11 @@ export function Layout() {
   // this view is doing.
   const banner = onCamera ? processingBanner(location, camera) : null;
 
-  // A full-width strip warning that this isn't production. It shows if EITHER
-  // the backend site is a non-prod shape (local/gha/test) OR the hostname looks
-  // like localhost/-dev — so a prod-shaped instance served from a dev host is
-  // still flagged. Shown on every full-shell route, but not on headerless
-  // embeds (bare chromeless tiles).
+  // A full-width strip warning that this isn't production. It shows if the
+  // backend site is a non-prod shape (local/gha/test), the deployment declares
+  // itself dev (RUBINTV_INSTANCE_ENV), or the page is on localhost. Shown on
+  // every full-shell route, but not on headerless embeds (bare chromeless
+  // tiles).
   const env = instanceEnv(site);
   const ENV_LABELS: Record<string, string> = {
     localhost: "Localhost — development server",

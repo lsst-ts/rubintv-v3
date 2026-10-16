@@ -12,6 +12,8 @@
 // {dev} both resolve to "" — matching the original, which left those URLs
 // best-effort rather than dropping the link.
 
+import { DEPLOYMENT, type Deployment } from "./deployment";
+
 export interface LinkContext {
   siteLocation?: string;
   controller?: string;
@@ -60,17 +62,17 @@ export function fillTemplate(
     .replace(/\{seqNum:0?\d+\}/g, (m) => padSeq(m, seq));
 }
 
-// A dev instance is the local dev server or any "-dev" deployment — matches
-// the original window.location heuristic.
+// A dev instance is any non-production one: a deployment declared dev
+// (RUBINTV_INSTANCE_ENV) or the local dev server. It picks the -dev variants
+// of the {dev} link templates.
 export function isDevInstance(): boolean {
-  const href = typeof window !== "undefined" ? window.location.href : "";
-  return href.includes("-dev") || href.includes("localhost");
+  return instanceEnv() !== "prod";
 }
 
 // The environment the header's warning strip calls out. Non-prod shapes are
 // distinguished so the strip can label what it is:
 //   localhost — the local dev server
-//   dev       — a deployed "-dev" instance
+//   dev       — a deployment declared dev (RUBINTV_INSTANCE_ENV)
 //   ci        — the GitHub-Actions site ("gha")
 //   test      — the integration-test site
 //   prod      — a real deployment; no strip
@@ -84,16 +86,21 @@ const NON_PROD_SITES: Record<string, InstanceEnv> = {
   test: "test",
 };
 
-// Resolve the environment from BOTH the backend site and the hostname: the
-// strip shows if EITHER says non-prod. The backend site is authoritative for
-// the deployment shape (local/gha/test); the hostname still catches a deployed
-// "-dev" instance (a prod-shaped site served from a *-dev host) that the site
-// name alone wouldn't flag. `site` is undefined until /api/config resolves.
-export function instanceEnv(site?: string): InstanceEnv {
+// Resolve the environment from the backend site, then the declared instance
+// env. The site is authoritative for the non-deployment shapes (local/gha/
+// test), but every real deployment's site is prod-shaped (summit dev runs
+// "summit"), so dev vs prod is whatever the deployment declares — not a guess
+// from the URL. The one URL check left catches the local dev server before
+// /api/config resolves (`site` is undefined until then), since Vite serves
+// its index.html without a deployment block.
+export function instanceEnv(
+  site?: string,
+  deployment: Deployment = DEPLOYMENT,
+): InstanceEnv {
   if (site && site in NON_PROD_SITES) return NON_PROD_SITES[site];
-  const href = typeof window !== "undefined" ? window.location.href : "";
-  if (href.includes("localhost")) return "localhost";
-  if (href.includes("-dev")) return "dev";
+  if (deployment.env === "dev") return "dev";
+  if (typeof window !== "undefined" && window.location.hostname === "localhost")
+    return "localhost";
   return "prod";
 }
 

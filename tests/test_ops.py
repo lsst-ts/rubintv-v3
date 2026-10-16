@@ -23,6 +23,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -32,6 +34,7 @@ from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.cache import CACHE_VERSION
 from lsst.ts.rubintv.middleware import response_bytes
+from lsst.ts.rubintv.spa import render_index
 from moto import mock_aws
 
 from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
@@ -160,6 +163,74 @@ def test_spa_serves_public_assets_from_dist_root(tmp_path: Path) -> None:
         assert resp.content == b"\xff\xd8jpegbytes"
         # A path that names no real file still falls back to the SPA index.
         assert "id=root" in client.get("/logos/missing.jpg").text
+
+
+# The shape of Vite's index.html with the relative base the build uses: every
+# URL is page-relative ("./").
+VITE_INDEX = (
+    "<!doctype html><html><head>"
+    '<link rel="icon" href="./favicon.ico" />'
+    '<script type="module" crossorigin src="./assets/index-Ab12.js"></script>'
+    '<link rel="stylesheet" crossorigin href="./assets/index-Cd34.css">'
+    "</head><body><div id=root></div></body></html>"
+)
+
+
+def deployment_block(page: str) -> dict[str, str]:
+    match = re.search(
+        r'<script id="rubintv-deployment" type="application/json">(.*?)</script>',
+        page,
+    )
+    assert match, "no deployment block in the page"
+    return json.loads(match.group(1))  # type: ignore[no-any-return]
+
+
+def test_spa_under_a_dev_prefix_gets_its_prefix_and_env(tmp_path: Path) -> None:
+    # One image serves every deployment, so the build's "./" URLs are pointed
+    # at the deployment's prefix as index.html is served, and the SPA is told
+    # its prefix (router basename, fetch/WS roots) and declared env. Summit
+    # dev is the case: /rubintv-dev on the same host as prod.
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text(VITE_INDEX)
+    (dist / "assets" / "index-Ab12.js").write_text("console.log(1)")
+
+    with run_app(spa_dist=dist, path_prefix="/rubintv-dev", instance_env="dev") as c:
+        # Absolute URLs: the client's own prefixing assumes /rubintv.
+        root = "http://testserver/rubintv-dev"
+        for path in (root, f"{root}/", f"{root}/summit/lsstcam/witness_detector"):
+            page = c.get(path).text
+            assert 'src="/rubintv-dev/assets/index-Ab12.js"' in page, path
+            assert 'href="/rubintv-dev/assets/index-Cd34.css"' in page
+            assert 'href="/rubintv-dev/favicon.ico"' in page
+            assert "./" not in page
+            assert deployment_block(page) == {"prefix": "/rubintv-dev", "env": "dev"}
+        # The rewritten asset URL is the one actually served.
+        assert c.get(f"{root}/assets/index-Ab12.js").status_code == 200
+        assert c.get("http://testserver/rubintv/summit/lsstcam").status_code == 404
+
+
+def test_spa_defaults_to_prod_under_the_default_prefix(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text(VITE_INDEX)
+
+    with run_app(spa_dist=dist) as client:
+        page = client.get("/summit/lsstcam").text
+        assert 'src="/rubintv/assets/index-Ab12.js"' in page
+        assert deployment_block(page) == {"prefix": "/rubintv", "env": "prod"}
+
+
+def test_render_index_at_the_root_and_escapes_the_prefix() -> None:
+    # An empty prefix serves at the root: "./" becomes "/".
+    page = render_index(VITE_INDEX, "", "prod")
+    assert 'src="/assets/index-Ab12.js"' in page
+    assert deployment_block(page) == {"prefix": "", "env": "prod"}
+    # The prefix is operator-set, but still never breaks out of the attribute
+    # or the data block.
+    page = render_index(VITE_INDEX, '/a"</script>', "prod")
+    assert 'src="/a&quot;&lt;/script&gt;/assets/index-Ab12.js"' in page
+    assert deployment_block(page)["prefix"] == '/a"</script>'
 
 
 def test_spa_catch_all_does_not_shadow_api(tmp_path: Path) -> None:
