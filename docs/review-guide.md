@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 297 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 299 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -385,8 +385,8 @@ Safe to skim.
   `7adcb03`
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
-  `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`, and the
-  commit that noted the known-days pass.
+  `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
+  `175f1e7`, and the commit that noted the per-deployment prefix.
 
 ---
 
@@ -591,6 +591,11 @@ Facts learned from the real phalanx/USDF deployment, each small.
 - `20567ba` Build the web DDV (rubintv-ddv) at container start instead of
   the Flutter app (the runtime image carries Node 24 instead of the
   Flutter SDK)
+- `fe47422` Serve one image under any prefix and declare dev instances
+  explicitly: Vite builds with a relative base and `render_index`
+  (`spa.py`) fits `index.html` to `RUBINTV_PATH_PREFIX` as it is served
+  (summit dev runs at `/rubintv-dev`); `RUBINTV_INSTANCE_ENV` replaces
+  the "-dev"-in-the-URL guess for the dev strip and `{dev}` links
 
 ### 41. CI, licensing and tooling
 Safe to skim.
