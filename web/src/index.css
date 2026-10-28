@@ -1311,8 +1311,33 @@ h1, h2 {
 }
 .cols-pop .picker-item.locked:hover { background: transparent; }
 .cols-pop .picker-item.locked input[type="checkbox"] { cursor: default; }
-.cols-pop .picker-item .label-text {
+
+/* ScrollingTitle: a truncated label slides its full text into view while its
+   parent row is hovered or keyboard-focused. The outer span clips; the inner
+   span is inline at rest so the ellipsis draws, and only becomes an
+   inline-block (the one display that both takes a transform and stays
+   max-content wide under nowrap) once scrolling, when the ellipsis is swapped
+   for a hard clip. [data-overflow] and --scroll-by / --scroll-time /
+   --scroll-ease are set by the component; the easing carries the pauses at
+   each end, so the keyframes are a plain from/to. Reduced motion keeps the
+   plain ellipsis + title tooltip. */
+.scrolling-title {
+  min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :is(:hover, :focus-visible, :has(:focus-visible)) > .scrolling-title[data-overflow] {
+    text-overflow: clip;
+  }
+  :is(:hover, :focus-visible, :has(:focus-visible))
+    > .scrolling-title[data-overflow] > .scrolling-title-text {
+    display: inline-block;
+    animation: title-scroll var(--scroll-time) var(--scroll-ease) infinite alternate;
+  }
+}
+@keyframes title-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--scroll-by)); }
 }
 .cols-pop input[type="checkbox"] { accent-color: var(--accent); flex-shrink: 0; }
 
@@ -1366,9 +1391,7 @@ h1, h2 {
 .cols-pop .order-grip .ui-icon { width: 15px; height: 15px; }
 /* The nudge buttons keep their normal pointer even though the row is grab. */
 .cols-pop .order-nudge button { cursor: pointer; }
-.cols-pop .order-label {
-  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.cols-pop .order-label { flex: 1; }
 .cols-pop .order-nudge { display: inline-flex; gap: 2px; flex-shrink: 0; }
 .cols-pop .order-nudge button {
   border: 1px solid var(--stroke); border-radius: 3px;
