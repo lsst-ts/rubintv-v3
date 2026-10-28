@@ -1201,12 +1201,18 @@ h1, h2 {
 .density-pop button:hover { background: var(--paper-3); }
 .density-pop button.active { color: var(--accent); font-weight: 600; }
 
-/* Column-picker popover. */
+/* Column-picker popover. Its right edge drags wider (grips at the top- and
+   bottom-right corners) from the default 720px to reveal truncated column
+   names. useColumnPickerWidth sets the max-width inline: until the longest
+   name shows in full, or to main.app-content's right edge, whichever is
+   narrower. The dragged width sticks for the session, since the popover stays
+   mounted. */
 .cols-cluster { position: relative; display: inline-flex; }
 .cols-pop {
   position: absolute;
   top: calc(100% + 6px); left: 0;
   width: min(720px, calc(100vw - 24px));
+  min-width: min(720px, calc(100vw - 24px));
   max-height: 70vh;
   background: var(--paper);
   border: 1.5px solid var(--stroke);
@@ -1216,6 +1222,23 @@ h1, h2 {
   display: flex; flex-direction: column;
 }
 .cols-pop[hidden] { display: none; }
+/* Corner resize grips. Custom rather than CSS resize, whose grip can only sit
+   bottom-right; useColumnPickerWidth drives the drag and sets data-resizable
+   only when there's room to grow. Each fits in the header/body side padding,
+   clear of the controls; the top one is the bottom one flipped. */
+.cols-pop .resize-grip {
+  display: none;
+  position: absolute; right: 0; z-index: 1;
+  width: 14px; height: 14px;
+  color: var(--ink-soft);
+  cursor: ew-resize;
+  touch-action: none; /* pointer events, not scrolling, on touch */
+}
+.cols-pop[data-resizable] .resize-grip { display: block; }
+.cols-pop .resize-grip:hover { color: var(--ink); }
+.cols-pop .resize-grip.top { top: 0; transform: scaleY(-1); }
+.cols-pop .resize-grip.bottom { bottom: 0; }
+.cols-pop .resize-grip .ui-icon { width: 100%; height: 100%; }
 
 /* Header: title, count, search, bulk actions. */
 .cols-pop .picker-head {
@@ -1286,9 +1309,12 @@ h1, h2 {
 }
 /* Column names flow down each column before starting the next (multicol),
    so an alphabetical or configured order reads top-to-bottom like a list,
-   not left-to-right across rows. Column count follows the popover width. */
+   not left-to-right across rows. Columns are at least 180px and at most three
+   (what the default 720px fits), so dragging the popover wider widens the
+   names rather than adding a column — useColumnPickerWidth relies on that. */
 .cols-pop .cols-grid {
   column-width: 180px;
+  column-count: 3;
   column-gap: 14px;
 }
 .cols-pop .picker-item {

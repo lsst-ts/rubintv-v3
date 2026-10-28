@@ -8,12 +8,17 @@ import { useLiveTopic } from "../lib/LiveContext";
 import { useMetadata } from "../lib/useMetadata";
 import { useColumnPrefs } from "../lib/columns";
 import { useDismiss } from "../lib/useDismiss";
+import { useColumnPickerWidth } from "../lib/useColumnPickerWidth";
 import { hasImageViewer, isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { tabsForCamera } from "../lib/useShellNav";
 import { getCameraTabPref } from "../lib/cameraTabPref";
 import { DownloadMetadata } from "../components/DownloadMetadata";
-import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
+import {
+  ColumnsIcon,
+  ChevronDownIcon,
+  ResizeGripIcon,
+} from "../components/Icons";
 import { FilterControl, FilterBar } from "../components/FilterControl";
 import { ColumnOrderList } from "../components/ColumnOrderList";
 import { ScrollingTitle } from "../components/ScrollingTitle";
@@ -276,6 +281,14 @@ export function CameraTable() {
       ? metaColumns.filter((c) => c.toLowerCase().includes(q))
       : metaColumns;
   }, [colsQuery, metaColumns]);
+  // The picker's corner resize grips, and how wide they may drag it.
+  const colsPopRef = useRef<HTMLDivElement | null>(null);
+  const startColsResize = useColumnPickerWidth(
+    colsPopRef,
+    colsOpen,
+    metaColumns,
+    colsMode === "select" && colsMatches.length > 0,
+  );
 
   // The visible columns the user can reorder (drag list): the shown metadata
   // columns minus locked ones, which are fixed and never move. This mirrors the
@@ -391,7 +404,7 @@ export function CameraTable() {
           {/* Kept mounted and toggled with `hidden` rather than conditionally
               rendered: building the ~150 column rows on click cost ~300ms of
               jank. They mount once with the table; opening only flips display. */}
-          <div className="cols-pop" hidden={!colsOpen}>
+          <div className="cols-pop" ref={colsPopRef} hidden={!colsOpen}>
             <div className="picker-head">
               <span className="title">Metadata columns</span>
               <span className="count" title="columns shown">
@@ -487,6 +500,18 @@ export function CameraTable() {
                 </div>
               )}
             </div>
+            {/* Last, so they paint over the body's rows. Pointer-only, like a
+                native resize grip; hidden when there's no room to grow. */}
+            {(["top", "bottom"] as const).map((corner) => (
+              <span
+                key={corner}
+                className={`resize-grip ${corner}`}
+                aria-hidden="true"
+                onPointerDown={startColsResize}
+              >
+                <ResizeGripIcon />
+              </span>
+            ))}
           </div>
         </div>
 
