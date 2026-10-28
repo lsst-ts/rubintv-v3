@@ -128,6 +128,16 @@ export function CheckIcon() {
 
 // Six-dot grip for a drag handle. Filled dots (not stroked) so the small grab
 // target reads clearly at icon size; overrides the shared outline style.
+// Corner resize grip: three diagonal strokes hugging the bottom-right corner
+// (flip it with CSS for other corners).
+export function ResizeGripIcon() {
+  return (
+    <svg {...base}>
+      <path d="M21 3L3 21M21 9L9 21M21 15l-6 6" />
+    </svg>
+  );
+}
+
 export function DragHandleIcon() {
   return (
     <svg {...base} fill="currentColor" stroke="none">
