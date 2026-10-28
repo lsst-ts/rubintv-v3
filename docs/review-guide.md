@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 299 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 302 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -386,7 +386,7 @@ Safe to skim.
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
-  `175f1e7`, and the commit that noted the per-deployment prefix.
+  `175f1e7`, `f5ba744`, and the commit that noted the picker resize.
 
 ---
 
@@ -544,6 +544,12 @@ final `ColumnOrderList` and `useColumnPrefs`.
   visit-id format
 - `b952ec3` Show the image-viewer link only at summit and base
 - `b5b6fb8` Flow the column picker's names down columns, not across rows
+- `b985ecd` Scroll truncated column names into view on hover in the picker
+  (`ScrollingTitle`, in both the Select grid and the Reorder list)
+- `eba60db` Let the column picker drag wider until every name fits:
+  custom corner grips (`useColumnPickerWidth`) cap the width at the
+  longest name or `main.app-content`'s edge; the grid now holds at most
+  three columns so extra width widens names
 
 ### 37. Channel viewer zoom and keyboard
 - `1641994` Click-to-zoom the single-channel image (fill/fit toggle)
