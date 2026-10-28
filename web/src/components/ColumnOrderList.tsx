@@ -26,6 +26,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DragHandleIcon } from "./Icons";
+import { ScrollingTitle } from "./ScrollingTitle";
 
 interface RowProps {
   col: string;
@@ -60,9 +61,9 @@ function SortableRow({ col, index, count, onMove }: RowProps) {
       <span className="order-grip" aria-hidden="true">
         <DragHandleIcon />
       </span>
-      <span className="order-label" title={col}>
+      <ScrollingTitle className="order-label" title={col}>
         {col}
-      </span>
+      </ScrollingTitle>
       {/* Keyboard/click fallback for reordering without a drag — also the
           accessible path on touch devices. Disabled at the ends. */}
       <span

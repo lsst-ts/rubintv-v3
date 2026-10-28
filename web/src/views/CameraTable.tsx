@@ -16,6 +16,7 @@ import { DownloadMetadata } from "../components/DownloadMetadata";
 import { ColumnsIcon, ChevronDownIcon } from "../components/Icons";
 import { FilterControl, FilterBar } from "../components/FilterControl";
 import { ColumnOrderList } from "../components/ColumnOrderList";
+import { ScrollingTitle } from "../components/ScrollingTitle";
 import { LiveClocks } from "../components/LiveClocks";
 import {
   matchRow,
@@ -479,7 +480,7 @@ export function CameraTable() {
                           disabled={isLocked}
                           onChange={() => toggle(col)}
                         />
-                        <span className="label-text">{col}</span>
+                        <ScrollingTitle>{col}</ScrollingTitle>
                       </label>
                     );
                   })}
