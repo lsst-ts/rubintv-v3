@@ -110,7 +110,15 @@ export function Layout() {
   // call this) is an inherently Table action, so remember Table as the wanted
   // tab: the next camera the user opens then lands on its Table too, matching
   // where this date actually applies.
+  //
+  // The exception is a per-day channel page (e.g. Tonight's Movie): there the
+  // picker offers the channel's own nights, so a pick opens that night's
+  // artifact in place (a fixed ?date=, dropping out of live mode).
   const applyDate = (d: string) => {
+    if (nav.perDayChannel) {
+      navigate(`/${location}/${camera}/${nav.perDayChannel}?date=${d}`);
+      return;
+    }
     setCameraTabPref("table");
     if (nav.activeTab === "table") {
       setParams(
@@ -295,6 +303,7 @@ export function Layout() {
                         dates={nav.pickerDates}
                         counts={nav.calendar?.counts ?? {}}
                         maxSeq={nav.calendar?.max_seq ?? {}}
+                        allSky={nav.perDayChannel !== null}
                         value={nav.date}
                         isCurrentDayObs={nav.isCurrentDayObs}
                         onChange={applyDate}

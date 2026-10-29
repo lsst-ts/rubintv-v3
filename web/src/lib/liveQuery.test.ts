@@ -59,6 +59,27 @@ test("calendarUpdate invalidates the calendar", () => {
   );
 });
 
+test("perDay invalidates the date payload and the calendar", () => {
+  const qc = new QueryClient();
+  const calls = spyInvalidate(qc);
+  applyLiveMessage(qc, {
+    type: "perDay",
+    location: "local",
+    camera: "auxtel",
+    date: "2026-04-10",
+  });
+  const keys = calls.map((c) =>
+    JSON.stringify((c[0] as { queryKey: unknown }).queryKey),
+  );
+  expect(keys).toContain(
+    JSON.stringify(queryKeys.datePayload("local", "auxtel", "2026-04-10")),
+  );
+  // A movie usually lands on a date the calendar already has, so no
+  // calendarUpdate follows — but it adds a night to per_day_dates, which the
+  // per-day viewer follows.
+  expect(keys).toContain(JSON.stringify(queryKeys.calendar("local", "auxtel")));
+});
+
 test("messages without location/camera are ignored", () => {
   const qc = new QueryClient();
   const calls = spyInvalidate(qc);

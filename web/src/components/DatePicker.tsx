@@ -378,7 +378,8 @@ interface Props {
   dates: string[];
   counts: Record<string, number>;
   maxSeq: Record<string, number>;
-  // True for All Sky / live-view cameras: month cells show only the dot, no seq.
+  // True for All Sky / live-view cameras and per-day channels (one movie a
+  // night): month cells show only the dot, no seq.
   allSky?: boolean;
   value: string;
   // Whether `value` is the current observing day (computed by the caller via
