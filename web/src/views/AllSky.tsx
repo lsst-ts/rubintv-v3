@@ -80,7 +80,10 @@ export function AllSky() {
   );
 
   const tiles = useMemo<Tile[]>(() => {
-    if (!cameraInfo) return [];
+    // Wait for the calendar too: until it says which date is newest,
+    // isCurrent reads false, so a link to today would briefly render it as
+    // historical and request a "final" movie that doesn't exist yet.
+    if (!cameraInfo || !calendar) return [];
 
     return (cameraInfo.channels ?? []).flatMap((ch): Tile[] => {
       const isVideo = videoChannels.has(ch.name);
@@ -128,7 +131,16 @@ export function AllSky() {
         },
       ];
     });
-  }, [cameraInfo, payload, videoChannels, isCurrent, location, camera, date]);
+  }, [
+    cameraInfo,
+    calendar,
+    payload,
+    videoChannels,
+    isCurrent,
+    location,
+    camera,
+    date,
+  ]);
 
   return (
     <section className="live-view allsky-wrap">
@@ -165,7 +177,7 @@ export function AllSky() {
       <div
         className={`allsky-stage live-view-media${isCurrent ? "" : " allsky-stage--fit"}`}
       >
-        {tiles.length === 0 && date !== "" && (
+        {calendar && tiles.length === 0 && date !== "" && (
           <p className="skeleton">No imagery yet for {date}.</p>
         )}
         {tiles.map((t) => (
