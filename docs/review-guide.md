@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 309 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 311 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -725,6 +725,11 @@ nights in place), and `EventStore.calendar_per_day_dates`.
   violet (`--movie`) and a film icon; a `title` heads the popover in both
   modes ("AuxTel · nights with exposures" / "Tonight's Movie · nights with
   a movie")
+- `329edf2` Hold back camera-specific header parts until the config lands:
+  while a camera's config is in flight the shell no longer draws a regular
+  camera's title, Table tab and date picker (which flashed on All Sky);
+  invisible stand-ins keep the title and tabs rows' height (`cameraPending`
+  in `useShellNav.ts` and `Layout.tsx`)
 
 ---
 
