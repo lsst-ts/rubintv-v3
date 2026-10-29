@@ -104,6 +104,25 @@ async def test_calendar_channel_latest_picks_newest_date_per_channel() -> None:
     }
 
 
+async def test_calendar_per_day_dates_lists_each_channels_nights() -> None:
+    store = EventStore()
+    await store.apply(
+        [
+            created("auxtel/2026-04-08/movies/final/a.mp4"),
+            created("auxtel/2026-04-10/movies/final/b.mp4"),
+            # A night with exposures but no movie isn't one of its nights.
+            created("auxtel/2026-04-09/monitor/000001/c.png"),
+            created("auxtel/2026-04-09/stills/final/d.jpg"),
+        ]
+    )
+    # Newest first, per channel; per-seq channels aren't listed.
+    assert store.calendar_per_day_dates("local", "auxtel") == {
+        "movies": ["2026-04-10", "2026-04-08"],
+        "stills": ["2026-04-09"],
+    }
+    assert store.calendar_per_day_dates("local", "nope") == {}
+
+
 async def test_calendar_channel_latest_empty_for_unknown_camera() -> None:
     store = EventStore()
     assert store.calendar_channel_latest("local", "nope") == {}

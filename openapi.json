@@ -1622,6 +1622,17 @@
             "type": "object",
             "title": "Channel Latest",
             "default": {}
+          },
+          "per_day_dates": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Per Day Dates",
+            "default": {}
           }
         },
         "type": "object",

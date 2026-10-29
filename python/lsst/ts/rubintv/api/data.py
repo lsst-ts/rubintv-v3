@@ -210,6 +210,7 @@ async def get_calendar(
         counts=state.store.calendar_counts(location.name, camera.name),
         max_seq=state.store.calendar_max_seq(location.name, camera.name),
         channel_latest=state.store.calendar_channel_latest(location.name, camera.name),
+        per_day_dates=state.store.calendar_per_day_dates(location.name, camera.name),
     )
 
 

@@ -39,6 +39,7 @@ function stub(opts: {
         counts: {},
         max_seq: {},
         channel_latest: opts.channelLatest,
+        per_day_dates: {},
       } satisfies CalendarOut;
     } else if (url.includes("/dates/")) {
       body = opts.payload;
