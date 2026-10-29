@@ -16,6 +16,24 @@ import {
   ArrowRightIcon,
   ChevronDownIcon,
 } from "../components/Icons";
+import { PerDayChannel } from "./PerDayChannel";
+
+// The single-channel route. A per-day channel (one artifact per night, e.g.
+// Tonight's Movie) has no seqs to step through or exposure metadata to show,
+// so it gets its own night-by-night viewer; every other channel gets the
+// seq viewer below. Which one depends on the camera config, so nothing renders
+// until that resolves (it's normally already cached by the shell).
+export function Channel({ live = false }: { live?: boolean }) {
+  const { location = "", camera = "", channel = "" } = useParams();
+  const { data: cameraInfo, isPending } = useQuery({
+    queryKey: queryKeys.camera(location, camera),
+    queryFn: () => api.camera(location, camera),
+    staleTime: STALE.config,
+  });
+  if (isPending) return null;
+  const perDay = cameraInfo?.channels?.find((c) => c.name === channel)?.per_day;
+  return perDay ? <PerDayChannel live={live} /> : <SeqChannel live={live} />;
+}
 
 // Single-channel image/video view with prev/next seq navigation and a
 // metadata sidebar. Subscribes to the camera topic for live updates.
@@ -28,7 +46,7 @@ import {
 //     advances the image in place without touching the (stable) URL. Any
 //     prev/next/table navigation links to a concrete ?seq=&date= URL, dropping
 //     out of live mode.
-export function Channel({ live = false }: { live?: boolean }) {
+function SeqChannel({ live }: { live: boolean }) {
   const { location = "", camera = "", channel = "" } = useParams();
   const [params] = useSearchParams();
 

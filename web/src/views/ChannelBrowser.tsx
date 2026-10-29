@@ -246,8 +246,9 @@ export function ChannelBrowser() {
   // view (follows the newest exposure). A live card with *no* frame today but
   // data on an earlier day links straight to that day's last plot — a bare
   // ?date= (no seq) which the viewer resolves to the newest seq there. Per-day
-  // channels stay on /current: the seq-based viewer can't render their
-  // artifacts, so there's no better fixed target.
+  // channels stay on /current: for them the live viewer follows the channel's
+  // own newest date, so it already opens on that last artifact and moves on
+  // when the next night's lands.
   const hrefFor = (ch: ChannelOut, media: LatestMedia) => {
     const current = `/${location}/${camera}/${ch.name}/current`;
     const last = lastDateFor(ch, media);

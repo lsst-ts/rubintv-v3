@@ -140,9 +140,16 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
           queryKey: queryKeys.metadata(location, camera, date),
         });
       }
-      // The calendar is refreshed on calendarUpdate alone: the store
+      // The calendar is otherwise refreshed on calendarUpdate alone: the store
       // publishes one when a date first appears, so refetching the (large,
-      // per-date-counts) calendar on every exposure buys nothing.
+      // per-date-counts) calendar on every exposure buys nothing. A per-day
+      // artifact is the exception — it usually lands on a date that already
+      // exists, yet adds a night to the calendar's per_day_dates, which the
+      // per-day viewer's live mode and date picker read. It arrives about
+      // once a night, so it's cheap.
+      if (type === "perDay") {
+        qc.invalidateQueries({ queryKey: queryKeys.calendar(location, camera) });
+      }
       break;
     case "nightReport":
       if (date) {

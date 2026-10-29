@@ -81,10 +81,15 @@ export interface ShellNav {
   // meaningful on a camera route with a per-date view; empty otherwise.
   date: string;
   calendar: CalendarOut | undefined;
-  // The dates the picker offers: the calendar's dates, plus the resolved date
-  // spliced in if it's a deep link the scanner hasn't indexed yet (so the
-  // trigger shows the day actually being viewed, not a silent fallback).
+  // The dates the picker offers: the calendar's dates (or, on a per-day
+  // channel page, that channel's nights), plus the resolved date spliced in if
+  // it's a deep link the scanner hasn't indexed yet (so the trigger shows the
+  // day actually being viewed, not a silent fallback).
   pickerDates: string[];
+  // The per-day channel in view (e.g. Tonight's Movie), or null. On its page
+  // the picker and steppers range over the channel's nights and stay in the
+  // channel's viewer rather than going to the Table.
+  perDayChannel: string | null;
   // Whether `date` is the current observing day (UTC−12 rule); tints the chip.
   isCurrentDayObs: boolean;
   // Adjacent dates with data for the prev/next-day steppers (null at an end).
@@ -161,6 +166,21 @@ export function useShellNav(): ShellNav {
     enabled: !!location && !!camera && !isLiveView,
   });
   const calendar = calendarQ.data;
+
+  // A per-day channel page (e.g. Tonight's Movie) dates by that channel's
+  // nights instead: it's browsed night by night, and the camera's dates are
+  // no guide to which nights have its artifact (a channel can stop producing
+  // long before the camera does).
+  const cameraChannels = cameraQ.data?.channels;
+  const perDayChannel = useMemo(() => {
+    const ch = params.channel;
+    if (!ch || !Array.isArray(cameraChannels)) return null;
+    return cameraChannels.find((c) => c.name === ch)?.per_day ? ch : null;
+  }, [params.channel, cameraChannels]);
+  const perDayDates = perDayChannel
+    ? calendar?.per_day_dates?.[perDayChannel]
+    : undefined;
+
   // Defensive like the rest of the shell: a fetch stub or a backend mid-deploy
   // can return a calendar object with a missing/non-array `dates`, and this
   // hook runs on every camera route — so guard the access rather than let
@@ -168,10 +188,10 @@ export function useShellNav(): ShellNav {
   // is stable across renders (the guard's `[]` fallback and each refetch would
   // otherwise be a fresh array), which keeps the downstream pickerDates memo
   // from recomputing on every render.
-  const calendarDates = useMemo(
-    () => (Array.isArray(calendar?.dates) ? calendar.dates : []),
-    [calendar?.dates],
-  );
+  const calendarDates = useMemo(() => {
+    const dates = perDayChannel ? perDayDates : calendar?.dates;
+    return Array.isArray(dates) ? dates : [];
+  }, [calendar?.dates, perDayChannel, perDayDates]);
 
   // Resolve the shell date exactly as the Table view does: an explicit ?date=
   // in the URL, else the newest date with data, else "". Keeping this in one
@@ -229,6 +249,7 @@ export function useShellNav(): ShellNav {
     date,
     calendar,
     pickerDates,
+    perDayChannel,
     isCurrentDayObs,
     olderDate,
     newerDate,

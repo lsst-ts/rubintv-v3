@@ -275,6 +275,106 @@ test("channel /current route follows the newest exposure", async () => {
   ).toBeNull();
 });
 
+// AuxTel with a per-day movies channel whose movies stop on 2024-10-23, long
+// before the camera's newest date (2026-04-10). Records every date payload
+// fetched so a test can tell which night the viewer resolved to.
+function stubPerDayMovies() {
+  const payloadDates: string[] = [];
+  const movieNights = ["2024-10-23", "2024-10-22"];
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    const dateMatch = /\/dates\/([0-9-]+)/.exec(url);
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = {
+        dates: ["2026-04-10", "2026-04-09", ...movieNights],
+        channel_latest: { monitor: "2026-04-10", movies: "2024-10-23" },
+        per_day_dates: { movies: movieNights },
+      };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [
+          { name: "monitor", title: "Monitor", per_day: false },
+          { name: "movies", title: "Tonight's Movie", per_day: true },
+        ],
+      };
+    } else if (dateMatch) {
+      payloadDates.push(dateMatch[1]);
+      const hasMovie = movieNights.includes(dateMatch[1]);
+      body = {
+        per_day: hasMovie ? { movies: { seq: "final", ext: "mp4" } } : {},
+        metadata: {},
+        channels: { monitor: [3, 1, 7] },
+        extensions: {},
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  return payloadDates;
+}
+
+test("per-day channel /current plays the channel's newest movie", async () => {
+  const payloadDates = stubPerDayMovies();
+  renderAt("/local/auxtel/movies/current");
+  // The movie lives in the payload's per_day map (not its seq channels) and
+  // on the channel's own newest night, not the camera's — the bug left this
+  // view blank, resolving seqs on 2026-04-10.
+  await waitFor(() =>
+    expect(document.querySelector("video")?.getAttribute("src")).toContain(
+      "/channels/movies/2024-10-23/final/movies.mp4",
+    ),
+  );
+  const src = document.querySelector("video")?.getAttribute("src");
+  expect(screen.getByText("LIVE")).toBeDefined();
+  // Fitted like All Sky's lone movie, with no exposure-metadata sidebar.
+  expect(document.querySelector(".media-stage--fit video")).not.toBeNull();
+  expect(document.querySelector(".metadata-sidebar")).toBeNull();
+  const download = screen.getByRole("link", { name: "Download movie" });
+  expect(download.getAttribute("href")).toBe(src);
+  // The caption spans the night's exposures and opens that night's table.
+  const exposures = screen.getByRole("link", { name: /Exposures #1/ });
+  expect(exposures.textContent).toBe("Exposures #1#7");
+  expect(exposures.getAttribute("href")).toBe("/local/auxtel?date=2024-10-23");
+  // Resolved straight to the channel's night; never fetched the camera's newest.
+  expect(payloadDates).not.toContain("2026-04-10");
+});
+
+test("per-day channel on a night without its artifact says so", async () => {
+  stubPerDayMovies();
+  renderAt("/local/auxtel/movies?date=2026-04-10");
+  expect(
+    await screen.findByText("No Tonight's Movie for 2026-04-10."),
+  ).toBeDefined();
+  expect(document.querySelector("video")).toBeNull();
+  expect(screen.getByRole("link", { name: "Jump to current" })).toBeDefined();
+});
+
+test("per-day channel's date stepper walks the channel's nights in place", async () => {
+  stubPerDayMovies();
+  const { router } = renderAt("/local/auxtel/movies?date=2026-04-10");
+  // On a per-day channel page the shell's picker ranges over the channel's
+  // movie nights: stepping back from 2026-04-10 skips the camera's 2026-04-09
+  // (no movie) to 2024-10-23, and stays in the movie viewer, not the Table.
+  const prev = await screen.findByRole("button", {
+    name: "Previous day with data",
+  });
+  await waitFor(() => expect((prev as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(prev);
+  await waitFor(() =>
+    expect(router.state.location.search).toBe("?date=2024-10-23"),
+  );
+  expect(router.state.location.pathname).toBe("/local/auxtel/movies");
+  await waitFor(() =>
+    expect(document.querySelector("video")?.getAttribute("src")).toContain(
+      "/channels/movies/2024-10-23/final/movies.mp4",
+    ),
+  );
+  // Only one date picker on the page: the shell's.
+  expect(document.querySelectorAll(".date-cluster")).toHaveLength(1);
+});
+
 // A camera configured with all three per-row link templates, one date with a
 // single seq carrying a "controller" metadata value (which feeds the
 // {controller:default=O} placeholder).

@@ -2320,12 +2320,16 @@ a.seq-arrow:hover { background: var(--line-soft); }
 .chv-iconlink svg { width: 16px; height: 16px; }
 
 /* ── All Sky feed ──────────────────────────────────────────────────────── */
-.allsky-wrap {
+/* The per-day channel viewer (one night's movie) shares this shell: a column
+   whose media stage takes the remaining height. */
+.allsky-wrap,
+.perday-view {
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
 }
+.perday-view .chv-vhead { margin-bottom: 0; }
 .allsky-toolbar {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 0;
@@ -2338,23 +2342,24 @@ a.seq-arrow:hover { background: var(--line-soft); }
   background: var(--paper); color: var(--ink);
 }
 
-/* The media stage: one cell per tile. On the current day that's the still +
-   movie, side by side when two 24rem columns fit and wrapping when they
-   don't; each fills its column's width at full aspect, so a tall pair
-   scrolls the stage. The historical view's lone movie instead fits the
-   stage's height (.allsky-stage--fit, below). */
-.allsky-stage {
+/* The media stage: one cell per tile. On All Sky's current day that's the
+   still + movie, side by side when two 24rem columns fit and wrapping when
+   they don't; each fills its column's width at full aspect, so a tall pair
+   scrolls the stage. A lone movie (All Sky's historical day, a per-day
+   channel's night) instead fits the stage's height (.media-stage--fit,
+   below). */
+.media-stage {
   flex: 1; min-height: 0;
   display: flex; flex-wrap: wrap; gap: 22px;
   padding: 18px 0 22px;
   overflow: auto;
 }
-.allsky-cell { flex: 1 1 24rem; min-width: 0; }
-.allsky-col {
+.media-cell { flex: 1 1 24rem; min-width: 0; }
+.media-col {
   display: flex; flex-direction: column; gap: 8px;
   margin: 0;
 }
-.allsky-mediahead {
+.media-head {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 10px; padding: 0 2px;
 }
@@ -2385,7 +2390,7 @@ a.seq-arrow:hover { background: var(--line-soft); }
 }
 .amh-action:hover { background: var(--line-soft); }
 .amh-action .ui-icon { width: 14px; height: 14px; }
-.allsky-frame {
+.media-frame {
   /* Don't grow past the image: the frame's height follows its media, so it
      never shows letterbox padding above and below. padding + border here
      must sum to --frame-inset (below). */
@@ -2394,8 +2399,8 @@ a.seq-arrow:hover { background: var(--line-soft); }
   box-shadow: var(--shadow-card);
   display: flex; align-items: center; justify-content: center;
 }
-.allsky-frame img,
-.allsky-frame video {
+.media-frame img,
+.media-frame video {
   /* Fill the column's width, the height following the aspect ratio. */
   width: auto; height: auto;
   max-width: 100%;
@@ -2406,11 +2411,11 @@ a.seq-arrow:hover { background: var(--line-soft); }
   border-radius: 6px;
 }
 
-/* Historical: the lone movie fits the stage, so the whole of it is in view
+/* A lone movie fits the stage, so the whole of it is in view
    without scrolling. A grid, not the wrapping row above: a wrapping row
    sizes its lines to their content, so the movie's natural height (a
    ~1200px square) overflows; here the 1fr row is the stage's own height. */
-.allsky-stage--fit {
+.media-stage--fit {
   /* Caption row height, caption→frame gap, and the frame's padding + border
      on one side: the media's height cap subtracts these from the cell, so
      they're shared rather than repeated as magic numbers. */
@@ -2421,7 +2426,7 @@ a.seq-arrow:hover { background: var(--line-soft); }
   grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: 1fr;
 }
-.allsky-stage--fit .allsky-cell {
+.media-stage--fit .media-cell {
   /* Size container: the media caps itself at 100cqw/100cqh of the cell (the
      cell's size comes from the grid track, never its content). The floor
      keeps a very short viewport from shrinking the movie to a sliver; the
@@ -2429,21 +2434,21 @@ a.seq-arrow:hover { background: var(--line-soft); }
   container-type: size;
   min-height: 16rem;
 }
-.allsky-stage--fit .allsky-col {
+.media-stage--fit .media-col {
   /* Shrink-wrap the frame, centred in the cell, so the caption's ends line
      up with the movie's edges rather than the cell's. */
   width: fit-content; max-width: 100%;
   margin: 0 auto;
   gap: var(--amh-gap);
 }
-.allsky-stage--fit .allsky-mediahead {
+.media-stage--fit .media-head {
   /* Fixed height, so the media's cap can subtract it; contain: inline-size
      keeps the caption from widening the tile past the movie. */
   height: var(--amh-h);
   contain: inline-size;
 }
-.allsky-stage--fit .allsky-frame img,
-.allsky-stage--fit .allsky-frame video {
+.media-stage--fit .media-frame img,
+.media-stage--fit .media-frame video {
   /* The largest size that fits the cell on both axes: its width/height less
      the frame chrome (and, vertically, the caption). Container units, not %,
      because the frame shrink-wraps the movie, so a percentage would have no

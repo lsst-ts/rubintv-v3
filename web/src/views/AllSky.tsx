@@ -7,11 +7,8 @@ import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { DatePicker } from "../components/DatePicker";
-import {
-  DownloadIcon,
-  RangeArrowIcon,
-  ViewerIcon,
-} from "../components/Icons";
+import { DownloadMovieLink } from "../components/DownloadMovieLink";
+import { RangeArrowIcon, ViewerIcon } from "../components/Icons";
 
 // Live view (live_view cameras, e.g. All Sky): a single panel showing the most
 // recent movie and (on the current date) the latest still, rather than a
@@ -175,7 +172,7 @@ export function AllSky() {
       {/* Historical: --fit sizes the lone movie to the stage's height. The
           current day's pair fill their columns' width and may scroll. */}
       <div
-        className={`allsky-stage live-view-media${isCurrent ? "" : " allsky-stage--fit"}`}
+        className={`media-stage live-view-media${isCurrent ? "" : " media-stage--fit"}`}
       >
         {calendar && tiles.length === 0 && date !== "" && (
           <p className="skeleton">No imagery yet for {date}.</p>
@@ -183,9 +180,9 @@ export function AllSky() {
         {tiles.map((t) => (
           // One cell per tile: a column of the current day's wrapping row, or
           // (historical) the size container the movie caps itself against.
-          <div key={t.channel} className="allsky-cell">
-            <figure className="allsky-col live-view-item">
-              <figcaption className="allsky-mediahead">
+          <div key={t.channel} className="media-cell">
+            <figure className="media-col live-view-item">
+              <figcaption className="media-head">
                 {isCurrent ? (
                   <>
                     <span className="amh-title">{t.title}</span>
@@ -231,7 +228,7 @@ export function AllSky() {
                   </span>
                 )}
               </figcaption>
-              <div className="allsky-frame">
+              <div className="media-frame">
                 {t.isVideo ? (
                   // Loop the all-sky movie continuously. autoPlay needs muted
                   // to be allowed by browser policy; playsInline keeps it from
@@ -246,32 +243,6 @@ export function AllSky() {
         ))}
       </div>
     </section>
-  );
-}
-
-// Download button for a movie tile. Same-origin, so `download` saves it
-// under the proxy's Content-Disposition name (e.g.
-// allsky_movies_<date>_final.mp4) rather than navigating to it. Icon-only
-// unless showLabel; the label is always the accessible name and tooltip.
-function DownloadMovieLink({
-  src,
-  showLabel = false,
-}: {
-  src: string;
-  showLabel?: boolean;
-}) {
-  const label = "Download movie";
-  return (
-    <a
-      className="amh-action"
-      href={src}
-      download
-      title={label}
-      aria-label={showLabel ? undefined : label}
-    >
-      <DownloadIcon />
-      {showLabel && label}
-    </a>
   );
 }
 
