@@ -187,6 +187,15 @@ export function Layout() {
       ? locationTitle
       : null;
 
+  // The date picker names whose dates it offers — the camera's, or on a
+  // per-day channel page that channel's movie nights — and the steppers say
+  // which kind of day they step to, so the two can't be mistaken.
+  const perDayTitle = nav.perDayChannel
+    ? (nav.cameraInfo?.channels?.find((c) => c.name === nav.perDayChannel)
+        ?.title ?? nav.perDayChannel)
+    : null;
+  const stepNoun = perDayTitle ? "night with a movie" : "day with data";
+
   return (
     <div className="app-root">
       <div className="main main--full">
@@ -290,8 +299,8 @@ export function Layout() {
                       <button
                         type="button"
                         className="tb-btn step"
-                        aria-label="Previous day with data"
-                        title="Previous day with data"
+                        aria-label={`Previous ${stepNoun}`}
+                        title={`Previous ${stepNoun}`}
                         disabled={!nav.olderDate}
                         onClick={() =>
                           nav.olderDate && applyDate(nav.olderDate)
@@ -303,7 +312,8 @@ export function Layout() {
                         dates={nav.pickerDates}
                         counts={nav.calendar?.counts ?? {}}
                         maxSeq={nav.calendar?.max_seq ?? {}}
-                        allSky={nav.perDayChannel !== null}
+                        movies={perDayTitle !== null}
+                        title={perDayTitle ?? title ?? undefined}
                         value={nav.date}
                         isCurrentDayObs={nav.isCurrentDayObs}
                         onChange={applyDate}
@@ -311,8 +321,8 @@ export function Layout() {
                       <button
                         type="button"
                         className="tb-btn step"
-                        aria-label="Next day with data"
-                        title="Next day with data"
+                        aria-label={`Next ${stepNoun}`}
+                        title={`Next ${stepNoun}`}
                         disabled={!nav.newerDate}
                         onClick={() =>
                           nav.newerDate && applyDate(nav.newerDate)
