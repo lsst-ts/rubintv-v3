@@ -278,6 +278,9 @@ h1, h2 {
   flex-wrap: wrap;
 }
 .title-row h2 { font-family: var(--display); font-weight: 700; font-size: 30px; margin: 0; }
+/* A header part held back until the camera config arrives: laid out, so its
+   row keeps its height, but not drawn (see cameraPending in Layout.tsx). */
+.topbar .is-pending { visibility: hidden; }
 .title-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
 
 /* Processing-mode banner beside the LSSTCam title: "USDF Nightly Validation

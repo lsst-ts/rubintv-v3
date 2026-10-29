@@ -73,6 +73,10 @@ export interface ShellNav {
     }[];
   }[];
   cameraInfo: CameraOut | undefined;
+  // True until the camera config has settled (arrived, or failed). Until then
+  // the shell can't tell what kind of camera it's on, so it holds back the
+  // header parts that depend on it.
+  cameraPending: boolean;
   hasClusterStatus: boolean;
   isLoading: boolean;
   // The shell-level date state, driving the topbar's date picker. `date` is
@@ -244,6 +248,7 @@ export function useShellNav(): ShellNav {
       })),
     })),
     cameraInfo: cameraQ.data,
+    cameraPending: cameraQ.isPending,
     hasClusterStatus: locationQ.data?.has_cluster_status ?? false,
     isLoading: locationsQ.isPending,
     date,
