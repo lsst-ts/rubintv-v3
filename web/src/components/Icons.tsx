@@ -66,6 +66,17 @@ export function ArrowRightIcon() {
   );
 }
 
+// Frame range — a long, thin "from → to" arrow between two seq numbers (the
+// live All Sky movie's 1 → latest). Wider than tall, so it has its own class
+// for sizing rather than the square .ui-icon box.
+export function RangeArrowIcon() {
+  return (
+    <svg {...base} className="ui-icon range-arrow" viewBox="0 0 24 12">
+      <path d="M2 6h19M16 2l5 4-5 4" />
+    </svg>
+  );
+}
+
 // Jump to current — right arrow into a bar (media "seek to latest").
 export function JumpToCurrentIcon() {
   return (
