@@ -44,10 +44,10 @@ test("per-seq camera: heatmap tints by exposure count", () => {
   expect(within(dialog).getByTitle("2026-04-10 · 171 exposures")).toBeDefined();
 });
 
-test("All Sky: month cell is a dot, heatmap is binary (has movie)", () => {
-  const dialog = open({ allSky: true });
+test("movie nights: month cell is a dot, heatmap is binary (has movie)", () => {
+  const dialog = open({ movies: true });
   // Month view: dot, no seq.
-  expect(within(dialog).getByTitle("2026-04-10 · has data")).toBeDefined();
+  expect(within(dialog).getByTitle("2026-04-10 · movie")).toBeDefined();
   expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
 
   fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));
@@ -55,6 +55,27 @@ test("All Sky: month cell is a dot, heatmap is binary (has movie)", () => {
   expect(within(dialog).getByTitle("2026-04-10 · movie")).toBeDefined();
   expect(within(dialog).getByText("has movie")).toBeDefined();
   expect(within(dialog).queryByText("more")).toBeNull();
+});
+
+test("the title names whose dates the picker offers, and what they are", () => {
+  const exposures = open({ title: "AuxTel" });
+  expect(exposures.getAttribute("aria-label")).toBe("Choose date: AuxTel");
+  expect(within(exposures).getByText("nights with exposures")).toBeDefined();
+  expect(exposures.closest(".date-cluster")?.className).not.toContain(
+    "is-movies",
+  );
+});
+
+test("a movie-nights picker is marked apart from an exposure picker", () => {
+  const dialog = open({ movies: true, title: "Tonight's Movie" });
+  expect(within(dialog).getByText("Tonight's Movie")).toBeDefined();
+  expect(within(dialog).getByText("nights with a movie")).toBeDefined();
+  // The cluster carries the movie colour hook; the trigger says what kind of
+  // night it is.
+  expect(dialog.closest(".date-cluster")?.className).toContain("is-movies");
+  expect(
+    screen.getByRole("button", { name: /2026-04-10/ }).getAttribute("title"),
+  ).toMatch(/^Movie for /);
 });
 
 test("heatmap lays months out 6-across (12 mini-months per year)", () => {

@@ -147,7 +147,8 @@ export function AllSky() {
           dates={calendar?.dates ?? []}
           counts={calendar?.counts ?? {}}
           maxSeq={calendar?.max_seq ?? {}}
-          allSky
+          movies
+          title={cameraInfo?.title ?? camera}
           value={date}
           isCurrentDayObs={isCurrentDayObs}
           // Merge with the existing params (as Layout's applyDate does):

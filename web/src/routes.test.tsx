@@ -358,7 +358,7 @@ test("per-day channel's date stepper walks the channel's nights in place", async
   // movie nights: stepping back from 2026-04-10 skips the camera's 2026-04-09
   // (no movie) to 2024-10-23, and stays in the movie viewer, not the Table.
   const prev = await screen.findByRole("button", {
-    name: "Previous day with data",
+    name: "Previous night with a movie",
   });
   await waitFor(() => expect((prev as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(prev);
@@ -371,8 +371,14 @@ test("per-day channel's date stepper walks the channel's nights in place", async
       "/channels/movies/2024-10-23/final/movies.mp4",
     ),
   );
-  // Only one date picker on the page: the shell's.
+  // Only one date picker on the page: the shell's, marked as listing the
+  // channel's movie nights rather than the camera's exposure dates.
   expect(document.querySelectorAll(".date-cluster")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: /2024-10-23/ }));
+  const dialog = screen.getByRole("dialog", {
+    name: "Choose date: Tonight's Movie",
+  });
+  expect(within(dialog).getByText("nights with a movie")).toBeDefined();
 });
 
 // A camera configured with all three per-row link templates, one date with a
@@ -901,13 +907,23 @@ test("All Sky date picker shows the has-data dot, not a max seq num", async () =
   }) as unknown as typeof fetch;
 
   localStorage.removeItem("rubintv.datepicker.mode"); // start on Months
-  renderAt("/local/allsky?date=2026-04-10");
-  const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
-  fireEvent.click(trigger);
+  const { container } = renderAt("/local/allsky?date=2026-04-10");
+  // The view's own picker: until the camera config says it's live-view, the
+  // shell can briefly show its (exposure) picker too, so don't take the first
+  // trigger found.
+  await waitFor(() =>
+    expect(container.querySelector(".allsky-toolbar .date-trigger")).not.toBeNull(),
+  );
+  fireEvent.click(
+    container.querySelector(".allsky-toolbar .date-trigger") as HTMLElement,
+  );
   const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
-  // Month view — All Sky shows only the has-data dot, no max seq.
-  expect(within(dialog).getByTitle("2026-04-10 · has data")).toBeDefined();
+  // Month view — All Sky shows only the has-movie dot, no max seq, under a
+  // heading naming the camera and what its days are.
+  expect(within(dialog).getByTitle("2026-04-10 · movie")).toBeDefined();
   expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
+  expect(within(dialog).getByText("All Sky")).toBeDefined();
+  expect(within(dialog).getByText("nights with a movie")).toBeDefined();
 });
 
 test("prev/next-day steppers move to adjacent dates with data", async () => {

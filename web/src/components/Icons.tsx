@@ -22,6 +22,16 @@ export function CalendarIcon() {
   );
 }
 
+// A film strip: marks a date picker that lists nights with a movie.
+export function FilmIcon() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M8 3v18M16 3v18M3 12h18M3 7.5h5M3 16.5h5M16 7.5h5M16 16.5h5" />
+    </svg>
+  );
+}
+
 export function ColumnsIcon() {
   return (
     <svg {...base}>

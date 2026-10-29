@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDismiss } from "../lib/useDismiss";
 import { currentDayObs } from "../lib/queryClient";
-import { CalendarIcon } from "./Icons";
+import { CalendarIcon, FilmIcon } from "./Icons";
 
 // Date picker with two views that share one popover:
 //   • months  — two side-by-side month grids (recent dates, default)
@@ -154,7 +154,9 @@ function MonthGrid({
             : data
               ? seq !== undefined
                 ? `${c.key} · max seq ${seq}`
-                : `${c.key} · has data`
+                : showSeq
+                  ? `${c.key} · has data`
+                  : `${c.key} · movie`
               : c.key;
           // Selectable days are real <button>s so they're keyboard-operable
           // (the grid was mouse-only — a <div onClick> can't be tabbed to or
@@ -378,9 +380,14 @@ interface Props {
   dates: string[];
   counts: Record<string, number>;
   maxSeq: Record<string, number>;
-  // True for All Sky / live-view cameras and per-day channels (one movie a
-  // night): month cells show only the dot, no seq.
-  allSky?: boolean;
+  // True when the dates are nights with a movie (All Sky, a per-day channel)
+  // rather than nights with exposures: month cells show only a dot, no seq,
+  // the heatmap is binary, and the picker takes the movie colour and icon so
+  // the two kinds of date can't be mistaken for each other.
+  movies?: boolean;
+  // What the dates belong to (a camera, or a per-day channel), shown as the
+  // popover's heading with what its days mean.
+  title?: string;
   value: string;
   // Whether `value` is the current observing day (computed by the caller via
   // currentDayObs, the UTC−12 rule). Tints the trigger chip so a date that
@@ -393,7 +400,8 @@ export function DatePicker({
   dates,
   counts,
   maxSeq,
-  allSky = false,
+  movies = false,
+  title,
   value,
   isCurrentDayObs = false,
   onChange,
@@ -457,8 +465,19 @@ export function DatePicker({
     setOpen((o) => !o);
   };
 
+  // The trigger's tooltip spells out what its live/past tint means.
+  const triggerTitle = !value
+    ? undefined
+    : movies
+      ? isCurrentDayObs
+        ? "Movie for the current observing night."
+        : "Movie for a past night, not the current observing night."
+      : isCurrentDayObs
+        ? "Current observing day — this table updates live as new exposures arrive."
+        : "Historical day — this is not the current observing day, so the table is not updating live.";
+
   return (
-    <span className="date-cluster" ref={rootRef}>
+    <span className={`date-cluster${movies ? " is-movies" : ""}`} ref={rootRef}>
       <button
         type="button"
         className={
@@ -471,21 +490,28 @@ export function DatePicker({
         }
         aria-haspopup="dialog"
         aria-expanded={open}
-        title={
-          value
-            ? isCurrentDayObs
-              ? "Current observing day — this table updates live as new exposures arrive."
-              : "Historical day — this is not the current observing day, so the table is not updating live."
-            : undefined
-        }
+        title={triggerTitle}
         onClick={openPicker}
       >
-        <CalendarIcon />
+        {movies ? <FilmIcon /> : <CalendarIcon />}
         <span>{value || "select date"}</span>
       </button>
 
       {open && (
-        <div className="date-pop" role="dialog" aria-label="Choose date">
+        <div
+          className="date-pop"
+          role="dialog"
+          aria-label={title ? `Choose date: ${title}` : "Choose date"}
+        >
+          {title && (
+            <div className="dp-title">
+              {movies ? <FilmIcon /> : <CalendarIcon />}
+              <span className="dp-title-name">{title}</span>
+              <span className="dp-title-sub">
+                {movies ? "nights with a movie" : "nights with exposures"}
+              </span>
+            </div>
+          )}
           <div className="dp-head">
             <div className="dp-tabs" role="tablist">
               <button
@@ -535,7 +561,7 @@ export function DatePicker({
                 selected={value}
                 hasData={hasData}
                 maxSeq={maxSeq}
-                showSeq={!allSky}
+                showSeq={!movies}
                 today={today}
                 showArrows
                 onStep={step}
@@ -547,7 +573,7 @@ export function DatePicker({
                 selected={value}
                 hasData={hasData}
                 maxSeq={maxSeq}
-                showSeq={!allSky}
+                showSeq={!movies}
                 today={today}
                 showArrows={false}
                 onStep={step}
@@ -567,7 +593,7 @@ export function DatePicker({
                       counts={countMap}
                       selected={value}
                       today={today}
-                      binary={allSky}
+                      binary={movies}
                       stripe={i}
                       onPickDay={pickDay}
                       onJumpMonth={jumpToMonthView}
@@ -576,7 +602,7 @@ export function DatePicker({
                 )}
               </div>
               <div className="dh-foot">
-                {allSky ? (
+                {movies ? (
                   <span className="dh-legend">
                     <i className="dh-day lv-on" />
                     <span>has movie</span>
