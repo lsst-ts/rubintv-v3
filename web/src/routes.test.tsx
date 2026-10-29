@@ -1273,6 +1273,33 @@ test("current All Sky date shows latest still and movie at their max seq", async
   expect(screen.getByTitle("Movie of frames 1 to 8").textContent).toBe("#1#8");
 });
 
+test("a link to today's All Sky waits for the calendar, not the final movie", async () => {
+  // Hold the calendar back: until it lands the view can't tell today from a
+  // past day, and must not guess "historical" (which would request a final
+  // movie that doesn't exist yet) or claim there's no imagery.
+  stubAllSky();
+  const stubbed = globalThis.fetch;
+  let releaseCalendar!: () => void;
+  const calendarGate = new Promise<void>((r) => (releaseCalendar = r));
+  globalThis.fetch = ((input: RequestInfo | URL) =>
+    /\/calendar$/.test(String(input))
+      ? calendarGate.then(() => stubbed(input))
+      : stubbed(input)) as typeof fetch;
+
+  renderAt("/local/allsky?date=2026-04-10");
+  // Camera config has landed (title shown) while the calendar is pending.
+  await screen.findByText("All Sky");
+  expect(document.querySelector("video")).toBeNull();
+  expect(screen.queryByText(/No imagery yet/)).toBeNull();
+
+  releaseCalendar();
+  await waitFor(() =>
+    expect(document.querySelector("video")?.getAttribute("src")).toContain(
+      "/channels/movies/2026-04-10/000008/image.mp4",
+    ),
+  );
+});
+
 test("historical All Sky date shows the final movie only, no stills", async () => {
   stubAllSky();
   // An older date -> historical mode: movie at the "final" sentinel, no still.
