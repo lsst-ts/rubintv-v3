@@ -2331,9 +2331,6 @@ a.seq-arrow:hover { background: var(--line-soft); }
   padding: 10px 0;
   border-bottom: 1px solid var(--line-soft);
 }
-.allsky-toolbar .amovie-label {
-  font-family: var(--hand); font-size: 13px; color: var(--ink-soft);
-}
 .allsky-toolbar .date-field {
   font-family: var(--mono); font-size: 12px;
   padding: 5px 8px;
@@ -2341,18 +2338,19 @@ a.seq-arrow:hover { background: var(--line-soft); }
   background: var(--paper); color: var(--ink);
 }
 
-/* The media stage: two columns (still + movie), each a framed media tile.
-   The tiles stretch to fill the stage on both axes so the imagery uses the
-   available space rather than sitting small in the top-left. */
+/* The media stage: one cell per tile. On the current day that's the still +
+   movie, side by side when two 24rem columns fit and wrapping when they
+   don't; each fills its column's width at full aspect, so a tall pair
+   scrolls the stage. The historical view's lone movie instead fits the
+   stage's height (.allsky-stage--fit, below). */
 .allsky-stage {
   flex: 1; min-height: 0;
   display: flex; flex-wrap: wrap; gap: 22px;
-  align-items: stretch;
   padding: 18px 0 22px;
   overflow: auto;
 }
+.allsky-cell { flex: 1 1 24rem; min-width: 0; }
 .allsky-col {
-  flex: 1 1 24rem; min-width: 0; min-height: 0;
   display: flex; flex-direction: column; gap: 8px;
   margin: 0;
 }
@@ -2363,12 +2361,34 @@ a.seq-arrow:hover { background: var(--line-soft); }
 .amh-title { font-family: var(--display); font-weight: 700; font-size: 16px; }
 .amh-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
 .live-view-seq { font-weight: 400; }
+/* Right-hand group: seq (or the movie's frame range) + action button,
+   centred on each other. The group's baseline is the seq text's, so it
+   still lines up with the title. With no title (historical) margin-left:
+   auto still pins it to the right end. */
+.amh-end {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+/* Live movie: "#1 → #<seq>", the frames the night's movie runs through. */
+.amh-range { display: inline-flex; align-items: center; gap: 3px; }
+.amh-range .range-arrow { width: 16px; height: 8px; }
+/* Caption action buttons (movie download, open still in new tab): icon
+   links like .chv-iconlink, small enough for the caption row. Icon-only
+   live; the download is labelled for the lone historical movie. */
+.amh-action {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px;
+  border-radius: 5px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.amh-action:hover { background: var(--line-soft); }
+.amh-action .ui-icon { width: 14px; height: 14px; }
 .allsky-frame {
-  /* Don't grow past the image: the frame shrink-wraps to its media (height
-     auto), so on a short page it collapses with the image instead of leaving
-     letterbox padding above and below. min-height: 0 lets it shrink inside
-     the column; the image's max-height (below) is what caps it. */
-  flex: 0 1 auto; min-height: 0;
+  /* Don't grow past the image: the frame's height follows its media, so it
+     never shows letterbox padding above and below. padding + border here
+     must sum to --frame-inset (below). */
   border: 1.5px solid var(--stroke); border-radius: 8px;
   background: var(--paper-2); padding: 10px;
   box-shadow: var(--shadow-card);
@@ -2376,18 +2396,62 @@ a.seq-arrow:hover { background: var(--line-soft); }
 }
 .allsky-frame img,
 .allsky-frame video {
-  /* Scale up to fill the column width, but cap height to the column's
-     available space (100% of the definite-height column minus the head/gap)
-     so the media never overflows. width/height auto keeps aspect ratio and
-     lets the media drive the frame's size — no fixed box to letterbox into. */
+  /* Fill the column's width, the height following the aspect ratio. */
   width: auto; height: auto;
-  max-width: 100%; max-height: 100%;
-  min-height: 0;
+  max-width: 100%;
   object-fit: contain;
   display: block;
   background: var(--paper-3);
   border: 1px solid var(--line-soft);
   border-radius: 6px;
+}
+
+/* Historical: the lone movie fits the stage, so the whole of it is in view
+   without scrolling. A grid, not the wrapping row above: a wrapping row
+   sizes its lines to their content, so the movie's natural height (a
+   ~1200px square) overflows; here the 1fr row is the stage's own height. */
+.allsky-stage--fit {
+  /* Caption row height, caption→frame gap, and the frame's padding + border
+     on one side: the media's height cap subtracts these from the cell, so
+     they're shared rather than repeated as magic numbers. */
+  --amh-h: 22px;
+  --amh-gap: 8px;
+  --frame-inset: 11.5px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: 1fr;
+}
+.allsky-stage--fit .allsky-cell {
+  /* Size container: the media caps itself at 100cqw/100cqh of the cell (the
+     cell's size comes from the grid track, never its content). The floor
+     keeps a very short viewport from shrinking the movie to a sliver; the
+     stage scrolls instead. */
+  container-type: size;
+  min-height: 16rem;
+}
+.allsky-stage--fit .allsky-col {
+  /* Shrink-wrap the frame, centred in the cell, so the caption's ends line
+     up with the movie's edges rather than the cell's. */
+  width: fit-content; max-width: 100%;
+  margin: 0 auto;
+  gap: var(--amh-gap);
+}
+.allsky-stage--fit .allsky-mediahead {
+  /* Fixed height, so the media's cap can subtract it; contain: inline-size
+     keeps the caption from widening the tile past the movie. */
+  height: var(--amh-h);
+  contain: inline-size;
+}
+.allsky-stage--fit .allsky-frame img,
+.allsky-stage--fit .allsky-frame video {
+  /* The largest size that fits the cell on both axes: its width/height less
+     the frame chrome (and, vertically, the caption). Container units, not %,
+     because the frame shrink-wraps the movie, so a percentage would have no
+     definite box to resolve against. */
+  max-width: calc(100cqw - 2 * var(--frame-inset));
+  max-height: calc(
+    100cqh - var(--amh-h) - var(--amh-gap) - 2 * var(--frame-inset)
+  );
 }
 
 /* ── Night report (folder-tabbed) ──────────────────────────────────────── */

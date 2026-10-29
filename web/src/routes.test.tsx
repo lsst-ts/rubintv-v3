@@ -1260,17 +1260,32 @@ test("current All Sky date shows latest still and movie at their max seq", async
   expect(movie?.getAttribute("src")).toContain(
     "/channels/movies/2026-04-10/000008/image.mp4",
   );
+  // The still opens in a new tab; the movie downloads. Each targets exactly
+  // the media its tile shows.
+  const openImage = screen.getByRole("link", { name: "Open image in new tab" });
+  const dlMovie = screen.getByRole("link", { name: "Download movie" });
+  expect(openImage.getAttribute("href")).toBe(still.getAttribute("src"));
+  expect(openImage.getAttribute("target")).toBe("_blank");
+  expect(openImage.hasAttribute("download")).toBe(false);
+  expect(dlMovie.getAttribute("href")).toBe(movie?.getAttribute("src"));
+  expect(dlMovie.hasAttribute("download")).toBe(true);
+  // The live movie is captioned with its frame range, 1 -> its seq.
+  expect(screen.getByTitle("Movie of frames 1 to 8").textContent).toBe("#1#8");
 });
 
 test("historical All Sky date shows the final movie only, no stills", async () => {
   stubAllSky();
   // An older date -> historical mode: movie at the "final" sentinel, no still.
   renderAt("/local/allsky?date=2026-04-09");
-  await screen.findByText("Current Movie");
+  // The caption is a download link for the movie, in place of a title.
+  const download = await screen.findByRole("link", { name: "Download movie" });
   const movie = document.querySelector("video");
   expect(movie?.getAttribute("src")).toContain(
     "/channels/movies/2026-04-09/final/movie.mp4",
   );
+  expect(download.getAttribute("href")).toBe(movie?.getAttribute("src"));
+  expect(download.hasAttribute("download")).toBe(true);
+  expect(screen.queryByText("Current Movie")).toBeNull();
   // No stills tile for a past day.
   expect(screen.queryByText("Current Image")).toBeNull();
   expect(document.querySelector("img")).toBeNull();

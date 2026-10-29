@@ -7,6 +7,11 @@ import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { DatePicker } from "../components/DatePicker";
+import {
+  DownloadIcon,
+  RangeArrowIcon,
+  ViewerIcon,
+} from "../components/Icons";
 
 // Live view (live_view cameras, e.g. All Sky): a single panel showing the most
 // recent movie and (on the current date) the latest still, rather than a
@@ -129,7 +134,6 @@ export function AllSky() {
     <section className="live-view allsky-wrap">
       {/* Toolbar: historical-date picker + live/historical indicator. */}
       <div className="allsky-toolbar">
-        <span className="amovie-label">All-sky feed</span>
         <DatePicker
           dates={calendar?.dates ?? []}
           counts={calendar?.counts ?? {}}
@@ -156,32 +160,106 @@ export function AllSky() {
         )}
       </div>
 
-      <div className="allsky-stage live-view-media">
+      {/* Historical: --fit sizes the lone movie to the stage's height. The
+          current day's pair fill their columns' width and may scroll. */}
+      <div
+        className={`allsky-stage live-view-media${isCurrent ? "" : " allsky-stage--fit"}`}
+      >
         {tiles.length === 0 && date !== "" && (
           <p className="skeleton">No imagery yet for {date}.</p>
         )}
         {tiles.map((t) => (
-          <figure key={t.channel} className="allsky-col live-view-item">
-            <figcaption className="allsky-mediahead">
-              <span className="amh-title">{t.title}</span>
-              <span className="amh-meta live-view-seq">
-                {typeof t.seq === "number" ? `#${t.seq}` : t.seq}
-              </span>
-            </figcaption>
-            <div className="allsky-frame">
-              {t.isVideo ? (
-                // Loop the all-sky movie continuously. autoPlay needs muted to
-                // be allowed by browser policy; playsInline keeps it from going
-                // fullscreen on mobile.
-                <video src={t.src} controls loop autoPlay muted playsInline />
-              ) : (
-                <img src={t.src} alt={`${t.title} ${t.seq}`} />
-              )}
-            </div>
-          </figure>
+          // One cell per tile: a column of the current day's wrapping row, or
+          // (historical) the size container the movie caps itself against.
+          <div key={t.channel} className="allsky-cell">
+            <figure className="allsky-col live-view-item">
+              <figcaption className="allsky-mediahead">
+                {isCurrent ? (
+                  <>
+                    <span className="amh-title">{t.title}</span>
+                    <span className="amh-end">
+                      <span className="amh-meta live-view-seq">
+                        {t.isVideo ? (
+                          // The live movie is the night so far: every frame
+                          // from the first up to this seq.
+                          <span
+                            className="amh-range"
+                            title={`Movie of frames 1 to ${t.seq}`}
+                          >
+                            #1
+                            <RangeArrowIcon />#{t.seq}
+                          </span>
+                        ) : (
+                          `#${t.seq}`
+                        )}
+                      </span>
+                      {t.isVideo ? (
+                        <DownloadMovieLink src={t.src} />
+                      ) : (
+                        // The still opens full-size in a new tab (the proxy
+                        // serves it inline) rather than downloading.
+                        <a
+                          className="amh-action"
+                          href={t.src}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open image in new tab"
+                          aria-label="Open image in new tab"
+                        >
+                          <ViewerIcon />
+                        </a>
+                      )}
+                    </span>
+                  </>
+                ) : (
+                  // Historical: the lone movie needs no title, so the caption
+                  // is just its (labelled) download button.
+                  <span className="amh-end">
+                    <DownloadMovieLink src={t.src} showLabel />
+                  </span>
+                )}
+              </figcaption>
+              <div className="allsky-frame">
+                {t.isVideo ? (
+                  // Loop the all-sky movie continuously. autoPlay needs muted
+                  // to be allowed by browser policy; playsInline keeps it from
+                  // going fullscreen on mobile.
+                  <video src={t.src} controls loop autoPlay muted playsInline />
+                ) : (
+                  <img src={t.src} alt={`${t.title} ${t.seq}`} />
+                )}
+              </div>
+            </figure>
+          </div>
         ))}
       </div>
     </section>
+  );
+}
+
+// Download button for a movie tile. Same-origin, so `download` saves it
+// under the proxy's Content-Disposition name (e.g.
+// allsky_movies_<date>_final.mp4) rather than navigating to it. Icon-only
+// unless showLabel; the label is always the accessible name and tooltip.
+function DownloadMovieLink({
+  src,
+  showLabel = false,
+}: {
+  src: string;
+  showLabel?: boolean;
+}) {
+  const label = "Download movie";
+  return (
+    <a
+      className="amh-action"
+      href={src}
+      download
+      title={label}
+      aria-label={showLabel ? undefined : label}
+    >
+      <DownloadIcon />
+      {showLabel && label}
+    </a>
   );
 }
 
