@@ -907,16 +907,9 @@ test("All Sky date picker shows the has-data dot, not a max seq num", async () =
   }) as unknown as typeof fetch;
 
   localStorage.removeItem("rubintv.datepicker.mode"); // start on Months
-  const { container } = renderAt("/local/allsky?date=2026-04-10");
-  // The view's own picker: until the camera config says it's live-view, the
-  // shell can briefly show its (exposure) picker too, so don't take the first
-  // trigger found.
-  await waitFor(() =>
-    expect(container.querySelector(".allsky-toolbar .date-trigger")).not.toBeNull(),
-  );
-  fireEvent.click(
-    container.querySelector(".allsky-toolbar .date-trigger") as HTMLElement,
-  );
+  renderAt("/local/allsky?date=2026-04-10");
+  const trigger = await screen.findByRole("button", { name: /2026-04-10/ });
+  fireEvent.click(trigger);
   const dialog = await screen.findByRole("dialog", { name: /Choose date/ });
   // Month view — All Sky shows only the has-movie dot, no max seq, under a
   // heading naming the camera and what its days are.
@@ -924,6 +917,60 @@ test("All Sky date picker shows the has-data dot, not a max seq num", async () =
   expect(within(dialog).queryByTitle(/max seq/)).toBeNull();
   expect(within(dialog).getByText("All Sky")).toBeDefined();
   expect(within(dialog).getByText("nights with a movie")).toBeDefined();
+});
+
+test("the shell holds back camera-specific header parts until the config lands", async () => {
+  // Gate the camera config so the test controls when it lands; everything
+  // else (calendar, payload) is served at once. The calendar plus a ?date= is
+  // what used to make the shell draw a regular camera's date picker and Table
+  // tab for All Sky (live-view: neither) while its config was in flight.
+  let releaseCamera = () => {};
+  const cameraGate = new Promise<void>((resolve) => {
+    releaseCamera = resolve;
+  });
+  let calendarServed = false;
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = { ok: true };
+    if (/\/cameras\/allsky\/calendar$/.test(url)) {
+      calendarServed = true;
+      body = { dates: ["2026-04-10"], counts: {}, max_seq: {} };
+    } else if (/\/cameras\/allsky$/.test(url)) {
+      return cameraGate.then(() => ({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            name: "allsky",
+            title: "All Sky",
+            live_view: true,
+            channels: [],
+            mosaic_view_meta: [],
+          }),
+      }));
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { container } = renderAt("/local/allsky?date=2026-04-10");
+  await waitFor(() => expect(calendarServed).toBe(true));
+  // Pending: no picker, no tabs, no title — only invisible stand-ins holding
+  // the title and tabs rows' height.
+  expect(container.querySelector(".topbar-datepicker")).toBeNull();
+  expect(screen.queryByRole("link", { name: "Table" })).toBeNull();
+  expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+  expect(container.querySelector(".title-row h2.is-pending")).not.toBeNull();
+  expect(container.querySelector(".tabs .tab.is-pending")).not.toBeNull();
+
+  // Landed: All Sky's own header — its title, and (live-view) still no
+  // picker or tabs.
+  releaseCamera();
+  expect(
+    await screen.findByRole("heading", { level: 2, name: "All Sky" }),
+  ).toBeDefined();
+  expect(container.querySelector(".topbar-datepicker")).toBeNull();
+  expect(container.querySelector(".tabs")).toBeNull();
 });
 
 test("prev/next-day steppers move to adjacent dates with data", async () => {

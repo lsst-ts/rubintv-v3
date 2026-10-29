@@ -57,10 +57,19 @@ export function Layout() {
   );
   const notFound = useRouteValid() === "missing" || unmatchedPath;
 
+  const onCamera = !!location && !!camera && !nav.system && !notFound;
+  // Until the camera config arrives the shell can't tell what kind of camera
+  // this is — a live-view camera (All Sky) has no Table tab or date picker,
+  // and the title is the config's, not the URL's name — so the title, tabs
+  // and date picker are held back rather than drawn for a regular camera and
+  // then swapped out. The title and tabs rows keep their height (invisible
+  // stand-ins) so the page doesn't jump when they land. A failed fetch
+  // settles too, and falls back to the URL name and a Table tab as before.
+  const cameraPending = onCamera && nav.cameraPending;
+
   // The per-camera view tabs (Table / Channels / Night report …) from the real
   // camera config. Only shown on a camera route.
-  const tabs = tabsForCamera(nav.cameraInfo);
-  const onCamera = !!location && !!camera && !nav.system && !notFound;
+  const tabs = cameraPending ? [] : tabsForCamera(nav.cameraInfo);
 
   // The LSSTCam processing-mode banner ("USDF Nightly Validation Processing" /
   // "Summit Quicklook Processing"). Non-null only on the lsstcam/lsstcam_aos
@@ -90,16 +99,18 @@ export function Layout() {
   const envTag = ENV_TAGS[env] ?? "";
   // A camera can have no tabs (live-view cameras with no night report), in
   // which case the topbar is laid out like the non-camera pages — no tabs row,
-  // so the status pills get the bottom padding they'd otherwise lack.
-  const hasTabs = onCamera && tabs.length > 0;
+  // so the status pills get the bottom padding they'd otherwise lack. While
+  // the config is pending the row is kept, holding its place.
+  const hasTabs = onCamera && (cameraPending || tabs.length > 0);
 
   // The date picker is hoisted from the Table view into the shell so the
   // selected date persists across the Table / Channels / single-channel tabs —
   // previously switching tabs (or opening a plot) dropped the ?date= and the
   // Table reverted to the newest day. It shows on any per-date camera view once
-  // a date resolves; live-view cameras (which have no per-date table) never do.
+  // a date resolves and the camera config says it isn't a live-view camera
+  // (which has no per-date table).
   const showDatePicker =
-    onCamera && !nav.cameraInfo?.live_view && nav.date !== "";
+    onCamera && !cameraPending && !nav.cameraInfo?.live_view && nav.date !== "";
 
   // Applying a date. On the Table view we just update ?date= in place. From a
   // Channels/single-channel view — where a historical date has no meaning (the
@@ -293,7 +304,14 @@ export function Layout() {
                 control read as a utility and users missed it. */}
               {(title || showDatePicker) && (
                 <div className="title-row">
-                  {title && <h2>{title}</h2>}
+                  {title && (
+                    <h2
+                      className={cameraPending ? "is-pending" : undefined}
+                      aria-hidden={cameraPending || undefined}
+                    >
+                      {title}
+                    </h2>
+                  )}
                   {showDatePicker && (
                     <span className="topbar-datepicker date-stepper">
                       <button
@@ -345,6 +363,11 @@ export function Layout() {
 
               {hasTabs && (
                 <div className="tabs">
+                  {cameraPending && (
+                    <span className="tab is-pending" aria-hidden="true">
+                      Table
+                    </span>
+                  )}
                   {tabs.map((tab) => {
                     const base =
                       `/${location}/${camera}` +
