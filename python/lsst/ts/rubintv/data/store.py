@@ -443,6 +443,24 @@ class EventStore:
                     latest[channel] = date
         return latest
 
+    def calendar_per_day_dates(
+        self, location: str, camera: str
+    ) -> dict[str, list[str]]:
+        """Every date with a per-day artifact, per channel, newest first.
+
+        A per-day channel (e.g. a night's movie) is browsed night by night,
+        and the camera's own date list is no guide to which nights have one:
+        a channel can stop producing long before the camera does. Only
+        per-day artifacts are listed — per-seq channels would repeat most of
+        the calendar for every channel.
+        """
+        dates = self._dates.get((location, camera), {})
+        per_day: dict[str, list[str]] = {}
+        for date in sorted(dates, reverse=True):
+            for channel in dates[date].per_day:
+                per_day.setdefault(channel, []).append(date)
+        return per_day
+
     def latest_channel_image(
         self, location: str, camera: str, channel: str
     ) -> tuple[str, int, str] | None:

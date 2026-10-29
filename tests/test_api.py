@@ -302,6 +302,8 @@ def test_calendar(seeded_client: TestClient) -> None:
     # The seeded witness_detector channel's most recent date, so a card with no
     # current frame can link straight to its last known plot.
     assert body["channel_latest"]["witness_detector"] == DATE
+    # The seeded day_movie is the only per-day artifact, on the one date.
+    assert body["per_day_dates"] == {"day_movie": [DATE]}
 
 
 def test_date_payload(seeded_client: TestClient) -> None:

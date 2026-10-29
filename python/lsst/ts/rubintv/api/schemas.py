@@ -195,6 +195,10 @@ class CalendarOut(BaseModel):
     card with no frame on the newest date to that channel's last known plot
     instead of a live view that would render nothing."""
 
+    per_day_dates: dict[str, list[str]] = {}
+    """Per per-day channel, every date with its artifact, newest first. Drives
+    the per-day viewer's date picker, which offers only nights with a movie."""
+
 
 class EventOut(BaseModel):
     key: str

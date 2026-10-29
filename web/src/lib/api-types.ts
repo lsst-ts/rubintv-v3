@@ -581,6 +581,13 @@ export interface components {
             channel_latest: {
                 [key: string]: string;
             };
+            /**
+             * Per Day Dates
+             * @default {}
+             */
+            per_day_dates: {
+                [key: string]: string[];
+            };
         };
         /** CameraGroupOut */
         CameraGroupOut: {
