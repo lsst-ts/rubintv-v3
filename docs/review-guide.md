@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 305 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 309 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -694,7 +694,8 @@ link; the calendar was refetched on every exposure. Review
 ### 46. All Sky, second pass
 Review `web/src/views/AllSky.tsx` and the All Sky block of
 `web/src/index.css`, whose `.allsky-stage--fit` modifier holds the
-historical-only sizing.
+historical-only sizing (renamed `.media-stage--fit` in group 47, which
+shares it).
 - `39777e3` Fit the historical All Sky movie to the stage; add caption
   actions: a grid of size-container cells caps the lone past-day movie at
   the stage's height (the current day keeps its full-width, scrolling
@@ -702,6 +703,28 @@ historical-only sizing.
   captioned `#1 → #<seq>`
 - `3ddf2ac` Wait for the calendar before drawing All Sky tiles (a link to
   today no longer renders as a past day first and 404s on a "final" movie)
+
+### 47. Per-day channels: a night-by-night movie viewer
+A per-day channel (AuxTel's Tonight's Movie) opened from the Channels grid
+rendered nothing: the single-channel view only knew seq channels. Review
+`web/src/views/PerDayChannel.tsx` with the dispatch at the top of
+`Channel.tsx`, the `perDayChannel` branch in `useShellNav.ts` and
+`applyDate` in `Layout.tsx` (the shell picker steps a per-day channel's
+nights in place), and `EventStore.calendar_per_day_dates`.
+- `e1d7f64` List each per-day channel's nights in the calendar
+  (`CalendarOut.per_day_dates`; API artifacts regenerated)
+- `4ea49b2` Give per-day channels a night-by-night movie viewer: the
+  night's movie fitted like All Sky's past day, captioned with the night's
+  exposure range (linking to its table) and a download button; `/current`
+  follows the channel's newest night; a `perDay` live message refreshes
+  the calendar. All Sky's stage classes become neutral `media-*` ones
+  (a rename, no style changes) and `DownloadMovieLink` moves to
+  `components/`
+- `e6267c2` Mark the movie-nights date picker apart from the exposure
+  picker: DatePicker's `allSky` prop becomes `movies`, which takes a movie
+  violet (`--movie`) and a film icon; a `title` heads the popover in both
+  modes ("AuxTel · nights with exposures" / "Tonight's Movie · nights with
+  a movie")
 
 ---
 
