@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 302 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 305 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -386,7 +386,8 @@ Safe to skim.
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
-  `175f1e7`, `f5ba744`, and the commit that noted the picker resize.
+  `175f1e7`, `f5ba744`, `46b1c0a`, and the commit that noted the All Sky
+  pass.
 
 ---
 
@@ -689,6 +690,18 @@ link; the calendar was refetched on every exposure. Review
   `refresh` carries `since_etag`; a `metadataDelta` (rows + removed)
   replaces the full re-stream when the versions line up, else it falls
   back to the stream.
+
+### 46. All Sky, second pass
+Review `web/src/views/AllSky.tsx` and the All Sky block of
+`web/src/index.css`, whose `.allsky-stage--fit` modifier holds the
+historical-only sizing.
+- `39777e3` Fit the historical All Sky movie to the stage; add caption
+  actions: a grid of size-container cells caps the lone past-day movie at
+  the stage's height (the current day keeps its full-width, scrolling
+  columns); download and open-in-new-tab caption buttons; the live movie
+  captioned `#1 → #<seq>`
+- `3ddf2ac` Wait for the calendar before drawing All Sky tiles (a link to
+  today no longer renders as a past day first and 404s on a "final" movie)
 
 ---
 
