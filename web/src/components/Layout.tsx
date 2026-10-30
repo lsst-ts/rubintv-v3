@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -9,6 +10,8 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { S3Status } from "./S3Status";
+import { InterruptedNotice } from "./ProxiedMedia";
+import { MediaInterruptionProvider } from "../lib/MediaInterruption";
 import { LoadingBanner } from "./LoadingBanner";
 import { NavMenu } from "./NavMenu";
 import { DatePicker } from "./DatePicker";
@@ -39,11 +42,17 @@ function useSite(): string | undefined {
 // URL params (Decision 7).
 export function Layout() {
   const { location, camera } = useParams();
-  const { pathname } = useRouterLocation();
+  const { pathname, search } = useRouterLocation();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const nav = useShellNav();
   const site = useSite();
+  // A media download on this page was cut short (see ProxiedMedia): the
+  // topbar offers a reload. The notice belongs to the page it was raised on,
+  // so navigating clears it.
+  const [mediaInterrupted, setMediaInterrupted] = useState(false);
+  const reportInterruption = useCallback(() => setMediaInterrupted(true), []);
+  useEffect(() => setMediaInterrupted(false), [pathname, search]);
   // Whether the outlet is showing the 404 page. Two ways to get there: the
   // URL names a location/camera/channel this deployment doesn't have (the
   // route guard), or it matched no route at all (the "*" route, flagged by its
@@ -286,6 +295,7 @@ export function Layout() {
                 {!notFound && (
                   <LoadingBanner location={location} camera={camera} />
                 )}
+                {mediaInterrupted && <InterruptedNotice />}
               </div>
               <NavMenu />
             </div>
@@ -403,7 +413,9 @@ export function Layout() {
         </header>
 
         <main className="app-content">
-          <Outlet />
+          <MediaInterruptionProvider value={reportInterruption}>
+            <Outlet />
+          </MediaInterruptionProvider>
         </main>
       </div>
     </div>

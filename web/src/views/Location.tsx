@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, cameraDataState } from "../lib/queryClient";
 import { usePageTitle } from "../lib/usePageTitle";
+import { ProxiedImg } from "../components/ProxiedMedia";
 
 // The camera-card thumbnail: the latest frame of the camera's primary channel
 // (CameraSummary.primary_image, resolved server-side). Reuses the Channels
@@ -35,7 +36,7 @@ function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
     );
   return (
     <>
-      <img
+      <ProxiedImg
         ref={imgRef}
         className={"cam-thumb-img" + (imgLoaded ? "" : " chc-img-loading")}
         src={src}

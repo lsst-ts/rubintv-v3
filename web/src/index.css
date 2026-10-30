@@ -451,6 +451,17 @@ h1, h2 {
 .s3-status-link { display: inline-flex; text-decoration: none; color: inherit; cursor: pointer; }
 .s3-status-link:hover .conn { text-decoration: underline; }
 
+/* A media download on the page was cut short (ProxiedMedia): amber like the
+   S3-slow warning, and a button — clicking reloads the page. */
+.interrupt-pill {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+.interrupt-pill:hover { text-decoration: underline; }
+
 .skeleton { color: var(--ink-soft); }
 
 /* ── Historical-scan pill ──────────────────────────────────────────────────

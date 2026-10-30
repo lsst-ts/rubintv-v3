@@ -28,6 +28,18 @@ export default defineConfig(({ command }) => ({
         // there is no auth proxy, so inject one here or the admin gate 403s
         // every write (local's admin_for is "*" = any authenticated user).
         headers: { "X-Auth-User": process.env.RUBINTV_DEV_USER ?? "localdev" },
+        // Pass a backend abort on. When the S3 proxy can't finish an object
+        // it closes the connection mid-body (so the browser never keeps a
+        // short file as whole), but the dev proxy would leave the browser's
+        // connection open, waiting forever. Closing it too gives the browser
+        // the same failed transfer it gets in deployment.
+        configure: (proxy) => {
+          proxy.on("proxyRes", (proxyRes, _req, res) => {
+            proxyRes.on("close", () => {
+              if (!proxyRes.complete) res.destroy();
+            });
+          });
+        },
       },
       [`${DEV_BASE}ws`]: {
         target: `ws://localhost:${BACKEND_PORT}`,

@@ -11,6 +11,7 @@ import {
   RangeArrowIcon,
   ViewerIcon,
 } from "../components/Icons";
+import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
 // Viewer for a per-day channel (e.g. Tonight's Movie): one artifact per night,
 // browsed night by night. Laid out like All Sky's historical day — the movie
@@ -156,9 +157,9 @@ export function PerDayChannel({ live }: { live: boolean }) {
                   // Loop like All Sky's movie. autoPlay needs muted to be
                   // allowed by browser policy; playsInline keeps it from
                   // going fullscreen on mobile.
-                  <video src={src} controls loop autoPlay muted playsInline />
+                  <ProxiedVideo src={src} controls loop autoPlay muted playsInline />
                 ) : (
-                  <img src={src} alt={`${channel} ${date}`} />
+                  <ProxiedImg src={src} alt={`${channel} ${date}`} />
                 )}
               </div>
             </figure>
