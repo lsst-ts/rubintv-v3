@@ -49,7 +49,7 @@ from lsst.ts.rubintv.data.source import S3Poller
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.data.tasks import PollEngine
 from lsst.ts.rubintv.logging import configure_logging, get_logger
-from lsst.ts.rubintv.middleware import correlation_middleware
+from lsst.ts.rubintv.middleware import CorrelationMiddleware
 from lsst.ts.rubintv.s3.client import S3ClientPool
 from lsst.ts.rubintv.spa import mount_spa
 from lsst.ts.rubintv.state import AppState
@@ -297,7 +297,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Re-bind the lifespan now that settings are on app.state.
     app.router.lifespan_context = lifespan
 
-    app.middleware("http")(correlation_middleware)
+    app.add_middleware(CorrelationMiddleware)
     # metadata.json responses can exceed 10 MB; gzip drops that ~10–20x for
     # the wire. minimum_size skips short responses where compression overhead
     # outweighs the gain.

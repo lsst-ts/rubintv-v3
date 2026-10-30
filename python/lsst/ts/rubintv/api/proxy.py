@@ -36,8 +36,10 @@ replaced. Range requests are passed through for video scrubbing.
 from __future__ import annotations
 
 import mimetypes
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, TypedDict
 
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
 from lsst.ts.rubintv.api.deps import (
@@ -49,6 +51,7 @@ from lsst.ts.rubintv.api.deps import (
 )
 from lsst.ts.rubintv.config.models import Camera, Location
 from lsst.ts.rubintv.logging import get_logger
+from lsst.ts.rubintv.middleware import ResponseAborted
 from lsst.ts.rubintv.state import AppState
 from starlette.background import BackgroundTask
 
@@ -150,7 +153,9 @@ def proxy_object(
     assert key is not None
     out_ext = ext if ext is not None else key.rsplit(".", 1)[-1]
     download_name = f"{camera.name}_{channel}_{date}_{seq}.{out_ext}"
-    return _stream_object(obj, download_name, range_header is not None)
+    return _stream_object(
+        client, bucket, key, obj, download_name, range_header is not None
+    )
 
 
 @router.get(
@@ -191,7 +196,9 @@ def proxy_night_report_plot(
     if result is None:
         log.info("proxy.nr_plot.miss", location=location.name, key=key)
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no object: {key}")
-    return _stream_object(result, filename, range_header is not None)
+    return _stream_object(
+        client, bucket, key, result, filename, range_header is not None
+    )
 
 
 def _media_type_for(obj: GetObjectResult, download_name: str) -> str:
@@ -213,7 +220,12 @@ def _media_type_for(obj: GetObjectResult, download_name: str) -> str:
 
 
 def _stream_object(
-    obj: GetObjectResult, download_name: str, is_range: bool
+    client: S3Client,
+    bucket: str,
+    key: str,
+    obj: GetObjectResult,
+    download_name: str,
+    is_range: bool,
 ) -> StreamingResponse:
     """Stream a fetched S3 object to the browser with caching headers.
 
@@ -240,7 +252,7 @@ def _stream_object(
     )
     body = obj["Body"]
     return StreamingResponse(
-        body.iter_chunks(),
+        _iter_body(client, bucket, key, obj),
         status_code=status_code,
         media_type=_media_type_for(obj, download_name),
         headers=headers,
@@ -249,9 +261,86 @@ def _stream_object(
         # close, the common case for movies). Without this the connection
         # stays checked out of the per-location client pool (shared with
         # interactive metadata fetches) until GC finalises it, so heavy
-        # scrubbing can transiently exhaust it.
+        # scrubbing can transiently exhaust it. (_iter_body also closes it,
+        # and any resumed body, however its iteration ends.)
         background=BackgroundTask(body.close),
     )
+
+
+# How many times a stream whose S3 read breaks mid-body is resumed from where
+# it stopped before giving up.
+_MAX_RESUMES = 2
+
+
+def _iter_body(
+    client: S3Client, bucket: str, key: str, obj: GetObjectResult
+) -> Iterator[bytes]:
+    """Stream an object's body, resuming from where it stopped if S3 drops.
+
+    Once the first chunk is out the status and headers are sent, so a broken
+    upstream read (a dropped connection, a read timeout, a short body) can't
+    become an error response. Instead the rest is fetched with a Range from
+    the current offset, pinned to the same ETag (IfMatch) so a replaced
+    object is never spliced in. A break that can't be resumed is logged and
+    raises ``ResponseAborted``: the response is left unfinished and the
+    connection closed, so the client sees a failed transfer, never a short
+    body passed off as the whole file. Every body is closed however the
+    stream ends, releasing its pooled connection.
+    """
+    first, last = _span(obj)
+    etag = obj.get("ETag")
+    body = obj["Body"]
+    sent = 0
+    resumes = 0
+    try:
+        while True:
+            try:
+                for chunk in body.iter_chunks():
+                    sent += len(chunk)
+                    yield chunk
+                return
+            except BotoCoreError as exc:
+                body.close()
+                offset = first + sent
+                if offset > last:
+                    return  # every byte was already sent
+                if resumes >= _MAX_RESUMES or not etag:
+                    log.warning(
+                        "proxy.stream.broken", key=key, sent=sent, error=str(exc)
+                    )
+                    raise ResponseAborted(key) from exc
+                resumes += 1
+                log.info("proxy.stream.resume", key=key, offset=offset, error=str(exc))
+                try:
+                    body = client.get_object(
+                        Bucket=bucket,
+                        Key=key,
+                        Range=f"bytes={offset}-{last}",
+                        IfMatch=etag,
+                    )["Body"]
+                except (BotoCoreError, ClientError) as resume_exc:
+                    # Includes 412: the object changed since the stream began.
+                    log.warning(
+                        "proxy.stream.broken",
+                        key=key,
+                        sent=sent,
+                        error=str(resume_exc),
+                    )
+                    raise ResponseAborted(key) from resume_exc
+    finally:
+        body.close()
+
+
+def _span(obj: GetObjectResult) -> tuple[int, int]:
+    """The first and last byte offsets of the object a GET returned.
+
+    A range GET's ``ContentRange`` reads ``bytes <first>-<last>/<total>``; a
+    full GET spans the whole ``ContentLength``.
+    """
+    if content_range := obj.get("ContentRange"):
+        first, last = content_range.split(" ", 1)[1].split("/", 1)[0].split("-")
+        return int(first), int(last)
+    return 0, obj.get("ContentLength", 0) - 1
 
 
 def _get_object(
