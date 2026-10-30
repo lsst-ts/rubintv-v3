@@ -7,6 +7,7 @@ import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { ProxiedImg } from "../components/ProxiedMedia";
 
 // The API doesn't re-export PlotOut by name; derive it from the report shape.
 type Plot = NightReportOut["plots"][number];
@@ -86,7 +87,7 @@ function PlotPanel({
     <div className="nr-plot-grid">
       {plots.map((p) => (
         <figure className="nr-plot" key={p.key}>
-          <img
+          <ProxiedImg
             src={api.nightReportPlotUrl(location, camera, date, p.group, p.filename)}
             alt={p.filename}
             loading="lazy"

@@ -17,6 +17,7 @@ import {
   ChevronDownIcon,
 } from "../components/Icons";
 import { PerDayChannel } from "./PerDayChannel";
+import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
 // The single-channel route. A per-day channel (one artifact per night, e.g.
 // Tonight's Movie) has no seqs to step through or exposure metadata to show,
@@ -517,7 +518,7 @@ function SeqChannel({ live }: { live: boolean }) {
         )}
         {src &&
           (isVideo ? (
-            <video src={src} controls />
+            <ProxiedVideo src={src} controls />
           ) : (
             // Wrap so the loading spinner can centre over the image itself, not
             // the whole media column (which also holds the channel strip above).
@@ -531,7 +532,7 @@ function SeqChannel({ live }: { live: boolean }) {
               {/* src is the latched seq, decoded before promotion (see
                   loadedSeq), so the image, seq label, and prev/next links all
                   change together. Click toggles fill/fit zoom. */}
-              <img
+              <ProxiedImg
                 ref={imgRef}
                 src={src}
                 alt={`${channel} ${seq}`}

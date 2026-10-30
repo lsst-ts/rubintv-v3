@@ -126,3 +126,11 @@ if (typeof window.matchMedia !== "function") {
     },
   })) as typeof window.matchMedia;
 }
+
+// jsdom has no object URLs; ProxiedImg makes one for an image it recovered
+// from a failed load. Hand out distinct blob: URLs so tests can see the swap.
+if (typeof URL.createObjectURL !== "function") {
+  let blobSeq = 0;
+  URL.createObjectURL = () => `blob:test/${++blobSeq}`;
+  URL.revokeObjectURL = () => {};
+}

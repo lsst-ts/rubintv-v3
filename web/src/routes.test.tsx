@@ -381,6 +381,66 @@ test("per-day channel's date stepper walks the channel's nights in place", async
   expect(within(dialog).getByText("nights with a movie")).toBeDefined();
 });
 
+test("a cut-short image keeps what arrived and the shell offers a reload", async () => {
+  // The <img> fails (the proxy aborted the transfer); ProxiedImg fetches the
+  // URL, gets three bytes before the connection drops, shows them, and the
+  // topbar raises its notice — which navigating away clears.
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/channels/monitor/")) {
+      let sent = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(ctl) {
+          if (sent) ctl.error(new TypeError("network error"));
+          else {
+            sent = true;
+            ctl.enqueue(new Uint8Array([1, 2, 3]));
+          }
+        },
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "image/png" }),
+        body,
+      });
+    }
+    let body: unknown = { ok: true };
+    if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: [251, 252] },
+        extensions: { monitor: { default: "png", exceptions: {} } },
+      };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  const { router } = renderAt("/local/auxtel/monitor?seq=252&date=2026-04-10");
+  const img = await screen.findByRole("img", { name: /monitor 252/ });
+  expect(screen.queryByRole("button", { name: /Download interrupted/ })).toBeNull();
+  fireEvent.error(img);
+  expect(
+    await screen.findByRole("button", { name: /Download interrupted · Reload/ }),
+  ).toBeDefined();
+  expect(img.getAttribute("src")).toMatch(/^blob:/);
+
+  // The notice belongs to the page it was raised on.
+  await act(() => router.navigate("/local/auxtel/monitor?seq=251&date=2026-04-10"));
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: /Download interrupted/ })).toBeNull(),
+  );
+});
+
 // A camera configured with all three per-row link templates, one date with a
 // single seq carrying a "controller" metadata value (which feeds the
 // {controller:default=O} placeholder).

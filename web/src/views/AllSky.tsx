@@ -9,6 +9,7 @@ import { usePageTitle } from "../lib/usePageTitle";
 import { DatePicker } from "../components/DatePicker";
 import { DownloadMovieLink } from "../components/DownloadMovieLink";
 import { RangeArrowIcon, ViewerIcon } from "../components/Icons";
+import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
 // Live view (live_view cameras, e.g. All Sky): a single panel showing the most
 // recent movie and (on the current date) the latest still, rather than a
@@ -234,9 +235,9 @@ export function AllSky() {
                   // Loop the all-sky movie continuously. autoPlay needs muted
                   // to be allowed by browser policy; playsInline keeps it from
                   // going fullscreen on mobile.
-                  <video src={t.src} controls loop autoPlay muted playsInline />
+                  <ProxiedVideo src={t.src} controls loop autoPlay muted playsInline />
                 ) : (
-                  <img src={t.src} alt={`${t.title} ${t.seq}`} />
+                  <ProxiedImg src={t.src} alt={`${t.title} ${t.seq}`} />
                 )}
               </div>
             </figure>

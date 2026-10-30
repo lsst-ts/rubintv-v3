@@ -7,6 +7,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useMetadata } from "../lib/useMetadata";
+import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
 // Live mosaic: a grid of channels, each tile showing that channel's *latest*
 // plot beside a few chosen metadata values for the same exposure. Built for
@@ -111,9 +112,9 @@ export function Mosaic() {
             </figcaption>
             <div className="mosaic-frame">
               {t.isVideo ? (
-                <video src={t.src} controls loop autoPlay muted playsInline />
+                <ProxiedVideo src={t.src} controls loop autoPlay muted playsInline />
               ) : (
-                <img src={t.src} alt={`${t.title} ${t.seq}`} loading="lazy" />
+                <ProxiedImg src={t.src} alt={`${t.title} ${t.seq}`} loading="lazy" />
               )}
             </div>
             {t.meta.length > 0 && (

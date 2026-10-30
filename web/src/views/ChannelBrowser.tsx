@@ -7,6 +7,7 @@ import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import type { ChannelOut, DatePayload } from "../lib/types";
+import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
 // The Channels tab: a responsive grid of latest-frame cards, one per channel,
 // each showing that channel's most recent image (or movie, for per-day
@@ -120,10 +121,10 @@ function ChannelCard({
       <div className="chc-frame">
         {media.src ? (
           media.isVideo ? (
-            <video src={media.src} muted playsInline preload="metadata" />
+            <ProxiedVideo src={media.src} muted playsInline preload="metadata" />
           ) : (
             <>
-              <img
+              <ProxiedImg
                 ref={imgRef}
                 src={media.src}
                 alt={`${ch.title} latest`}
