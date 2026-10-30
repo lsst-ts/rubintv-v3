@@ -374,6 +374,42 @@ test("a past night's table links its per-day movie to the movie viewer", async (
   );
 });
 
+test("the table's date picker marks the nights with a movie", async () => {
+  // Found from the Table, without going via Channels -> the movie's own
+  // picker: the exposure picker marks the movie nights, keyed with the
+  // channel's title. (Picking one opens its table, whose strip links on.)
+  stubPerDayMovies();
+  renderAt("/local/auxtel?date=2024-10-23");
+  fireEvent.click(await screen.findByRole("button", { name: /2024-10-23/ }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Choose date: AuxTel",
+  });
+  // The calendar may land after the picker opens; the marks follow it.
+  const night = await within(dialog).findByTitle(
+    "2024-10-23 · has data · Tonight's Movie",
+  );
+  expect(night.className).toContain("has-per-day");
+  expect(
+    within(dialog).getByTitle("2024-10-22 · has data · Tonight's Movie")
+      .className,
+  ).toContain("has-per-day");
+  expect(
+    within(dialog).getByText("Tonight's Movie").closest(".dp-title-key"),
+  ).not.toBeNull();
+});
+
+test("a movie viewer's own picker carries no per-night marks", async () => {
+  // Every day it offers is a movie night, so a mark would say nothing.
+  stubPerDayMovies();
+  renderAt("/local/auxtel/movies?date=2024-10-23");
+  fireEvent.click(await screen.findByRole("button", { name: /2024-10-23/ }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Choose date: Tonight's Movie",
+  });
+  await within(dialog).findByTitle("2024-10-23 · movie");
+  expect(dialog.querySelector(".has-per-day, .dp-title-key")).toBeNull();
+});
+
 test("per-day channel on a night without its artifact says so", async () => {
   stubPerDayMovies();
   renderAt("/local/auxtel/movies?date=2026-04-10");

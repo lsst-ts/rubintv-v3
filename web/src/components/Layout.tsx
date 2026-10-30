@@ -342,6 +342,8 @@ export function Layout() {
                         maxSeq={nav.calendar?.max_seq ?? {}}
                         movies={perDayTitle !== null}
                         title={perDayTitle ?? title ?? undefined}
+                        // A movie picker's days are all movie nights already.
+                        perDay={perDayTitle ? undefined : nav.perDayMarks}
                         value={nav.date}
                         isCurrentDayObs={nav.isCurrentDayObs}
                         onChange={applyDate}

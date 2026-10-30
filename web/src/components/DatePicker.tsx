@@ -22,6 +22,12 @@ const MONTH_ABBR = [
 ];
 const DOW = ["M", "T", "W", "T", "F", "S", "S"];
 
+const NO_PER_DAY: Record<string, string[]> = {};
+
+// A day's tooltip names the per-night channels it has an artifact on.
+const perDaySuffix = (titles: string[] | undefined) =>
+  titles?.length ? ` · ${titles.join(", ")}` : "";
+
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const key = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
 
@@ -72,6 +78,7 @@ interface MonthGridProps {
   maxSeq: Record<string, number>;
   // All Sky cameras have no per-seq table, so show only the has-data dot.
   showSeq: boolean;
+  perDay: Record<string, string[]>;
   today: string;
   showArrows: boolean;
   onStep: (months: number) => void;
@@ -85,6 +92,7 @@ function MonthGrid({
   hasData,
   maxSeq,
   showSeq,
+  perDay,
   today,
   showArrows,
   onStep,
@@ -147,16 +155,18 @@ function MonthGrid({
           if (c.out) classes.push("out");
           else if (future || !data) classes.push("disabled");
           if (data && !showSeq) classes.push("has-data");
+          const extras = data ? perDay[c.key] : undefined;
+          if (extras?.length) classes.push("has-per-day");
           if (!c.out && c.key === today) classes.push("today");
           if (!c.out && c.key === selected) classes.push("selected");
           const title = c.out
             ? ""
             : data
-              ? seq !== undefined
-                ? `${c.key} · max seq ${seq}`
-                : showSeq
-                  ? `${c.key} · has data`
-                  : `${c.key} · movie`
+              ? (seq !== undefined
+                  ? `${c.key} · max seq ${seq}`
+                  : showSeq
+                    ? `${c.key} · has data`
+                    : `${c.key} · movie`) + perDaySuffix(extras)
               : c.key;
           // Selectable days are real <button>s so they're keyboard-operable
           // (the grid was mouse-only — a <div onClick> can't be tabbed to or
@@ -236,6 +246,7 @@ interface MiniMonthProps {
   year: number;
   month: number;
   counts: Map<string, number>;
+  perDay: Record<string, string[]>;
   selected: string;
   today: string;
   binary: boolean;
@@ -247,6 +258,7 @@ function MiniMonth({
   year,
   month,
   counts,
+  perDay,
   selected,
   today,
   binary,
@@ -284,9 +296,11 @@ function MiniMonth({
         {cells.map((c) => {
           const future = c.key > today;
           const selectable = c.count >= 0 && !future;
+          const extras = selectable ? perDay[c.key] : undefined;
           const cls = [
             "dh-day",
             level(future ? -1 : c.count, binary),
+            extras?.length ? "has-per-day" : "",
             c.key === selected ? "selected" : "",
             c.key === today ? "today" : "",
           ]
@@ -295,9 +309,10 @@ function MiniMonth({
           const title =
             c.count < 0
               ? c.key
-              : binary
-                ? `${c.key} · movie`
-                : `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`;
+              : (binary
+                  ? `${c.key} · movie`
+                  : `${c.key} · ${c.count} exposure${c.count === 1 ? "" : "s"}`) +
+                perDaySuffix(extras);
           return (
             <button
               key={c.key}
@@ -321,6 +336,7 @@ function MiniMonth({
 interface YearBlockProps {
   year: number;
   counts: Map<string, number>;
+  perDay: Record<string, string[]>;
   selected: string;
   today: string;
   binary: boolean;
@@ -334,6 +350,7 @@ interface YearBlockProps {
 function YearBlock({
   year,
   counts,
+  perDay,
   selected,
   today,
   binary,
@@ -351,6 +368,7 @@ function YearBlock({
             year={year}
             month={m}
             counts={counts}
+            perDay={perDay}
             selected={selected}
             today={today}
             binary={binary}
@@ -388,6 +406,10 @@ interface Props {
   // What the dates belong to (a camera, or a per-day channel), shown as the
   // popover's heading with what its days mean.
   title?: string;
+  // Days that also have a per-night artifact (e.g. Tonight's Movie), with
+  // the titles of the channels that have one: such days carry a mark, keyed
+  // in the heading, so they can be found without the channel's own picker.
+  perDay?: Record<string, string[]>;
   value: string;
   // Whether `value` is the current observing day (computed by the caller via
   // currentDayObs, the UTC−12 rule). Tints the trigger chip so a date that
@@ -402,6 +424,7 @@ export function DatePicker({
   maxSeq,
   movies = false,
   title,
+  perDay = NO_PER_DAY,
   value,
   isCurrentDayObs = false,
   onChange,
@@ -430,6 +453,14 @@ export function DatePicker({
 
   const today = useCurrentDayObsKey();
   const latest = dates[0] ?? "";
+
+  // The heading's key for the per-night mark: the one channel's title, or a
+  // general name when the marked days span several.
+  const perDayKey = useMemo(() => {
+    const titles = new Set(Object.values(perDay).flat());
+    if (titles.size === 0) return null;
+    return titles.size === 1 ? [...titles][0] : "per-night data";
+  }, [perDay]);
 
   const setModePersisted = (next: Mode) => {
     try {
@@ -510,6 +541,12 @@ export function DatePicker({
               <span className="dp-title-sub">
                 {movies ? "nights with a movie" : "nights with exposures"}
               </span>
+              {perDayKey && (
+                <span className="dp-title-key">
+                  <i className="dp-per-day-mark" aria-hidden="true" />
+                  {perDayKey}
+                </span>
+              )}
             </div>
           )}
           <div className="dp-head">
@@ -562,6 +599,7 @@ export function DatePicker({
                 hasData={hasData}
                 maxSeq={maxSeq}
                 showSeq={!movies}
+                perDay={perDay}
                 today={today}
                 showArrows
                 onStep={step}
@@ -574,6 +612,7 @@ export function DatePicker({
                 hasData={hasData}
                 maxSeq={maxSeq}
                 showSeq={!movies}
+                perDay={perDay}
                 today={today}
                 showArrows={false}
                 onStep={step}
@@ -591,6 +630,7 @@ export function DatePicker({
                       key={y}
                       year={y}
                       counts={countMap}
+                      perDay={perDay}
                       selected={value}
                       today={today}
                       binary={movies}

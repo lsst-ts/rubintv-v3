@@ -64,6 +64,43 @@ test("the title names whose dates the picker offers, and what they are", () => {
   expect(exposures.closest(".date-cluster")?.className).not.toContain(
     "is-movies",
   );
+  // No per-night data: no marks and no key.
+  expect(exposures.querySelector(".has-per-day, .dp-title-key")).toBeNull();
+});
+
+test("days with a per-night artifact are marked in both views and keyed", () => {
+  const dialog = open({
+    title: "AuxTel",
+    perDay: { "2026-04-10": ["Tonight's Movie"] },
+  });
+  // Months: the day is marked and its tooltip names the channel.
+  const cell = within(dialog).getByTitle(
+    "2026-04-10 · max seq 174 · Tonight's Movie",
+  );
+  expect(cell.className).toContain("has-per-day");
+  // The heading keys the mark with the channel's title.
+  expect(
+    within(dialog).getByText("Tonight's Movie").closest(".dp-title-key"),
+  ).not.toBeNull();
+
+  fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));
+  const heat = within(dialog).getByTitle(
+    "2026-04-10 · 171 exposures · Tonight's Movie",
+  );
+  expect(heat.className).toContain("has-per-day");
+});
+
+test("marks spanning several per-night channels get a general key", () => {
+  const dialog = open({
+    title: "ComCam",
+    perDay: { "2026-04-10": ["Whole Day Movie", "Last N Images Movie"] },
+  });
+  expect(
+    within(dialog).getByTitle(
+      "2026-04-10 · max seq 174 · Whole Day Movie, Last N Images Movie",
+    ),
+  ).toBeDefined();
+  expect(within(dialog).getByText("per-night data")).toBeDefined();
 });
 
 test("a movie-nights picker is marked apart from an exposure picker", () => {
