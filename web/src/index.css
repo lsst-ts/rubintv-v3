@@ -1209,6 +1209,33 @@ h1, h2 {
 .dh-legend .dh-day { cursor: default; }
 .dh-hint { margin-left: auto; font-style: italic; }
 
+/* A day that also has a per-night artifact (exposure picker `perDay`, e.g. a
+   night with Tonight's Movie): a movie-violet dog-ear in the cell's top-right
+   corner, in both views, keyed in the heading. A right-angled triangle drawn
+   with borders. */
+.dp-day.has-per-day::before,
+.dh-day.has-per-day::after,
+.dp-per-day-mark {
+  content: "";
+  width: 0; height: 0;
+  border-style: solid;
+  border-color: transparent var(--movie) transparent transparent;
+}
+.dp-day.has-per-day::before {
+  position: absolute; top: 0; right: 0;
+  border-width: 0 8px 8px 0;
+}
+.dh-day.has-per-day { position: relative; }
+.dh-day.has-per-day::after {
+  position: absolute; top: -1px; right: -1px;
+  border-width: 0 5px 5px 0;
+}
+.dp-title-key {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.dp-per-day-mark { display: inline-block; border-width: 0 8px 8px 0; }
+
 /* Movie nights (DatePicker `movies`): the movie violet takes over from the
    teal data accent — heading band, has-movie dots and heatmap cells (legend
    included), the active view tab and the jump link — so a movie picker reads

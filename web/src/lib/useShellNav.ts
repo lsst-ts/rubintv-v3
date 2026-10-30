@@ -94,6 +94,10 @@ export interface ShellNav {
   // the picker and steppers range over the channel's nights and stay in the
   // channel's viewer rather than going to the Table.
   perDayChannel: string | null;
+  // Days with a per-night artifact on a configured per-day channel, with the
+  // titles of those channels: the exposure picker marks them, so a night's
+  // movie can be found from the Table (whose per-day strip links to it).
+  perDayMarks: Record<string, string[]>;
   // Whether `date` is the current observing day (UTC−12 rule); tints the chip.
   isCurrentDayObs: boolean;
   // Adjacent dates with data for the prev/next-day steppers (null at an end).
@@ -184,6 +188,16 @@ export function useShellNav(): ShellNav {
   const perDayDates = perDayChannel
     ? calendar?.per_day_dates?.[perDayChannel]
     : undefined;
+  const perDayMarks = useMemo(() => {
+    const marks: Record<string, string[]> = {};
+    if (!Array.isArray(cameraChannels)) return marks;
+    for (const [name, dates] of Object.entries(calendar?.per_day_dates ?? {})) {
+      const ch = cameraChannels.find((c) => c.name === name && c.per_day);
+      if (!ch || !Array.isArray(dates)) continue;
+      for (const d of dates) (marks[d] ??= []).push(ch.title);
+    }
+    return marks;
+  }, [cameraChannels, calendar?.per_day_dates]);
 
   // Defensive like the rest of the shell: a fetch stub or a backend mid-deploy
   // can return a calendar object with a missing/non-array `dates`, and this
@@ -255,6 +269,7 @@ export function useShellNav(): ShellNav {
     calendar,
     pickerDates,
     perDayChannel,
+    perDayMarks,
     isCurrentDayObs,
     olderDate,
     newerDate,
