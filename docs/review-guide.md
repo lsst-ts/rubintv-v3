@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 311 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 314 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -730,6 +730,26 @@ nights in place), and `EventStore.calendar_per_day_dates`.
   camera's title, Table tab and date picker (which flashed on All Sky);
   invisible stand-ins keep the title and tabs rows' height (`cameraPending`
   in `useShellNav.ts` and `Layout.tsx`)
+
+### 48. Interrupted media downloads
+An S3 read that broke mid-stream logged a traceback and, worse, reached
+the browser as a short file that looked whole and was cached as such (the
+`BaseHTTPMiddleware` ended the response normally before re-raising).
+Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
+`ResponseAborted` in `middleware.py` (the ASGI-level tests in
+`tests/test_ops.py` show the response left unfinished), then
+`web/src/components/ProxiedMedia.tsx` and the pill in `Layout.tsx`.
+- `ac5c75d` Resume a broken proxy stream, and abort one that can't be
+  resumed: the rest is fetched with a Range from the break, pinned to the
+  ETag (`IfMatch`), up to twice; otherwise `ResponseAborted` leaves the
+  response unfinished so the connection is cut. `correlation_middleware`
+  becomes the plain-ASGI `CorrelationMiddleware` (same id, header and
+  timing log)
+- `c2e0773` Show what arrived of a cut-short image and offer a reload:
+  `ProxiedImg` refetches a failed image and shows the bytes that arrive;
+  `ProxiedVideo` reports a failed movie the server still serves; a
+  "Download interrupted · Reload" pill in the topbar. The Vite dev proxy
+  now passes a backend abort on instead of holding the connection open
 
 ---
 
