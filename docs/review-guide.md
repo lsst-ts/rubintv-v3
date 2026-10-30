@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 316 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 318 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -733,6 +733,9 @@ nights in place), and `EventStore.calendar_per_day_dates`.
 - `67f7bff` Link a night's per-day artifact from its table: the per-day
   strip's "movies: final" label becomes a link to that night in the
   viewer, worded from the channel's label ("Movie for 2024-10-23")
+- `3a31fe0` Mark the days with a per-night artifact in the table's date
+  picker: a movie-violet dog-ear on those days in both views, keyed in the
+  heading (`perDay` on DatePicker, `perDayMarks` in `useShellNav.ts`)
 
 ### 48. Interrupted media downloads
 An S3 read that broke mid-stream logged a traceback and, worse, reached
