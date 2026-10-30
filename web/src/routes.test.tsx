@@ -297,14 +297,25 @@ function stubPerDayMovies() {
         title: "AuxTel",
         channels: [
           { name: "monitor", title: "Monitor", per_day: false },
-          { name: "movies", title: "Tonight's Movie", per_day: true },
+          {
+            name: "movies",
+            title: "Tonight's Movie",
+            label: "Movie for ",
+            per_day: true,
+          },
         ],
       };
     } else if (dateMatch) {
       payloadDates.push(dateMatch[1]);
       const hasMovie = movieNights.includes(dateMatch[1]);
       body = {
-        per_day: hasMovie ? { movies: { seq: "final", ext: "mp4" } } : {},
+        // "stills" isn't a configured channel: an artifact with no viewer.
+        per_day: hasMovie
+          ? {
+              movies: { seq: "final", ext: "mp4" },
+              stills: { seq: "final", ext: "jpg" },
+            }
+          : {},
         metadata: {},
         channels: { monitor: [3, 1, 7] },
         extensions: {},
@@ -339,6 +350,28 @@ test("per-day channel /current plays the channel's newest movie", async () => {
   expect(exposures.getAttribute("href")).toBe("/local/auxtel?date=2024-10-23");
   // Resolved straight to the channel's night; never fetched the camera's newest.
   expect(payloadDates).not.toContain("2026-04-10");
+});
+
+test("a past night's table links its per-day movie to the movie viewer", async () => {
+  stubPerDayMovies();
+  const { router } = renderAt("/local/auxtel?date=2024-10-23");
+  // The per-day strip's movie is a link to that night in its viewer (it was
+  // a bare "movies: final" label, leaving no way to a past night's movie
+  // from its table); the label reads as a prefix to the date.
+  const link = await screen.findByRole("link", { name: "Movie for 2024-10-23" });
+  expect(link.getAttribute("href")).toBe("/local/auxtel/movies?date=2024-10-23");
+  // An artifact on a channel with no viewer stays a plain label.
+  expect(screen.getByText("stills: final").tagName).toBe("SPAN");
+
+  fireEvent.click(link);
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/auxtel/movies"),
+  );
+  await waitFor(() =>
+    expect(document.querySelector("video")?.getAttribute("src")).toContain(
+      "/channels/movies/2024-10-23/final/movies.mp4",
+    ),
+  );
 });
 
 test("per-day channel on a night without its artifact says so", async () => {

@@ -1651,6 +1651,9 @@ h1, h2 {
   border: 1px solid var(--line-mid); border-radius: 4px;
   padding: 3px 8px;
 }
+/* One with a viewer links to it: link-coloured, lifting on hover. */
+a.per-day-item { color: var(--accent); text-decoration: none; }
+a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft); }
 
 /* ── Data table ────────────────────────────────────────────────────────── */
 .table-wrap {
