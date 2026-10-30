@@ -23,9 +23,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import time
 from collections.abc import Iterator
+from typing import Any
 
 import boto3
 import pytest
@@ -600,6 +602,194 @@ def test_proxy_range_request_returns_partial_content(
     assert resp.status_code == 206
     assert resp.content == b"0123"
     assert resp.headers["Content-Range"] == "bytes 0-3/10"
+
+
+class _BreakingBody:
+    """An S3 body whose read breaks after ``keep`` bytes, as botocore's does
+    when the connection drops mid-stream (ResponseStreamingError wrapping
+    urllib3's IncompleteRead)."""
+
+    def __init__(self, real: Any, keep: int) -> None:
+        self._real = real
+        self._keep = keep
+        self.closed = False
+
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[bytes]:
+        from botocore.exceptions import ResponseStreamingError
+
+        yield self._real.read(self._keep)
+        raise ResponseStreamingError(error="Connection broken: IncompleteRead")
+
+    def close(self) -> None:
+        self.closed = True
+        self._real.close()
+
+
+def _break_first_get(
+    seeded_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    keep: int,
+    resume_error: Exception | None = None,
+) -> tuple[list[dict[str, Any]], list[_BreakingBody]]:
+    """Make the proxy's first GET return a body that breaks after ``keep``
+    bytes; later GETs (the resumes) hit moto, or raise ``resume_error``.
+    Returns the recorded GET kwargs and the breaking bodies handed out."""
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    client = state.s3.client_for("test")
+    real_get = client.get_object
+    calls: list[dict[str, Any]] = []
+    broken: list[_BreakingBody] = []
+
+    def _get(**kwargs: Any) -> Any:
+        calls.append(kwargs)
+        if len(calls) > 1 and resume_error is not None:
+            raise resume_error
+        obj = real_get(**kwargs)
+        if len(calls) == 1:
+            obj["Body"] = _BreakingBody(obj["Body"], keep)
+            broken.append(obj["Body"])
+        return obj
+
+    monkeypatch.setattr(client, "get_object", _get)
+    return calls, broken
+
+
+def _seed_movie(seq: str, data: bytes) -> None:
+    s3 = boto3.client("s3", region_name="us-east-1")
+    s3.put_object(
+        Bucket=TEST_BUCKET,
+        Key=(
+            f"lsstcam/{DATE}/witness_detector/{seq}/"
+            f"lsstcam_witness_detector_{DATE}_{seq}.mp4"
+        ),
+        Body=data,
+    )
+
+
+def test_proxy_resumes_a_stream_that_breaks_mid_body(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The S3 read breaks after 4 bytes. Raising would end the response early
+    # but cleanly (BaseHTTPMiddleware), handing the client a truncated file;
+    # instead the proxy fetches the rest from that offset, pinned to the ETag.
+    _seed_movie("000006", b"0123456789")
+    calls, broken = _break_first_get(seeded_client, monkeypatch, keep=4)
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000006/video.mp4"
+    )
+    assert resp.status_code == 200
+    assert resp.content == b"0123456789"
+    assert len(calls) == 2
+    assert calls[1]["Range"] == "bytes=4-9"
+    assert calls[1]["IfMatch"]
+    assert broken[0].closed
+
+
+def test_proxy_resumes_a_broken_range_within_the_range(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A range stream resumes inside the requested range, not from the start
+    # of the object.
+    _seed_movie("000007", b"0123456789")
+    calls, _ = _break_first_get(seeded_client, monkeypatch, keep=2)
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000007/video.mp4",
+        headers={"Range": "bytes=3-7"},
+    )
+    assert resp.status_code == 206
+    assert resp.content == b"34567"
+    assert calls[1]["Range"] == "bytes=5-7"
+
+
+def test_proxy_aborts_a_stream_it_cannot_resume_without_a_traceback(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The resume fails (here the object changed: IfMatch -> 412). The proxy
+    # raises ResponseAborted, which the correlation middleware swallows once
+    # the response is under way — TestClient re-raises server exceptions, so
+    # reaching the asserts proves nothing escapes to log a traceback. The
+    # response is left unfinished, so a server cuts the connection rather
+    # than pass the 4 bytes off as the whole file (see test_ops for the ASGI
+    # messages); TestClient only rewinds its body buffer on the final body
+    # message, so an unfinished response reads back empty here, where the
+    # old middleware handed back b"0123" as a complete body.
+    from botocore.exceptions import ClientError
+
+    _seed_movie("000008", b"0123456789")
+    changed = ClientError({"Error": {"Code": "PreconditionFailed"}}, "GetObject")
+    calls, broken = _break_first_get(
+        seeded_client, monkeypatch, keep=4, resume_error=changed
+    )
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000008/video.mp4"
+    )
+    assert resp.content == b""
+    assert len(calls) == 2
+    assert broken[0].closed
+
+
+class _ResumeClient:
+    """Stands in for the S3 client on a resume: each GET raises ``error``
+    or hands back the rest of ``data`` in a body that breaks after one
+    byte."""
+
+    def __init__(self, data: bytes, error: Exception | None = None) -> None:
+        self._data = data
+        self._error = error
+        self.ranges: list[str] = []
+
+    def get_object(self, **kwargs: Any) -> dict[str, Any]:
+        self.ranges.append(kwargs["Range"])
+        if self._error is not None:
+            raise self._error
+        first = int(kwargs["Range"].split("=")[1].split("-")[0])
+        return {"Body": _BreakingBody(io.BytesIO(self._data[first:]), keep=1)}
+
+
+def _stream(client: _ResumeClient, data: bytes, keep: int, sent: list[bytes]) -> None:
+    """Iterate the proxy's body stream over ``data`` (breaking after
+    ``keep`` bytes) into ``sent`` until it ends or aborts."""
+    from lsst.ts.rubintv.api.proxy import _iter_body
+
+    obj: Any = {
+        "Body": _BreakingBody(io.BytesIO(data), keep=keep),
+        "ContentLength": len(data),
+        "ETag": '"etag"',
+    }
+    try:
+        for chunk in _iter_body(client, "bucket", "key", obj):  # type: ignore[arg-type]
+            sent.append(chunk)
+    finally:
+        assert obj["Body"].closed
+
+
+def test_iter_body_aborts_when_the_object_changed() -> None:
+    from botocore.exceptions import ClientError
+    from lsst.ts.rubintv.middleware import ResponseAborted
+
+    changed = ClientError({"Error": {"Code": "PreconditionFailed"}}, "GetObject")
+    client = _ResumeClient(b"0123456789", error=changed)
+    sent: list[bytes] = []
+    with pytest.raises(ResponseAborted):
+        _stream(client, b"0123456789", keep=4, sent=sent)
+    assert b"".join(sent) == b"0123"
+    assert client.ranges == ["bytes=4-9"]
+
+
+def test_iter_body_aborts_once_its_resumes_run_out() -> None:
+    # Every resumed body breaks again after a byte: two resumes, then abort.
+    from lsst.ts.rubintv.middleware import ResponseAborted
+
+    client = _ResumeClient(b"0123456789")
+    sent: list[bytes] = []
+    with pytest.raises(ResponseAborted):
+        _stream(client, b"0123456789", keep=4, sent=sent)
+    # 4 bytes, then one from each resume before it broke again.
+    assert b"".join(sent) == b"012345"
+    assert client.ranges == ["bytes=4-9", "bytes=5-9"]
 
 
 def test_proxy_unsatisfiable_range_returns_416(seeded_client: TestClient) -> None:

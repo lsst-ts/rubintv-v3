@@ -28,14 +28,28 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import boto3
+import pytest
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.cache import CACHE_VERSION
-from lsst.ts.rubintv.middleware import response_bytes
+from lsst.ts.rubintv.middleware import (
+    CorrelationMiddleware,
+    ResponseAborted,
+    response_bytes,
+)
 from lsst.ts.rubintv.spa import render_index
 from moto import mock_aws
+from starlette.applications import Starlette
+from starlette.datastructures import Headers
+from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
+from starlette.routing import Route
+from starlette.types import Message
 
 from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
 
@@ -248,11 +262,101 @@ def test_spa_catch_all_does_not_shadow_api(tmp_path: Path) -> None:
 
 
 def test_response_bytes_reads_content_length_or_none() -> None:
-    from starlette.responses import Response, StreamingResponse
-
-    assert response_bytes(Response(content=b"abc")) == 3
+    assert response_bytes(Headers({"content-length": "3"})) == 3
     # A chunked stream has no Content-Length: reported as unknown, not 0.
-    assert response_bytes(StreamingResponse(iter([b"a", b"b"]))) is None
+    assert response_bytes(Headers({"transfer-encoding": "chunked"})) is None
+
+
+def _stream_app(fail: Exception | None, before_headers: bool = False) -> Starlette:
+    """A one-route app streaming b"ab" and then raising ``fail`` (if any),
+    behind the real app's middleware in its order: gzip outermost, then
+    correlation (Starlette's error middleware sits outside both)."""
+
+    async def endpoint(request: Request) -> StreamingResponse:
+        if before_headers and fail is not None:
+            raise fail
+
+        def body() -> Iterator[bytes]:
+            yield b"ab"
+            if fail is not None:
+                raise fail
+
+        return StreamingResponse(body(), media_type="video/mp4")
+
+    return Starlette(
+        routes=[Route("/", endpoint)],
+        middleware=[
+            Middleware(GZipMiddleware, minimum_size=1024),
+            Middleware(CorrelationMiddleware),
+        ],
+    )
+
+
+async def _drive(app: Starlette) -> list[Message]:
+    """Run one GET through ``app`` at the ASGI level; return what it sent.
+
+    A test client can't tell a finished response from one left unfinished,
+    which is the whole difference here, so the messages are read directly.
+    """
+    sent: list[Message] = []
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [(b"accept-encoding", b"identity")],
+        "client": ("test", 1),
+        "server": ("test", 80),
+    }
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    await app(scope, receive, send)
+    return sent
+
+
+def _finished(sent: list[Message]) -> bool:
+    return any(
+        m["type"] == "http.response.body" and not m.get("more_body", False)
+        for m in sent
+    )
+
+
+async def test_a_stream_completes_with_its_request_id() -> None:
+    sent = await _drive(_stream_app(fail=None))
+    assert sent[0]["status"] == 200
+    assert Headers(raw=sent[0]["headers"]).get("x-request-id")
+    assert _finished(sent)
+
+
+async def test_an_aborted_stream_is_left_unfinished() -> None:
+    # Mid-body, ResponseAborted must leave the response unfinished (no final
+    # body message), so the server closes the connection and the client sees
+    # a failed transfer. The old BaseHTTPMiddleware sent that final message
+    # itself, passing the short body off as whole. Nothing escapes either, so
+    # the server logs no traceback.
+    sent = await _drive(_stream_app(fail=ResponseAborted("k")))
+    assert sent[0]["status"] == 200
+    assert [m.get("body") for m in sent[1:]] == [b"ab"]
+    assert not _finished(sent)
+
+
+async def test_an_abort_before_the_headers_is_an_ordinary_error() -> None:
+    # Nothing sent yet: it's re-raised and becomes a 500 like any error.
+    app = _stream_app(fail=ResponseAborted("k"), before_headers=True)
+    sent: list[Message] = []
+    with pytest.raises(ResponseAborted):
+        sent = await _drive(app)
+    assert not sent or sent[0]["status"] == 500
 
 
 def test_requests_still_carry_the_correlation_id_when_timed() -> None:
