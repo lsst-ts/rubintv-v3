@@ -598,11 +598,28 @@ export function CameraTable() {
 
       {payload && Object.keys(payload.per_day).length > 0 && (
         <div className="per-day">
-          {Object.entries(payload.per_day).map(([chan, ref]) => (
-            <span key={chan} className="per-day-item">
-              {chan}: {ref.seq}
-            </span>
-          ))}
+          {Object.entries(payload.per_day).map(([chan, ref]) => {
+            // A configured per-day channel opens this night's artifact in its
+            // viewer — the way back to a past night's movie from its table.
+            // Its label reads as a prefix to the date ("Movie for "), and
+            // defaults to the title. Anything else has no viewer to open.
+            const ch = (
+              Array.isArray(cameraInfo?.channels) ? cameraInfo.channels : []
+            ).find((c) => c.name === chan);
+            return ch?.per_day ? (
+              <Link
+                key={chan}
+                className="per-day-item"
+                to={`/${location}/${camera}/${chan}?date=${date}`}
+              >
+                {(ch.label || ch.title || chan).trimEnd()} {date}
+              </Link>
+            ) : (
+              <span key={chan} className="per-day-item">
+                {chan}: {ref.seq}
+              </span>
+            );
+          })}
         </div>
       )}
 

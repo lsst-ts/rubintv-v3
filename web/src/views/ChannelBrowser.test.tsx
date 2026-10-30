@@ -151,8 +151,9 @@ test("an empty per-day channel shows its last date but keeps the live link", asy
   });
   renderBrowser();
 
-  // The seq-based viewer can't render per-day artifacts, so the link stays on
-  // /current even though the placeholder still names the last date.
+  // The link stays on /current even though the placeholder names the last
+  // date: for a per-day channel the live viewer follows the channel's own
+  // newest night, so it opens on that artifact anyway.
   expect(await screen.findByText(EARLIER)).toBeDefined();
   const link = screen.getByRole("link", { name: /movies/ });
   expect(link.getAttribute("href")).toBe("/local/lsstcam/movies/current");
