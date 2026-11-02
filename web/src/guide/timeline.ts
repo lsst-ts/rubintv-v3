@@ -625,7 +625,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
     const panelContent = rootSel.select(".guide-panel-content");
 
     const PLACEHOLDER = `<div class="guide-info-placeholder">
-            Click on a block for details or double-click to view all program versions. Use the search box to find specific programs.
+            Click on a block for details or double-click to view all program versions. With a block selected, use the arrow keys to move between blocks: ← → along the night, ↑ ↓ to the night before or after. Use the search box to find specific programs.
         </div>`;
 
     // Initialize info panel with placeholder content
