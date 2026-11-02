@@ -42,7 +42,7 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | `RUBINTV_RESET_HEAD_NODE_KEY` | `RUBINTV_CONTROL_RESET_HEAD_NODE` | Redis control key the admin "Reset Head Node" button writes to. |
 | `RUBINTV_RESET_HEAD_NODE_VALUE` | `1`                      | Value written to that key to trigger the reset.               |
 | `RUBINTV_CONSDB_URL`          | unset                      | ConsDB query endpoint. In-cluster: `http://consdb-pq.consdb:8080/consdb/query` (no auth). **Unset = the observing guide is disabled** and hidden from the nav. |
-| `RUBINTV_CONSDB_TOKEN_FILE`   | unset                      | File holding an RSP bearer token for `RUBINTV_CONSDB_URL`. Only for an endpoint behind Gafaelfawr (local dev against `https://usdf-rsp.slac.stanford.edu/consdb/query`); in-cluster leave unset. |
+| `RUBINTV_CONSDB_TOKEN_FILE`   | unset                      | File holding an RSP bearer token (`read:image` scope) for `RUBINTV_CONSDB_URL`. Only for an endpoint behind Gafaelfawr, i.e. local dev (see [Running the guide locally](#running-the-guide-locally)); in-cluster leave unset. A missing or empty file is logged and treated as no token. |
 | `RUBINTV_GUIDE_INSTRUMENTS`   | `["lsstcam"]`              | JSON list of ConsDB instruments (`cdb_<name>` schemas) the guide builds blocks for. |
 | `RUBINTV_GUIDE_SINCE`         | `2025-04-01`               | Earliest day_obs the guide sweeps.                            |
 | `RUBINTV_GUIDE_POLL_INTERVAL_SECONDS` | `60`               | How often the guide asks ConsDB for exposures newer than its last. |
@@ -101,6 +101,69 @@ acts as, and when the token expires. They also give `token_sha256`, the
 first 12 hex digits of the token's SHA-256, so you can confirm the pod
 loaded the new secret: `printf %s "$TOKEN" | sha256sum | cut -c1-12`.
 `blocknames.zephyr.disabled` means no token was found at all.
+
+### Running the guide locally
+
+The in-cluster URL only resolves inside Kubernetes. On your own machine,
+point the app at the ConsDB endpoint a Rubin Science Platform (RSP)
+publishes instead. That endpoint sits behind Gafaelfawr, so it needs a
+token:
+
+1. **Get a token.** On the USDF dev RSP, open
+   <https://usdf-rsp-dev.slac.stanford.edu/auth/tokens/> and create a token
+   with the `read:image` scope, which is the scope the ConsDB ingress
+   requires. Save it to a file only you can read, e.g. `~/.lsst/rsp_token`
+   with `chmod 600`. A token only works on the RSP that issued it: a
+   usdf-rsp-dev token gets a 401 from the production RSP
+   (`usdf-rsp.slac.stanford.edu`), and the reverse.
+
+2. **Check the token** before starting the app. This prints the latest
+   LSSTCam day_obs the endpoint holds:
+
+   ```sh
+   curl -sS -X POST https://usdf-rsp-dev.slac.stanford.edu/consdb/query \
+     -H "Authorization: Bearer $(cat ~/.lsst/rsp_token)" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "SELECT max(day_obs) FROM cdb_lsstcam.exposure"}'
+   ```
+
+   A good token returns `{"columns":["max"],"data":[[20261101]]}` or similar.
+   A 401 means no token, or a token from a different RSP; a 403 means the
+   token lacks the `read:image` scope.
+
+3. **Configure the app.** Put these in `.env` in the directory you start the
+   backend from (the repo root; copy [.env.example](../.env.example)), or
+   export them in that shell:
+
+   ```sh
+   RUBINTV_CONSDB_URL=https://usdf-rsp-dev.slac.stanford.edu/consdb/query
+   RUBINTV_CONSDB_TOKEN_FILE=~/.lsst/rsp_token
+   RUBINTV_CACHE_DIR=./cache
+   ```
+
+   The app expands the `~` itself, so it works in `.env` too.
+   `RUBINTV_CACHE_DIR` is optional but keeps the swept blocks (under
+   `cache/guide/`) between restarts.
+
+4. **Start the backend** as usual (see [Running](#running)); the startup log
+   should not show `guide.disabled`. The first start with an empty cache
+   sweeps every exposure since `RUBINTV_GUIDE_SINCE`, a few hundred thousand
+   rows for LSSTCam, and `/guide` shows "Sweeping ConsDB…" with a running
+   count until it catches up. Later starts load the cache and fetch only
+   newer exposures. For a quicker first sweep, set `RUBINTV_GUIDE_SINCE` to
+   a recent date.
+
+No VPN or sshuttle tunnel is needed: the RSP is public HTTPS, unlike the
+USDF S3 endpoints. The dev RSP's ConsDB is a replica, so it can lag
+production; the `max(day_obs)` query above shows how far it goes. To read
+production ConsDB instead, use a token from
+<https://usdf-rsp.slac.stanford.edu/auth/tokens/> and
+`https://usdf-rsp.slac.stanford.edu/consdb/query`.
+
+Block descriptions need none of this, because the bundled snapshot is
+served when `RUBINTV_ZEPHYR_TOKEN_FILE` is unset. To refresh them from
+Zephyr locally, set it to a file holding a Zephyr Scale API token (from your
+Jira profile: Zephyr API Access Tokens).
 
 ## Health & readiness
 
