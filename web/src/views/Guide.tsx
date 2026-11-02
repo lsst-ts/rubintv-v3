@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { BASE } from "../lib/basePath";
 import { STALE } from "../lib/queryClient";
-import { fillTemplate, isDevInstance } from "../lib/links";
+import { fillTemplate, hasImageViewer, isDevInstance } from "../lib/links";
 import { SEQ_COL, filtersToSeqFilter } from "../lib/filters";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useGuideConfig } from "../lib/useGuide";
@@ -35,7 +35,10 @@ function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): Gu
       href: fillTemplate(inst.quicklook_viewer_link, day, d.seq_num_0, ctx),
     });
   }
-  if (inst.image_viewer_link) {
+  // The image viewer only resolves on the summit and base (BTS) internal
+  // networks, so elsewhere the link is left out, as the camera table drops
+  // its viewer column (see hasImageViewer).
+  if (inst.image_viewer_link && hasImageViewer(inst.location ?? "")) {
     out.push({
       label: "FITS image viewer",
       href: fillTemplate(inst.image_viewer_link, day, d.seq_num_0, ctx),
