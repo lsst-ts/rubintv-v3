@@ -713,10 +713,10 @@ def test_proxy_aborts_a_stream_it_cannot_resume_without_a_traceback(
     # the response is under way — TestClient re-raises server exceptions, so
     # reaching the asserts proves nothing escapes to log a traceback. The
     # response is left unfinished, so a server cuts the connection rather
-    # than pass the 4 bytes off as the whole file (see test_ops for the ASGI
-    # messages); TestClient only rewinds its body buffer on the final body
-    # message, so an unfinished response reads back empty here, where the
-    # old middleware handed back b"0123" as a complete body.
+    # than pass the 4 bytes off as the whole file. A TestClient can't show
+    # that (test_ops checks the ASGI messages): before starlette 1.9 it
+    # buffered the body and read an unfinished response back empty; from 1.9
+    # it streams the body, so it returns the 4 bytes that were sent.
     from botocore.exceptions import ClientError
 
     _seed_movie("000008", b"0123456789")
@@ -728,7 +728,7 @@ def test_proxy_aborts_a_stream_it_cannot_resume_without_a_traceback(
         f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
         f"{DATE}/000008/video.mp4"
     )
-    assert resp.content == b""
+    assert resp.content in (b"", b"0123")
     assert len(calls) == 2
     assert broken[0].closed
 
