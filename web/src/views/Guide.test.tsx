@@ -197,6 +197,80 @@ test("a block across the day rollover is summarised once, under its first day", 
   expect(container.querySelectorAll("rect.block.flash")).toHaveLength(2);
 });
 
+test("a block across day_obs rollovers links each night's part of its seq range", async () => {
+  mockApi({
+    config: {
+      ...config,
+      instruments: [
+        { ...config.instruments[0], quicklook_viewer_link: "http://ql.example/{dayObs}_{seqNum:06}" },
+      ],
+    },
+    blocks: {
+      ...blocks,
+      blocks: [
+        {
+          program: "BLOCK-T4",
+          begin: "2025-04-13T11:00:00.000Z",
+          end: "2025-04-15T11:00:00.000Z",
+          seq_num_0: 300,
+          seq_num_1: 4,
+          day_obs: 20250412,
+          day_obs_end: 20250414,
+          n_exposures: 99,
+        },
+      ],
+    },
+  });
+  const { container } = renderGuide();
+  const parts = await waitFor(() => {
+    const els = container.querySelectorAll("rect.block");
+    if (els.length === 0) throw new Error("no blocks yet");
+    return els;
+  });
+  expect(parts).toHaveLength(3);
+  const rangeHref = (part: Element) => {
+    fireEvent.click(part);
+    return screen.getByText("300 - 4").getAttribute("href");
+  };
+  // Seq numbers restart each night: the first night's part runs from
+  // seq_num_0 up, the last night's up to seq_num_1, and a night in between
+  // is the whole night.
+  expect(rangeHref(parts[0])).toBe("/test/lsstcam?date=2025-04-12&seq_filter=gte300");
+  expect(rangeHref(parts[1])).toBe("/test/lsstcam?date=2025-04-13");
+  expect(rangeHref(parts[2])).toBe("/test/lsstcam?date=2025-04-14&seq_filter=lte4");
+  // Both viewer links, Quick Look first, at the block's first exposure.
+  fireEvent.click(parts[0]);
+  const viewers = screen.getAllByRole("link", { name: /viewer/ });
+  expect(viewers.map((a) => a.textContent)).toEqual(["Quick Look viewer", "FITS image viewer"]);
+  expect(viewers[0].getAttribute("href")).toBe("http://ql.example/20250412_000300");
+});
+
+test("lists the instruments when there is more than one, marking the current one", async () => {
+  mockApi({
+    config: {
+      ...config,
+      instruments: [
+        config.instruments[0],
+        { ...config.instruments[0], name: "latiss", camera: "auxtel" },
+      ],
+    },
+  });
+  renderGuide();
+  const nav = await screen.findByRole("navigation", { name: "Instrument" });
+  const links = Array.from(nav.querySelectorAll("a"));
+  expect(links.map((a) => a.textContent)).toEqual(["LSSTCAM", "LATISS"]);
+  expect(links[0].getAttribute("aria-current")).toBe("page");
+  expect(links[1].getAttribute("aria-current")).toBeNull();
+  expect(links[1].getAttribute("href")).toBe("/guide/latiss");
+});
+
+test("says when ConsDB is unreachable and the blocks are the last known", async () => {
+  mockApi({ blocks: { ...blocks, error: "ConsDB unreachable: timed out" } });
+  renderGuide();
+  const pill = await screen.findByText(/ConsDB unreachable — showing last known blocks/);
+  expect(pill.getAttribute("title")).toBe("ConsDB unreachable: timed out");
+});
+
 test("shows the sweep progress while the backend is still loading", async () => {
   mockApi({ blocks: { ...blocks, blocks: [], loading: true, exposures: 1234 } });
   renderGuide();

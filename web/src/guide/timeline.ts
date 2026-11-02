@@ -637,28 +637,24 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         let targetIndex = -1;
 
         if (direction === 'up' || direction === 'down') {
-            // Navigate vertically (different days)
+            // Navigate vertically (different days): to the nearest day with
+            // blocks above (earlier) or below (later), and nowhere from the
+            // first or last. The original sorted the other days with a
+            // comparator that ignored one of its arguments, so the day it
+            // picked depended on the browser's sort and the blocks' order,
+            // and from the first or last day it went the other way.
             const currentDay = data[currentIndex].day;
             const currentX = data[currentIndex].x0;
 
-            // Find blocks on other days at similar time positions
             const otherDayBlocks = data
                 .map((d, i) => ({ data: d, index: i }))
-                .filter(({ data: d }) => d.day !== currentDay)
-                .sort((a, b) => {
-                    const dayDiff = direction === 'up' ?
-                        a.data.day.localeCompare(currentDay) :
-                        b.data.day.localeCompare(currentDay);
-                    if (dayDiff !== 0) return dayDiff;
-
-                    // Secondary sort by time proximity
-                    return Math.abs(a.data.x0 - currentX) - Math.abs(b.data.x0 - currentX);
-                });
+                .filter(({ data: d }) => direction === 'up' ? d.day < currentDay : d.day > currentDay);
 
             if (otherDayBlocks.length > 0) {
-                const targetDayBlocks = otherDayBlocks.filter(({ data: d }) =>
-                    d.day === otherDayBlocks[0].data.day
-                );
+                // YYYY-MM-DD strings sort chronologically
+                const otherDays = otherDayBlocks.map(({ data: d }) => d.day).sort();
+                const targetDay = direction === 'up' ? otherDays[otherDays.length - 1] : otherDays[0];
+                const targetDayBlocks = otherDayBlocks.filter(({ data: d }) => d.day === targetDay);
 
                 // Find closest block by time on the target day
                 const closest = targetDayBlocks.reduce((prev, curr) =>
@@ -873,16 +869,16 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
                 <div class="info-label">Individual Blocks:</div>
                 <div class="guide-block-list">
                     ${uniqueBlocks
+                        // Whole blocks only (spanning parts were mapped to
+                        // theirs above), so `day` is each block's first day.
                         .sort((a, b) => {
-                            const dayA = a.originalBlock ? getAstronomicalDay(a.originalBlock.begin) : a.day;
-                            const dayB = b.originalBlock ? getAstronomicalDay(b.originalBlock.begin) : b.day;
-                            const dayCompare = dayA.localeCompare(dayB);
+                            const dayCompare = a.day.localeCompare(b.day);
                             if (dayCompare !== 0) return dayCompare;
                             return a.seq_num_0 - b.seq_num_0;
                         })
                         .map(d => {
                             const duration = d.durationH || (d.end.getTime() - d.begin.getTime()) / HOUR_MS;
-                            const day = d.originalBlock ? getAstronomicalDay(d.originalBlock.begin) : d.day;
+                            const day = d.day;
                             return `<div class="guide-block-item" data-block-id="${d.blockId}" data-day="${day}">
                                 <div><strong>${escapeHtml(d.program)}</strong></div>
                                 <div class="info-muted">${day} | Seq: ${d.seq_num_0}-${d.seq_num_1} | ${duration.toFixed(2)}h</div>
@@ -1248,31 +1244,17 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
     window.addEventListener("resize", alignFloatingAxis);
     disposers.push(() => window.removeEventListener("resize", alignFloatingAxis));
 
-    // Determine which Chilean timezone is currently active
-    // Chile uses CLST (UTC-3) from second Saturday of September to first Saturday of April
-    // and CLT (UTC-4) the rest of the year
+    // Determine which Chilean timezone is currently active: CLST (UTC-3) in
+    // the southern summer, CLT (UTC-4) the rest of the year. Read from the
+    // browser's time-zone data for America/Santiago (which Cerro Pachón
+    // keeps) rather than the original's month rules, which counted all of
+    // September as summer time and ended it a day early in April; the
+    // switch dates are set by decree and the tz data follows them.
     function isChileSummerTime(date: Date): boolean {
-        const year = date.getFullYear();
-        const month = date.getMonth(); // 0-11
-
-        // Approximate: CLST is roughly September-March (southern hemisphere summer)
-        // More precisely: second Saturday September to first Saturday April
-        if (month >= 8 && month <= 11) return true;  // Sep-Dec
-        if (month >= 0 && month <= 2) return true;   // Jan-Mar
-        if (month === 3) {
-            // April - need to check if before first Saturday
-            const firstDay = new Date(year, 3, 1);
-            const firstSaturday = 1 + (6 - firstDay.getDay() + 7) % 7;
-            return date.getDate() < firstSaturday;
-        }
-        if (month === 8) {
-            // September - need to check if after second Saturday
-            const firstDay = new Date(year, 8, 1);
-            const firstSaturday = 1 + (6 - firstDay.getDay() + 7) % 7;
-            const secondSaturday = firstSaturday + 7;
-            return date.getDate() >= secondSaturday;
-        }
-        return false; // April-August (except transition days)
+        const offset = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santiago', timeZoneName: 'shortOffset' })
+            .formatToParts(date)
+            .find(part => part.type === 'timeZoneName')?.value;
+        return offset === 'GMT-3';
     }
 
     const currentDate = new Date();
