@@ -369,7 +369,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(data.router, prefix=f"{prefix}/api", tags=["data"])
     app.include_router(guide_api.router, prefix=f"{prefix}/api", tags=["guide"])
     app.include_router(
-        nightreport.router, prefix=f"{prefix}/api", tags=["night-report"]
+        nightreport.router, prefix=f"{prefix}/api", tags=["nightly-summary"]
     )
     app.include_router(admin.router, prefix=f"{prefix}/api", tags=["admin"])
     app.include_router(proxy.router, prefix=f"{prefix}/api", tags=["proxy"])

@@ -120,14 +120,14 @@ def test_date_carries_seq_num_as_seq_filter(client: TestClient) -> None:
 def test_night_report_rename(client: TestClient) -> None:
     assert (
         _location(client, "/summit/lsstcam/night_report")
-        == f"{TEST_PREFIX}/summit/lsstcam/night-report"
+        == f"{TEST_PREFIX}/summit/lsstcam/nightly-summary"
     )
 
 
 def test_night_report_date_to_query(client: TestClient) -> None:
     assert (
         _location(client, "/summit/lsstcam/night_report/2025-04-22")
-        == f"{TEST_PREFIX}/summit/lsstcam/night-report?date=2025-04-22"
+        == f"{TEST_PREFIX}/summit/lsstcam/nightly-summary?date=2025-04-22"
     )
 
 

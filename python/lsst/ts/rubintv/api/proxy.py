@@ -159,7 +159,8 @@ def proxy_object(
 
 
 @router.get(
-    "/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}"
+    "/locations/{location}/cameras/{camera}/nightly-summary/{date}"
+    "/plot/{group}/{filename}"
 )
 def proxy_night_report_plot(
     group: str,

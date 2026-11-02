@@ -1441,7 +1441,7 @@ test("night report renders folder tabs (text items + plot groups)", async () => 
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
-    if (/\/night-report\//.test(url)) {
+    if (/\/nightly-summary\//.test(url)) {
       body = {
         date: "2026-04-10",
         exists: true,
@@ -1458,7 +1458,7 @@ test("night report renders folder tabs (text items + plot groups)", async () => 
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  renderAt("/local/lsstcam/night-report?date=2026-04-10");
+  renderAt("/local/lsstcam/nightly-summary?date=2026-04-10");
   // One tab per text item, one per plot group.
   expect(await screen.findByRole("tab", { name: /Summary/ })).toBeDefined();
   expect(screen.getByRole("tab", { name: /Seeing/ })).toBeDefined();
@@ -1467,10 +1467,20 @@ test("night report renders folder tabs (text items + plot groups)", async () => 
   expect(screen.getByText("dome")).toBeDefined();
 });
 
+test("the pre-rename night-report URL redirects to the Nightly Summary", async () => {
+  const { router } = renderAt("/local/lsstcam/night-report?date=2026-04-10");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/lsstcam/nightly-summary"),
+  );
+  expect(router.state.location.search).toBe("?date=2026-04-10");
+  // The summary view itself (the default stub has no report), not the 404.
+  expect(await screen.findByText("No summary for this date.")).toBeDefined();
+});
+
 test("a night report plot enlarges on click and closes again", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
-    const body = /\/night-report\//.test(url)
+    const body = /\/nightly-summary\//.test(url)
       ? {
           date: "2026-04-10",
           exists: true,
@@ -1484,7 +1494,7 @@ test("a night report plot enlarges on click and closes again", async () => {
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 
-  renderAt("/local/lsstcam/night-report?date=2026-04-10");
+  renderAt("/local/lsstcam/nightly-summary?date=2026-04-10");
   const open = await screen.findByRole("button", {
     name: "Enlarge seeing_vs_time.png",
   });
@@ -1495,7 +1505,7 @@ test("a night report plot enlarges on click and closes again", async () => {
   const dialog = screen.getByRole("dialog", { name: "seeing_vs_time.png" });
   const img = within(dialog).getByRole("img", { name: "seeing_vs_time.png" });
   expect(img.getAttribute("src")).toMatch(
-    /\/night-report\/2026-04-10\/plot\/Seeing\/seeing_vs_time\.png$/,
+    /\/nightly-summary\/2026-04-10\/plot\/Seeing\/seeing_vs_time\.png$/,
   );
 
   // A press alone doesn't close it (see PlotModal), nor does the caption, whose

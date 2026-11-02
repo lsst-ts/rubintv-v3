@@ -387,7 +387,7 @@ export function Layout() {
                     // Carry the resolved date into every tab link so switching
                     // views keeps the day in view — the fix for returning to the
                     // Table and seeing the newest day instead of the one you
-                    // left. The night-report link already takes ?date= too.
+                    // left. The Nightly Summary link already takes ?date= too.
                     const to = nav.date ? `${base}?date=${nav.date}` : base;
                     const active = nav.activeTab === tab.id;
                     return (

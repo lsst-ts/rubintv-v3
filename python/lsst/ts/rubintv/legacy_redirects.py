@@ -42,10 +42,9 @@ Mapping (paths shown relative to the shared prefix P, e.g. P=/rubintv):
     P/{loc}/{cam}/date/{date}              -> P/{loc}/{cam}?date={date}
     P/{loc}/{cam}/date/historical          -> P/{loc}/{cam}
     P/{loc}/{cam}/historical               -> P/{loc}/{cam}
-    P/{loc}/{cam}/night_report             -> P/{loc}/{cam}/night-report
+    P/{loc}/{cam}/night_report             -> P/{loc}/{cam}/nightly-summary
     P/{loc}/{cam}/night_report/{date}
-        -> P/{loc}/{cam}/night-report?date={date}
-        -> P/{loc}/{cam}/night-report?date={date}
+        -> P/{loc}/{cam}/nightly-summary?date={date}
     P/{loc}/{cam}/current/{channel}        -> P/{loc}/{cam}/{channel}/current
     P/{loc}/{cam}/event?type=&visit=&ext=  -> P/{loc}/{cam}/{type}?date=&seq=
     P/{loc}/{cam}/event?channel_name=&date_str=&seq_num=
@@ -190,11 +189,11 @@ def build_router(prefix: str) -> APIRouter:
     async def legacy_night_report_date(
         location: str, camera: str, date_str: str
     ) -> RedirectResponse:
-        return to(f"/{location}/{camera}/night-report", {"date": date_str})
+        return to(f"/{location}/{camera}/nightly-summary", {"date": date_str})
 
     @router.get("/{location}/{camera}/night_report")
     async def legacy_night_report(location: str, camera: str) -> RedirectResponse:
-        return to(f"/{location}/{camera}/night-report")
+        return to(f"/{location}/{camera}/nightly-summary")
 
     @router.get("/{location}/{camera}/current/{channel}")
     async def legacy_current(

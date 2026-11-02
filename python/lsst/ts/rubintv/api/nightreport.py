@@ -21,9 +21,10 @@
 
 """Night-report endpoints.
 
-Route/internal name stays ``night-report`` (mirrors the S3 prefix); the UI
-renders a neutral label. Returns assembled text items + grouped plot keys
-for a date. Historical reports are stable; the current day's can update.
+Users see these as the Nightly Summary, so the routes say ``nightly-summary``;
+the code keeps the night-report name, which mirrors the S3 prefix. Returns
+assembled text items + grouped plot keys for a date. Historical reports are
+stable; the current day's can update.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ class NightReportOut(BaseModel):
 
 
 @router.get(
-    "/locations/{location}/cameras/{camera}/night-report/{date}",
+    "/locations/{location}/cameras/{camera}/nightly-summary/{date}",
     response_model=NightReportOut,
 )
 async def get_night_report(

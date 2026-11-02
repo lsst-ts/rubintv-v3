@@ -377,7 +377,9 @@ def test_impossible_date_422(seeded_client: TestClient) -> None:
 
 
 def test_night_report(seeded_client: TestClient) -> None:
-    resp = seeded_client.get(f"/api/locations/test/cameras/lsstcam/night-report/{DATE}")
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"
+    )
     body = resp.json()
     assert body["exists"] is True
     by_type = {item["type"]: item for item in body["text"]}
@@ -405,7 +407,7 @@ def test_night_report_backfills_unindexed_date(seeded_client: TestClient) -> Non
         Body=json.dumps({"text_010": "started at seqNum 94"}).encode(),
     )
     resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/night-report/{other}"
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{other}"
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -419,7 +421,7 @@ def test_night_report_backfills_unindexed_date(seeded_client: TestClient) -> Non
 def test_night_report_absent_after_backfill(seeded_client: TestClient) -> None:
     # A date with no report stays exists=False after the (empty) backfill scan.
     resp = seeded_client.get(
-        "/api/locations/test/cameras/lsstcam/night-report/2025-09-09"
+        "/api/locations/test/cameras/lsstcam/nightly-summary/2025-09-09"
     )
     assert resp.status_code == 200
     assert resp.json()["exists"] is False
@@ -429,7 +431,7 @@ def test_night_report_plot_streams_object(seeded_client: TestClient) -> None:
     # The plot key is fully known, so the dedicated route GETs it directly
     # (no prefix listing) and streams it back.
     resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}"
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"
         "/plot/Coverage/elana_coverage.png"
     )
     assert resp.status_code == 200
@@ -442,7 +444,7 @@ def test_night_report_plot_streams_object(seeded_client: TestClient) -> None:
 
 def test_night_report_plot_404_when_missing(seeded_client: TestClient) -> None:
     resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}"
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"
         "/plot/Coverage/nope.png"
     )
     assert resp.status_code == 404
@@ -822,7 +824,8 @@ def test_proxy_rejects_unsafe_seq_segment(seeded_client: TestClient) -> None:
 def test_night_report_plot_rejects_unsafe_segment(seeded_client: TestClient) -> None:
     # group flows into the S3 key directly; a quote-bearing group is 422.
     resp = seeded_client.get(
-        f"/api/locations/test/cameras/lsstcam/night-report/{DATE}/plot/gr%22oup/x.png"
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"
+        "/plot/gr%22oup/x.png"
     )
     assert resp.status_code == 422
 

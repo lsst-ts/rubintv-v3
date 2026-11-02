@@ -237,7 +237,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/locations/{location}/cameras/{camera}/night-report/{date}": {
+    "/api/locations/{location}/cameras/{camera}/nightly-summary/{date}": {
         parameters: {
             query?: never;
             header?: never;
@@ -245,7 +245,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Night Report */
-        get: operations["get_night_report_api_locations__location__cameras__camera__night_report__date__get"];
+        get: operations["get_night_report_api_locations__location__cameras__camera__nightly_summary__date__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -486,7 +486,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}": {
+    "/api/locations/{location}/cameras/{camera}/nightly-summary/{date}/plot/{group}/{filename}": {
         parameters: {
             query?: never;
             header?: never;
@@ -494,7 +494,7 @@ export interface paths {
             cookie?: never;
         };
         /** Proxy Night Report Plot */
-        get: operations["proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get"];
+        get: operations["proxy_night_report_plot_api_locations__location__cameras__camera__nightly_summary__date__plot__group___filename__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1466,7 +1466,7 @@ export interface operations {
             };
         };
     };
-    get_night_report_api_locations__location__cameras__camera__night_report__date__get: {
+    get_night_report_api_locations__location__cameras__camera__nightly_summary__date__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1893,7 +1893,7 @@ export interface operations {
             };
         };
     };
-    proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get: {
+    proxy_night_report_plot_api_locations__location__cameras__camera__nightly_summary__date__plot__group___filename__get: {
         parameters: {
             query?: never;
             header?: {

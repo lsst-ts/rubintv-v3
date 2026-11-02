@@ -108,7 +108,7 @@ export const api = {
 
   nightReport: (loc: string, cam: string, date: string) =>
     getJson<NightReportOut>(
-      `/locations/${enc(loc)}/cameras/${enc(cam)}/night-report/${enc(date)}`,
+      `/locations/${enc(loc)}/cameras/${enc(cam)}/nightly-summary/${enc(date)}`,
     ),
 
   controls: (loc: string) =>
@@ -160,7 +160,7 @@ export const api = {
   primaryImageUrl: (path: string | null | undefined): string | null =>
     path ? `${BASE}/api${path}` : null,
 
-  // Build a proxied URL for a night-report plot. The plot key is fully known
+  // Build a proxied URL for a Nightly Summary plot. The plot key is fully known
   // ({camera}/{date}/night_report/{group}/{filename}), so the dedicated route
   // GETs it directly rather than resolving by prefix listing.
   nightReportPlotUrl: (
@@ -170,7 +170,7 @@ export const api = {
     group: string,
     filename: string,
   ) =>
-    `${BASE}/api/locations/${enc(loc)}/cameras/${enc(cam)}/night-report/` +
+    `${BASE}/api/locations/${enc(loc)}/cameras/${enc(cam)}/nightly-summary/` +
     `${enc(date)}/plot/${enc(group)}/${enc(filename)}`,
 
   // Build a proxied media URL for a per-day artifact. Per-day objects live at
