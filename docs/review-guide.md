@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 318 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 320 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -756,6 +756,16 @@ Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
   `ProxiedVideo` reports a failed movie the server still serves; a
   "Download interrupted · Reload" pill in the topbar. The Vite dev proxy
   now passes a backend abort on instead of holding the connection open
+
+### 49. Nightly Summary, second pass
+The night report's page (headed Nightly Summary) drew its plots too
+small to read. Review `PlotModal` and `PlotPanel` in
+`web/src/views/NightReport.tsx`.
+- `59dba2c` Enlarge a Nightly Summary plot on click: each plot opens
+  filling the window; a click anywhere but the caption, Escape or the
+  close button closes it. It closes on the click, not on pointerdown, so
+  on a touch screen a tap outside can't land on (and open) the plot
+  underneath
 
 ---
 
