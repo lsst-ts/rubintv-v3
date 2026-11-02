@@ -119,3 +119,30 @@ def test_blocks_are_served_once_the_sweep_completes(
         assert app.get("/api/guide/nope/blocks").status_code == 404
     assert any("cdb_lsstcam.exposure" in s for s in seen)
     assert any("cdb_latiss.exposure" in s for s in seen)
+
+
+def test_an_instrument_with_no_camera_is_served_without_links(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ConsDB's lsstcomcam has no RubinTV camera of that name (nor an alias),
+    # so its blocks are served but there is no camera page to link them to.
+    def fake_query(self: consdb.ConsDbClient, sql: str) -> QueryResult:
+        return QueryResult(COLUMNS, [])
+
+    monkeypatch.setattr(consdb.ConsDbClient, "query_sync", fake_query)
+
+    with run_app(
+        consdb_url="http://consdb.test/consdb/query",
+        guide_instruments=["lsstcam", "lsstcomcam"],
+        guide_poll_interval_seconds=3600,
+    ) as app:
+        instruments = app.get("/api/guide").json()["instruments"]
+        assert instruments[1] == {
+            "name": "lsstcomcam",
+            "location": None,
+            "camera": None,
+            "image_viewer_link": None,
+            "quicklook_viewer_link": None,
+        }
+        assert instruments[0]["camera"] == "lsstcam"
+        assert app.get("/api/guide/lsstcomcam/blocks").status_code == 200
