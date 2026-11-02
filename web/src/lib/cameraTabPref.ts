@@ -23,7 +23,8 @@ export function getCameraTabPref(): CameraTabPref {
 }
 
 // Record the tab the user just switched to. Ignores anything that isn't one of
-// the two remembered tabs, so clicking Night report leaves the preference alone.
+// the two remembered tabs, so clicking Nightly Summary leaves the preference
+// alone.
 export function setCameraTabPref(tab: string): void {
   if (tab !== "table" && tab !== "channels") return;
   try {

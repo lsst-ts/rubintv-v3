@@ -442,13 +442,13 @@
         }
       }
     },
-    "/api/locations/{location}/cameras/{camera}/night-report/{date}": {
+    "/api/locations/{location}/cameras/{camera}/nightly-summary/{date}": {
       "get": {
         "tags": [
-          "night-report"
+          "nightly-summary"
         ],
         "summary": "Get Night Report",
-        "operationId": "get_night_report_api_locations__location__cameras__camera__night_report__date__get",
+        "operationId": "get_night_report_api_locations__location__cameras__camera__nightly_summary__date__get",
         "parameters": [
           {
             "name": "date",
@@ -1168,13 +1168,13 @@
         }
       }
     },
-    "/api/locations/{location}/cameras/{camera}/night-report/{date}/plot/{group}/{filename}": {
+    "/api/locations/{location}/cameras/{camera}/nightly-summary/{date}/plot/{group}/{filename}": {
       "get": {
         "tags": [
           "proxy"
         ],
         "summary": "Proxy Night Report Plot",
-        "operationId": "proxy_night_report_plot_api_locations__location__cameras__camera__night_report__date__plot__group___filename__get",
+        "operationId": "proxy_night_report_plot_api_locations__location__cameras__camera__nightly_summary__date__plot__group___filename__get",
         "parameters": [
           {
             "name": "group",

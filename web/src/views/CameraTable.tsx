@@ -41,7 +41,7 @@ import { AllSky } from "./AllSky";
 import { CameraDataTable, type Density } from "./CameraDataTable";
 
 // The main camera view: date picker, per-seq-num table with channel columns
-// and metadata columns, per-day artifacts, night-report link. Subscribes to
+// and metadata columns, per-day artifacts, Nightly Summary link. Subscribes to
 // the camera topic so new rows appear live (today) without a reload.
 export function CameraTable() {
   const { location = "", camera = "" } = useParams();
@@ -381,7 +381,7 @@ export function CameraTable() {
 
   return (
     <section className="cam-table">
-      {/* Toolbar: columns, filter, download · clocks, density, night report.
+      {/* Toolbar: columns, filter, download · clocks, density, Nightly Summary.
           The date picker + prev/next steppers now live in the shell topbar
           (see Layout), so the selected date persists across the Table /
           Channels / single-channel tabs rather than resetting to the newest
@@ -576,9 +576,9 @@ export function CameraTable() {
         {payload?.has_night_report && (
           <Link
             className="tb-btn"
-            to={`/${location}/${camera}/night-report?date=${date}`}
+            to={`/${location}/${camera}/nightly-summary?date=${date}`}
           >
-            Night report
+            Nightly Summary
           </Link>
         )}
       </div>

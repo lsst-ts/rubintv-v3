@@ -208,9 +208,10 @@ function buildTabs(data: NightReportOut): Tab[] {
 }
 
 // Nightly summary: folder-tabbed text sections + grouped plot panels (ported
-// from the design's NightReportView). The UI label is deliberately neutral
-// ("Nightly Summary"); the route/API keep night-report. Live during the night
-// via the nightReport topic.
+// from the design's NightReportView). Everything a user sees calls it the
+// Nightly Summary, URLs included (/nightly-summary, page and API); the code and
+// the bucket keep night report. Live during the night via the nightReport
+// topic.
 export function NightReport() {
   const { location = "", camera = "" } = useParams();
   const [params] = useSearchParams();

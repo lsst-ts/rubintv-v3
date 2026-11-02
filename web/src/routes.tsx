@@ -1,5 +1,10 @@
 import type { ReactElement } from "react";
-import { RouteObject } from "react-router-dom";
+import {
+  Navigate,
+  RouteObject,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RouteGuard } from "./components/RouteGuard";
 import { Home } from "./views/Home";
@@ -23,6 +28,15 @@ const guarded = (element: ReactElement) => (
   <RouteGuard>{element}</RouteGuard>
 );
 
+// The Nightly Summary's URL before it was renamed: links made then keep
+// working, ?date= included. Done here rather than as a server redirect so it
+// also works under the dev server, which never asks the backend for a page.
+function NightReportRedirect() {
+  const { location, camera } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={`/${location}/${camera}/nightly-summary${search}`} replace />;
+}
+
 // Path-based route table — each path fully describes a tab's state, so a
 // deep link restores the exact view on hard reload (Decision 7). The backend
 // serves a catch-all -> index.html in production (Phase 7) so these resolve.
@@ -45,7 +59,8 @@ export const routes: RouteObject[] = [
       // The Channels tab: a browser of the camera's channels. Precedes the
       // channel catch-all so "channels" isn't read as a channel name.
       { path: ":location/:camera/channels", element: guarded(<ChannelBrowser />) },
-      { path: ":location/:camera/night-report", element: guarded(<NightReport />) },
+      { path: ":location/:camera/nightly-summary", element: guarded(<NightReport />) },
+      { path: ":location/:camera/night-report", element: <NightReportRedirect /> },
       { path: ":location/:camera/allsky", element: guarded(<AllSky />) },
       { path: ":location/:camera/mosaic", element: guarded(<Mosaic />) },
       // Live "current" view: follows the latest image as new exposures arrive,

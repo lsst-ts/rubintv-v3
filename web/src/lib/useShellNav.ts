@@ -26,7 +26,7 @@ export interface ShellTab {
 export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
   // Live-view cameras (e.g. All Sky) have no per-seq table or channel grid —
   // the base camera route is the live panel itself — so they get neither the
-  // Table nor Channels tab. A night report is still a distinct view if
+  // Table nor Channels tab. A Nightly Summary is still a distinct view if
   // advertised, so it's added below.
   const tabs: ShellTab[] = cam?.live_view
     ? []
@@ -44,9 +44,9 @@ export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
   }
   if (cam.night_report_label) {
     tabs.push({
-      id: "night-report",
-      label: cam.night_report_label || "Night report",
-      suffix: "night-report",
+      id: "nightly-summary",
+      label: cam.night_report_label || "Nightly Summary",
+      suffix: "nightly-summary",
     });
   }
   // Note: the live Mosaic is intentionally NOT a tab. It exists only as an
@@ -120,11 +120,11 @@ export function useShellNav(): ShellNav {
     ? (first as "detectors" | "admin" | "status")
     : null;
 
-  // Active tab from the trailing path segment (night-report / allsky / mosaic),
-  // defaulting to the Table view.
+  // Active tab from the trailing path segment (nightly-summary / allsky /
+  // mosaic), defaulting to the Table view.
   const activeTab = useMemo(() => {
     if (pathname.endsWith("/channels")) return "channels";
-    if (pathname.endsWith("/night-report")) return "night-report";
+    if (pathname.endsWith("/nightly-summary")) return "nightly-summary";
     if (pathname.endsWith("/allsky")) return "allsky";
     if (pathname.endsWith("/mosaic")) return "mosaic";
     // A single-channel view (/:location/:camera/:channel[/current]) is reached
