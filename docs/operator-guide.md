@@ -92,6 +92,16 @@ in-cluster URL needs no secret. The block descriptions (BLOCK-T test-case
 names) come from Zephyr Scale; without a token the bundled snapshot is
 used.
 
+The token is read once at startup, so restart the pod after replacing the
+secret. The first refresh runs straight away and logs
+`blocknames.zephyr.connected` if the token works, or
+`blocknames.refresh.failed` if it doesn't (for example with
+`Zephyr HTTP 401`). Both lines name the Jira site, the account the token
+acts as, and when the token expires. They also give `token_sha256`, the
+first 12 hex digits of the token's SHA-256, so you can confirm the pod
+loaded the new secret: `printf %s "$TOKEN" | sha256sum | cut -c1-12`.
+`blocknames.zephyr.disabled` means no token was found at all.
+
 ## Health & readiness
 
 - `GET /api/health/live` — process is up (liveness probe).
