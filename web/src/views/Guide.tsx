@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { BASE } from "../lib/basePath";
 import { STALE } from "../lib/queryClient";
 import { fillTemplate, isDevInstance } from "../lib/links";
 import { SEQ_COL, filtersToSeqFilter } from "../lib/filters";
@@ -18,7 +19,9 @@ import "../guide/guide.css";
 // timeline.ts); this view fetches the blocks the backend groups from ConsDB
 // and the program descriptions, and tells the timeline where a block's links
 // should go: the observing day and seq range open this deployment's camera
-// table, the external links are the camera's configured viewers.
+// table, the external links are the camera's configured viewers. Every link
+// opens in a new tab, outside the router, so the in-app ones carry the app's
+// path prefix themselves.
 
 const BLOCK_REFRESH_MS = 60_000;
 const SWEEP_REFRESH_MS = 5_000;
@@ -41,9 +44,10 @@ function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): Gu
   return out;
 }
 
-function dayHrefFor(inst: GuideInstrumentOut, day: string): string | null {
+// The camera table for an observing day, as a full URL path.
+function cameraDayHref(inst: GuideInstrumentOut, day: string): string | null {
   if (!inst.location || !inst.camera) return null;
-  return `/${inst.location}/${inst.camera}?date=${day}`;
+  return `${BASE}/${inst.location}/${inst.camera}?date=${day}`;
 }
 
 // The camera table for the block's night, filtered to its exposures via the
@@ -52,7 +56,8 @@ function dayHrefFor(inst: GuideInstrumentOut, day: string): string | null {
 // the first night runs from seq_num_0 up, the part on the last night up to
 // seq_num_1, and the same row's link is what the panel shows.
 function rangeHrefFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): string | null {
-  if (!inst.location || !inst.camera) return null;
+  const page = cameraDayHref(inst, day);
+  if (!page) return null;
   const spans = d.day_obs != null && d.day_obs_end != null && d.day_obs !== d.day_obs_end;
   const dayInt = Number(day.replace(/-/g, ""));
   let filter: { col: string; op: string; value: string };
@@ -63,10 +68,10 @@ function rangeHrefFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string)
   } else if (dayInt === d.day_obs_end) {
     filter = { col: SEQ_COL, op: "<=", value: String(d.seq_num_1) };
   } else {
-    return `/${inst.location}/${inst.camera}?date=${day}`;
+    return page;
   }
   const seqFilter = filtersToSeqFilter([filter]);
-  return `/${inst.location}/${inst.camera}?date=${day}&seq_filter=${seqFilter}`;
+  return `${page}&seq_filter=${seqFilter}`;
 }
 
 function fmtUpdated(iso: string | null | undefined): string {
@@ -77,7 +82,6 @@ function fmtUpdated(iso: string | null | undefined): string {
 
 export function Guide() {
   const { instrument: param } = useParams();
-  const navigate = useNavigate();
   const config = useGuideConfig();
   const instruments = config?.instruments ?? [];
   // No instrument in the URL means the first configured one.
@@ -118,12 +122,11 @@ export function Guide() {
       names: names ?? {},
       dayStartUtcHour: dayStart,
       links: (d, day) => linksFor(inst, d, day),
-      dayHref: (day) => dayHrefFor(inst, day),
+      dayHref: (day) => cameraDayHref(inst, day),
       rangeHref: (d, day) => rangeHrefFor(inst, d, day),
-      onNavigate: (path) => navigate(path),
     });
     return () => handle.dispose();
-  }, [blockList, names, inst, dayStart, navigate]);
+  }, [blockList, names, inst, dayStart]);
 
   if (config && !config.enabled) {
     return (
