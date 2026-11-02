@@ -588,6 +588,24 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             scrollTo(rect.top + window.pageYOffset - window.innerHeight / 2);
         }
     }
+    // Keep a block the arrow keys moved to in view: leave the scroll alone
+    // while it is visible, and once it is past the top or bottom of what
+    // can be seen (the floating time axes cover the bottom), bring it back
+    // to the middle, about half a view's scroll. (The original centred on
+    // every move, but on the first block of the chart rather than the
+    // selected one, so the view jumped to the top.)
+    const floatingAxis = root.querySelector(".guide-floating-axis");
+    function keepInView(element: Element | null) {
+        if (!element) return;
+        const rect = element.getBoundingClientRect();
+        const box = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+        const axis = floatingAxis?.getBoundingClientRect();
+        const top = box.top;
+        const bottom = axis && axis.height > 0 ? Math.min(box.bottom, axis.top) : box.bottom;
+        if (rect.top >= top && rect.bottom <= bottom) return;
+        const scrolled = scroller ? scroller.scrollTop : window.scrollY;
+        scrollTo(scrolled + (rect.top + rect.bottom) / 2 - (top + bottom) / 2);
+    }
 
     // Tooltip (fixed to the viewport, so it works inside a scrolling pane)
     const tooltip = d3.select(document.body)
@@ -595,7 +613,9 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
                       .attr("class", "guide-tooltip");
     disposers.push(() => tooltip.remove());
 
-    // Selection state
+    // Selection state. `selectedBlock` is the part of the selected block on
+    // the row it was selected on (the original kept the whole block), so the
+    // arrow keys move on from that row rather than from the block's first.
     let selectedBlock: GuideBlockDatum | null = null;
     let highlightedProgram: string | null = null;
 
@@ -627,9 +647,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         }
 
         // Find the currently selected block in the data array
-        const currentIndex = data.findIndex(d =>
-            (d.originalBlock || d) === selectedBlock
-        );
+        const currentIndex = data.indexOf(selectedBlock);
 
         if (currentIndex === -1) return null;
 
@@ -638,17 +656,20 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
 
         if (direction === 'up' || direction === 'down') {
             // Navigate vertically (different days): to the nearest day with
-            // blocks above (earlier) or below (later), and nowhere from the
-            // first or last. The original sorted the other days with a
+            // other blocks above (earlier) or below (later), and nowhere from
+            // the first or last. The original sorted the other days with a
             // comparator that ignored one of its arguments, so the day it
             // picked depended on the browser's sort and the blocks' order,
-            // and from the first or last day it went the other way.
-            const currentDay = data[currentIndex].day;
-            const currentX = data[currentIndex].x0;
+            // and from the first or last day it went the other way. The
+            // selected block's own parts are skipped, or a block crossing
+            // into a day with nothing else on it would be picked again.
+            const { day: currentDay, x0: currentX, blockId: currentId } = data[currentIndex];
 
             const otherDayBlocks = data
                 .map((d, i) => ({ data: d, index: i }))
-                .filter(({ data: d }) => direction === 'up' ? d.day < currentDay : d.day > currentDay);
+                .filter(({ data: d }) =>
+                    d.blockId !== currentId && (direction === 'up' ? d.day < currentDay : d.day > currentDay)
+                );
 
             if (otherDayBlocks.length > 0) {
                 // YYYY-MM-DD strings sort chronologically
@@ -691,7 +712,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         clearSelection();
 
         // Select the new block
-        selectedBlock = targetBlock.originalBlock || targetBlock;
+        selectedBlock = targetBlock;
 
         // Highlight the block visually
         const targetBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
@@ -705,8 +726,8 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         // Show info panel
         showSingleBlockInfo(targetBlock);
 
-        // Scroll to the block
-        scrollToCenter(targetBlocks.node());
+        // Keep the part moved to in view
+        keepInView(targetBlocks.filter(blockData => blockData === targetBlock).node());
     }
 
     // Function to show info panel content
@@ -1126,7 +1147,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         if (programBlocks.length === 1) {
             // Exactly one block - show block information instead of program summary
             const singleBlock = programBlocks[0];
-            selectedBlock = singleBlock.originalBlock || singleBlock;
+            selectedBlock = singleBlock;
 
             // Highlight just this single block
             const selectedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
@@ -1139,7 +1160,9 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
 
             showSingleBlockInfo(singleBlock);
 
-            scrollToCenter(selectedBlocks.node());
+            // Scroll to this block (the original scrolled to the first
+            // block of the chart: `selectedBlocks` is every block)
+            scrollToCenter(selectedBlocks.filter(blockData => blockData === singleBlock).node());
         } else {
             // Multiple blocks - show program summary as before
             highlightedProgram = baseProgram;
@@ -1447,7 +1470,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             .on("click", function(event: MouseEvent, d) {
                 event.stopPropagation();
                 clearSelection();
-                selectedBlock = d.originalBlock || d; // Use original block for spanning parts
+                selectedBlock = d; // The part clicked, so arrow keys move on from its row
 
                 // Highlight all parts of this block (for spanning blocks)
                 const selectedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")

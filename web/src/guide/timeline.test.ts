@@ -28,7 +28,7 @@ const MARKUP = `
     <h3 class="guide-panel-title">Selection Info</h3>
     <div class="guide-panel-content"></div>
   </div>
-  <svg class="guide-floating-axis-svg"></svg>`;
+  <div class="guide-floating-axis"><svg class="guide-floating-axis-svg"></svg></div>`;
 
 function block(program: string, begin: string, end: string, seq0: number, seq1: number): GuideBlockInput {
   return { program, begin, end, seq_num_0: seq0, seq_num_1: seq1 };
@@ -414,6 +414,31 @@ describe("keyboard", () => {
     expect(selected()).toEqual(["BLOCK-T1#1"]);
   });
 
+  test("Up and Down pass a block that crosses into a night with nothing else on it", () => {
+    // As BLOCK-T454 did on 2025-06-09: a daytime block across the 12:00 UTC
+    // rollover, the next night otherwise empty.
+    mount([
+      block("BLOCK-T501", "2025-06-10T03:00:00Z", "2025-06-10T03:30:00Z", 1, 9), // 2025-06-09
+      block("BLOCK-T454", "2025-06-10T10:30:00Z", "2025-06-10T13:00:00Z", 700, 5), // 2025-06-09 → 10
+      block("BLOCK-T502", "2025-06-12T03:00:00Z", "2025-06-12T03:30:00Z", 1, 9), // 2025-06-11
+    ]);
+    fireEvent.click(rect("BLOCK-T501", 1));
+    key("ArrowDown"); // onto the crossing block's part on 2025-06-10
+    expect(selected()).toEqual(["BLOCK-T454#700"]);
+    expect(panel()).toContain("Observation Day: 2025-06-10");
+    key("ArrowDown");
+    expect(selected()).toEqual(["BLOCK-T502#1"]);
+    key("ArrowUp");
+    expect(selected()).toEqual(["BLOCK-T454#700"]);
+    key("ArrowUp");
+    expect(selected()).toEqual(["BLOCK-T501#1"]);
+
+    // From the crossing block's first part, Down skips its own second part.
+    fireEvent.click(rects().find((r) => datum(r).program === "BLOCK-T454" && datum(r).day === "2025-06-09")!);
+    key("ArrowDown");
+    expect(selected()).toEqual(["BLOCK-T502#1"]);
+  });
+
   test("Escape, or a click on empty chart, clears the selection", () => {
     mount();
     fireEvent.click(rect("BLOCK-T1", 10));
@@ -463,20 +488,79 @@ describe("scrolling", () => {
     expect(window.scrollTo).not.toHaveBeenCalled();
   });
 
-  test("selecting a block scrolls the pane, and a pane that can't scroll is ignored", () => {
+  const box = (top: number, height: number) =>
+    ({ top, bottom: top + height, height, left: 0, right: 800, width: 800, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+
+  // The chart in a scroll pane that shows 100px of it, the bottom 20px
+  // under the floating axes, with each block placed by its row (jsdom has
+  // no layout of its own).
+  function mountWithLayout(blocks: GuideBlockInput[]) {
+    let scrolled = 0;
     const pane = document.createElement("div");
     pane.className = "app-content";
-    pane.scrollTo = vi.fn();
+    const scrollTo = vi.fn((opts: ScrollToOptions) => {
+      scrolled = opts.top ?? 0;
+    });
+    pane.scrollTo = scrollTo as unknown as typeof pane.scrollTo;
+    Object.defineProperty(pane, "scrollTop", { get: () => scrolled });
+    pane.getBoundingClientRect = () => box(0, 100);
     document.body.appendChild(pane);
-    mount(NIGHTS, {}, pane);
-    fireEvent.click(rect("BLOCK-T1", 10));
-    key("ArrowRight");
-    expect(pane.scrollTo).toHaveBeenCalled();
+    mount(blocks, {}, pane);
+    root.querySelector(".guide-floating-axis")!.getBoundingClientRect = () => box(80, 20);
+    for (const r of rects()) {
+      r.getBoundingClientRect = () =>
+        box(20 + Number(r.getAttribute("y")) - scrolled, Number(r.getAttribute("height")));
+    }
+    const inView = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= 80;
+    };
+    return { pane, scrollTo, inView };
+  }
 
+  // One block a night for ten nights, all at 03:00 UTC.
+  const COLUMN = Array.from({ length: 10 }, (_, i) => {
+    const day = `2025-05-${String(11 + i).padStart(2, "0")}`;
+    return block(`BLOCK-T${600 + i}`, `${day}T03:00:00Z`, `${day}T03:30:00Z`, 1, 9);
+  });
+
+  test("arrow keys scroll only when the block leaves the view, then bring it to the middle", () => {
+    const { scrollTo, inView } = mountWithLayout(COLUMN);
+    fireEvent.click(rect("BLOCK-T600", 1));
+    const current = () => rects().find((r) => r.classList.contains("selected"))!;
+    for (let i = 1; i < 10; i++) {
+      key("ArrowDown");
+      expect(datum(current()).program).toBe(`BLOCK-T${600 + i}`);
+      expect(inView(current())).toBe(true);
+    }
+    // About every other row: half the 80px that can be seen.
+    expect(scrollTo.mock.calls.length).toBe(4);
+    const r = current().getBoundingClientRect();
+    expect((r.top + r.bottom) / 2).toBeCloseTo(40);
+    for (let i = 8; i >= 0; i--) {
+      key("ArrowUp");
+      expect(datum(current()).program).toBe(`BLOCK-T${600 + i}`);
+      expect(inView(current())).toBe(true);
+    }
+  });
+
+  test("picking a one-block program from search scrolls to that block", () => {
+    const { scrollTo } = mountWithLayout(COLUMN);
+    const r = rect("BLOCK-T609", 1).getBoundingClientRect();
+    search("T609");
+    fireEvent.click(resultItems()[0]);
+    expect(selected()).toEqual(["BLOCK-T609#1"]);
+    // Its row centred in the 100px pane.
+    expect(scrollTo.mock.calls.at(-1)![0].top).toBeCloseTo(r.top - 50);
+  });
+
+  test("a pane that can't scroll is ignored", () => {
+    const { pane } = mountWithLayout(COLUMN);
     pane.scrollTo = () => {
       throw new Error("not scrollable");
     };
-    key("ArrowRight");
-    expect(selected()).toEqual(["BLOCK-T2#90"]);
+    fireEvent.click(rect("BLOCK-T602", 1));
+    key("ArrowDown"); // out of view, so it tries
+    expect(selected()).toEqual(["BLOCK-T603#1"]);
   });
 });
