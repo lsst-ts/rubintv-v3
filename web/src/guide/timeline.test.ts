@@ -445,6 +445,8 @@ describe("keyboard", () => {
     key("Escape");
     expect(selected()).toEqual([]);
     expect(panelTitle()).toBe("Selection Info");
+    // The placeholder says how to get around, the arrow keys included.
+    expect(panel()).toContain("use the arrow keys to move between blocks");
 
     fireEvent.click(rect("BLOCK-T1", 10));
     fireEvent.click(root.querySelector(".guide-chart svg")!);
