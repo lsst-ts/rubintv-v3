@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import type { NightReportOut, NightReportText } from "../lib/types";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
+import { useDismiss } from "../lib/useDismiss";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ProxiedImg } from "../components/ProxiedMedia";
@@ -72,6 +74,54 @@ function TextPanel({ item }: { item: NightReportText }) {
   );
 }
 
+// A plot enlarged to fill the window. A click anywhere but the caption closes
+// it, so the letterbox around the plot isn't a dead zone. That waits for the
+// click rather than using useDismiss's pointerdown, which on a touch screen
+// would take the overlay away mid-tap and land the tap on the plot underneath,
+// opening that one. So useDismiss gets the whole overlay as "inside" and
+// contributes only Escape.
+function PlotModal({
+  src,
+  filename,
+  onClose,
+}: {
+  src: string;
+  filename: string;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useDismiss(true, ref, onClose);
+
+  return createPortal(
+    <div
+      className="cell-modal-backdrop plot-modal-backdrop"
+      ref={ref}
+      onClick={onClose}
+    >
+      <div
+        className="cell-modal plot-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={filename}
+      >
+        <div className="cell-modal-head" onClick={(e) => e.stopPropagation()}>
+          <span className="cell-modal-title">{filename}</span>
+          <button
+            type="button"
+            className="cell-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <ProxiedImg src={src} alt={filename} />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function PlotPanel({
   plots,
   location,
@@ -83,18 +133,35 @@ function PlotPanel({
   camera: string;
   date: string;
 }) {
+  // Held by key: a live refresh rebuilds the plot objects, and the enlarged
+  // plot should survive that unless it has left the report.
+  const [enlargedKey, setEnlargedKey] = useState<string | null>(null);
+  const enlarged = plots.find((p) => p.key === enlargedKey);
+  const plotUrl = (p: Plot) =>
+    api.nightReportPlotUrl(location, camera, date, p.group, p.filename);
+
   return (
     <div className="nr-plot-grid">
       {plots.map((p) => (
         <figure className="nr-plot" key={p.key}>
-          <ProxiedImg
-            src={api.nightReportPlotUrl(location, camera, date, p.group, p.filename)}
-            alt={p.filename}
-            loading="lazy"
-          />
+          <button
+            type="button"
+            className="nr-plot-open"
+            aria-label={`Enlarge ${p.filename}`}
+            onClick={() => setEnlargedKey(p.key)}
+          >
+            <ProxiedImg src={plotUrl(p)} alt={p.filename} loading="lazy" />
+          </button>
           <figcaption>{p.filename}</figcaption>
         </figure>
       ))}
+      {enlarged && (
+        <PlotModal
+          src={plotUrl(enlarged)}
+          filename={enlarged.filename}
+          onClose={() => setEnlargedKey(null)}
+        />
+      )}
     </div>
   );
 }

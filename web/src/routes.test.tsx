@@ -1467,6 +1467,56 @@ test("night report renders folder tabs (text items + plot groups)", async () => 
   expect(screen.getByText("dome")).toBeDefined();
 });
 
+test("a night report plot enlarges on click and closes again", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    const body = /\/night-report\//.test(url)
+      ? {
+          date: "2026-04-10",
+          exists: true,
+          text: [],
+          plots: [
+            { key: "k1", group: "Seeing", filename: "seeing_vs_time.png" },
+            { key: "k2", group: "Seeing", filename: "psf_fwhm.png" },
+          ],
+        }
+      : { ok: true };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+
+  renderAt("/local/lsstcam/night-report?date=2026-04-10");
+  const open = await screen.findByRole("button", {
+    name: "Enlarge seeing_vs_time.png",
+  });
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  // Opens the plot that was clicked, at the same URL the grid loaded.
+  fireEvent.click(open);
+  const dialog = screen.getByRole("dialog", { name: "seeing_vs_time.png" });
+  const img = within(dialog).getByRole("img", { name: "seeing_vs_time.png" });
+  expect(img.getAttribute("src")).toMatch(
+    /\/night-report\/2026-04-10\/plot\/Seeing\/seeing_vs_time\.png$/,
+  );
+
+  // A press alone doesn't close it (see PlotModal), nor does the caption, whose
+  // filename stays selectable.
+  fireEvent.pointerDown(img);
+  fireEvent.click(within(dialog).getByText("seeing_vs_time.png"));
+  expect(screen.queryByRole("dialog")).not.toBeNull();
+
+  // A click on the plot closes it, as do Escape and the close button.
+  fireEvent.click(img);
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(open);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(open);
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
 test("/status resolves to the scan-status view, not a location", async () => {
   renderAt("/status");
   expect(await screen.findByText("Scan status")).toBeDefined();
