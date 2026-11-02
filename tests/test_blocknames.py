@@ -23,9 +23,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
+from email.message import Message
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -81,6 +84,44 @@ def test_fetch_follows_next_links(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "projectKey=BLOCK" in seen[0].full_url
 
 
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        (
+            HTTPError("https://z/v2", 401, "Unauthorized", Message(), io.BytesIO()),
+            "Zephyr HTTP 401: Unauthorized",
+        ),
+        (URLError("no route to host"), "Zephyr unreachable: "),
+        (TimeoutError("timed out"), "Zephyr unreachable: timed out"),
+    ],
+    ids=["http", "url", "timeout"],
+)
+def test_fetch_failures_become_zephyr_errors(
+    monkeypatch: pytest.MonkeyPatch, exc: Exception, message: str
+) -> None:
+    def urlopen(req: Any, timeout: float = 0) -> _Resp:
+        raise exc
+
+    monkeypatch.setattr(blocknames, "urlopen", urlopen)
+
+    with pytest.raises(ZephyrError) as caught:
+        fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
+
+    assert str(caught.value).startswith(message)
+    assert caught.value.__cause__ is exc
+
+
+def test_a_page_that_is_not_json_is_a_zephyr_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        blocknames, "urlopen", lambda req, timeout=0: _Resp(b"<html>login</html>")
+    )
+
+    with pytest.raises(ZephyrError, match=r"^Zephyr unreachable: "):
+        fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
+
+
 async def test_refresh_merges_and_keeps_snapshot_on_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -118,3 +159,85 @@ async def test_no_token_means_no_refresh() -> None:
     assert not await svc.refresh()
     svc.start()  # no task without a token
     await svc.stop()
+
+
+async def test_refresh_loop_outlives_an_unexpected_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # refresh() turns a ZephyrError into svc.error itself; anything else (a
+    # page of an unexpected shape, say) escapes it, and the loop must log it
+    # and try again after the interval.
+    calls: list[str] = []
+
+    def fetch(base_url: str, token: str, project_key: str) -> dict[str, str]:
+        calls.append(project_key)
+        if len(calls) == 1:
+            raise AttributeError("'list' object has no attribute 'get'")
+        return {"BLOCK-T9": "Nine"}
+
+    logged: list[str] = []
+    monkeypatch.setattr(blocknames, "fetch_zephyr_names", fetch)
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.blocknames.log.exception",
+        lambda event, **kw: logged.append(event),
+    )
+    svc = BlockNameService(
+        {"BLOCK-T1": "One"},
+        zephyr_url="https://z/v2",
+        zephyr_token="t",
+        refresh_interval=600,
+    )
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError  # as stop() would, mid-sleep
+
+    with monkeypatch.context() as m:
+        m.setattr(asyncio, "sleep", fake_sleep)
+        with pytest.raises(asyncio.CancelledError):
+            await svc._loop()
+
+    assert logged == ["blocknames.refresh.error"]
+    assert sleeps == [600, 600]
+    assert svc.source == "zephyr" and svc.names["BLOCK-T9"] == "Nine"
+
+
+async def test_stop_cancels_the_refresh_task() -> None:
+    svc = BlockNameService({}, zephyr_url="https://z/v2", zephyr_token="t")
+    svc.start()
+    task = svc._task
+    assert task is not None and not task.done()
+
+    await svc.stop()
+
+    assert task.cancelled() and svc._task is None
+    await svc.stop()  # a second stop is a no-op
+
+
+async def test_stop_during_a_refresh_ends_the_loop_without_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged: list[str] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.blocknames.log.exception",
+        lambda event, **kw: logged.append(event),
+    )
+    svc = BlockNameService({}, zephyr_url="https://z/v2", zephyr_token="t")
+    refreshing = asyncio.Event()
+
+    async def hanging_refresh() -> bool:
+        refreshing.set()
+        await asyncio.Event().wait()  # a Zephyr call that never returns
+        return False
+
+    monkeypatch.setattr(svc, "refresh", hanging_refresh)
+    svc.start()
+    task = svc._task
+    await refreshing.wait()
+
+    await svc.stop()
+
+    assert task is not None and task.cancelled()
+    assert logged == []  # a shutdown is not a failed refresh

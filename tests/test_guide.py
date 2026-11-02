@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import UTC, datetime, timedelta
@@ -214,18 +215,24 @@ def test_records_without_shutter_times_are_skipped_and_nulls_are_unknown() -> No
 
 class FakeConsDb(ConsDbClient):
     """Answers the guide's paged ``exposure_id > N ... LIMIT M`` query from
-    an in-memory row list, recording every SQL it sees."""
+    an in-memory row list, recording every SQL it sees. ``errors`` maps a
+    query's index (0 = the first query) to the exception it raises."""
 
-    def __init__(self, rows: list[list[Any]]) -> None:
+    def __init__(
+        self, rows: list[list[Any]], errors: dict[int, Exception] | None = None
+    ) -> None:
         super().__init__("http://fake/consdb/query")
         self.rows = rows
         self.queries: list[str] = []
         self.fail = False
+        self.errors = errors or {}
 
     def query_sync(self, sql: str) -> QueryResult:
         self.queries.append(sql)
         if self.fail:
             raise ConsDbError("ConsDB HTTP 503")
+        if (error := self.errors.get(len(self.queries) - 1)) is not None:
+            raise error
         m = re.search(r"exposure_id > (\d+) ORDER BY exposure_id ASC LIMIT (\d+)", sql)
         assert m, sql
         after, limit = int(m.group(1)), int(m.group(2))
@@ -240,14 +247,17 @@ def row(seq: int, program: str, begin_min: float, day_obs: int = 20250411) -> li
 
 
 def make_service(
-    client: FakeConsDb, cache_dir: Path | None, page_size: int = 2
+    client: FakeConsDb,
+    cache_dir: Path | None,
+    page_size: int = 2,
+    poll_interval: float = 3600,
 ) -> GuideService:
     return GuideService(
         client,
         ["lsstcam"],
         since_day_obs="2025-04-01",
         max_gap=MAX_GAP,
-        poll_interval=3600,
+        poll_interval=poll_interval,
         page_size=page_size,
         cache_dir=cache_dir,
     )
@@ -319,6 +329,128 @@ async def test_consdb_failure_keeps_blocks_and_reports_error(tmp_path: Path) -> 
     client.fail = False
     await svc.poll(guide)
     assert guide.error is None
+
+
+async def test_a_sweep_that_fails_partway_persists_the_pages_it_read(
+    tmp_path: Path,
+) -> None:
+    # Page 1 lands, then ConsDB drops out on page 2: the error is reported,
+    # the sweep isn't marked done, and the cache records page 1 so a restart
+    # resumes after it instead of re-reading from the start.
+    client = FakeConsDb(
+        [row(1, "P", 0), row(2, "P", 1), row(3, "P", 2)],
+        errors={1: ConsDbError("ConsDB unreachable: connection reset")},
+    )
+    svc = make_service(client, tmp_path)
+    guide = svc.instruments["lsstcam"]
+
+    assert await svc.poll(guide) == 2
+
+    assert guide.error == "ConsDB unreachable: connection reset"
+    assert not guide.swept and not guide.dirty
+    fresh = make_service(client, tmp_path)
+    resumed = fresh.instruments["lsstcam"]
+    fresh._load_cache(resumed)
+    assert resumed.last_exposure_id == 2025041100002
+    await fresh.poll(resumed)
+    assert "exposure_id > 2025041100002" in client.queries[-1]
+    assert resumed.swept
+    assert [(b.seq_num_0, b.seq_num_1) for b in resumed.blocks()] == [(1, 3)]
+
+
+async def test_a_failed_cache_write_is_logged_and_retried_next_poll(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.guide.log.warning",
+        lambda event, **kw: warnings.append(event),
+    )
+    # A file where the cache directory should be makes mkdir raise an
+    # OSError, and does so even when the tests run as root (unlike chmod).
+    blocker = tmp_path / "guide"
+    blocker.write_text("not a directory")
+    client = FakeConsDb([row(1, "P", 0)])
+    svc = make_service(client, tmp_path)
+    guide = svc.instruments["lsstcam"]
+
+    await svc.poll(guide)
+
+    # The poll still succeeds: the blocks are served, only persistence lags.
+    assert guide.swept and guide.error is None and len(guide.blocks()) == 1
+    assert warnings == ["guide.cache.write_failed"]
+    assert guide.dirty  # the write is still owed
+
+    blocker.unlink()
+    await svc.poll(guide)  # no new rows, but the owed write goes out
+    assert not guide.dirty
+    cached = json.loads((blocker / "lsstcam.json").read_text())
+    assert cached["last_exposure_id"] == 2025041100001
+
+
+async def test_run_loop_survives_a_corrupt_cache_and_a_crashing_poll(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logged: list[str] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.guide.log.exception",
+        lambda event, **kw: logged.append(event),
+    )
+    cache = tmp_path / "guide" / "lsstcam.json"
+    cache.parent.mkdir()
+    cache.write_text('{"version": 1, "grouper": {"clo')  # a torn write
+    # The first query fails with something other than a ConsDbError (a bug
+    # rather than an outage), which poll() lets out and the loop must absorb.
+    client = FakeConsDb([row(1, "P", 0)], errors={0: KeyError("exposure_id")})
+    svc = make_service(client, tmp_path, poll_interval=30)
+    guide = svc.instruments["lsstcam"]
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError  # as stop() would, mid-sleep
+
+    with monkeypatch.context() as m:
+        m.setattr(asyncio, "sleep", fake_sleep)
+        with pytest.raises(asyncio.CancelledError):
+            await svc._run(guide)
+
+    assert logged == ["guide.cache.load_failed", "guide.poll.error"]
+    assert sleeps == [30, 30]  # the poll interval after each tick, failed or not
+    # A cold start: the second tick swept from the beginning and the good
+    # state replaced the corrupt cache.
+    assert all("exposure_id > 2025040099999" in q for q in client.queries)
+    assert guide.swept
+    assert [(b.seq_num_0, b.seq_num_1) for b in guide.blocks()] == [(1, 1)]
+    assert json.loads(cache.read_text())["last_exposure_id"] == 2025041100001
+
+
+async def test_stop_during_a_poll_ends_the_loop_without_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged: list[str] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.guide.log.exception",
+        lambda event, **kw: logged.append(event),
+    )
+    svc = make_service(FakeConsDb([]), None)
+    polling = asyncio.Event()
+
+    async def hanging_poll(guide: Any) -> int:
+        polling.set()
+        await asyncio.Event().wait()  # a query that never returns
+        return 0
+
+    monkeypatch.setattr(svc, "poll", hanging_poll)
+    svc.start()
+    (task,) = svc._tasks
+    await polling.wait()
+
+    await svc.stop()
+
+    assert task.cancelled() and svc._tasks == []
+    assert logged == []  # a shutdown is not a failed poll
 
 
 def test_instrument_names_are_validated() -> None:
