@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 322 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 324 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -386,8 +386,9 @@ Safe to skim.
 - This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
-  `175f1e7`, `f5ba744`, `46b1c0a`, and the commit that noted the All Sky
-  pass.
+  `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
+  `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, and the commit
+  that noted the aborted-stream test fix.
 
 ---
 
@@ -756,6 +757,11 @@ Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
   `ProxiedVideo` reports a failed movie the server still serves; a
   "Download interrupted · Reload" pill in the topbar. The Vite dev proxy
   now passes a backend abort on instead of holding the connection open
+- `4454bf5` Accept either body in the aborted-stream proxy test, which
+  failed on Jenkins only: from starlette 1.9 (Jenkins has it; `uv.lock`
+  pins 1.1.0) the TestClient streams the body, so an unfinished response
+  reads back the bytes sent rather than nothing. `test_ops` still checks
+  that the response is left unfinished
 
 ### 49. Nightly Summary, second pass
 The night report's page (headed Nightly Summary) drew its plots too
