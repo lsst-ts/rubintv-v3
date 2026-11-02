@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 320 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 322 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -759,13 +759,22 @@ Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
 
 ### 49. Nightly Summary, second pass
 The night report's page (headed Nightly Summary) drew its plots too
-small to read. Review `PlotModal` and `PlotPanel` in
-`web/src/views/NightReport.tsx`.
+small to read, and its button and URLs still said "night report".
+Review `PlotModal` and `PlotPanel` in `web/src/views/NightReport.tsx`,
+then the renamed routes in `routes.tsx`, `api/nightreport.py`,
+`api/proxy.py` and `legacy_redirects.py`.
 - `59dba2c` Enlarge a Nightly Summary plot on click: each plot opens
   filling the window; a click anywhere but the caption, Escape or the
   close button closes it. It closes on the click, not on pointerdown, so
   on a touch screen a tap outside can't land on (and open) the plot
   underneath
+- `1dea769` Call the night report the Nightly Summary wherever users see
+  it: the table's button, the page route (`/nightly-summary`), the API
+  routes and the OpenAPI tag (API artifacts regenerated). The old app's
+  `night_report` links redirect to the new page on the server; this
+  app's pre-rename `night-report` URL redirects in the SPA's route table,
+  so it also works under the Vite dev server. Internal names, JSON
+  fields, camera config keys and the bucket's keys are unchanged
 
 ---
 
