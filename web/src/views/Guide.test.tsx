@@ -94,7 +94,6 @@ function renderGuide(path = "/guide") {
         <Routes>
           <Route path="/guide" element={<Guide />} />
           <Route path="/guide/:instrument" element={<Guide />} />
-          <Route path="/:location/:camera" element={<p>camera page</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -127,23 +126,36 @@ test("clicking a block fills the info panel with its details and links", async (
   expect(screen.getByText("BLOCK-T1")).toBeDefined();
   expect(screen.getByText("A named block")).toBeDefined();
   // The seq range links into the camera table, filtered to those exposures.
+  // It opens in a new tab, outside the router, so it carries the app prefix.
   const range = screen.getByText("10 - 50") as HTMLAnchorElement;
   expect(range.tagName).toBe("A");
   expect(range.getAttribute("href")).toBe(
-    "/test/lsstcam?date=2025-04-12&seq_filter=between10_50",
+    "/rubintv/test/lsstcam?date=2025-04-12&seq_filter=between10_50",
   );
-  // The observing day is the link to that night's camera page.
+  // The observing day is the link to that night's camera page; the new-tab
+  // icon is part of each link's accessible name.
   // (getByRole: the same date is also a y-axis tick label.)
-  const rubintv = screen.getByRole("link", { name: "2025-04-12" }) as HTMLAnchorElement;
-  expect(rubintv.getAttribute("href")).toBe("/test/lsstcam?date=2025-04-12");
+  const rubintv = screen.getByRole("link", {
+    name: "2025-04-12 (opens in a new tab)",
+  }) as HTMLAnchorElement;
+  expect(rubintv.getAttribute("href")).toBe("/rubintv/test/lsstcam?date=2025-04-12");
   expect(screen.getByText("External links:")).toBeDefined();
   expect(screen.queryByText("RubinTV")).toBeNull();
   const fits = screen.getByText("FITS image viewer") as HTMLAnchorElement;
   expect(fits.getAttribute("href")).toBe("http://fits.example/20250412_000010");
-  expect(fits.getAttribute("target")).toBe("_blank");
-  // The day link is an in-app route, so it navigates without a reload.
-  fireEvent.click(rubintv);
-  expect(await screen.findByText("camera page")).toBeDefined();
+  // Every link in the panel opens in a new tab and shows the icon saying so;
+  // only the external ones withhold the referrer.
+  const links = Array.from(container.querySelectorAll<HTMLAnchorElement>(".guide-panel-content a"));
+  expect(links).toEqual([rubintv, range, fits]);
+  for (const a of links) {
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.querySelector("svg.guide-newtab")).not.toBeNull();
+  }
+  expect(links.map((a) => a.getAttribute("rel"))).toEqual([
+    "noopener",
+    "noopener",
+    "noopener noreferrer",
+  ]);
 });
 
 test("search finds programs by description and selects them", async () => {
@@ -235,13 +247,13 @@ test("a block across day_obs rollovers links each night's part of its seq range"
   // Seq numbers restart each night: the first night's part runs from
   // seq_num_0 up, the last night's up to seq_num_1, and a night in between
   // is the whole night.
-  expect(rangeHref(parts[0])).toBe("/test/lsstcam?date=2025-04-12&seq_filter=gte300");
-  expect(rangeHref(parts[1])).toBe("/test/lsstcam?date=2025-04-13");
-  expect(rangeHref(parts[2])).toBe("/test/lsstcam?date=2025-04-14&seq_filter=lte4");
+  expect(rangeHref(parts[0])).toBe("/rubintv/test/lsstcam?date=2025-04-12&seq_filter=gte300");
+  expect(rangeHref(parts[1])).toBe("/rubintv/test/lsstcam?date=2025-04-13");
+  expect(rangeHref(parts[2])).toBe("/rubintv/test/lsstcam?date=2025-04-14&seq_filter=lte4");
   // Both viewer links, Quick Look first, at the block's first exposure.
   fireEvent.click(parts[0]);
   const viewers = screen.getAllByRole("link", { name: /viewer/ });
-  expect(viewers.map((a) => a.textContent)).toEqual(["Quick Look viewer", "FITS image viewer"]);
+  expect(viewers.map((a) => a.textContent!.trim())).toEqual(["Quick Look viewer", "FITS image viewer"]);
   expect(viewers[0].getAttribute("href")).toBe("http://ql.example/20250412_000300");
 });
 

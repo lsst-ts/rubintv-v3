@@ -56,13 +56,15 @@ export interface GuideBlockDatum extends Omit<GuideBlockInput, "begin" | "end"> 
     originalBlock: GuideBlockDatum | null;
 }
 
+/** An external link for a block; opened in a new tab. */
 export interface GuideLink {
     label: string;
     href: string;
-    /** In-app route: handled through onNavigate instead of a page load. */
-    internal?: boolean;
 }
 
+// Every link in the info panel opens in a new tab, so the guide stays where
+// it was. `dayHref` and `rangeHref` are therefore full URL paths (with the
+// app's prefix), not router routes.
 export interface RenderGuideOptions {
     blocks: GuideBlockInput[];
     /** Program key → description. */
@@ -70,11 +72,10 @@ export interface RenderGuideOptions {
     /** UTC hour a day_obs row begins at. */
     dayStartUtcHour: number;
     links?: (block: GuideBlockDatum, day: string) => GuideLink[];
-    /** In-app route for a block's observing day; null/absent leaves it as text. */
+    /** Link for a block's observing day; null/absent leaves it as text. */
     dayHref?: (day: string) => string | null;
-    /** In-app route for a block's seq range; null/absent leaves it as text. */
+    /** Link for a block's seq range; null/absent leaves it as text. */
     rangeHref?: (block: GuideBlockDatum, day: string) => string | null;
-    onNavigate?: (path: string) => void;
     /** Hide blocks shorter than this (default 5). */
     minBlockMinutes?: number;
     /** Empty rows to draw past the last block (default 6). */
@@ -128,7 +129,6 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         links,
         dayHref,
         rangeHref,
-        onNavigate,
         minBlockMinutes = 5,
         futureMonths = 6,
     } = opts;
@@ -749,12 +749,25 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             .replace(/"/g, "&quot;");
     }
 
+    // Links open in a new tab, marked with the app's open-in-new-tab glyph
+    // (the ViewerIcon box-and-arrow), which also names that for screen
+    // readers.
+    const NEW_TAB_ICON =
+        '<svg class="guide-newtab" role="img" aria-label="(opens in a new tab)" viewBox="0 0 24 24" fill="none" ' +
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/><path d="M15 3h6v6M21 3l-9 9"/></svg>';
+    function newTabLink(href: string, text: string, { title, external }: { title?: string; external?: boolean } = {}): string {
+        const rel = external ? 'noopener noreferrer' : 'noopener';
+        const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+        return `<a class="guide-newtab-link" href="${escapeHtml(href)}" target="_blank" rel="${rel}"${titleAttr}>${escapeHtml(text)} ${NEW_TAB_ICON}</a>`;
+    }
+
     // The observing day as a link to that night's camera page (the original
     // listed a "RubinTV" link instead).
     function renderDay(day: string): string {
         const href = dayHref ? dayHref(day) : null;
         if (!href) return day;
-        return `<a href="${escapeHtml(href)}" data-internal="1" title="Open this night in RubinTV">${day}</a>`;
+        return newTabLink(href, day, { title: "Open this night in RubinTV in a new tab" });
     }
 
     // The seq range as a link into the camera table (an addition over the
@@ -763,12 +776,12 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         const text = `${d.seq_num_0} - ${d.seq_num_1}`;
         const href = rangeHref ? rangeHref(d, day) : null;
         if (!href) return text;
-        return `<a href="${escapeHtml(href)}" data-internal="1" title="Open these exposures in the camera table">${text}</a>`;
+        return newTabLink(href, text, { title: "Open these exposures in the camera table in a new tab" });
     }
 
     function renderLinks(d: GuideBlockDatum, day: string): string {
         const items = (links ? links(d, day) : []).map(l =>
-            `<a href="${escapeHtml(l.href)}"${l.internal ? ' data-internal="1"' : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(l.label)}</a>`
+            newTabLink(l.href, l.label, { external: true })
         );
         if (items.length === 0) return '';
         return `
@@ -945,17 +958,11 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         scrollToCenter(blockElement);
     }
 
-    // Delegated clicks inside the panel: program-summary rows and in-app links.
+    // Delegated clicks inside the panel: the program summary's block rows.
     panelContent.on("click", function(event: MouseEvent) {
         const item = (event.target as Element).closest<HTMLElement>(".guide-block-item");
         if (item) {
             selectBlockById(Number(item.dataset.blockId), item.dataset.day);
-            return;
-        }
-        const link = (event.target as Element).closest("a[data-internal]");
-        if (link && onNavigate) {
-            event.preventDefault();
-            onNavigate(link.getAttribute("href")!);
         }
     });
 

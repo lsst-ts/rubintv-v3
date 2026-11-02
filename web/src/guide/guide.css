@@ -130,6 +130,10 @@
 .guide-info-panel h3 { margin-top: 0; color: var(--ink); }
 .guide-info-panel .info-item { margin-bottom: 10px; }
 .guide-info-panel .info-label { font-weight: bold; color: var(--ink-soft); }
+/* Panel links open in a new tab; the glyph after the text says so, and
+   stays on the same line as it. */
+.guide-newtab-link { white-space: nowrap; }
+.guide-newtab { width: 0.85em; height: 0.85em; vertical-align: -0.1em; }
 .guide-info-panel a { color: var(--accent); text-decoration: none; word-break: break-all; }
 .guide-info-panel a:hover { text-decoration: underline; }
 .guide-info-placeholder {
