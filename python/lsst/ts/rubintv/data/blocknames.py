@@ -37,6 +37,8 @@ lookup exactly as the original guide did.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -61,6 +63,38 @@ def load_snapshot() -> dict[str, str]:
 
 class ZephyrError(RuntimeError):
     """A Zephyr Scale request failed."""
+
+
+def token_identity(token: str) -> dict[str, str]:
+    """What a log line may say about ``token`` without revealing it.
+
+    Always a short SHA-256 fingerprint, so a replaced secret can be told
+    from the old one: compare it with ``printf %s "$TOKEN" | sha256sum``.
+    Zephyr Scale tokens are JWTs naming the Jira site and account they act
+    as; those claims are added when the token decodes as one.
+    """
+    ident = {"token_sha256": hashlib.sha256(token.encode()).hexdigest()[:12]}
+    try:
+        segment = token.split(".")[1]
+        padded = segment + "=" * (-len(segment) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(padded))
+    except (IndexError, ValueError):
+        return ident
+    if not isinstance(claims, dict):
+        return ident
+    context = claims.get("context")
+    if isinstance(context, dict):
+        if context.get("baseUrl"):
+            ident["jira"] = str(context["baseUrl"])
+        user = context.get("user")
+        if isinstance(user, dict) and user.get("accountId"):
+            ident["account_id"] = str(user["accountId"])
+    try:
+        expires = datetime.fromtimestamp(int(claims["exp"]), UTC)
+    except (KeyError, TypeError, ValueError, OverflowError, OSError):
+        return ident
+    ident["token_expires"] = expires.isoformat()
+    return ident
 
 
 def fetch_zephyr_names(
@@ -116,6 +150,7 @@ class BlockNameService:
         self.error: str | None = None
         self._zephyr_url = zephyr_url
         self._token = zephyr_token
+        self._identity = token_identity(zephyr_token) if zephyr_token else {}
         self._project = project_key
         self._interval = refresh_interval
         self._task: asyncio.Task[None] | None = None
@@ -131,6 +166,8 @@ class BlockNameService:
     def start(self) -> None:
         if self.refresh_enabled:
             self._task = asyncio.create_task(self._loop(), name="block-names")
+        else:
+            log.info("blocknames.zephyr.disabled", reason="no token")
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -154,7 +191,7 @@ class BlockNameService:
             )
         except ZephyrError as exc:
             self.error = str(exc)
-            log.warning("blocknames.refresh.failed", error=str(exc))
+            log.warning("blocknames.refresh.failed", error=str(exc), **self._identity)
             return False
         if not fetched:
             self.error = "Zephyr returned no test cases"
@@ -168,7 +205,12 @@ class BlockNameService:
         self.source = "zephyr"
         self.updated_at = datetime.now(UTC)
         self.error = None
-        log.info("blocknames.refreshed", count=len(fetched))
+        log.info(
+            "blocknames.zephyr.connected",
+            project=self._project,
+            count=len(fetched),
+            **self._identity,
+        )
         return True
 
     async def _loop(self) -> None:

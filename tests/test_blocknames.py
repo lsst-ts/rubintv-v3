@@ -24,6 +24,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import io
 import json
 from email.message import Message
@@ -38,6 +40,7 @@ from lsst.ts.rubintv.data.blocknames import (
     ZephyrError,
     fetch_zephyr_names,
     load_snapshot,
+    token_identity,
 )
 
 
@@ -142,6 +145,82 @@ async def test_refresh_merges_and_keeps_snapshot_on_failure(
     monkeypatch.setattr(blocknames, "fetch_zephyr_names", boom)
     assert not await svc.refresh()
     assert "401" in (svc.error or "") and svc.names["BLOCK-T9"] == "Nine"
+
+
+def fake_jwt(claims: dict[str, Any]) -> str:
+    def part(obj: dict[str, Any]) -> str:
+        raw = base64.urlsafe_b64encode(json.dumps(obj).encode()).decode()
+        return raw.rstrip("=")
+
+    return f"{part({'alg': 'HS256', 'typ': 'JWT'})}.{part(claims)}.sig"
+
+
+def test_token_identity_names_the_account_without_the_token() -> None:
+    token = fake_jwt(
+        {
+            "context": {
+                "baseUrl": "https://rubinobs.atlassian.net",
+                "user": {"accountId": "712020:abc"},
+            },
+            "exp": 1822316059,
+        }
+    )
+    ident = token_identity(token)
+    assert ident == {
+        "token_sha256": hashlib.sha256(token.encode()).hexdigest()[:12],
+        "jira": "https://rubinobs.atlassian.net",
+        "account_id": "712020:abc",
+        "token_expires": "2027-09-30T14:54:19+00:00",
+    }
+    assert not any(token in v for v in ident.values())
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "opaque-token",
+        "a.!!!not base64!!!.c",
+        "a.bm90IGpzb24.c",  # "not json"
+        fake_jwt({"context": "flat", "exp": "soon"}),
+        fake_jwt({"exp": 10**20}),
+    ],
+)
+def test_token_identity_falls_back_to_the_fingerprint(token: str) -> None:
+    assert list(token_identity(token)) == ["token_sha256"]
+
+
+async def test_refresh_logs_which_account_connected_or_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged: list[tuple[str, dict[str, Any]]] = []
+    for level in ("info", "warning"):
+        monkeypatch.setattr(
+            f"lsst.ts.rubintv.data.blocknames.log.{level}",
+            lambda event, **kw: logged.append((event, kw)),
+        )
+    pages = {0: {"values": [{"key": "BLOCK-T9", "name": "Nine"}]}}
+    monkeypatch.setattr(blocknames, "urlopen", fake_zephyr(pages, []))
+    token = fake_jwt({"context": {"user": {"accountId": "712020:abc"}}})
+    svc = BlockNameService({}, zephyr_url="https://z/v2", zephyr_token=token)
+
+    assert await svc.refresh()
+
+    def boom(*a: Any, **k: Any) -> None:
+        raise ZephyrError("Zephyr HTTP 401: Unauthorized")
+
+    monkeypatch.setattr(blocknames, "fetch_zephyr_names", boom)
+    assert not await svc.refresh()
+    BlockNameService({}, zephyr_url="https://z/v2", zephyr_token=None).start()
+
+    assert [event for event, _ in logged] == [
+        "blocknames.zephyr.connected",
+        "blocknames.refresh.failed",
+        "blocknames.zephyr.disabled",
+    ]
+    connected, failed = logged[0][1], logged[1][1]
+    assert connected["account_id"] == failed["account_id"] == "712020:abc"
+    assert connected["count"] == 1 and connected["project"] == "BLOCK"
+    assert failed["error"] == "Zephyr HTTP 401: Unauthorized"
 
 
 async def test_empty_fetch_is_not_applied(monkeypatch: pytest.MonkeyPatch) -> None:
