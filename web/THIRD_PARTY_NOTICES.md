@@ -1,6 +1,6 @@
 # Third-party notices
 
-## RubinTV Guide timeline (`src/guide/timeline.js`, `src/guide/guide.css`)
+## RubinTV Guide timeline (`src/guide/timeline.ts`, `src/guide/guide.css`)
 
 Ported from <https://github.com/jmeyers314/rubintv_guide> (`main.js` and the
 styles in `index.html`).

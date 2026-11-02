@@ -9,13 +9,13 @@
  * See web/THIRD_PARTY_NOTICES.md for the full licence text.
  *
  * Changes from the original are confined to how it is hosted: it is a
- * module the Guide view mounts into a root element (no global ids, no
- * window globals, disposable listeners), the data arrives as arguments
- * instead of being fetched, the day boundary is the observatory's day_obs
- * rollover rather than Chilean noon, block links come from the caller,
- * and scrolling targets the app's scroll container. The chart itself —
- * layout, colours, twilight and moon calculation, selection, search and
- * keyboard behaviour — is the original's.
+ * TypeScript module the Guide view mounts into a root element (no global
+ * ids, no window globals, disposable listeners), the data arrives as
+ * arguments instead of being fetched, the day boundary is the observatory's
+ * day_obs rollover rather than Chilean noon, block links come from the
+ * caller, and scrolling targets the app's scroll container. The chart
+ * itself — layout, colours, twilight and moon calculation, selection,
+ * search and keyboard behaviour — is the original's.
  */
 
 import * as d3 from "d3";
@@ -28,23 +28,100 @@ const CERRO_PACHON_ELEVATION = 2715; // meters
 
 const HOUR_MS = 3600000;
 
+export interface GuideBlockInput {
+    program: string;
+    /** UTC ISO-8601. */
+    begin: string;
+    end: string;
+    seq_num_0: number;
+    seq_num_1: number;
+    /** YYYYMMDD of the first / last exposure; present on API blocks. */
+    day_obs?: number;
+    day_obs_end?: number;
+}
+
+/** A block as the timeline sees it once parsed: dates are Dates and the
+ * observing-day row is attached. Spanning parts carry the whole block. */
+export interface GuideBlockDatum extends Omit<GuideBlockInput, "begin" | "end"> {
+    begin: Date;
+    end: Date;
+    day: string;
+    /** Hours since the row's day boundary. */
+    x0: number;
+    x1: number;
+    /** Of the whole block, on spanning parts too. */
+    durationH: number;
+    blockId: number;
+    isSpanningPart: boolean;
+    originalBlock: GuideBlockDatum | null;
+}
+
+export interface GuideLink {
+    label: string;
+    href: string;
+    /** In-app route: handled through onNavigate instead of a page load. */
+    internal?: boolean;
+}
+
+export interface RenderGuideOptions {
+    blocks: GuideBlockInput[];
+    /** Program key → description. */
+    names: Record<string, string>;
+    /** UTC hour a day_obs row begins at. */
+    dayStartUtcHour: number;
+    links?: (block: GuideBlockDatum, day: string) => GuideLink[];
+    /** In-app route for a block's observing day; null/absent leaves it as text. */
+    dayHref?: (day: string) => string | null;
+    /** In-app route for a block's seq range; null/absent leaves it as text. */
+    rangeHref?: (block: GuideBlockDatum, day: string) => string | null;
+    onNavigate?: (path: string) => void;
+    /** Hide blocks shorter than this (default 5). */
+    minBlockMinutes?: number;
+    /** Empty rows to draw past the last block (default 6). */
+    futureMonths?: number;
+}
+
+type Direction = "up" | "down" | "left" | "right";
+
+type SkyState = "day" | "civil" | "nautical" | "astronomical" | "night";
+
+interface TwilightEvent {
+    type: string;
+    time: Date;
+    hours: number;
+    minutes: number;
+}
+
+interface SkyBackground {
+    start: number;
+    end: number;
+    type: SkyState;
+    color: string;
+    opacity: number;
+}
+
+interface MoonEvent {
+    time: Date;
+    hours: number;
+    minutes: number;
+}
+
+interface FuzzyMatch {
+    score: number;
+    matched: boolean;
+}
+
+interface SearchResult extends FuzzyMatch {
+    program: string;
+    description: string;
+    matchingVersions: string[];
+}
+
 /**
- * Render the timeline into `root`.
- *
- * @param {HTMLElement} root  element containing the `.guide-*` hooks
- * @param {object} opts
- * @param {Array} opts.blocks         [{program, begin, end, seq_num_0, seq_num_1}]
- * @param {Record<string,string>} opts.names  program key → description
- * @param {number} opts.dayStartUtcHour  UTC hour a day_obs row begins at
- * @param {(d: object, day: string) => Array<{label: string, href: string, internal?: boolean}>} opts.links
- * @param {(d: object, day: string) => string | null} [opts.rangeHref]  in-app route for a block's seq range
- * @param {(d: object, day: string) => string | null} [opts.dayHref]  in-app route for a block's observing day
- * @param {(path: string) => void} opts.onNavigate  in-app navigation for internal links
- * @param {number} [opts.minBlockMinutes=5]  hide blocks shorter than this
- * @param {number} [opts.futureMonths=6]  empty rows to draw past the last block
- * @returns {{ dispose: () => void }}
+ * Render the timeline into `root`, the element containing the `.guide-*`
+ * hooks. `dispose` removes the chart and every listener it added.
  */
-export function renderGuide(root, opts) {
+export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { dispose: () => void } {
     const {
         names: tblockNames,
         dayStartUtcHour: DAY_START,
@@ -56,7 +133,7 @@ export function renderGuide(root, opts) {
         futureMonths = 6,
     } = opts;
     const rootSel = d3.select(root);
-    const disposers = [];
+    const disposers: Array<() => void> = [];
 
     // Parse date strings to Date objects (copies: the caller's data is
     // react-query state and must not be mutated).
@@ -67,17 +144,17 @@ export function renderGuide(root, opts) {
     }));
 
     // Filter out short blocks (5 minutes in the original)
-    blocks = blocks.filter(d => (d.end - d.begin) >= minBlockMinutes * 60000);
+    blocks = blocks.filter(d => (d.end.getTime() - d.begin.getTime()) >= minBlockMinutes * 60000);
 
     // Helper function to get the base block name (without version suffix)
-    function getBaseBlockName(program) {
+    function getBaseBlockName(program: string): string {
         // Remove version suffixes like _v3, _v2, _1, _2, _hexapods, etc.
         // This handles both numeric versions (_v3, _1, _2) and descriptive versions (_hexapods)
         return program.replace(/_(?:v)?\d+$|_[a-zA-Z][a-zA-Z0-9_]*$/, '');
     }
 
     // Helper function to get the correct T-block name for description lookup
-    function getDescriptionKey(program) {
+    function getDescriptionKey(program: string): string {
         // First remove any version suffix
         const baseProgram = getBaseBlockName(program);
 
@@ -92,7 +169,7 @@ export function renderGuide(root, opts) {
     }
 
     // Helper function to get description for a program
-    function getDescription(program) {
+    function getDescription(program: string): string | undefined {
         const descriptionKey = getDescriptionKey(program);
         return tblockNames[descriptionKey];
     }
@@ -103,12 +180,12 @@ export function renderGuide(root, opts) {
 
     // Observing-day functions - the day runs from DAY_START UTC to DAY_START UTC
     // the next calendar day (noon UTC for day_obs, matching the rest of RubinTV).
-    function dayNoon(dayStr) {
+    function dayNoon(dayStr: string): Date {
         const [year, month, day] = dayStr.split('-').map(Number);
         return new Date(Date.UTC(year, month - 1, day, DAY_START, 0, 0));
     }
 
-    function getAstronomicalDay(date) {
+    function getAstronomicalDay(date: Date): string {
         // If time is before the boundary, the observing day started at yesterday's boundary
         const currentDate = new Date(date);
         const currentHour = currentDate.getUTCHours();
@@ -123,7 +200,7 @@ export function renderGuide(root, opts) {
     }
 
     // Preprocess Data - handle blocks that span across observing-day boundaries
-    const data = [];
+    const data: GuideBlockDatum[] = [];
 
     blocks.forEach((d, blockIndex) => {
         const startDay = getAstronomicalDay(d.begin);
@@ -131,16 +208,21 @@ export function renderGuide(root, opts) {
         const startDayNoon = dayNoon(startDay);
 
         // Calculate positions relative to the start day's boundary
-        const x0 = (d.begin - startDayNoon) / HOUR_MS;
-        const x1 = (d.end - startDayNoon) / HOUR_MS;
-        const durationH = (d.end - d.begin) / HOUR_MS;
+        const x0 = (d.begin.getTime() - startDayNoon.getTime()) / HOUR_MS;
+        const x1 = (d.end.getTime() - startDayNoon.getTime()) / HOUR_MS;
+        const durationH = (d.end.getTime() - d.begin.getTime()) / HOUR_MS;
+
+        // The whole block on its starting day. Spanning parts point back to
+        // this rather than to the bare parsed block (as the original did),
+        // so the program summary can list a spanning block with its day and id.
+        const whole: GuideBlockDatum = { ...d, day: startDay, x0, x1, durationH, originalBlock: null, isSpanningPart: false, blockId: blockIndex };
 
         if (startDay === endDay) {
             // Block doesn't span days, add as-is
-            data.push({ ...d, day: startDay, x0, x1, durationH, originalBlock: null, isSpanningPart: false, blockId: blockIndex });
+            data.push(whole);
         } else {
             // Block spans across days - create entries for each day it touches
-            const spanDays = [];
+            const spanDays: string[] = [];
             const currentDate = dayNoon(startDay);
             const endDate = dayNoon(endDay);
 
@@ -157,10 +239,10 @@ export function renderGuide(root, opts) {
                     data.push({
                         ...d,
                         day: dayStr,
-                        x0: (d.begin - noon) / HOUR_MS,
+                        x0: (d.begin.getTime() - noon.getTime()) / HOUR_MS,
                         x1: 24,
                         durationH: durationH, // Keep original duration for info display
-                        originalBlock: d,
+                        originalBlock: whole,
                         isSpanningPart: true,
                         blockId: blockIndex
                     });
@@ -170,9 +252,9 @@ export function renderGuide(root, opts) {
                         ...d,
                         day: dayStr,
                         x0: 0,
-                        x1: (d.end - noon) / HOUR_MS,
+                        x1: (d.end.getTime() - noon.getTime()) / HOUR_MS,
                         durationH: durationH,
-                        originalBlock: d,
+                        originalBlock: whole,
                         isSpanningPart: true,
                         blockId: blockIndex
                     });
@@ -184,7 +266,7 @@ export function renderGuide(root, opts) {
                         x0: 0,
                         x1: 24,
                         durationH: durationH,
-                        originalBlock: d,
+                        originalBlock: whole,
                         isSpanningPart: true,
                         blockId: blockIndex
                     });
@@ -193,7 +275,7 @@ export function renderGuide(root, opts) {
         }
     });
 
-    const chartContainer = rootSel.select(".guide-chart");
+    const chartContainer = rootSel.select<HTMLDivElement>(".guide-chart");
     chartContainer.selectAll("*").remove();
 
     if (data.length === 0) {
@@ -213,7 +295,7 @@ export function renderGuide(root, opts) {
     lastDay.setUTCMonth(lastDay.getUTCMonth() + futureMonths);
 
     // Generate all days in the range (observed + future)
-    const allDays = [];
+    const allDays: string[] = [];
     const currentDay = new Date(firstDay);
     while (currentDay <= lastDay) {
         allDays.push(fmtDate(currentDay));
@@ -240,13 +322,13 @@ export function renderGuide(root, opts) {
         '#ffc107', // amber
         '#795548'  // brown
     ];
-    const color = d3.scaleOrdinal().domain(programs).range(vibrantColors);
+    const color = d3.scaleOrdinal<string, string>().domain(programs).range(vibrantColors);
 
     // Layout - responsive design
     const margin = { top: 20, right: 20, bottom: 20, left: 80 };
 
     // Make chart width responsive to container
-    const containerWidth = chartContainer.node().getBoundingClientRect().width - 16; // Account for padding
+    const containerWidth = chartContainer.node()!.getBoundingClientRect().width - 16; // Account for padding
     const width = Math.max(800, containerWidth); // Minimum 800px width
     const rowHeight = 20;
     const innerWidth = width - margin.left - margin.right;
@@ -273,7 +355,7 @@ export function renderGuide(root, opts) {
                 .padding(0.1);
 
     // Function to calculate twilight times for a given observing day
-    function calculateTwilightTimes(astronomicalDayStr) {
+    function calculateTwilightTimes(astronomicalDayStr: string): TwilightEvent[] {
         try {
             // Create observer object for Cerro Pachón
             const observer = new Astronomy.Observer(CERRO_PACHON_LAT, CERRO_PACHON_LON, CERRO_PACHON_ELEVATION);
@@ -281,7 +363,7 @@ export function renderGuide(root, opts) {
             const dayStart = dayNoon(astronomicalDayStr);
             const dayEnd = new Date(dayStart.getTime() + 24 * HOUR_MS);
 
-            const events = [];
+            const events: TwilightEvent[] = [];
 
             // Define twilight elevation angles (standard astronomical definitions)
             const twilightEvents = [
@@ -328,7 +410,7 @@ export function renderGuide(root, opts) {
                         }
                     }
                 } catch (e) {
-                    console.warn(`Could not find ${twilight.name} for ${astronomicalDayStr}:`, e.message);
+                    console.warn(`Could not find ${twilight.name} for ${astronomicalDayStr}:`, (e as Error).message);
                 }
             }
 
@@ -344,12 +426,12 @@ export function renderGuide(root, opts) {
     }
 
     // Function to create twilight background for a single day
-    function createTwilightBackground(astronomicalDayStr) {
+    function createTwilightBackground(astronomicalDayStr: string): SkyBackground[] {
         const events = calculateTwilightTimes(astronomicalDayStr);
-        const backgrounds = [];
+        const backgrounds: SkyBackground[] = [];
 
         // Define background colors for different periods
-        const colors = {
+        const colors: Record<SkyState, { color: string; opacity: number }> = {
             day: { color: '#ffffe0', opacity: 0.3 },           // Light yellow
             civil: { color: '#ffa500', opacity: 0.15 },        // Orange
             nautical: { color: '#4169e1', opacity: 0.2 },      // Royal blue
@@ -359,7 +441,7 @@ export function renderGuide(root, opts) {
 
         // Start with day since the observing day begins around local noon
         let currentMinutes = 0;
-        let currentState = 'day';
+        let currentState: SkyState = 'day';
 
         // If no events found, default to day for the entire period
         if (events.length === 0) {
@@ -433,7 +515,7 @@ export function renderGuide(root, opts) {
     }
 
     // Function to calculate moon rise and set times for a given observing day
-    function calculateMoonTimes(astronomicalDayStr) {
+    function calculateMoonTimes(astronomicalDayStr: string): { moonrise: MoonEvent | null; moonset: MoonEvent | null } | null {
         try {
             // Create observer object for Cerro Pachón
             const observer = new Astronomy.Observer(CERRO_PACHON_LAT, CERRO_PACHON_LON, CERRO_PACHON_ELEVATION);
@@ -441,8 +523,8 @@ export function renderGuide(root, opts) {
             const dayStart = dayNoon(astronomicalDayStr);
             const dayEnd = new Date(dayStart.getTime() + 24 * HOUR_MS);
 
-            let moonrise = null;
-            let moonset = null;
+            let moonrise: MoonEvent | null = null;
+            let moonset: MoonEvent | null = null;
 
             try {
                 // Search for moonrise within this observing day
@@ -473,7 +555,7 @@ export function renderGuide(root, opts) {
                 }
 
             } catch (e) {
-                console.warn(`Could not find moon rise/set for ${astronomicalDayStr}:`, e.message);
+                console.warn(`Could not find moon rise/set for ${astronomicalDayStr}:`, (e as Error).message);
             }
 
             return { moonrise, moonset };
@@ -485,8 +567,8 @@ export function renderGuide(root, opts) {
     }
 
     // Scrolling: the SPA scrolls its content pane, not the window.
-    const scroller = root.closest(".app-content") || null;
-    function scrollTo(top) {
+    const scroller = root.closest<HTMLElement>(".app-content") || null;
+    function scrollTo(top: number) {
         const target = scroller || window;
         // jsdom (tests) has no scrollTo; a missing one is not worth an error.
         if (typeof target.scrollTo !== "function") return;
@@ -496,7 +578,7 @@ export function renderGuide(root, opts) {
             /* not scrollable here */
         }
     }
-    function scrollToCenter(element) {
+    function scrollToCenter(element: Element | null | undefined) {
         if (!element) return;
         const rect = element.getBoundingClientRect();
         if (scroller) {
@@ -514,8 +596,8 @@ export function renderGuide(root, opts) {
     disposers.push(() => tooltip.remove());
 
     // Selection state
-    let selectedBlock = null;
-    let highlightedProgram = null;
+    let selectedBlock: GuideBlockDatum | null = null;
+    let highlightedProgram: string | null = null;
 
     // Info panel elements
     const infoPanel = rootSel.select(".guide-info-panel");
@@ -534,12 +616,12 @@ export function renderGuide(root, opts) {
     }
 
     // Check if search is currently active
-    function isSearchActive() {
+    function isSearchActive(): boolean {
         return searchResults.style("display") !== "none";
     }
 
     // Find the next/previous block for keyboard navigation
-    function findAdjacentBlock(direction) {
+    function findAdjacentBlock(direction: Direction): GuideBlockDatum | null {
         if (!selectedBlock || highlightedProgram) {
             return null; // Only navigate when exactly one block is selected
         }
@@ -606,7 +688,7 @@ export function renderGuide(root, opts) {
     }
 
     // Navigate to a specific block
-    function navigateToBlock(targetBlock) {
+    function navigateToBlock(targetBlock: GuideBlockDatum | null) {
         if (!targetBlock) return;
 
         // Clear current selection
@@ -616,7 +698,7 @@ export function renderGuide(root, opts) {
         selectedBlock = targetBlock.originalBlock || targetBlock;
 
         // Highlight the block visually
-        const targetBlocks = g.selectAll(".block")
+        const targetBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
             .classed("selected", blockData => blockData.blockId === targetBlock.blockId);
 
         // Add flash animation
@@ -642,7 +724,7 @@ export function renderGuide(root, opts) {
         panelContent.html(PLACEHOLDER);
     }
 
-    function escapeHtml(s) {
+    function escapeHtml(s: string): string {
         return String(s)
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
@@ -652,7 +734,7 @@ export function renderGuide(root, opts) {
 
     // The observing day as a link to that night's camera page (the original
     // listed a "RubinTV" link instead).
-    function renderDay(day) {
+    function renderDay(day: string): string {
         const href = dayHref ? dayHref(day) : null;
         if (!href) return day;
         return `<a href="${escapeHtml(href)}" data-internal="1" title="Open this night in RubinTV">${day}</a>`;
@@ -660,14 +742,14 @@ export function renderGuide(root, opts) {
 
     // The seq range as a link into the camera table (an addition over the
     // original, which showed it as plain text).
-    function renderRange(d, day) {
+    function renderRange(d: GuideBlockDatum, day: string): string {
         const text = `${d.seq_num_0} - ${d.seq_num_1}`;
         const href = rangeHref ? rangeHref(d, day) : null;
         if (!href) return text;
         return `<a href="${escapeHtml(href)}" data-internal="1" title="Open these exposures in the camera table">${text}</a>`;
     }
 
-    function renderLinks(d, day) {
+    function renderLinks(d: GuideBlockDatum, day: string): string {
         const items = (links ? links(d, day) : []).map(l =>
             `<a href="${escapeHtml(l.href)}"${l.internal ? ' data-internal="1"' : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(l.label)}</a>`
         );
@@ -680,10 +762,10 @@ export function renderGuide(root, opts) {
     }
 
     // Functions for info panels
-    function showSingleBlockInfo(d) {
+    function showSingleBlockInfo(d: GuideBlockDatum) {
         // For spanning blocks, use original block's times; otherwise use the data object's times
         const originalBlock = d.originalBlock || d;
-        const durationH = originalBlock.durationH || (originalBlock.end - originalBlock.begin) / HOUR_MS;
+        const durationH = originalBlock.durationH || (originalBlock.end.getTime() - originalBlock.begin.getTime()) / HOUR_MS;
 
         // Get description from translation table if available
         const description = getDescription(d.program);
@@ -725,7 +807,7 @@ export function renderGuide(root, opts) {
         showInfoPanel();
     }
 
-    function showProgramInfo(program) {
+    function showProgramInfo(program: string) {
         // Filter blocks by base program name to include all versions
         // Use original blocks to avoid counting spanning parts multiple times
         const programBlocks = data
@@ -737,7 +819,7 @@ export function renderGuide(root, opts) {
 
         // Calculate total duration, handling cases where durationH might not be present
         const totalDuration = uniqueBlocks.reduce((sum, d) => {
-            const duration = d.durationH || (d.end - d.begin) / HOUR_MS;
+            const duration = d.durationH || (d.end.getTime() - d.begin.getTime()) / HOUR_MS;
             return sum + duration;
         }, 0);
         const blockCount = uniqueBlocks.length;
@@ -799,7 +881,7 @@ export function renderGuide(root, opts) {
                             return a.seq_num_0 - b.seq_num_0;
                         })
                         .map(d => {
-                            const duration = d.durationH || (d.end - d.begin) / HOUR_MS;
+                            const duration = d.durationH || (d.end.getTime() - d.begin.getTime()) / HOUR_MS;
                             const day = d.originalBlock ? getAstronomicalDay(d.originalBlock.begin) : d.day;
                             return `<div class="guide-block-item" data-block-id="${d.blockId}" data-day="${day}">
                                 <div><strong>${escapeHtml(d.program)}</strong></div>
@@ -814,9 +896,9 @@ export function renderGuide(root, opts) {
     }
 
     // Function to select a block by its blockId (from the program summary list)
-    function selectBlockById(blockId, day) {
+    function selectBlockById(blockId: number, day?: string) {
         // Find the block with this blockId in the data array, preferring the one on the specified day
-        let blockData;
+        let blockData: GuideBlockDatum | undefined;
         if (day) {
             blockData = data.find(d => d.blockId === blockId && d.day === day);
         }
@@ -829,15 +911,15 @@ export function renderGuide(root, opts) {
         g.selectAll(".block").classed("flash", false);
 
         // Find and flash the blocks with this blockId
-        const selectedBlocks = g.selectAll(".block")
+        const selectedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
             .filter(d => d.blockId === blockId);
 
         selectedBlocks.classed("flash", true);
 
         // Scroll to the block on the specific day if provided
-        let blockElement;
+        let blockElement: SVGRectElement | null | undefined;
         if (day) {
-            blockElement = selectedBlocks.nodes().find(n => d3.select(n).datum().day === day);
+            blockElement = selectedBlocks.nodes().find(n => d3.select<SVGRectElement, GuideBlockDatum>(n).datum().day === day);
         }
         if (!blockElement) {
             blockElement = selectedBlocks.node();
@@ -847,16 +929,16 @@ export function renderGuide(root, opts) {
     }
 
     // Delegated clicks inside the panel: program-summary rows and in-app links.
-    panelContent.on("click", function(event) {
-        const item = event.target.closest(".guide-block-item");
+    panelContent.on("click", function(event: MouseEvent) {
+        const item = (event.target as Element).closest<HTMLElement>(".guide-block-item");
         if (item) {
             selectBlockById(Number(item.dataset.blockId), item.dataset.day);
             return;
         }
-        const link = event.target.closest("a[data-internal]");
+        const link = (event.target as Element).closest("a[data-internal]");
         if (link && onNavigate) {
             event.preventDefault();
-            onNavigate(link.getAttribute("href"));
+            onNavigate(link.getAttribute("href")!);
         }
     });
 
@@ -871,13 +953,13 @@ export function renderGuide(root, opts) {
     }
 
     // Search functionality
-    const searchInput = rootSel.select(".guide-search-input");
-    const searchResults = rootSel.select(".guide-search-results");
+    const searchInput = rootSel.select<HTMLInputElement>(".guide-search-input");
+    const searchResults = rootSel.select<HTMLDivElement>(".guide-search-results");
     let selectedSearchIndex = -1; // Track which search result is selected
-    let currentSearchResults = []; // Store current search results for navigation
+    let currentSearchResults: SearchResult[] = []; // Store current search results for navigation
 
     // Simple fuzzy matching function
-    function fuzzyMatch(pattern, text) {
+    function fuzzyMatch(pattern: string, text: string): FuzzyMatch {
         pattern = pattern.toLowerCase();
         text = text.toLowerCase();
 
@@ -902,7 +984,7 @@ export function renderGuide(root, opts) {
         return { score: matched ? score : 0, matched };
     }
 
-    function performSearch(query) {
+    function performSearch(query: string) {
         if (query.length === 0) {
             searchResults.style("display", "none");
             return;
@@ -912,7 +994,7 @@ export function renderGuide(root, opts) {
         const allProgramNames = Array.from(new Set(data.map(d => d.program)));
 
         // Create a map from base program to all its versions
-        const programVersions = {};
+        const programVersions: Record<string, string[]> = {};
         allProgramNames.forEach(fullProgram => {
             const baseProgram = getBaseBlockName(fullProgram);
             if (!programVersions[baseProgram]) {
@@ -922,10 +1004,10 @@ export function renderGuide(root, opts) {
         });
 
         // Search across base programs and their versions
-        const rankedPrograms = programs
+        const rankedPrograms: SearchResult[] = programs
             .map(program => {
-                let bestMatch = { score: 0, matched: false };
-                let matchingVersions = [];
+                let bestMatch: FuzzyMatch = { score: 0, matched: false };
+                let matchingVersions: string[] = [];
 
                 // Search against base program name
                 const programMatch = fuzzyMatch(query, program);
@@ -976,7 +1058,7 @@ export function renderGuide(root, opts) {
         // Display search results
         const items = searchResults
             .style("display", "block")
-            .selectAll(".search-result-item")
+            .selectAll<HTMLDivElement, SearchResult>(".search-result-item")
             .data(rankedPrograms, d => d.program);
 
         // Remove all existing items first to ensure proper ordering
@@ -1008,10 +1090,10 @@ export function renderGuide(root, opts) {
                     return `<div class="search-program">${escapeHtml(d.program)}</div>${versionText}`;
                 }
             })
-            .classed("search-highlighted", (d, i) => i === selectedSearchIndex)
-            .on("click", function(event, d) {
+            .classed("search-highlighted", (_d, i) => i === selectedSearchIndex)
+            .on("click", function(_event, d) {
                 selectProgram(d.program);
-                searchInput.node().value = "";
+                searchInput.node()!.value = "";
                 searchResults.style("display", "none");
                 currentSearchResults = [];
                 selectedSearchIndex = -1;
@@ -1024,11 +1106,11 @@ export function renderGuide(root, opts) {
     // Function to update search result highlighting
     function updateSearchHighlight() {
         searchResults.selectAll(".search-result-item")
-            .classed("search-highlighted", (d, i) => i === selectedSearchIndex);
+            .classed("search-highlighted", (_d, i) => i === selectedSearchIndex);
 
         // Scroll the selected item into view
         if (selectedSearchIndex >= 0) {
-            const selectedElement = searchResults.selectAll(".search-result-item").nodes()[selectedSearchIndex];
+            const selectedElement = searchResults.selectAll<HTMLDivElement, SearchResult>(".search-result-item").nodes()[selectedSearchIndex];
             if (selectedElement && selectedElement.scrollIntoView) {
                 selectedElement.scrollIntoView({
                     behavior: 'smooth',
@@ -1038,7 +1120,7 @@ export function renderGuide(root, opts) {
         }
     }
 
-    function selectProgram(program) {
+    function selectProgram(program: string) {
         clearSelection();
         const baseProgram = getBaseBlockName(program);
 
@@ -1051,7 +1133,7 @@ export function renderGuide(root, opts) {
             selectedBlock = singleBlock.originalBlock || singleBlock;
 
             // Highlight just this single block
-            const selectedBlocks = g.selectAll(".block")
+            const selectedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
                 .classed("selected", blockData => blockData.blockId === singleBlock.blockId);
 
             // Add flash animation to selected block
@@ -1067,7 +1149,7 @@ export function renderGuide(root, opts) {
             highlightedProgram = baseProgram;
 
             // Highlight all blocks with the same base program (including versions)
-            const highlightedBlocks = g.selectAll(".block")
+            const highlightedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
                 .classed("highlighted", blockData => getBaseBlockName(blockData.program) === baseProgram);
 
             // Add flash animation to highlighted blocks
@@ -1080,7 +1162,7 @@ export function renderGuide(root, opts) {
             // Scroll to the first block of this program
             const firstBlock = data.find(d => getBaseBlockName(d.program) === baseProgram);
             if (firstBlock) {
-                const blockElement = g.selectAll(".block")
+                const blockElement = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
                     .filter(d => d === firstBlock)
                     .node();
                 scrollToCenter(blockElement);
@@ -1094,7 +1176,7 @@ export function renderGuide(root, opts) {
         performSearch(query);
     });
 
-    searchInput.on("keydown", function(event) {
+    searchInput.on("keydown", function(event: KeyboardEvent) {
         if (event.key === "Escape") {
             this.value = "";
             searchResults.style("display", "none");
@@ -1127,8 +1209,8 @@ export function renderGuide(root, opts) {
     });
 
     // Hide search results when clicking outside
-    const onDocumentClick = (event) => {
-        if (!event.target.closest(".guide-search-container")) {
+    const onDocumentClick = (event: MouseEvent) => {
+        if (!(event.target as Element).closest(".guide-search-container")) {
             searchResults.style("display", "none");
         }
     };
@@ -1144,7 +1226,7 @@ export function renderGuide(root, opts) {
         .call(yAxis);
 
     // Create floating bottom axes
-    const floatingAxisSvg = rootSel.select(".guide-floating-axis-svg");
+    const floatingAxisSvg = rootSel.select<SVGSVGElement>(".guide-floating-axis-svg");
     floatingAxisSvg.selectAll("*").remove();
     floatingAxisSvg
         .attr("width", width)
@@ -1156,8 +1238,8 @@ export function renderGuide(root, opts) {
     // is added to the chart's own left margin.
     const floatingG = floatingAxisSvg.append("g");
     function alignFloatingAxis() {
-        const chartLeft = svg.node().getBoundingClientRect().left;
-        const axisLeft = floatingAxisSvg.node().getBoundingClientRect().left;
+        const chartLeft = svg.node()!.getBoundingClientRect().left;
+        const axisLeft = floatingAxisSvg.node()!.getBoundingClientRect().left;
         const shift = Math.round(chartLeft - axisLeft);
         floatingAxisSvg.attr("width", width + Math.max(0, shift));
         floatingG.attr("transform", `translate(${margin.left + shift},15)`);
@@ -1169,7 +1251,7 @@ export function renderGuide(root, opts) {
     // Determine which Chilean timezone is currently active
     // Chile uses CLST (UTC-3) from second Saturday of September to first Saturday of April
     // and CLT (UTC-4) the rest of the year
-    function isChileSummerTime(date) {
+    function isChileSummerTime(date: Date): boolean {
         const year = date.getFullYear();
         const month = date.getMonth(); // 0-11
 
@@ -1199,15 +1281,15 @@ export function renderGuide(root, opts) {
     const clstOpacity = isSummerTime ? 1.0 : 0.3;
 
     // Hours since the day boundary -> clock hour in a zone `offset` hours from UTC
-    function clockLabel(d, offset) {
+    function clockLabel(d: number, offset: number): string {
         let hour = (d + DAY_START + offset) % 24;
         if (hour < 0) hour += 24;
         return hour.toString().padStart(2, '0') + ":00";
     }
 
-    function addAxis(yOffset, offset, cls, opacity) {
+    function addAxis(yOffset: number, offset: number, cls: string, opacity: number) {
         const axis = d3.axisBottom(x)
-                       .tickFormat(d => clockLabel(d, offset))
+                       .tickFormat(d => clockLabel(Number(d), offset))
                        .ticks(12)
                        .tickSize(6)
                        .tickSizeOuter(0);
@@ -1220,7 +1302,7 @@ export function renderGuide(root, opts) {
         // Minor ticks (every hour, unlabeled)
         const minor = d3.axisBottom(x)
                         .ticks(24)
-                        .tickFormat("")
+                        .tickFormat(() => "")
                         .tickSize(3);
         floatingG.append("g")
             .attr("class", "x-axis-minor")
@@ -1229,7 +1311,7 @@ export function renderGuide(root, opts) {
             .call(minor);
     }
 
-    function addAxisLabel(yOffset, text, opacity) {
+    function addAxisLabel(yOffset: number, text: string, opacity: number) {
         floatingG.append("text")
             .attr("class", "axis-label")
             .attr("x", -10)
@@ -1275,7 +1357,7 @@ export function renderGuide(root, opts) {
             g.append("rect")
                 .attr("class", "twilight-background")
                 .attr("x", x(bg.start))
-                .attr("y", y(day))
+                .attr("y", y(day)!)
                 .attr("width", x(bg.end) - x(bg.start))
                 .attr("height", y.bandwidth())
                 .attr("fill", bg.color)
@@ -1304,8 +1386,8 @@ export function renderGuide(root, opts) {
                 .attr("class", "month-separator")
                 .attr("x1", 0)
                 .attr("x2", innerWidth)
-                .attr("y1", y(day) - 1)
-                .attr("y2", y(day) - 1)
+                .attr("y1", y(day)! - 1)
+                .attr("y2", y(day)! - 1)
                 .attr("stroke-width", 1.5)
                 .style("pointer-events", "none");
         }
@@ -1317,8 +1399,8 @@ export function renderGuide(root, opts) {
 
         if (moonTimes && (moonTimes.moonrise || moonTimes.moonset)) {
             // Determine the period when the moon is visible (above horizon)
-            let moonVisibleStart = null;
-            let moonVisibleEnd = null;
+            let moonVisibleStart: number | null = null;
+            let moonVisibleEnd: number | null = null;
 
             if (moonTimes.moonrise && moonTimes.moonset) {
                 // Both rise and set within the day
@@ -1332,7 +1414,7 @@ export function renderGuide(root, opts) {
                     g.append("rect")
                         .attr("class", "moon-overlay")
                         .attr("x", x(0))
-                        .attr("y", y(day))
+                        .attr("y", y(day)!)
                         .attr("width", x(moonTimes.moonset.hours) - x(0))
                         .attr("height", y.bandwidth())
                         .attr("fill", "#b3d9ff")
@@ -1357,7 +1439,7 @@ export function renderGuide(root, opts) {
                 g.append("rect")
                     .attr("class", "moon-overlay")
                     .attr("x", x(moonVisibleStart))
-                    .attr("y", y(day))
+                    .attr("y", y(day)!)
                     .attr("width", x(moonVisibleEnd) - x(moonVisibleStart))
                     .attr("height", y.bandwidth())
                     .attr("fill", "#b3d9ff")  // More saturated blue
@@ -1368,25 +1450,25 @@ export function renderGuide(root, opts) {
     });
 
     // Draw Blocks
-    g.selectAll("rect.block")
+    g.selectAll<SVGRectElement, GuideBlockDatum>("rect.block")
         .data(data)
         .join("rect")
             .attr("class", "block")
             .attr("x", d => x(d.x0))
-            .attr("y", d => y(d.day))
+            .attr("y", d => y(d.day)!)
             .attr("width", d => x(d.x1) - x(d.x0))
             .attr("height", y.bandwidth())
             .attr("fill", d => color(getBaseBlockName(d.program)))
             .attr("fill-opacity", 0.9)
             .attr("stroke", "#333")
             .attr("stroke-width", 0.5)
-            .on("click", function(event, d) {
+            .on("click", function(event: MouseEvent, d) {
                 event.stopPropagation();
                 clearSelection();
                 selectedBlock = d.originalBlock || d; // Use original block for spanning parts
 
                 // Highlight all parts of this block (for spanning blocks)
-                const selectedBlocks = g.selectAll(".block")
+                const selectedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
                     .classed("selected", blockData => blockData.blockId === d.blockId);
 
                 // Add flash animation to selected blocks
@@ -1396,7 +1478,7 @@ export function renderGuide(root, opts) {
 
                 showSingleBlockInfo(d); // Always pass the clicked data object, not original
             })
-            .on("dblclick", function(event, d) {
+            .on("dblclick", function(event: MouseEvent, d) {
                 event.stopPropagation();
                 clearSelection();
 
@@ -1405,7 +1487,7 @@ export function renderGuide(root, opts) {
                 highlightedProgram = baseBlockName;
 
                 // Highlight all blocks with the same base program (all versions)
-                const highlightedBlocks = g.selectAll(".block")
+                const highlightedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
                     .classed("highlighted", blockData => getBaseBlockName(blockData.program) === baseBlockName);
 
                 // Add flash animation to highlighted blocks
@@ -1415,9 +1497,9 @@ export function renderGuide(root, opts) {
 
                 showProgramInfo(baseBlockName);
             })
-            .on("mouseenter", function(event, d) {
+            .on("mouseenter", function(_event, d) {
                 const originalBlock = d.originalBlock || d;
-                const durationH = originalBlock.durationH || (originalBlock.end - originalBlock.begin) / HOUR_MS;
+                const durationH = originalBlock.durationH || (originalBlock.end.getTime() - originalBlock.begin.getTime()) / HOUR_MS;
                 tooltip
                     .style("opacity", 1)
                     .html(
@@ -1428,7 +1510,7 @@ export function renderGuide(root, opts) {
                         `Duration: ${durationH.toFixed(2)} h${d.isSpanningPart ? ' (spans days)' : ''}`
                     );
             })
-            .on("mousemove", (event) => {
+            .on("mousemove", (event: MouseEvent) => {
                 tooltip
                     .style("left", (event.clientX + 10) + "px")
                     .style("top", (event.clientY + 10) + "px");
@@ -1443,18 +1525,19 @@ export function renderGuide(root, opts) {
     });
 
     // Global keyboard shortcuts
-    const onKeydown = (event) => {
+    const onKeydown = (event: KeyboardEvent) => {
         // Don't trigger if user is already typing in the search box or other input
-        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+        const target = event.target as Element;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
             return;
         }
 
         if (event.key === "/" || (event.ctrlKey && event.key === "f")) {
             event.preventDefault();
-            searchInput.node().focus();
+            searchInput.node()!.focus();
         } else if (!isSearchActive() && selectedBlock && !highlightedProgram) {
             // Arrow key navigation when exactly one block is selected and search is closed
-            let targetBlock = null;
+            let targetBlock: GuideBlockDatum | null = null;
 
             switch(event.key) {
                 case 'ArrowUp':

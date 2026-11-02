@@ -15,7 +15,7 @@ import "../guide/guide.css";
 // The observing-block guide: one row per observing day, every science
 // program's run of exposures drawn as a block over twilight and moon
 // overlays. The chart is the vendored RubinTV Guide timeline (guide/
-// timeline.js); this view fetches the blocks the backend groups from ConsDB
+// timeline.ts); this view fetches the blocks the backend groups from ConsDB
 // and the program descriptions, and tells the timeline where a block's links
 // should go: the observing day and seq range open this deployment's camera
 // table, the external links are the camera's configured viewers.
