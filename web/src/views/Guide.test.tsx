@@ -160,6 +160,43 @@ test("search finds programs by description and selects them", async () => {
   expect(container.querySelector("rect.block.selected")).not.toBeNull();
 });
 
+test("a block across the day rollover is summarised once, under its first day", async () => {
+  mockApi({
+    blocks: {
+      ...blocks,
+      blocks: [
+        {
+          program: "BLOCK-T3",
+          begin: "2025-04-13T11:00:00.000Z",
+          end: "2025-04-13T13:00:00.000Z",
+          seq_num_0: 60,
+          seq_num_1: 90,
+          day_obs: 20250412,
+          day_obs_end: 20250413,
+          n_exposures: 31,
+        },
+      ],
+    },
+  });
+  const { container } = renderGuide();
+  const parts = await waitFor(() => {
+    const els = container.querySelectorAll("rect.block");
+    if (els.length === 0) throw new Error("no blocks yet");
+    return els;
+  });
+  // One rect either side of the 12:00 UTC rollover.
+  expect(parts).toHaveLength(2);
+  fireEvent.dblClick(parts[1]);
+  expect(screen.getByText("Program Summary")).toBeDefined();
+  const items = container.querySelectorAll<HTMLElement>(".guide-block-item");
+  expect(items).toHaveLength(1);
+  expect(items[0].dataset.day).toBe("2025-04-12");
+  expect(items[0].textContent).toContain("2025-04-12 | Seq: 60-90 | 2.00h");
+  // The summary row selects both parts.
+  fireEvent.click(items[0]);
+  expect(container.querySelectorAll("rect.block.flash")).toHaveLength(2);
+});
+
 test("shows the sweep progress while the backend is still loading", async () => {
   mockApi({ blocks: { ...blocks, blocks: [], loading: true, exposures: 1234 } });
   renderGuide();
