@@ -252,6 +252,21 @@ describe("program summary", () => {
     // The summary stays up.
     expect(panelTitle()).toBe("Program Summary");
   });
+
+  test("the date range takes in blocks that cross the day rollover", () => {
+    mount([
+      // E8157's only block runs from the night of 06-19 into 06-20.
+      block("E8157", "2025-06-20T10:00:00Z", "2025-06-20T14:00:00Z", 500, 12),
+      // BLOCK-T454 starts within a night and ends with a block into 07-03.
+      block("BLOCK-T454", "2025-04-17T03:00:00Z", "2025-04-17T04:00:00Z", 10, 40),
+      block("BLOCK-T454", "2025-07-03T10:19:00Z", "2025-07-03T20:49:00Z", 616, 53),
+    ]);
+    fireEvent.dblClick(rect("E8157", 500));
+    expect(panel()).toContain("Date Range: 2025-06-19 to 2025-06-20");
+    fireEvent.dblClick(rect("BLOCK-T454", 10));
+    expect(panel()).toContain("Total Blocks: 2");
+    expect(panel()).toContain("Date Range: 2025-04-16 to 2025-07-03");
+  });
 });
 
 describe("search", () => {
@@ -337,6 +352,22 @@ describe("search", () => {
     expect(input().value).toBe("");
     expect(results().style.display).toBe("none");
     expect(window.scrollTo).toHaveBeenCalled();
+  });
+
+  test("picking a program whose one block crosses the rollover shows that block", () => {
+    mount([
+      block("E8157", "2025-06-20T10:00:00Z", "2025-06-20T14:00:00Z", 500, 12),
+      block("BLOCK-T1", "2025-06-21T03:00:00Z", "2025-06-21T04:00:00Z", 30, 60),
+    ]);
+    search("E8157");
+    fireEvent.click(resultItems()[0]);
+    // Drawn as two parts, but one block: its details, not a summary.
+    expect(panelTitle()).toBe("Block Information");
+    expect(panel()).toContain("Observation Day: 2025-06-19");
+    expect(rects().filter((r) => r.classList.contains("selected"))).toHaveLength(2);
+    // And the arrow keys move on from it.
+    key("ArrowDown");
+    expect(selected()).toEqual(["BLOCK-T1#30"]);
   });
 
   test("Escape clears the search, and a click outside it closes the results", () => {
