@@ -857,9 +857,12 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         // Get all unique versions for display
         const versions = Array.from(new Set(uniqueBlocks.map(d => d.program))).sort();
 
-        // Get date range from data blocks (which have the day property), not original blocks
+        // Date range over every row the program is drawn on. (The original
+        // left out the parts of blocks crossing the day rollover, so a
+        // program of only such blocks showed "No data", and one starting or
+        // ending with one showed too short a range.)
         const programDataBlocks = data
-            .filter(d => getBaseBlockName(d.program) === program && !d.isSpanningPart) // Only non-spanning parts to avoid duplicates
+            .filter(d => getBaseBlockName(d.program) === program)
             .sort((a, b) => a.day.localeCompare(b.day));
 
         // Get description for the program (with BLOCK-T mapping)
@@ -1148,10 +1151,14 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         clearSelection();
         const baseProgram = getBaseBlockName(program);
 
-        // Find all blocks for this program
+        // Find all blocks for this program. A block crossing the day
+        // rollover is drawn as a part per row, so count blocks, not parts
+        // (the original counted parts, and a lone block across the rollover
+        // got the program summary).
         const programBlocks = data.filter(d => getBaseBlockName(d.program) === baseProgram);
+        const blockCount = new Set(programBlocks.map(d => d.blockId)).size;
 
-        if (programBlocks.length === 1) {
+        if (blockCount === 1) {
             // Exactly one block - show block information instead of program summary
             const singleBlock = programBlocks[0];
             selectedBlock = singleBlock;
