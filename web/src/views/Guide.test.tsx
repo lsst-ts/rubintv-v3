@@ -203,7 +203,13 @@ test("a block across the day rollover is summarised once, under its first day", 
   const items = container.querySelectorAll<HTMLElement>(".guide-block-item");
   expect(items).toHaveLength(1);
   expect(items[0].dataset.day).toBe("2025-04-12");
-  expect(items[0].textContent).toContain("2025-04-12 | Seq: 60-90 | 2.00h");
+  expect(Array.from(items[0].children).map((c) => c.textContent)).toEqual([
+    "BLOCK-T3",
+    "60–90",
+    "2.00",
+  ]);
+  // Listed under its first night.
+  expect(container.querySelector(".guide-block-night-head")!.textContent).toBe("2025-04-12");
   // The summary row selects both parts.
   fireEvent.click(items[0]);
   expect(container.querySelectorAll("rect.block.flash")).toHaveLength(2);
