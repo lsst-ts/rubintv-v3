@@ -124,16 +124,20 @@ describe("drawing", () => {
     expect(tooltip.style.opacity).toBe("0");
   });
 
-  test("BLOCK-NNN programs take the description of BLOCK-TNNN when there is one", () => {
+  test("a BLOCK-NNN program is not BLOCK-TNNN and doesn't take its description", () => {
     mount([
       block("BLOCK-123", "2025-04-13T01:00:00Z", "2025-04-13T01:30:00Z", 1, 10),
-      block("BLOCK-124", "2025-04-13T02:00:00Z", "2025-04-13T02:30:00Z", 11, 20),
+      block("BLOCK-T123", "2025-04-13T02:00:00Z", "2025-04-13T02:30:00Z", 11, 20),
     ]);
     fireEvent.click(rect("BLOCK-123", 1));
-    expect(panel()).toContain("Description: Numbered block");
-    fireEvent.click(rect("BLOCK-124", 11));
-    expect(panel()).toContain("Program: BLOCK-124");
+    expect(panel()).toContain("Program: BLOCK-123");
     expect(panel()).not.toContain("Description:");
+    fireEvent.click(rect("BLOCK-T123", 11));
+    expect(panel()).toContain("Description: Numbered block");
+    // Two programs, in different colours; searching the name finds only one.
+    expect(rect("BLOCK-123", 1).getAttribute("fill")).not.toBe(rect("BLOCK-T123", 11).getAttribute("fill"));
+    search("numbered");
+    expect(resultItems().map((r) => r.querySelector(".search-program")!.textContent)).toEqual(["BLOCK-T123"]);
   });
 
   test("a night whose sun and moon searches fail is drawn as daylight with no moon", () => {
@@ -285,6 +289,34 @@ describe("program summary", () => {
     expect(items[2].classList.contains("current")).toBe(true);
     key("ArrowUp");
     expect(selected()).toEqual(["BLOCK-T5#300"]);
+  });
+
+  test("an underscore or odd case in the BLOCK prefix is the same program", () => {
+    mount([
+      block("BLOCK-T339", "2025-04-12T01:00:00Z", "2025-04-12T01:30:00Z", 1, 20),
+      block("BLOCK_T339_g", "2025-04-12T02:00:00Z", "2025-04-12T02:30:00Z", 30, 40),
+      block("BLOCK_T339_none_at_r", "2025-04-12T03:00:00Z", "2025-04-12T03:30:00Z", 50, 60),
+      block("BLOCK_T566_none", "2025-04-12T04:00:00Z", "2025-04-12T04:30:00Z", 70, 80),
+      block("BLOCk-123", "2025-04-12T05:00:00Z", "2025-04-12T05:30:00Z", 90, 99),
+    ]);
+    fireEvent.dblClick(rect("BLOCK_T339_g", 30));
+    expect(panel()).toContain("Program: BLOCK-T339 (3 versions)");
+    expect(panel()).toContain("Total Blocks: 3");
+    // Each row keeps the name it was recorded under.
+    expect(blockList()[0][1]).toEqual([
+      ["BLOCK-T339", "1–20", "0.50"],
+      ["BLOCK_T339_g", "30–40", "0.50"],
+      ["BLOCK_T339_none_at_r", "50–60", "0.50"],
+    ]);
+    // T566 is a program of its own, not lumped in with T339 as "BLOCK".
+    expect(rect("BLOCK_T566_none", 70).classList.contains("highlighted")).toBe(false);
+    expect(rect("BLOCK-T339", 1).getAttribute("fill")).toBe(rect("BLOCK_T339_g", 30).getAttribute("fill"));
+    fireEvent.dblClick(rect("BLOCK_T566_none", 70));
+    expect(panel()).toContain("Program: BLOCK-T566");
+    // A case slip reads as the plain BLOCK-123, which has no name of its own.
+    fireEvent.dblClick(rect("BLOCk-123", 90));
+    expect(panel()).toContain("Program: BLOCK-123");
+    expect(panel()).not.toContain("Description:");
   });
 
   test("the date range takes in blocks that cross the day rollover", () => {
