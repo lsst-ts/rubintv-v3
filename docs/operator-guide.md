@@ -92,7 +92,9 @@ in-cluster URL needs no secret. The block descriptions come from two
 places, because science programs are recorded under two kinds of key in
 the `BLOCK` Jira project. `BLOCK-T123` is a Zephyr Scale test case, named
 from Zephyr; without a Zephyr token the bundled snapshot is used.
-`BLOCK-123` is a Jira issue, named by
+Zephyr's test-case list leaves some test cases out (archived ones, it
+seems), so the refresh also asks for each missing `BLOCK-T` key on its
+own, about 60 extra requests a day. `BLOCK-123` is a Jira issue, named by
 its summary from Jira's search API with an Atlassian API token; without
 one these programs have no description. The two
 are different blocks despite the similar numbers (`BLOCK-365` is the

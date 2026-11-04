@@ -62,11 +62,27 @@ class _Resp(io.BytesIO):
         self.close()
 
 
-def fake_zephyr(pages: dict[int, dict[str, Any]], seen: list[Any]):  # type: ignore[no-untyped-def]
+def fake_zephyr(  # type: ignore[no-untyped-def]
+    pages: dict[int, dict[str, Any]],
+    seen: list[Any],
+    cases: dict[str, Any] | None = None,
+):
+    """Serve list pages by ``startAt``, and single test cases from ``cases``
+    (404 for any other key)."""
+
     def urlopen(req: Any, timeout: float = 0) -> _Resp:
         seen.append(req)
-        start = int(parse_qs(urlparse(req.full_url).query)["startAt"][0])
-        return _Resp(json.dumps(pages[start]).encode())
+        url = urlparse(req.full_url)
+        if url.path.endswith("/testcases"):
+            start = int(parse_qs(url.query)["startAt"][0])
+            return _Resp(json.dumps(pages[start]).encode())
+        key = url.path.rsplit("/", 1)[1]
+        if key not in (cases or {}):
+            raise HTTPError(req.full_url, 404, "Not Found", Message(), io.BytesIO())
+        case = cases[key]  # type: ignore[index]
+        if isinstance(case, Exception):
+            raise case
+        return _Resp(json.dumps(case).encode())
 
     return urlopen
 
@@ -115,6 +131,54 @@ def test_fetch_failures_become_zephyr_errors(
 
     assert str(caught.value).startswith(message)
     assert caught.value.__cause__ is exc
+
+
+def test_test_cases_the_list_leaves_out_are_fetched_one_by_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pages: dict[int, dict[str, Any]] = {
+        0: {
+            "values": [
+                {"key": "BLOCK-T1", "name": "One"},
+                {"key": "BLOCK-T6", "name": "Six"},
+            ]
+        },
+    }
+    # Of the keys between, only BLOCK-T2 exists; T3..T5 answer 404.
+    cases = {"BLOCK-T2": {"key": "BLOCK-T2", "name": "Two (archived)"}}
+    seen: list[Any] = []
+    monkeypatch.setattr(blocknames, "urlopen", fake_zephyr(pages, seen, cases))
+
+    names = fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
+
+    assert names == {"BLOCK-T1": "One", "BLOCK-T2": "Two (archived)", "BLOCK-T6": "Six"}
+    asked = [urlparse(r.full_url).path for r in seen[1:]]
+    assert asked == [f"/v2/testcases/BLOCK-T{n}" for n in (2, 3, 4, 5)]
+    assert all(r.get_header("Authorization") == "Bearer tok" for r in seen)
+
+
+def test_a_failing_single_lookup_fails_the_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pages: dict[int, dict[str, Any]] = {
+        0: {"values": [{"key": "BLOCK-T3", "name": "3"}]}
+    }
+    boom = HTTPError("https://z", 500, "Server Error", Message(), io.BytesIO())
+    monkeypatch.setattr(
+        blocknames, "urlopen", fake_zephyr(pages, [], {"BLOCK-T2": boom})
+    )
+
+    with pytest.raises(ZephyrError, match="^Zephyr HTTP 500: Server Error$"):
+        fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
+
+
+def test_a_page_that_is_not_an_object_is_a_zephyr_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(blocknames, "urlopen", lambda req, timeout=0: _Resp(b"[]"))
+
+    with pytest.raises(ZephyrError, match="^Zephyr returned an unexpected page$"):
+        fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
 
 
 def test_a_page_that_is_not_json_is_a_zephyr_error(

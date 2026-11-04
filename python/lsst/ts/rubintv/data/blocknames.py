@@ -42,6 +42,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import partial
@@ -120,27 +121,50 @@ def fetch_zephyr_names(
     """Return ``{test case key: name}`` for every test case in the project.
 
     Pages through ``GET /testcases`` following the ``next`` link Zephyr
-    returns until there is none. Blocking; callers run it in a thread.
+    returns until there is none. That list leaves some test cases out
+    (archived ones, it seems; BLOCK-T456 and BLOCK-T510 among them, both
+    observed under), so each key missing from the run up to the highest
+    listed one is then asked for on its own. Blocking; callers run it in a
+    thread.
     """
-    names: dict[str, str] = {}
-    params = {"projectKey": project_key, "maxResults": page_size, "startAt": 0}
-    url: str | None = f"{base_url.rstrip('/')}/testcases?{urlencode(params)}"
+    root = base_url.rstrip("/")
     headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
-    while url:
+
+    def get(url: str, *, missing_ok: bool = False) -> dict[str, Any] | None:
         req = Request(url, headers=headers)
         try:
             with urlopen(req, timeout=timeout) as resp:
-                page: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+                body = json.loads(resp.read().decode("utf-8"))
         except HTTPError as exc:
+            if missing_ok and exc.code == 404:
+                return None
             raise ZephyrError(f"Zephyr HTTP {exc.code}: {exc.reason}") from exc
         except (URLError, TimeoutError, OSError, ValueError) as exc:
             raise ZephyrError(f"Zephyr unreachable: {exc}") from exc
+        if not isinstance(body, dict):
+            raise ZephyrError("Zephyr returned an unexpected page")
+        return body
+
+    names: dict[str, str] = {}
+    params = {"projectKey": project_key, "maxResults": page_size, "startAt": 0}
+    url: str | None = f"{root}/testcases?{urlencode(params)}"
+    while url:
+        page = get(url)
+        assert page is not None
         for case in page.get("values") or []:
             key, name = case.get("key"), case.get("name")
             if key and name:
                 names[str(key)] = str(name)
         nxt = page.get("next")
         url = str(nxt) if nxt else None
+
+    pattern = re.compile(rf"{re.escape(project_key)}-T(\d+)")
+    listed = {int(m[1]) for key in names if (m := pattern.fullmatch(key))}
+    for number in sorted(set(range(1, max(listed, default=0))) - listed):
+        key = f"{project_key}-T{number}"
+        case = get(f"{root}/testcases/{key}", missing_ok=True)
+        if case and case.get("name"):
+            names[key] = str(case["name"])
     return names
 
 
