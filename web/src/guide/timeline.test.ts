@@ -319,6 +319,44 @@ describe("program summary", () => {
     expect(panel()).not.toContain("Description:");
   });
 
+  test("typos and test executions join the test case they name or ran", () => {
+    mount(
+      [
+        block("BLOCK-T487", "2025-04-12T01:00:00Z", "2025-04-12T01:30:00Z", 1, 10),
+        block("BLOCK-487", "2025-04-12T02:00:00Z", "2025-04-12T02:30:00Z", 20, 30),
+        block("BLOCK-T382", "2025-04-12T03:00:00Z", "2025-04-12T03:30:00Z", 40, 50),
+        block("E13304", "2025-04-12T04:00:00Z", "2025-04-12T04:30:00Z", 60, 70),
+        block("BLOCK-E8024", "2025-04-12T05:00:00Z", "2025-04-12T05:30:00Z", 80, 90),
+        block("E77", "2025-04-12T06:00:00Z", "2025-04-12T06:30:00Z", 91, 92),
+        block("T1", "2025-04-12T07:00:00Z", "2025-04-12T07:30:00Z", 95, 99),
+      ],
+      {
+        aliases: {
+          "BLOCK-487": "BLOCK-T487",
+          "BLOCK-E13304": "BLOCK-T382",
+          "BLOCK-E8024": "BLOCK-T382",
+        },
+      },
+    );
+    fireEvent.dblClick(rect("BLOCK-487", 20));
+    expect(panel()).toContain("Program: BLOCK-T487 (2 versions)");
+    fireEvent.dblClick(rect("E13304", 60));
+    expect(panel()).toContain("Program: BLOCK-T382 (3 versions)");
+    expect(panel()).toContain("Versions: BLOCK-E8024, BLOCK-T382, E13304");
+    // Each row keeps the key it was recorded under.
+    const rows = blockList()[0][1] as string[][];
+    expect(rows.map((cells) => cells[0])).toEqual(["BLOCK-T382", "E13304", "BLOCK-E8024"]);
+    expect(rect("E13304", 60).getAttribute("fill")).toBe(rect("BLOCK-T382", 40).getAttribute("fill"));
+    // An execution the backend couldn't place stays a program of its own.
+    fireEvent.dblClick(rect("E77", 91));
+    expect(panel()).toContain("Program: BLOCK-E77");
+    // A bare T-number is the BLOCK-T test case, name and all.
+    fireEvent.click(rect("T1", 95));
+    expect(panel()).toContain("Description: Science survey");
+    search("8024");
+    expect(resultItems().map((r) => r.querySelector(".search-program")!.textContent)).toEqual(["BLOCK-T382"]);
+  });
+
   test("the date range takes in blocks that cross the day rollover", () => {
     mount([
       // E8157's only block runs from the night of 06-19 into 06-20.

@@ -2814,6 +2814,13 @@
             "type": "object",
             "title": "Names"
           },
+          "aliases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Aliases"
+          },
           "source": {
             "type": "string",
             "title": "Source"
@@ -2845,6 +2852,7 @@
         "type": "object",
         "required": [
           "names",
+          "aliases",
           "source",
           "updated_at",
           "error"

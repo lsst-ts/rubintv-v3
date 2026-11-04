@@ -43,7 +43,7 @@ import base64
 import hashlib
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from functools import partial
 from importlib.resources import files
@@ -57,6 +57,16 @@ from lsst.ts.rubintv.logging import get_logger
 log = get_logger(__name__)
 
 SNAPSHOT_RESOURCE = "tblock_names.json"
+
+# Programs recorded under a mistyped key. None of them is a Jira issue, and
+# each one's exposures in ConsDB share their observation reason with, or
+# interleave by seq_num with, those of the test case it names.
+KNOWN_TYPOS = {
+    "BLOCK-487": "BLOCK-T487",  # observation_reason infocus_clt-002, as T487's
+    "BLOCK-518": "BLOCK-T518",  # interleaved with BLOCK-T518 on 2025-05-24
+    "BLOCK-520": "BLOCK-T520",  # interleaved with BLOCK-T520 on 2025-05-24
+    "BLOCK-539": "BLOCK-T539",  # recorded as BLOCk-539
+}
 
 # TEMPORARY: names for the plain BLOCK-123 programs observed so far, served
 # until a Jira token is deployed. A Jira refresh replaces them with the
@@ -154,28 +164,11 @@ def fetch_zephyr_names(
     thread.
     """
     root = base_url.rstrip("/")
-    headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
-
-    def get(url: str, *, missing_ok: bool = False) -> dict[str, Any] | None:
-        req = Request(url, headers=headers)
-        try:
-            with urlopen(req, timeout=timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except HTTPError as exc:
-            if missing_ok and exc.code == 404:
-                return None
-            raise ZephyrError(f"Zephyr HTTP {exc.code}: {exc.reason}") from exc
-        except (URLError, TimeoutError, OSError, ValueError) as exc:
-            raise ZephyrError(f"Zephyr unreachable: {exc}") from exc
-        if not isinstance(body, dict):
-            raise ZephyrError("Zephyr returned an unexpected page")
-        return body
-
     names: dict[str, str] = {}
     params = {"projectKey": project_key, "maxResults": page_size, "startAt": 0}
     url: str | None = f"{root}/testcases?{urlencode(params)}"
     while url:
-        page = get(url)
+        page = _zephyr_get(url, token, timeout)
         assert page is not None
         for case in page.get("values") or []:
             key, name = case.get("key"), case.get("name")
@@ -188,10 +181,52 @@ def fetch_zephyr_names(
     listed = {int(m[1]) for key in names if (m := pattern.fullmatch(key))}
     for number in sorted(set(range(1, max(listed, default=0))) - listed):
         key = f"{project_key}-T{number}"
-        case = get(f"{root}/testcases/{key}", missing_ok=True)
+        case = _zephyr_get(f"{root}/testcases/{key}", token, timeout, missing_ok=True)
         if case and case.get("name"):
             names[key] = str(case["name"])
     return names
+
+
+_TEST_CASE_LINK = re.compile(r"/testcases/([^/]+)")
+
+
+def fetch_zephyr_execution(
+    base_url: str, token: str, key: str, *, timeout: float = 60.0
+) -> str | None:
+    """The key of the test case Zephyr test execution ``key`` ran, or
+    ``None`` when there is no such execution (or it names no test case).
+
+    Blocking; callers run it in a thread.
+    """
+    url = f"{base_url.rstrip('/')}/testexecutions/{key}"
+    execution = _zephyr_get(url, token, timeout, missing_ok=True)
+    case = (execution or {}).get("testCase")
+    link = (
+        _TEST_CASE_LINK.search(str(case.get("self")))
+        if isinstance(case, dict)
+        else None
+    )
+    return link[1] if link else None
+
+
+def _zephyr_get(
+    url: str, token: str, timeout: float, *, missing_ok: bool = False
+) -> dict[str, Any] | None:
+    """GET one Zephyr API object; ``None`` for a 404 if ``missing_ok``."""
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+    req = Request(url, headers=headers)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        if missing_ok and exc.code == 404:
+            return None
+        raise ZephyrError(f"Zephyr HTTP {exc.code}: {exc.reason}") from exc
+    except (URLError, TimeoutError, OSError, ValueError) as exc:
+        raise ZephyrError(f"Zephyr unreachable: {exc}") from exc
+    if not isinstance(body, dict):
+        raise ZephyrError("Zephyr returned an unexpected page")
+    return body
 
 
 def basic_account(credential: str) -> str | None:
@@ -271,6 +306,8 @@ class BlockNameService:
         jira_credential: str | None = None,
         project_key: str = "BLOCK",
         refresh_interval: float = 86400.0,
+        programs: Callable[[], Iterable[str]] | None = None,
+        execution_check_interval: float = 60.0,
     ) -> None:
         self._names = dict(snapshot)
         self.source = "snapshot"
@@ -297,10 +334,27 @@ class BlockNameService:
         self._project = project_key
         self._interval = refresh_interval
         self._task: asyncio.Task[None] | None = None
+        # The programs observed so far (the guide's), and what is known of
+        # the test executions among them.
+        self._programs = programs
+        self._execution_key = re.compile(
+            rf"(?:{re.escape(project_key)}-)?E(\d+)", re.IGNORECASE
+        )
+        self._executions: dict[str, str] = {}
+        self._not_executions: set[str] = set()
+        self._execution_interval = execution_check_interval
+        self._execution_task: asyncio.Task[None] | None = None
 
     @property
     def names(self) -> dict[str, str]:
         return self._names
+
+    @property
+    def aliases(self) -> dict[str, str]:
+        """Program key -> the program it belongs with: the known typos, and
+        each test execution observed as a program (``BLOCK-E8024``) -> the
+        test case it ran (``BLOCK-T382``)."""
+        return {**KNOWN_TYPOS, **self._executions}
 
     def _sources(self) -> dict[str, Callable[[], dict[str, str]]]:
         """The configured sources by name, each as a blocking fetch."""
@@ -333,12 +387,60 @@ class BlockNameService:
             )
         if sources:
             self._task = asyncio.create_task(self._loop(), name="block-names")
+        if "zephyr" in sources and self._programs is not None:
+            self._execution_task = asyncio.create_task(
+                self._execution_loop(), name="block-executions"
+            )
 
     async def stop(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            await asyncio.gather(self._task, return_exceptions=True)
-            self._task = None
+        tasks = [t for t in (self._task, self._execution_task) if t is not None]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._task = self._execution_task = None
+
+    async def resolve_executions(self) -> int:
+        """Look up the test case of each test execution observed as a
+        program and not looked up yet; return how many were found.
+
+        An execution never changes test case, so each is asked for once,
+        and one Zephyr has no record of isn't asked for again either. A
+        failed request ends the round; the rest wait for the next one.
+        """
+        if self._programs is None or not (self._zephyr_url and self._token):
+            return 0
+        observed = {
+            f"{self._project}-E{m[1]}"
+            for program in self._programs()
+            if (m := self._execution_key.fullmatch(program))
+        }
+        pending = observed - self._executions.keys() - self._not_executions
+        found = 0
+        for key in sorted(pending):
+            try:
+                case = await asyncio.to_thread(
+                    fetch_zephyr_execution, self._zephyr_url, self._token, key
+                )
+            except ZephyrError as exc:
+                log.warning(
+                    "blocknames.executions.failed",
+                    key=key,
+                    error=str(exc),
+                    **self._identity["zephyr"],
+                )
+                break
+            if case is None:
+                self._not_executions.add(key)
+            else:
+                self._executions[key] = case
+                found += 1
+        if found:
+            log.info(
+                "blocknames.executions.resolved",
+                count=found,
+                total=len(self._executions),
+            )
+        return found
 
     async def refresh(self) -> bool:
         """Fetch from each configured source; ``True`` if any names changed.
@@ -398,3 +500,15 @@ class BlockNameService:
             except Exception:  # noqa: BLE001 - one failed refresh must not kill it
                 log.exception("blocknames.refresh.error")
             await asyncio.sleep(self._interval)
+
+    async def _execution_loop(self) -> None:
+        # Often, but almost always without a request: only executions not
+        # seen before are asked for.
+        while True:
+            try:
+                await self.resolve_executions()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - one failed round must not kill it
+                log.exception("blocknames.executions.error")
+            await asyncio.sleep(self._execution_interval)

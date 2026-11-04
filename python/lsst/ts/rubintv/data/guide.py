@@ -317,6 +317,10 @@ class GuideService:
     def get(self, instrument: str) -> InstrumentGuide | None:
         return self.instruments.get(instrument)
 
+    def programs(self) -> set[str]:
+        """Every science program a block has been recorded under so far."""
+        return {b.program for g in self.instruments.values() for b in g.blocks()}
+
     # -- the loop ------------------------------------------------------------
 
     async def _run(self, guide: InstrumentGuide) -> None:

@@ -97,10 +97,33 @@ def _build_guide(settings: Settings) -> tuple[BlockNameService, GuideService | N
     """The observing-block guide's two services.
 
     The block names always exist (a snapshot ships in the package); the
-    ConsDB-backed guide itself only when ``RUBINTV_CONSDB_URL`` is set. A
-    token file that can't be read is logged and treated as "no token"
-    (see ``read_token``) so an unpopulated secret never blocks startup.
+    ConsDB-backed guide itself only when ``RUBINTV_CONSDB_URL`` is set, and
+    then the names service also looks up the test executions among the
+    guide's programs. A token file that can't be read is logged and
+    treated as "no token" (see ``read_token``) so an unpopulated secret
+    never blocks startup.
     """
+    guide: GuideService | None = None
+    if settings.consdb_url:
+        client = ConsDbClient(
+            settings.consdb_url, read_token(settings.consdb_token_file)
+        )
+        guide = GuideService(
+            client,
+            list(settings.guide_instruments),
+            since_day_obs=settings.guide_since,
+            max_gap=timedelta(minutes=settings.guide_max_gap_minutes),
+            poll_interval=settings.guide_poll_interval_seconds,
+            page_size=settings.guide_page_size,
+            cache_dir=settings.cache_dir,
+        )
+        log.info(
+            "guide.enabled",
+            consdb_url=settings.consdb_url,
+            instruments=list(settings.guide_instruments),
+        )
+    else:
+        log.info("guide.disabled", reason="no consdb_url configured")
     block_names = BlockNameService(
         {**load_snapshot(), **INTERIM_ISSUE_NAMES},
         zephyr_url=settings.zephyr_url,
@@ -109,24 +132,7 @@ def _build_guide(settings: Settings) -> tuple[BlockNameService, GuideService | N
         jira_credential=read_token(settings.jira_token_file),
         project_key=settings.zephyr_project_key,
         refresh_interval=settings.block_names_refresh_seconds,
-    )
-    if not settings.consdb_url:
-        log.info("guide.disabled", reason="no consdb_url configured")
-        return block_names, None
-    client = ConsDbClient(settings.consdb_url, read_token(settings.consdb_token_file))
-    guide = GuideService(
-        client,
-        list(settings.guide_instruments),
-        since_day_obs=settings.guide_since,
-        max_gap=timedelta(minutes=settings.guide_max_gap_minutes),
-        poll_interval=settings.guide_poll_interval_seconds,
-        page_size=settings.guide_page_size,
-        cache_dir=settings.cache_dir,
-    )
-    log.info(
-        "guide.enabled",
-        consdb_url=settings.consdb_url,
-        instruments=list(settings.guide_instruments),
+        programs=guide.programs if guide else None,
     )
     return block_names, guide
 
