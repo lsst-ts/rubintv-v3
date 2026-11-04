@@ -263,6 +263,16 @@ def make_service(
     )
 
 
+async def test_programs_are_every_one_a_block_was_recorded_under() -> None:
+    client = FakeConsDb([row(1, "P", 0), row(2, "E8024", 1), row(3, "P", 2)])
+    svc = make_service(client, None, page_size=10)
+    assert svc.programs() == set()
+
+    await svc.poll(svc.instruments["lsstcam"])
+
+    assert svc.programs() == {"P", "E8024"}
+
+
 async def test_poll_pages_until_caught_up_and_persists(tmp_path: Path) -> None:
     client = FakeConsDb([row(1, "P", 0), row(2, "P", 1), row(3, "Q", 2)])
     svc = make_service(client, tmp_path)

@@ -107,6 +107,7 @@ def program_names(state: AppState = Depends(get_app_state)) -> ProgramNamesOut:
     names = state.block_names
     return ProgramNamesOut(
         names=names.names,
+        aliases=names.aliases,
         source=names.source,
         updated_at=names.updated_at,
         error=names.error,

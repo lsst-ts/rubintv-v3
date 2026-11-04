@@ -115,6 +115,7 @@ export function Guide() {
   // selection and scroll position) is only rebuilt when a block changes.
   const blockList = blocks.data?.blocks;
   const names = programs.data?.names;
+  const aliases = programs.data?.aliases;
   const dayStart = config?.day_start_utc_hour ?? 12;
 
   useEffect(() => {
@@ -123,13 +124,14 @@ export function Guide() {
     const handle = renderGuide(root, {
       blocks: blockList,
       names: names ?? {},
+      aliases: aliases ?? {},
       dayStartUtcHour: dayStart,
       links: (d, day) => linksFor(inst, d, day),
       dayHref: (day) => cameraDayHref(inst, day),
       rangeHref: (d, day) => rangeHrefFor(inst, d, day),
     });
     return () => handle.dispose();
-  }, [blockList, names, inst, dayStart]);
+  }, [blockList, names, aliases, inst, dayStart]);
 
   if (config && !config.enabled) {
     return (

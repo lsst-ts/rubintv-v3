@@ -69,6 +69,10 @@ export interface RenderGuideOptions {
     blocks: GuideBlockInput[];
     /** Program key → description. */
     names: Record<string, string>;
+    /** Program key → the program it belongs with: known typos (BLOCK-487 →
+     *  BLOCK-T487) and test executions recorded as the program (BLOCK-E8024
+     *  → the BLOCK-T382 it ran). */
+    aliases?: Record<string, string>;
     /** UTC hour a day_obs row begins at. */
     dayStartUtcHour: number;
     links?: (block: GuideBlockDatum, day: string) => GuideLink[];
@@ -125,6 +129,7 @@ interface SearchResult extends FuzzyMatch {
 export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { dispose: () => void } {
     const {
         names: tblockNames,
+        aliases = {},
         dayStartUtcHour: DAY_START,
         links,
         dayHref,
@@ -149,21 +154,30 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
     // Helper function to get the base block name (without version suffix)
     function getBaseBlockName(program: string): string {
         // Some programs are recorded with an underscore or a stray lower-case
-        // letter in the prefix (BLOCK_T339_g, BLOCk-539); read them as
-        // BLOCK-T339_g and BLOCK-539, or the suffix rule below cuts them
-        // down to a catch-all "BLOCK".
-        const normalised = program.replace(/^block[-_](t?)(?=\d)/i, (_, t: string) => `BLOCK-${t.toUpperCase()}`);
+        // letter in the prefix (BLOCK_T339_g, BLOCk-539), or with no prefix
+        // (T525, E13304); read them as BLOCK-T339_g, BLOCK-539, BLOCK-T525
+        // and BLOCK-E13304. Otherwise the suffix rule below cuts the first
+        // down to a catch-all "BLOCK", and the names and aliases, keyed by
+        // the full form, miss the others.
+        const normalised = program
+            .replace(/^block[-_]([te]?)(?=\d)/i, (_, l: string) => `BLOCK-${l.toUpperCase()}`)
+            .replace(/^([te])(?=\d+(?:_|$))/i, (_, l: string) => `BLOCK-${l.toUpperCase()}`);
         // Remove version suffixes like _v3, _v2, _1, _2, _hexapods, etc.
         // This handles both numeric versions (_v3, _1, _2) and descriptive versions (_hexapods)
-        return normalised.replace(/_(?:v)?\d+$|_[a-zA-Z][a-zA-Z0-9_]*$/, '');
+        const base = normalised.replace(/_(?:v)?\d+$|_[a-zA-Z][a-zA-Z0-9_]*$/, '');
+        // A known typo (BLOCK-487) or a test execution recorded as the
+        // program (BLOCK-E8024) belongs with the test case it names or ran.
+        return Object.hasOwn(aliases, base) ? aliases[base] : base;
     }
 
     // Helper function to get description for a program. BLOCK-T123 is named
     // by its Zephyr test case and BLOCK-123 by its Jira issue: different
     // blocks despite the similar numbers (a slip when the data were taken),
-    // so neither is given the other's name.
+    // so neither is given the other's name; the few BLOCK-123 that are a
+    // mistyped BLOCK-T123 come aliased to it.
     function getDescription(program: string): string | undefined {
-        return tblockNames[getBaseBlockName(program)];
+        const base = getBaseBlockName(program);
+        return Object.hasOwn(tblockNames, base) ? tblockNames[base] : undefined;
     }
 
     // Formatting helpers

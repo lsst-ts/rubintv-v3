@@ -319,6 +319,10 @@ class GuideBlocksOut(BaseModel):
 class ProgramNamesOut(BaseModel):
     names: dict[str, str]
     """Science-program key (``BLOCK-T123`` or ``BLOCK-123``) -> description."""
+    aliases: dict[str, str]
+    """Program key -> the program it belongs with: known typos
+    (``BLOCK-487`` -> ``BLOCK-T487``) and test executions recorded as the
+    program (``BLOCK-E8024`` -> the ``BLOCK-T382`` it ran)."""
     source: str
     """``snapshot`` (bundled file), or the sources fetched since: ``zephyr``,
     ``jira`` or ``zephyr+jira``."""

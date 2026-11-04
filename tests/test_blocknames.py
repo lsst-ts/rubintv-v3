@@ -36,11 +36,13 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from lsst.ts.rubintv.data import blocknames
 from lsst.ts.rubintv.data.blocknames import (
+    KNOWN_TYPOS,
     BlockNameService,
     JiraError,
     ZephyrError,
     basic_account,
     fetch_jira_names,
+    fetch_zephyr_execution,
     fetch_zephyr_names,
     load_snapshot,
     token_identity,
@@ -483,6 +485,130 @@ async def test_jira_refresh_logs_the_account_without_the_token(
         )
     ]
     assert not any("secret-token" in str(v) for v in logged[0][1].values())
+
+
+def test_an_execution_names_the_test_case_it_ran(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executions = {
+        "BLOCK-E8024": {
+            "testCase": {"self": "https://z/v2/testcases/BLOCK-T382/versions/1"}
+        },
+        "BLOCK-E9": {"testCase": None},
+    }
+    seen: list[Any] = []
+
+    def urlopen(req: Any, timeout: float = 0) -> _Resp:
+        seen.append(req)
+        key = urlparse(req.full_url).path.rsplit("/", 1)[1]
+        if key not in executions:
+            raise HTTPError(req.full_url, 404, "Not Found", Message(), io.BytesIO())
+        return _Resp(json.dumps(executions[key]).encode())
+
+    monkeypatch.setattr(blocknames, "urlopen", urlopen)
+
+    assert fetch_zephyr_execution("https://z/v2/", "tok", "BLOCK-E8024") == "BLOCK-T382"
+    assert urlparse(seen[0].full_url).path == "/v2/testexecutions/BLOCK-E8024"
+    assert seen[0].get_header("Authorization") == "Bearer tok"
+    assert fetch_zephyr_execution("https://z/v2", "tok", "BLOCK-E9") is None
+    assert fetch_zephyr_execution("https://z/v2", "tok", "BLOCK-E1") is None
+
+
+def with_programs(programs: list[str], **overrides: Any) -> BlockNameService:
+    kwargs: dict[str, Any] = {"zephyr_url": "https://z/v2", "zephyr_token": "zt"}
+    return BlockNameService({}, programs=lambda: programs, **{**kwargs, **overrides})
+
+
+async def test_executions_observed_as_programs_are_looked_up_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+    runs = {"BLOCK-E13304": "BLOCK-T382", "BLOCK-E8024": "BLOCK-T382"}
+
+    def fetch(base_url: str, token: str, key: str) -> str | None:
+        asked.append(key)
+        return runs.get(key)
+
+    monkeypatch.setattr(blocknames, "fetch_zephyr_execution", fetch)
+    programs = ["E13304", "BLOCK-E8024", "e77", "BLOCK-T1", "E5_v2", "Test_images"]
+    svc = with_programs(programs)
+
+    assert await svc.resolve_executions() == 2
+    # Bare and prefixed keys alike, read as the project's execution keys.
+    assert sorted(asked) == ["BLOCK-E13304", "BLOCK-E77", "BLOCK-E8024"]
+    assert svc.aliases == {
+        **KNOWN_TYPOS,
+        "BLOCK-E13304": "BLOCK-T382",
+        "BLOCK-E8024": "BLOCK-T382",
+    }
+
+    # Nothing new: found ones and unknown ones (E77) aren't asked for again.
+    asked.clear()
+    programs.append("E5852")
+    runs["BLOCK-E5852"] = "BLOCK-T485"
+    assert await svc.resolve_executions() == 1
+    assert asked == ["BLOCK-E5852"]
+
+
+async def test_a_failed_execution_lookup_waits_for_the_next_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failing = {"BLOCK-E1"}
+
+    def fetch(base_url: str, token: str, key: str) -> str | None:
+        if key in failing:
+            raise ZephyrError("Zephyr unreachable: timed out")
+        return "BLOCK-T1"
+
+    monkeypatch.setattr(blocknames, "fetch_zephyr_execution", fetch)
+    svc = with_programs(["E1", "E2"])
+
+    assert await svc.resolve_executions() == 0  # E1 failed first; E2 waits
+    failing.clear()
+    assert await svc.resolve_executions() == 2
+
+
+async def test_executions_need_programs_and_a_zephyr_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fetch(*a: Any) -> str:
+        raise AssertionError("no lookup expected")
+
+    monkeypatch.setattr(blocknames, "fetch_zephyr_execution", fetch)
+    assert await with_programs(["E1"], zephyr_token=None).resolve_executions() == 0
+    assert (
+        await BlockNameService(
+            {}, zephyr_url="u", zephyr_token="t"
+        ).resolve_executions()
+        == 0
+    )
+    # The typos are aliases whatever is configured.
+    assert BlockNameService({}).aliases == KNOWN_TYPOS
+
+
+async def test_the_execution_loop_starts_with_programs_and_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(blocknames, "fetch_zephyr_names", lambda *a: {"BLOCK-T1": "1"})
+    monkeypatch.setattr(blocknames, "fetch_zephyr_execution", lambda *a: "BLOCK-T382")
+    svc = with_programs(["E8024"], execution_check_interval=3600)
+    svc.start()
+    task = svc._execution_task
+    assert task is not None
+    for _ in range(50):  # let the first round run
+        if svc.aliases.get("BLOCK-E8024"):
+            break
+        await asyncio.sleep(0.01)
+
+    await svc.stop()
+
+    assert svc.aliases["BLOCK-E8024"] == "BLOCK-T382"
+    assert task.cancelled() and svc._execution_task is None
+    # No programs to look through: no loop.
+    plain = BlockNameService({}, zephyr_url="u", zephyr_token="t")
+    plain.start()
+    assert plain._execution_task is None
+    await plain.stop()
 
 
 async def test_empty_fetch_is_not_applied(monkeypatch: pytest.MonkeyPatch) -> None:

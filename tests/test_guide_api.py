@@ -65,6 +65,7 @@ def test_guide_is_disabled_without_a_consdb_url() -> None:
         assert names["source"] == "snapshot" and "BLOCK-T750" in names["names"]
         # The interim names for plain BLOCK-123 programs, until Jira's arrive.
         assert names["names"]["BLOCK-365"].startswith("Generic survey imaging")
+        assert names["aliases"]["BLOCK-487"] == "BLOCK-T487"
 
 
 def test_blocks_are_served_once_the_sweep_completes(

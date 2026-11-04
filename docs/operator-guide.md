@@ -103,6 +103,16 @@ are different blocks despite the similar numbers (`BLOCK-365` is the
 generic survey-imaging block, `BLOCK-T365` a field survey), so neither is
 given the other's name.
 
+A few programs belong with a test case recorded under another key, and the
+guide draws them with it: mistyped ones (`BLOCK-487` for `BLOCK-T487`, a
+fixed list, `KNOWN_TYPOS` in
+[blocknames.py](../python/lsst/ts/rubintv/data/blocknames.py)) and Zephyr
+test executions recorded as the program (`E13304`, `BLOCK-E8024`). With a
+Zephyr token, the service checks the guide's programs every minute for
+executions it hasn't seen and looks each up in Zephyr once, logging
+`blocknames.executions.resolved` (or `blocknames.executions.failed`, to be
+retried on the next check).
+
 The tokens are read once at startup, so restart the pod after replacing a
 secret. The first refresh runs straight away and logs
 `blocknames.zephyr.connected` or `blocknames.jira.connected` for each

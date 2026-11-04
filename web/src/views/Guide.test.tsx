@@ -65,6 +65,7 @@ const blocks: GuideBlocksOut = {
 
 const programs: ProgramNamesOut = {
   names: { "BLOCK-T1": "A named block" },
+  aliases: {},
   source: "snapshot",
   updated_at: null,
   error: null,

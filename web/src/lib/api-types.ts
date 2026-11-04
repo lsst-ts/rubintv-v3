@@ -1049,6 +1049,10 @@ export interface components {
             names: {
                 [key: string]: string;
             };
+            /** Aliases */
+            aliases: {
+                [key: string]: string;
+            };
             /** Source */
             source: string;
             /** Updated At */
