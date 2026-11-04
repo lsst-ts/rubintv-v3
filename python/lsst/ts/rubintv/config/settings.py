@@ -228,11 +228,22 @@ class Settings(BaseSettings):
     the guide serves the block names bundled with the package."""
 
     zephyr_project_key: str = "BLOCK"
-    """Zephyr project whose test cases are the block descriptions."""
+    """Jira project whose Zephyr test cases (``BLOCK-T123``) and issues
+    (``BLOCK-123``) are the block descriptions."""
+
+    jira_url: str = "https://rubinobs.atlassian.net"
+    """Jira Cloud site. The plain ``BLOCK-123`` programs are issues there,
+    named by their summaries; the ``BLOCK-T123`` ones are Zephyr's."""
+
+    jira_token_file: Path | None = None
+    """File holding Jira Cloud's basic-auth credential: base64 of the
+    account's ``email:api-token``, the form nightlydigest's
+    ``jira-api-token`` secret (which deployments copy) is kept in. Unset =
+    no refresh from Jira; plain ``BLOCK-123`` programs have no description."""
 
     block_names_refresh_seconds: float = 86400.0
-    """How often to re-fetch the block names from Zephyr when a token is
-    configured."""
+    """How often to re-fetch the block names from Zephyr and Jira when
+    their tokens are configured."""
 
     poll_interval_seconds: float = 1.0
     """Current-day poll cadence."""

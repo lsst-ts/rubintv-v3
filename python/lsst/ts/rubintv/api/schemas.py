@@ -322,8 +322,9 @@ class GuideBlocksOut(BaseModel):
 
 class ProgramNamesOut(BaseModel):
     names: dict[str, str]
-    """Science-program key (``BLOCK-T123``) -> description."""
+    """Science-program key (``BLOCK-T123`` or ``BLOCK-123``) -> description."""
     source: str
-    """``snapshot`` (bundled file) or ``zephyr`` (fetched)."""
+    """``snapshot`` (bundled file), or the sources fetched since: ``zephyr``,
+    ``jira`` or ``zephyr+jira``."""
     updated_at: datetime | None
     error: str | None

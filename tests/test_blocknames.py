@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-"""Block names: the bundled snapshot and the Zephyr Scale refresh."""
+"""Block names: the bundled snapshot and the Zephyr Scale and Jira refresh."""
 
 from __future__ import annotations
 
@@ -37,7 +37,10 @@ import pytest
 from lsst.ts.rubintv.data import blocknames
 from lsst.ts.rubintv.data.blocknames import (
     BlockNameService,
+    JiraError,
     ZephyrError,
+    basic_account,
+    fetch_jira_names,
     fetch_zephyr_names,
     load_snapshot,
     token_identity,
@@ -216,11 +219,206 @@ async def test_refresh_logs_which_account_connected_or_failed(
         "blocknames.zephyr.connected",
         "blocknames.refresh.failed",
         "blocknames.zephyr.disabled",
+        "blocknames.jira.disabled",
     ]
     connected, failed = logged[0][1], logged[1][1]
     assert connected["account_id"] == failed["account_id"] == "712020:abc"
     assert connected["count"] == 1 and connected["project"] == "BLOCK"
     assert failed["error"] == "Zephyr HTTP 401: Unauthorized"
+
+
+def fake_jira(pages: dict[str, Any], seen: list[Any]):  # type: ignore[no-untyped-def]
+    def urlopen(req: Any, timeout: float = 0) -> _Resp:
+        seen.append(req)
+        query = parse_qs(urlparse(req.full_url).query)
+        return _Resp(json.dumps(pages[query.get("nextPageToken", [""])[0]]).encode())
+
+    return urlopen
+
+
+# Jira Cloud's basic-auth credential, as nightlydigest's secret holds it.
+CREDENTIAL = base64.b64encode(b"me@example.org:secret-token").decode()
+
+
+def test_basic_account_names_the_account_only() -> None:
+    assert basic_account(CREDENTIAL) == "me@example.org"
+    for not_one in ("secret-token", "!!!", base64.b64encode(b"no colon").decode()):
+        assert basic_account(not_one) is None
+
+
+def test_jira_fetch_follows_next_page_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages: dict[str, Any] = {
+        "": {
+            "issues": [
+                {"key": "BLOCK-365", "fields": {"summary": "Generic survey block "}},
+                {"key": "BLOCK-366", "fields": {}},  # no summary: dropped
+                "not an issue",
+            ],
+            "nextPageToken": "p2",
+            "isLast": False,
+        },
+        "p2": {"issues": [{"key": "BLOCK-407", "fields": {"summary": "v1 survey"}}]},
+    }
+    seen: list[Any] = []
+    monkeypatch.setattr(blocknames, "urlopen", fake_jira(pages, seen))
+
+    names = fetch_jira_names("https://jira.example/", CREDENTIAL, "BLOCK")
+
+    assert names == {"BLOCK-365": "Generic survey block", "BLOCK-407": "v1 survey"}
+    assert len(seen) == 2
+    # Sent as it is, the way nightlydigest sends the secret.
+    assert seen[0].get_header("Authorization") == f"Basic {CREDENTIAL}"
+    url = urlparse(seen[0].full_url)
+    assert url.path == "/rest/api/3/search/jql"
+    assert parse_qs(url.query)["jql"] == ['project = "BLOCK" ORDER BY key']
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (b"<html>login</html>", "Jira unreachable: "),
+        (b"[]", "Jira returned an unexpected page"),
+    ],
+    ids=["not-json", "not-an-object"],
+)
+def test_a_bad_jira_page_is_a_jira_error(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, message: str
+) -> None:
+    monkeypatch.setattr(blocknames, "urlopen", lambda req, timeout=0: _Resp(body))
+
+    with pytest.raises(JiraError, match=f"^{message}"):
+        fetch_jira_names("https://j", CREDENTIAL, "BLOCK")
+
+
+def test_jira_http_failure_is_a_jira_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def urlopen(req: Any, timeout: float = 0) -> _Resp:
+        raise HTTPError("https://j", 401, "Unauthorized", Message(), io.BytesIO())
+
+    monkeypatch.setattr(blocknames, "urlopen", urlopen)
+
+    with pytest.raises(JiraError, match="^Jira HTTP 401: Unauthorized$"):
+        fetch_jira_names("https://j", CREDENTIAL, "BLOCK")
+
+
+def both_sources(**overrides: Any) -> BlockNameService:
+    kwargs: dict[str, Any] = {
+        "zephyr_url": "https://z/v2",
+        "zephyr_token": "zt",
+        "jira_url": "https://j",
+        "jira_credential": CREDENTIAL,
+    }
+    return BlockNameService({"BLOCK-T1": "One"}, **{**kwargs, **overrides})
+
+
+async def test_refresh_takes_names_from_both_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        blocknames, "fetch_zephyr_names", lambda *a: {"BLOCK-T365": "M20-M8 field"}
+    )
+    monkeypatch.setattr(
+        blocknames, "fetch_jira_names", lambda *a: {"BLOCK-365": "Survey imaging"}
+    )
+    svc = both_sources()
+
+    assert await svc.refresh()
+
+    # BLOCK-365 and BLOCK-T365 are different blocks with names of their own.
+    assert svc.names == {
+        "BLOCK-T1": "One",
+        "BLOCK-T365": "M20-M8 field",
+        "BLOCK-365": "Survey imaging",
+    }
+    assert svc.source == "zephyr+jira" and svc.error is None
+
+
+async def test_one_source_failing_keeps_its_names_and_takes_the_other(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(blocknames, "fetch_zephyr_names", lambda *a: {"BLOCK-T9": "9"})
+    monkeypatch.setattr(blocknames, "fetch_jira_names", lambda *a: {"BLOCK-365": "S"})
+    svc = both_sources()
+    assert await svc.refresh()
+
+    def boom(*a: Any) -> None:
+        raise JiraError("Jira HTTP 401: Unauthorized")
+
+    monkeypatch.setattr(blocknames, "fetch_jira_names", boom)
+    monkeypatch.setattr(
+        blocknames, "fetch_zephyr_names", lambda *a: {"BLOCK-T9": "Nine"}
+    )
+
+    assert await svc.refresh()
+    assert svc.names["BLOCK-T9"] == "Nine" and svc.names["BLOCK-365"] == "S"
+    assert svc.error == "Jira HTTP 401: Unauthorized"
+    assert svc.source == "zephyr+jira"
+
+    monkeypatch.setattr(blocknames, "fetch_jira_names", lambda *a: {})
+    assert await svc.refresh()
+    assert svc.error == "Jira returned no issues"
+
+
+async def test_jira_alone_with_a_credential_wrapped_over_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[Any, ...]] = []
+
+    def fetch(*args: Any) -> dict[str, str]:
+        calls.append(args)
+        return {"BLOCK-365": "S"}
+
+    monkeypatch.setattr(blocknames, "fetch_jira_names", fetch)
+    wrapped = f"{CREDENTIAL[:20]}\n{CREDENTIAL[20:]}\n"
+    svc = both_sources(zephyr_token=None, jira_credential=wrapped)
+
+    assert await svc.refresh()
+    assert svc.source == "jira"
+    assert calls == [("https://j", CREDENTIAL, "BLOCK")]
+    assert not both_sources(zephyr_token=None, jira_credential=" ").refresh_enabled
+
+
+def test_a_bare_api_token_is_flagged_at_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    warned: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.blocknames.log.warning",
+        lambda event, **kw: warned.append((event, kw)),
+    )
+    monkeypatch.setattr(asyncio, "create_task", lambda coro, name=None: coro.close())
+
+    both_sources(jira_credential="ATATT-bare-token").start()
+    both_sources().start()  # a proper credential: no warning
+
+    assert [event for event, _ in warned] == ["blocknames.jira.credential_unrecognised"]
+    assert "account" not in warned[0][1]
+    assert not any("ATATT" in str(v) for v in warned[0][1].values())
+
+
+async def test_jira_refresh_logs_the_account_without_the_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.blocknames.log.info",
+        lambda event, **kw: logged.append((event, kw)),
+    )
+    monkeypatch.setattr(blocknames, "fetch_jira_names", lambda *a: {"BLOCK-365": "S"})
+    svc = both_sources(zephyr_token=None)
+
+    await svc.refresh()
+
+    assert logged == [
+        (
+            "blocknames.jira.connected",
+            {
+                "project": "BLOCK",
+                "count": 1,
+                "token_sha256": hashlib.sha256(CREDENTIAL.encode()).hexdigest()[:12],
+                "jira": "https://j",
+                "account": "me@example.org",
+            },
+        )
+    ]
+    assert not any("secret-token" in str(v) for v in logged[0][1].values())
 
 
 async def test_empty_fetch_is_not_applied(monkeypatch: pytest.MonkeyPatch) -> None:

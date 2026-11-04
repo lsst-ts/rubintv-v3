@@ -101,6 +101,8 @@ def _build_guide(settings: Settings) -> tuple[BlockNameService, GuideService | N
         load_snapshot(),
         zephyr_url=settings.zephyr_url,
         zephyr_token=read_token(settings.zephyr_token_file),
+        jira_url=settings.jira_url,
+        jira_credential=read_token(settings.jira_token_file),
         project_key=settings.zephyr_project_key,
         refresh_interval=settings.block_names_refresh_seconds,
     )
