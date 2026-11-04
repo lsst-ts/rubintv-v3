@@ -293,6 +293,14 @@ class GuideConfigOut(BaseModel):
     max_gap_minutes: float
 
 
+class NightOut(BaseModel):
+    """A block's seq range on one of the nights it covers."""
+
+    day_obs: int
+    seq_num_0: int
+    seq_num_1: int
+
+
 class BlockOut(BaseModel):
     """One observing block: a run of exposures of one science program."""
 
@@ -306,6 +314,9 @@ class BlockOut(BaseModel):
     """day_obs (YYYYMMDD) of the first exposure."""
     day_obs_end: int
     n_exposures: int
+    nights: list[NightOut]
+    """For a block over the day_obs rollover, where seq numbers restart, its
+    seq range on each night in turn; empty for a block within one night."""
 
 
 class GuideBlocksOut(BaseModel):

@@ -34,6 +34,7 @@ import pytest
 from lsst.ts.rubintv.data.consdb import ConsDbClient, ConsDbError, QueryResult
 from lsst.ts.rubintv.data.guide import (
     TAI_MINUS_UTC,
+    Block,
     BlockGrouper,
     Exposure,
     GuideService,
@@ -171,6 +172,33 @@ def test_block_records_span_and_exposure_count() -> None:
     )
     assert block.begin == T0
     assert block.end == T0 + timedelta(minutes=2, seconds=30)
+
+
+def test_a_block_across_rollovers_records_its_seq_range_on_each_night() -> None:
+    # Seq numbers restart at each day_obs rollover, so a block that carries
+    # on over one keeps where it stopped on each night and started on the
+    # next; a block within one night has nothing to add to its own range.
+    g = BlockGrouper(MAX_GAP)
+    g.add(exp(7, "Q", 0, day_obs=20250411))
+    g.add(exp(8, "P", 1, day_obs=20250411))
+    g.add(exp(9, "P", 2, day_obs=20250411))
+    g.add(exp(1, "P", 3, day_obs=20250412))
+    g.add(exp(2, "P", 4, day_obs=20250412))
+    g.add(exp(1, "P", 5, day_obs=20250413))
+    q, p = g.blocks()
+    assert q.nights == []
+
+    def nights(b: Block) -> list[tuple[int, int, int]]:
+        return [(n.day_obs, n.seq_num_0, n.seq_num_1) for n in b.nights]
+
+    assert nights(p) == [(20250411, 8, 9), (20250412, 1, 2), (20250413, 1, 1)]
+    # The nights survive the cache, and the open block's last one goes on
+    # growing after a reload.
+    h = BlockGrouper(MAX_GAP)
+    h.load_dict(json.loads(json.dumps(g.to_dict())))
+    assert h.blocks() == g.blocks()
+    h.add(exp(2, "P", 6, day_obs=20250413))
+    assert nights(h.blocks()[1])[-1] == (20250413, 1, 2)
 
 
 def test_grouper_round_trips_through_its_dict_form() -> None:

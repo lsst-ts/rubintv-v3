@@ -9,7 +9,7 @@ import { SEQ_COL, filtersToSeqFilter } from "../lib/filters";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useGuideConfig } from "../lib/useGuide";
 import { renderGuide } from "../guide/timeline";
-import type { GuideBlockDatum, GuideLink } from "../guide/timeline";
+import type { GuideBlockDatum, GuideLink, GuideNight } from "../guide/timeline";
 import type { GuideInstrumentOut } from "../lib/types";
 import "../guide/guide.css";
 
@@ -26,8 +26,12 @@ import "../guide/guide.css";
 const BLOCK_REFRESH_MS = 60_000;
 const SWEEP_REFRESH_MS = 5_000;
 
-function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): GuideLink[] {
+// The viewers open a block's first exposure, on the block's first night,
+// whichever night's part was clicked: seq numbers restart at each day_obs, so
+// a later night's date with seq_num_0 would be some other exposure.
+function linksFor(inst: GuideInstrumentOut, d: GuideBlockDatum): GuideLink[] {
   const ctx = { siteLocation: inst.location ?? "", isDevInstance: isDevInstance() };
+  const day = d.day_obs != null ? String(d.day_obs) : (d.originalBlock ?? d).day;
   const out: GuideLink[] = [];
   if (inst.quicklook_viewer_link) {
     out.push({
@@ -53,27 +57,16 @@ function cameraDayHref(inst: GuideInstrumentOut, day: string): string | null {
   return `${BASE}/${inst.location}/${inst.camera}?date=${day}`;
 }
 
-// The camera table for the block's night, filtered to its exposures via the
-// table's own ?seq_filter syntax. A block that straddles the day_obs rollover
-// (seq numbers restart at 1) is open-ended on each of its nights: the part on
-// the first night runs from seq_num_0 up, the part on the last night up to
-// seq_num_1, and the same row's link is what the panel shows.
-function rangeHrefFor(inst: GuideInstrumentOut, d: GuideBlockDatum, day: string): string | null {
-  const page = cameraDayHref(inst, day);
+// The camera table for one of the block's nights, filtered to its exposures
+// on that night via the table's own ?seq_filter syntax. A block that
+// straddles the day_obs rollover (seq numbers restart at 1) has a range, and
+// so a link, for each of its nights.
+function rangeHrefFor(inst: GuideInstrumentOut, night: GuideNight): string | null {
+  const page = cameraDayHref(inst, night.day);
   if (!page) return null;
-  const spans = d.day_obs != null && d.day_obs_end != null && d.day_obs !== d.day_obs_end;
-  const dayInt = Number(day.replace(/-/g, ""));
-  let filter: { col: string; op: string; value: string };
-  if (!spans) {
-    filter = { col: SEQ_COL, op: "between", value: `${d.seq_num_0},${d.seq_num_1}` };
-  } else if (dayInt === d.day_obs) {
-    filter = { col: SEQ_COL, op: ">=", value: String(d.seq_num_0) };
-  } else if (dayInt === d.day_obs_end) {
-    filter = { col: SEQ_COL, op: "<=", value: String(d.seq_num_1) };
-  } else {
-    return page;
-  }
-  const seqFilter = filtersToSeqFilter([filter]);
+  const seqFilter = filtersToSeqFilter([
+    { col: SEQ_COL, op: "between", value: `${night.seq_num_0},${night.seq_num_1}` },
+  ]);
   return `${page}&seq_filter=${seqFilter}`;
 }
 
@@ -126,9 +119,9 @@ export function Guide() {
       names: names ?? {},
       aliases: aliases ?? {},
       dayStartUtcHour: dayStart,
-      links: (d, day) => linksFor(inst, d, day),
+      links: (d) => linksFor(inst, d),
       dayHref: (day) => cameraDayHref(inst, day),
-      rangeHref: (d, day) => rangeHrefFor(inst, d, day),
+      rangeHref: (_d, night) => rangeHrefFor(inst, night),
     });
     return () => handle.dispose();
   }, [blockList, names, aliases, inst, dayStart]);

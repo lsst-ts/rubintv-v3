@@ -74,7 +74,12 @@ def test_guide_is_disabled_without_a_consdb_url() -> None:
 def test_blocks_are_served_once_the_sweep_completes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    rows = [row(1, "BLOCK-T1", 0), row(2, "BLOCK-T1", 1), row(3, "BLOCK-T2", 40)]
+    rows = [
+        row(1, "BLOCK-T1", 0),
+        row(2, "BLOCK-T1", 1),
+        row(3, "BLOCK-T2", 40),
+        row(1, "BLOCK-T2", 41, day_obs=20250412),  # over the rollover
+    ]
     seen: list[str] = []
 
     def fake_query(self: consdb.ConsDbClient, sql: str) -> QueryResult:
@@ -116,11 +121,17 @@ def test_blocks_are_served_once_the_sweep_completes(
             (b["program"], b["seq_num_0"], b["seq_num_1"]) for b in body["blocks"]
         ] == [
             ("BLOCK-T1", 1, 2),
-            ("BLOCK-T2", 3, 3),
+            ("BLOCK-T2", 3, 1),
         ]
         assert body["blocks"][0]["begin"].endswith("Z")
         assert body["blocks"][0]["day_obs"] == 20250411
-        assert body["exposures"] == 3
+        # Only a block over the rollover lists its range on each night.
+        assert body["blocks"][0]["nights"] == []
+        assert body["blocks"][1]["nights"] == [
+            {"day_obs": 20250411, "seq_num_0": 3, "seq_num_1": 3},
+            {"day_obs": 20250412, "seq_num_0": 1, "seq_num_1": 1},
+        ]
+        assert body["exposures"] == 4
         assert app.get("/api/guide/latiss/blocks").status_code == 200
         assert app.get("/api/guide/nope/blocks").status_code == 404
     assert any("cdb_lsstcam.exposure" in s for s in seen)

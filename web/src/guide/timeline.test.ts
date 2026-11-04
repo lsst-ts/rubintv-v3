@@ -653,7 +653,7 @@ describe("program keys", () => {
 
   test("O opens the current block's exposures in the table, in a new tab", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
-    mount(NIGHTS, { rangeHref: (d, day) => `/table/${day}/${d.seq_num_0}` });
+    mount(NIGHTS, { rangeHref: (_d, night) => `/table/${night.day}/${night.seq_num_0}` });
     fireEvent.click(rect("BLOCK-T1", 10));
     key("o");
     expect(open).toHaveBeenLastCalledWith("/table/2025-04-12/10", "_blank", "noopener");
@@ -668,7 +668,7 @@ describe("program keys", () => {
   });
 
   test("Enter on a focused link is the link's, and Escape clears a program too", () => {
-    mount(NIGHTS, { rangeHref: (d, day) => `/table/${day}/${d.seq_num_0}` });
+    mount(NIGHTS, { rangeHref: (_d, night) => `/table/${night.day}/${night.seq_num_0}` });
     fireEvent.click(rect("BLOCK-T1", 10));
     const link = root.querySelector<HTMLAnchorElement>(".guide-panel-content a")!;
     link.focus();
@@ -728,7 +728,7 @@ describe("program keys", () => {
     expect(text(".guide-keys")).toBe("↑↓ step through blocks · Enter show block · Esc clear");
     handle!.dispose();
     root.remove();
-    mount(NIGHTS, { rangeHref: (d, day) => `/table/${day}/${d.seq_num_0}` });
+    mount(NIGHTS, { rangeHref: (_d, night) => `/table/${night.day}/${night.seq_num_0}` });
     fireEvent.click(rect("BLOCK-T1", 10));
     expect(text(".guide-keys")).toBe("←→↑↓ move · Enter program · O open in table · Esc clear");
   });

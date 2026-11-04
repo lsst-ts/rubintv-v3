@@ -44,7 +44,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -63,7 +63,9 @@ TAI_MINUS_UTC = timedelta(seconds=37)
 # rather than quoted: ConsDB schemas are ``cdb_<lowercase name>``.
 _INSTRUMENT_RE = re.compile(r"^[a-z0-9_]+$")
 
-_CACHE_VERSION = 1
+# 2: blocks over the rollover record their range on each night, which a
+# version-1 cache lacks, so it is swept afresh.
+_CACHE_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,15 @@ class Exposure:
     program: str
     begin: datetime
     end: datetime
+
+
+@dataclass
+class Night:
+    """A block's seq range on one of the nights it covers."""
+
+    day_obs: int
+    seq_num_0: int
+    seq_num_1: int
 
 
 @dataclass
@@ -93,6 +104,10 @@ class Block:
     """day_obs of the last exposure; differs from ``day_obs`` when a block
     straddles the noon-UTC rollover."""
     n_exposures: int = 1
+    nights: list[Night] = field(default_factory=list)
+    """For a block that straddles the rollover, where seq numbers restart,
+    its seq range on each night in turn; empty for a block within one
+    night, whose own range says it."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -104,6 +119,7 @@ class Block:
             "day_obs": self.day_obs,
             "day_obs_end": self.day_obs_end,
             "n_exposures": self.n_exposures,
+            "nights": [asdict(n) for n in self.nights],
         }
 
     @classmethod
@@ -117,6 +133,7 @@ class Block:
             day_obs=int(raw["day_obs"]),
             day_obs_end=int(raw["day_obs_end"]),
             n_exposures=int(raw.get("n_exposures", 1)),
+            nights=[Night(**n) for n in raw.get("nights", [])],
         )
 
 
@@ -186,8 +203,18 @@ class BlockGrouper:
             if same_program and gap_ok:
                 block.end = exp.end
                 block.seq_num_1 = exp.seq_num
-                block.day_obs_end = exp.day_obs
                 block.n_exposures += 1
+                if exp.day_obs != block.day_obs_end:
+                    # Over the rollover: the night so far ends at the
+                    # previous exposure and the next starts afresh.
+                    if not block.nights:
+                        block.nights.append(
+                            Night(block.day_obs, block.seq_num_0, prev.seq_num)
+                        )
+                    block.nights.append(Night(exp.day_obs, exp.seq_num, exp.seq_num))
+                    block.day_obs_end = exp.day_obs
+                elif block.nights:
+                    block.nights[-1].seq_num_1 = exp.seq_num
                 return
             self.closed.append(block)
         self.open = Block(

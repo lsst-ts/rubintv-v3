@@ -86,8 +86,10 @@ run of exposures drawn as a block per observing night. It needs
 from `RUBINTV_GUIDE_SINCE` in `RUBINTV_GUIDE_PAGE_SIZE` pages (the page
 shows "Sweeping ConsDB…" until it catches up), then polls for newer
 exposures every `RUBINTV_GUIDE_POLL_INTERVAL_SECONDS`. The grouped blocks
-are persisted under `RUBINTV_CACHE_DIR/guide/` so a restart is warm; a
-ConsDB outage keeps serving the last blocks with a warning pill.
+are persisted under `RUBINTV_CACHE_DIR/guide/` so a restart is warm (a
+cache in an older release's format is skipped, logging
+`guide.cache.skipped`, and swept afresh); a ConsDB outage keeps serving the
+last blocks with a warning pill.
 
 The ConsDB pods accept in-cluster traffic from any namespace, so the
 in-cluster URL needs no secret. The block descriptions come from two
