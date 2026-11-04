@@ -48,8 +48,10 @@ from the YAML at `RUBINTV_MODELS_PATH`.
 | `RUBINTV_GUIDE_PAGE_SIZE`     | `50000`                    | Rows per ConsDB query during the sweep.                       |
 | `RUBINTV_ZEPHYR_TOKEN_FILE`   | unset                      | Zephyr Scale API token file. Set = block descriptions refresh from the `BLOCK` project daily; unset = the snapshot bundled in the package is served. |
 | `RUBINTV_ZEPHYR_URL`          | `https://api.zephyrscale.smartbear.com/v2` | Zephyr Scale Cloud API root.                  |
-| `RUBINTV_ZEPHYR_PROJECT_KEY`  | `BLOCK`                    | Zephyr project holding the BLOCK-T test cases.               |
-| `RUBINTV_BLOCK_NAMES_REFRESH_SECONDS` | `86400`            | Zephyr refresh cadence.                                       |
+| `RUBINTV_ZEPHYR_PROJECT_KEY`  | `BLOCK`                    | Jira project holding the BLOCK-T test cases (Zephyr) and the plain BLOCK issues (Jira). |
+| `RUBINTV_JIRA_TOKEN_FILE`     | unset                      | Jira credential file: base64 of `email:api-token`, the form of nightlydigest's `jira-api-token` secret, which deployments copy. Set = plain `BLOCK-123` programs are named by their Jira issue summaries, refreshed daily. |
+| `RUBINTV_JIRA_URL`            | `https://rubinobs.atlassian.net` | Jira Cloud site.                                         |
+| `RUBINTV_BLOCK_NAMES_REFRESH_SECONDS` | `86400`            | Zephyr and Jira refresh cadence.                              |
 | `RUBINTV_LOG_LEVEL`           | `INFO`                     | Log level.                                                    |
 | `RUBINTV_JSON_LOGS`           | `false` (dev), `true` (img)| JSON logs in production.                                      |
 
@@ -86,19 +88,31 @@ are persisted under `RUBINTV_CACHE_DIR/guide/` so a restart is warm; a
 ConsDB outage keeps serving the last blocks with a warning pill.
 
 The ConsDB pods accept in-cluster traffic from any namespace, so the
-in-cluster URL needs no secret. The block descriptions (BLOCK-T test-case
-names) come from Zephyr Scale; without a token the bundled snapshot is
-used.
+in-cluster URL needs no secret. The block descriptions come from two
+places, because science programs are recorded under two kinds of key in
+the `BLOCK` Jira project. `BLOCK-T123` is a Zephyr Scale test case, named
+from Zephyr; without a Zephyr token the bundled snapshot is used.
+`BLOCK-123` is a Jira issue, named by
+its summary from Jira's search API with an Atlassian API token; without
+one these programs have no description. The two
+are different blocks despite the similar numbers (`BLOCK-365` is the
+generic survey-imaging block, `BLOCK-T365` a field survey), so neither is
+given the other's name.
 
-The token is read once at startup, so restart the pod after replacing the
+The tokens are read once at startup, so restart the pod after replacing a
 secret. The first refresh runs straight away and logs
-`blocknames.zephyr.connected` if the token works, or
-`blocknames.refresh.failed` if it doesn't (for example with
-`Zephyr HTTP 401`). Both lines name the Jira site, the account the token
-acts as, and when the token expires. They also give `token_sha256`, the
-first 12 hex digits of the token's SHA-256, so you can confirm the pod
-loaded the new secret: `printf %s "$TOKEN" | sha256sum | cut -c1-12`.
-`blocknames.zephyr.disabled` means no token was found at all.
+`blocknames.zephyr.connected` or `blocknames.jira.connected` for each
+token that works, or `blocknames.refresh.failed` (with `source` and, for
+example, `Zephyr HTTP 401`) for one that doesn't; one failing source
+doesn't stop the other. The lines name the Jira site and the account the
+token acts as (for Zephyr also when it expires). They also give
+`token_sha256`, the first 12 hex digits of the token's SHA-256, so you can
+confirm the pod loaded the new secret:
+`printf %s "$TOKEN" | sha256sum | cut -c1-12`.
+`blocknames.zephyr.disabled` or `blocknames.jira.disabled` means that
+source has no token at all. `blocknames.jira.credential_unrecognised`
+means the Jira file doesn't hold base64 of `email:api-token` (a bare API
+token, say), so Jira will refuse it.
 
 ### Running the guide locally
 
@@ -161,7 +175,16 @@ production ConsDB instead, use a token from
 Block descriptions need none of this, because the bundled snapshot is
 served when `RUBINTV_ZEPHYR_TOKEN_FILE` is unset. To refresh them from
 Zephyr locally, set it to a file holding a Zephyr Scale API token (from your
-Jira profile: Zephyr API Access Tokens).
+Jira profile: Zephyr API Access Tokens). To name the plain `BLOCK-123`
+programs too, set `RUBINTV_JIRA_TOKEN_FILE` to a file holding base64 of
+your Atlassian email address and an API token (from
+<https://id.atlassian.com/manage-profile/security/api-tokens>), joined by
+a colon. With them in `$EMAIL` and `$TOKEN`:
+
+```bash
+printf %s "$EMAIL:$TOKEN" | base64 > ~/.lsst/jira_credential
+chmod 600 ~/.lsst/jira_credential
+```
 
 ## Health & readiness
 

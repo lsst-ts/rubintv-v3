@@ -21,17 +21,19 @@
 
 """Human-readable names for the observing blocks' science programs.
 
-Science programs are recorded as ``BLOCK-T123`` (occasionally ``BLOCK-123``
-or with a version suffix). The ``BLOCK-T`` keys are test cases in the
-Zephyr Scale project ``BLOCK`` on the observatory's Jira, so their names
-come from Zephyr's own REST API, not Jira's issue API. A snapshot of that
-mapping ships with the package (the same file the original RubinTV Guide
-committed by hand) so the guide is useful with no credentials at all; with
-a Zephyr token configured the service refreshes it periodically.
+Science programs are recorded as ``BLOCK-T123`` or ``BLOCK-123``, sometimes
+with a version suffix. Both live in the observatory Jira's ``BLOCK``
+project but are different things: ``BLOCK-T123`` is a Zephyr Scale test
+case, named through Zephyr's own REST API, and ``BLOCK-123`` is a Jira
+issue (``BLOCK-365``, for one, is the generic survey-imaging block the
+scheduler's surveys record under), named by its summary through Jira's
+issue search. The similar numbers mean nothing: ``BLOCK-123`` is not
+``BLOCK-T123``, and isn't given its name.
 
-The plain ``BLOCK-123`` form is a historical naming slip: those programs
-almost always mean ``BLOCK-T123``, and the frontend does that rewrite on
-lookup exactly as the original guide did.
+A snapshot of the test-case names ships with the package (the same file
+the original RubinTV Guide committed by hand) so the guide is useful with
+no credentials at all; with a Zephyr token, a Jira API token, or both
+configured, the service refreshes from them periodically.
 """
 
 from __future__ import annotations
@@ -40,7 +42,9 @@ import asyncio
 import base64
 import hashlib
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from importlib.resources import files
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -61,8 +65,16 @@ def load_snapshot() -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
-class ZephyrError(RuntimeError):
+class BlockNamesError(RuntimeError):
+    """Fetching names from one of the sources failed."""
+
+
+class ZephyrError(BlockNamesError):
     """A Zephyr Scale request failed."""
+
+
+class JiraError(BlockNamesError):
+    """A Jira request failed."""
 
 
 def token_identity(token: str) -> dict[str, str]:
@@ -132,8 +144,72 @@ def fetch_zephyr_names(
     return names
 
 
+def basic_account(credential: str) -> str | None:
+    """The account a basic-auth ``credential`` (base64 of ``email:token``)
+    names, or ``None`` if it isn't one. The token half is never returned.
+    """
+    try:
+        decoded = base64.b64decode(credential, validate=True).decode()
+    except ValueError:
+        return None
+    account, sep, _ = decoded.partition(":")
+    return account if sep and account else None
+
+
+def fetch_jira_names(
+    base_url: str,
+    credential: str,
+    project_key: str,
+    *,
+    page_size: int = 100,
+    timeout: float = 60.0,
+) -> dict[str, str]:
+    """Return ``{issue key: summary}`` for every issue in the project.
+
+    Pages through Jira Cloud's JQL search, ``GET /rest/api/3/search/jql``,
+    following the ``nextPageToken`` it returns until there is none.
+    ``credential`` is Jira Cloud's basic-auth credential, base64 of the
+    account's ``email:api-token``: the form nightlydigest's
+    ``jira-api-token`` secret is kept in, sent as it is. Blocking; callers
+    run it in a thread.
+    """
+    names: dict[str, str] = {}
+    headers = {"Accept": "application/json", "Authorization": f"Basic {credential}"}
+    params: dict[str, str | int] = {
+        "jql": f'project = "{project_key}" ORDER BY key',
+        "fields": "summary",
+        "maxResults": page_size,
+    }
+    search = f"{base_url.rstrip('/')}/rest/api/3/search/jql"
+    while True:
+        req = Request(f"{search}?{urlencode(params)}", headers=headers)
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                page = json.loads(resp.read().decode("utf-8"))
+        except HTTPError as exc:
+            raise JiraError(f"Jira HTTP {exc.code}: {exc.reason}") from exc
+        except (URLError, TimeoutError, OSError, ValueError) as exc:
+            raise JiraError(f"Jira unreachable: {exc}") from exc
+        if not isinstance(page, dict):
+            raise JiraError("Jira returned an unexpected page")
+        for issue in page.get("issues") or []:
+            fields = issue.get("fields") if isinstance(issue, dict) else None
+            summary = fields.get("summary") if isinstance(fields, dict) else None
+            if summary and issue.get("key"):
+                names[str(issue["key"])] = str(summary).strip()
+        nxt = page.get("nextPageToken")
+        if page.get("isLast", True) or not nxt:
+            return names
+        params["nextPageToken"] = str(nxt)
+
+
 class BlockNameService:
-    """Serve the block names, refreshing from Zephyr when configured."""
+    """Serve the block names, refreshing from Zephyr and Jira when configured.
+
+    The two sources name different keys (``BLOCK-T123`` test cases and
+    ``BLOCK-123`` issues) and are fetched independently: one failing keeps
+    its last names, and says why in ``error``, without holding up the other.
+    """
 
     def __init__(
         self,
@@ -141,6 +217,8 @@ class BlockNameService:
         *,
         zephyr_url: str | None = None,
         zephyr_token: str | None = None,
+        jira_url: str | None = None,
+        jira_credential: str | None = None,
         project_key: str = "BLOCK",
         refresh_interval: float = 86400.0,
     ) -> None:
@@ -150,7 +228,22 @@ class BlockNameService:
         self.error: str | None = None
         self._zephyr_url = zephyr_url
         self._token = zephyr_token
-        self._identity = token_identity(zephyr_token) if zephyr_token else {}
+        self._jira_url = jira_url
+        # Base64 wrapped over lines (GNU base64's default) is still one.
+        self._jira_credential = "".join((jira_credential or "").split()) or None
+        self._identity: dict[str, dict[str, str]] = {"zephyr": {}, "jira": {}}
+        if zephyr_token:
+            self._identity["zephyr"] = token_identity(zephyr_token)
+        if self._jira_credential:
+            digest = hashlib.sha256(self._jira_credential.encode()).hexdigest()
+            self._identity["jira"] = {
+                "token_sha256": digest[:12],
+                "jira": str(jira_url),
+            }
+            account = basic_account(self._jira_credential)
+            if account:
+                self._identity["jira"]["account"] = account
+        self._fetched: set[str] = set()
         self._project = project_key
         self._interval = refresh_interval
         self._task: asyncio.Task[None] | None = None
@@ -159,15 +252,37 @@ class BlockNameService:
     def names(self) -> dict[str, str]:
         return self._names
 
+    def _sources(self) -> dict[str, Callable[[], dict[str, str]]]:
+        """The configured sources by name, each as a blocking fetch."""
+        sources: dict[str, Callable[[], dict[str, str]]] = {}
+        if self._zephyr_url and self._token:
+            sources["zephyr"] = partial(
+                fetch_zephyr_names, self._zephyr_url, self._token, self._project
+            )
+        if self._jira_url and self._jira_credential:
+            sources["jira"] = partial(
+                fetch_jira_names, self._jira_url, self._jira_credential, self._project
+            )
+        return sources
+
     @property
     def refresh_enabled(self) -> bool:
-        return bool(self._zephyr_url and self._token)
+        return bool(self._sources())
 
     def start(self) -> None:
-        if self.refresh_enabled:
+        sources = self._sources()
+        for name in ("zephyr", "jira"):
+            if name not in sources:
+                log.info(f"blocknames.{name}.disabled", reason="no token")
+        if "jira" in sources and "account" not in self._identity["jira"]:
+            # A bare API token, say: Jira will answer 401.
+            log.warning(
+                "blocknames.jira.credential_unrecognised",
+                expected="base64 of email:api-token",
+                **self._identity["jira"],
+            )
+        if sources:
             self._task = asyncio.create_task(self._loop(), name="block-names")
-        else:
-            log.info("blocknames.zephyr.disabled", reason="no token")
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -176,41 +291,52 @@ class BlockNameService:
             self._task = None
 
     async def refresh(self) -> bool:
-        """Fetch from Zephyr; ``True`` if the names were replaced.
+        """Fetch from each configured source; ``True`` if any names changed.
 
         A fetch that comes back empty is treated as a failure: replacing a
         useful snapshot with nothing would blank every description over a
         transient API problem.
         """
-        if not self.refresh_enabled:
-            return False
-        assert self._zephyr_url is not None and self._token is not None
-        try:
-            fetched = await asyncio.to_thread(
-                fetch_zephyr_names, self._zephyr_url, self._token, self._project
-            )
-        except ZephyrError as exc:
-            self.error = str(exc)
-            log.warning("blocknames.refresh.failed", error=str(exc), **self._identity)
-            return False
-        if not fetched:
-            self.error = "Zephyr returned no test cases"
-            log.warning("blocknames.refresh.empty", project=self._project)
-            return False
-        # Keep snapshot-only keys: a test case deleted upstream may still
-        # name blocks already observed.
         merged = dict(self._names)
-        merged.update(fetched)
+        errors: list[str] = []
+        applied = False
+        for name, fetch in self._sources().items():
+            identity = self._identity[name]
+            try:
+                fetched = await asyncio.to_thread(fetch)
+            except BlockNamesError as exc:
+                errors.append(str(exc))
+                log.warning(
+                    "blocknames.refresh.failed", source=name, error=str(exc), **identity
+                )
+                continue
+            if not fetched:
+                errors.append(
+                    "Zephyr returned no test cases"
+                    if name == "zephyr"
+                    else "Jira returned no issues"
+                )
+                log.warning(
+                    "blocknames.refresh.empty", source=name, project=self._project
+                )
+                continue
+            # Keep keys the source no longer has: a test case or issue
+            # deleted upstream may still name blocks already observed.
+            merged.update(fetched)
+            self._fetched.add(name)
+            applied = True
+            log.info(
+                f"blocknames.{name}.connected",
+                project=self._project,
+                count=len(fetched),
+                **identity,
+            )
+        self.error = "; ".join(errors) or None
+        if not applied:
+            return False
         self._names = merged
-        self.source = "zephyr"
+        self.source = "+".join(n for n in ("zephyr", "jira") if n in self._fetched)
         self.updated_at = datetime.now(UTC)
-        self.error = None
-        log.info(
-            "blocknames.zephyr.connected",
-            project=self._project,
-            count=len(fetched),
-            **self._identity,
-        )
         return True
 
     async def _loop(self) -> None:

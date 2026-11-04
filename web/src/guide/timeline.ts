@@ -158,10 +158,10 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         return normalised.replace(/_(?:v)?\d+$|_[a-zA-Z][a-zA-Z0-9_]*$/, '');
     }
 
-    // Helper function to get description for a program. The names are the
-    // BLOCK-T test cases'; a plain BLOCK-123 is a different block from
-    // BLOCK-T123 (the similar numbers were a slip when the data were taken),
-    // so it isn't given BLOCK-T123's name.
+    // Helper function to get description for a program. BLOCK-T123 is named
+    // by its Zephyr test case and BLOCK-123 by its Jira issue: different
+    // blocks despite the similar numbers (a slip when the data were taken),
+    // so neither is given the other's name.
     function getDescription(program: string): string | undefined {
         return tblockNames[getBaseBlockName(program)];
     }
