@@ -618,14 +618,18 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
     // arrow keys move on from that row rather than from the block's first.
     let selectedBlock: GuideBlockDatum | null = null;
     let highlightedProgram: string | null = null;
+    // With a program's summary up: its blocks (whole blocks) in the list's
+    // order, and the one the arrow keys are on (none until one is chosen).
+    let programOrder: GuideBlockDatum[] = [];
+    let programCursor: GuideBlockDatum | null = null;
 
     // Info panel elements
     const infoPanel = rootSel.select(".guide-info-panel");
     const panelTitle = rootSel.select(".guide-panel-title");
-    const panelContent = rootSel.select(".guide-panel-content");
+    const panelContent = rootSel.select<HTMLElement>(".guide-panel-content");
 
     const PLACEHOLDER = `<div class="guide-info-placeholder">
-            Click on a block for details or double-click to view all program versions. With a block selected, use the arrow keys to move between blocks: ← → along the night, ↑ ↓ to the night before or after. Use the search box to find specific programs.
+            Click on a block for details or double-click to view all program versions. With a block selected, use the arrow keys to move between blocks (← → along the night, ↑ ↓ to the night before or after), Enter to view its program, and O to open its exposures in the table. In a program, the arrow keys step through its blocks. Use the search box to find specific programs.
         </div>`;
 
     // Initialize info panel with placeholder content
@@ -833,8 +837,26 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
                 <div>${originalBlock.end.toISOString()}</div>
             </div>
             ${renderLinks(d, d.day)}
+            ${renderKeys(['<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move', '<kbd>Enter</kbd> program'], tableHref(d) !== null)}
         `);
         showInfoPanel();
+    }
+
+    // A line of the keys that work in the panel shown, so they can be found.
+    function renderKeys(keys: string[], canOpen: boolean): string {
+        const all = [...keys, ...(canOpen ? ['<kbd>O</kbd> open in table'] : []), '<kbd>Esc</kbd> clear'];
+        return `<div class="guide-keys info-muted info-small">${all.join(' · ')}</div>`;
+    }
+
+    // A block's exposures in the camera table: the panel's Sequence Range link.
+    function tableHref(d: GuideBlockDatum): string | null {
+        return rangeHref ? rangeHref(d, d.day) : null;
+    }
+
+    // Open a block's exposures in the camera table in a new tab.
+    function openInTable(d: GuideBlockDatum) {
+        const href = tableHref(d);
+        if (href) window.open(href, "_blank", "noopener");
     }
 
     function showProgramInfo(program: string) {
@@ -867,6 +889,16 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
 
         // Get description for the program (with BLOCK-T mapping)
         const description = getDescription(program);
+
+        // The list's order, night then seq, is the arrow keys' order through
+        // the program. Whole blocks only (spanning parts were mapped to
+        // theirs above), so `day` is each block's first night.
+        programOrder = uniqueBlocks.sort((a, b) => {
+            const dayCompare = a.day.localeCompare(b.day);
+            if (dayCompare !== 0) return dayCompare;
+            return a.seq_num_0 - b.seq_num_0;
+        });
+        programCursor = null;
 
         panelTitle.text("Program Summary");
         panelContent.html(`
@@ -903,29 +935,113 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
                 <div>${programDataBlocks.length > 0 ? `${programDataBlocks[0].day} to ${programDataBlocks[programDataBlocks.length - 1].day}` : 'No data'}</div>
             </div>
             <div class="info-item">
-                <div class="info-label">Individual Blocks:</div>
-                <div class="guide-block-list">
-                    ${uniqueBlocks
-                        // Whole blocks only (spanning parts were mapped to
-                        // theirs above), so `day` is each block's first day.
-                        .sort((a, b) => {
-                            const dayCompare = a.day.localeCompare(b.day);
-                            if (dayCompare !== 0) return dayCompare;
-                            return a.seq_num_0 - b.seq_num_0;
-                        })
-                        .map(d => {
-                            const duration = d.durationH || (d.end.getTime() - d.begin.getTime()) / HOUR_MS;
-                            const day = d.day;
-                            return `<div class="guide-block-item" data-block-id="${d.blockId}" data-day="${day}">
-                                <div><strong>${escapeHtml(d.program)}</strong></div>
-                                <div class="info-muted">${day} | Seq: ${d.seq_num_0}-${d.seq_num_1} | ${duration.toFixed(2)}h</div>
-                            </div>`;
-                        })
-                        .join('')}
+                ${renderKeys(['<kbd>↑</kbd><kbd>↓</kbd> step through blocks', '<kbd>Enter</kbd> show block'], rangeHref !== undefined)}
+                <div class="guide-blocks-head">
+                    <div class="info-label">Individual Blocks (${blockCount}):</div>
+                    <div class="guide-block-row guide-block-cols"><span>Block</span> <span>Seq</span> <span>Hours</span></div>
                 </div>
+                <div class="guide-block-list">${renderBlockList(programOrder)}</div>
             </div>
         `);
+        measureBlockHeads();
         showInfoPanel();
+    }
+
+    // The program summary's block list: a group per night, whose date stays
+    // pinned while the group is in view, then a line per block with its own
+    // name (the original took two lines a block and repeated the night).
+    function renderBlockList(blocks: GuideBlockDatum[]): string {
+        const nights: GuideBlockDatum[][] = [];
+        for (const d of blocks) {
+            const night = nights[nights.length - 1];
+            if (night && night[0].day === d.day) night.push(d);
+            else nights.push([d]);
+        }
+        return nights.map(night =>
+            `<div class="guide-block-night-group"><div class="guide-block-night-head">${night[0].day}</div>`
+            + night.map(d => {
+                const duration = d.durationH || (d.end.getTime() - d.begin.getTime()) / HOUR_MS;
+                return `<div class="guide-block-item guide-block-row" data-block-id="${d.blockId}" data-day="${d.day}" title="Show this block on the chart">`
+                    + `<span class="guide-block-name" title="${escapeHtml(d.program)}">${escapeHtml(d.program)}</span> `
+                    + `<span>${d.seq_num_0}–${d.seq_num_1}</span> `
+                    + `<span>${duration.toFixed(2)}</span>`
+                    + `</div>`;
+            }).join('')
+            + `</div>`
+        ).join('');
+    }
+
+    // The night headings pin just under the list's own heading, and a row
+    // brought into view has to clear both, so measure them.
+    let blockHeadsHeight = 0;
+    function measureBlockHeads() {
+        const content = panelContent.node();
+        const list = content?.querySelector<HTMLElement>(".guide-block-list");
+        if (!content || !list) return;
+        const head = content.querySelector<HTMLElement>(".guide-blocks-head")?.offsetHeight ?? 0;
+        const night = list.querySelector<HTMLElement>(".guide-block-night-head")?.offsetHeight ?? 0;
+        list.style.setProperty("--blocks-head-h", `${head}px`);
+        blockHeadsHeight = head + night;
+    }
+
+    // Open the program summary for a program, every block of it highlighted
+    // on the chart, with `current` (when given) the block the arrow keys are
+    // on. Double-click and Enter on a block come here.
+    function openProgram(baseProgram: string, current: GuideBlockDatum | null) {
+        clearSelection();
+        highlightedProgram = baseProgram;
+        g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
+            .classed("highlighted", d => getBaseBlockName(d.program) === baseProgram)
+            .classed("flash", d => getBaseBlockName(d.program) === baseProgram);
+        showProgramInfo(baseProgram);
+        if (current) setProgramCursor(current.originalBlock || current, { focus: false, chart: true });
+    }
+
+    // Put the program's cursor on `block` (a whole block): outline it on the
+    // chart and mark its row in the list, bringing the row into view below
+    // the pinned headings and, with `chart`, the block into view. `focus`
+    // also makes it the one block flashing.
+    function setProgramCursor(block: GuideBlockDatum, { focus, chart }: { focus: boolean; chart: boolean }) {
+        programCursor = block;
+        const rects = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
+            .classed("selected", d => d.blockId === block.blockId);
+        if (focus) rects.classed("flash", d => d.blockId === block.blockId);
+        if (chart) keepInView(rects.filter(d => d.blockId === block.blockId).node());
+
+        const content = panelContent.node();
+        content?.querySelectorAll(".guide-block-item.current").forEach(row => row.classList.remove("current"));
+        content?.querySelector(`.guide-block-item[data-block-id="${block.blockId}"]`)?.classList.add("current");
+        keepRowInView();
+    }
+
+    // The current row of the list, and what of the panel shows below the
+    // pinned headings.
+    function currentRow() {
+        const row = panelContent.node()?.querySelector(".guide-block-item.current");
+        const panel = infoPanel.node() as HTMLElement | null;
+        if (!row || !panel) return null;
+        const box = row.getBoundingClientRect();
+        const panelBox = panel.getBoundingClientRect();
+        const top = panelBox.top + blockHeadsHeight;
+        return { panel, box, top, bottom: panelBox.bottom, inView: box.top >= top && box.bottom <= panelBox.bottom };
+    }
+
+    // As the chart does: leave the list while the current row is in view,
+    // and once it isn't, bring it to the middle of what shows of the list.
+    function keepRowInView() {
+        const row = currentRow();
+        if (!row || row.inView) return;
+        row.panel.scrollTop += (row.box.top + row.box.bottom) / 2 - (row.top + row.bottom) / 2;
+    }
+
+    // Step the program's cursor through its blocks in the list's order; from
+    // none, Down starts at the first and Up at the last. It stays at the ends.
+    function stepProgram(step: 1 | -1) {
+        if (programOrder.length === 0) return;
+        const at = programCursor ? programOrder.indexOf(programCursor) : -1;
+        const next = at === -1 ? (step === 1 ? 0 : programOrder.length - 1) : at + step;
+        if (next < 0 || next >= programOrder.length) return;
+        setProgramCursor(programOrder[next], { focus: true, chart: true });
     }
 
     // Function to select a block by its blockId (from the program summary list)
@@ -940,14 +1056,12 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         }
         if (!blockData) return;
 
-        // Don't change the program summary view, just scroll to and flash the block
-        g.selectAll(".block").classed("flash", false);
-
-        // Find and flash the blocks with this blockId
+        // Don't change the program summary view: make it the program's
+        // current block (the arrow keys carry on from it), which flashes it,
+        // and scroll to it
+        setProgramCursor(blockData.originalBlock || blockData, { focus: true, chart: false });
         const selectedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
             .filter(d => d.blockId === blockId);
-
-        selectedBlocks.classed("flash", true);
 
         // Scroll to the block on the specific day if provided
         let blockElement: SVGRectElement | null | undefined;
@@ -972,6 +1086,8 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
     function clearSelection() {
         selectedBlock = null;
         highlightedProgram = null;
+        programOrder = [];
+        programCursor = null;
         g.selectAll(".block")
             .classed("selected", false)
             .classed("highlighted", false)
@@ -1178,19 +1294,9 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             // block of the chart: `selectedBlocks` is every block)
             scrollToCenter(selectedBlocks.filter(blockData => blockData === singleBlock).node());
         } else {
-            // Multiple blocks - show program summary as before
-            highlightedProgram = baseProgram;
-
-            // Highlight all blocks with the same base program (including versions)
-            const highlightedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
-                .classed("highlighted", blockData => getBaseBlockName(blockData.program) === baseProgram);
-
-            // Add flash animation to highlighted blocks
-            highlightedBlocks
-                .filter(blockData => getBaseBlockName(blockData.program) === baseProgram)
-                .classed("flash", true);
-
-            showProgramInfo(baseProgram);
+            // Multiple blocks - show program summary as before, with no
+            // current block until the arrow keys or a row choose one
+            openProgram(baseProgram, null);
 
             // Scroll to the first block of this program
             const firstBlock = data.find(d => getBaseBlockName(d.program) === baseProgram);
@@ -1278,8 +1384,47 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         floatingG.attr("transform", `translate(${margin.left + shift},15)`);
     }
     alignFloatingAxis();
-    window.addEventListener("resize", alignFloatingAxis);
-    disposers.push(() => window.removeEventListener("resize", alignFloatingAxis));
+
+    // The info column sticks to the top of the scroll pane and scrolls
+    // within itself; keep it clear of the floating axes, which would hide
+    // its last lines, by ending it at their top edge. Its top is lower
+    // until the page has scrolled far enough for it to stick, so it is
+    // refitted as the page scrolls. (Only while it is sticky: stacked
+    // above the chart on narrow screens it is not.)
+    const infoColumn = root.querySelector<HTMLElement>(".guide-info-container");
+    function fitInfoColumn() {
+        if (!infoColumn) return;
+        const axis = floatingAxis?.getBoundingClientRect();
+        const room = axis ? Math.floor(axis.top - infoColumn.getBoundingClientRect().top - 8) : 0;
+        const sticky = getComputedStyle(infoColumn).position === "sticky";
+        const maxHeight = sticky && axis && axis.height > 0 && room > 0 ? `${room}px` : "";
+        if (infoColumn.style.maxHeight === maxHeight) return;
+        // A current row in view stays in view as the column changes size
+        // (scrolled away from by hand, it is left alone).
+        const keepRow = currentRow()?.inView ?? false;
+        infoColumn.style.maxHeight = maxHeight;
+        if (keepRow) keepRowInView();
+    }
+    fitInfoColumn();
+    let fitFrame = 0;
+    const onScroll = () => {
+        if (!fitFrame) fitFrame = requestAnimationFrame(() => { fitFrame = 0; fitInfoColumn(); });
+    };
+    const scrolled = scroller || window;
+    scrolled.addEventListener("scroll", onScroll, { passive: true });
+    disposers.push(() => {
+        scrolled.removeEventListener("scroll", onScroll);
+        cancelAnimationFrame(fitFrame);
+        if (infoColumn) infoColumn.style.maxHeight = "";
+    });
+
+    const onResize = () => {
+        alignFloatingAxis();
+        fitInfoColumn();
+        measureBlockHeads(); // the list heading may wrap differently
+    };
+    window.addEventListener("resize", onResize);
+    disposers.push(() => window.removeEventListener("resize", onResize));
 
     // Determine which Chilean timezone is currently active: CLST (UTC-3) in
     // the southern summer, CLT (UTC-4) the rest of the year. Read from the
@@ -1499,22 +1644,8 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             })
             .on("dblclick", function(event: MouseEvent, d) {
                 event.stopPropagation();
-                clearSelection();
-
-                // Get the base block name to select all versions
-                const baseBlockName = getBaseBlockName(d.program);
-                highlightedProgram = baseBlockName;
-
-                // Highlight all blocks with the same base program (all versions)
-                const highlightedBlocks = g.selectAll<SVGRectElement, GuideBlockDatum>(".block")
-                    .classed("highlighted", blockData => getBaseBlockName(blockData.program) === baseBlockName);
-
-                // Add flash animation to highlighted blocks
-                highlightedBlocks
-                    .filter(blockData => getBaseBlockName(blockData.program) === baseBlockName)
-                    .classed("flash", true);
-
-                showProgramInfo(baseBlockName);
+                // The program of every version, from this block
+                openProgram(getBaseBlockName(d.program), d);
             })
             .on("mouseenter", function(_event, d) {
                 const originalBlock = d.originalBlock || d;
@@ -1547,45 +1678,105 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
     const onKeydown = (event: KeyboardEvent) => {
         // Don't trigger if user is already typing in the search box or other input
         const target = event.target as Element;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        if (target.closest?.("input, textarea, select, [contenteditable]")) {
             return;
         }
 
         if (event.key === "/" || (event.ctrlKey && event.key === "f")) {
             event.preventDefault();
             searchInput.node()!.focus();
-        } else if (!isSearchActive() && selectedBlock && !highlightedProgram) {
-            // Arrow key navigation when exactly one block is selected and search is closed
-            let targetBlock: GuideBlockDatum | null = null;
-
-            switch(event.key) {
-                case 'ArrowUp':
-                    event.preventDefault();
-                    targetBlock = findAdjacentBlock('up');
-                    break;
-                case 'ArrowDown':
-                    event.preventDefault();
-                    targetBlock = findAdjacentBlock('down');
-                    break;
-                case 'ArrowLeft':
-                    event.preventDefault();
-                    targetBlock = findAdjacentBlock('left');
-                    break;
-                case 'ArrowRight':
-                    event.preventDefault();
-                    targetBlock = findAdjacentBlock('right');
-                    break;
-                case 'Escape':
-                    event.preventDefault();
-                    clearSelection();
-                    break;
-            }
-
-            if (targetBlock) {
-                navigateToBlock(targetBlock);
-            }
+            return;
+        }
+        // Leave the browser's own shortcuts alone, and the keys to the
+        // search results while they are open. Enter on a focused link or
+        // button in the panel is the link's.
+        if (event.metaKey || event.ctrlKey || event.altKey || isSearchActive()) return;
+        const onControl = !!target.closest?.("a, button");
+        if (highlightedProgram) {
+            programKey(event, onControl);
+        } else if (selectedBlock) {
+            blockKey(event, onControl);
         }
     };
+
+    // Keys with a single block selected: the arrows move to its neighbours,
+    // Enter opens its program, O opens its exposures in the table.
+    function blockKey(event: KeyboardEvent, onControl: boolean) {
+        const current = selectedBlock!;
+        let targetBlock: GuideBlockDatum | null = null;
+
+        switch(event.key) {
+            case 'ArrowUp':
+                event.preventDefault();
+                targetBlock = findAdjacentBlock('up');
+                break;
+            case 'ArrowDown':
+                event.preventDefault();
+                targetBlock = findAdjacentBlock('down');
+                break;
+            case 'ArrowLeft':
+                event.preventDefault();
+                targetBlock = findAdjacentBlock('left');
+                break;
+            case 'ArrowRight':
+                event.preventDefault();
+                targetBlock = findAdjacentBlock('right');
+                break;
+            case 'Escape':
+                event.preventDefault();
+                clearSelection();
+                break;
+            case 'Enter':
+                if (onControl) return;
+                event.preventDefault();
+                openProgram(getBaseBlockName(current.program), current);
+                break;
+            case 'o':
+            case 'O':
+                event.preventDefault();
+                openInTable(current);
+                break;
+        }
+
+        if (targetBlock) {
+            navigateToBlock(targetBlock);
+        }
+    }
+
+    // Keys in a program's summary: the arrows step through its blocks in the
+    // list's order, Enter shows the current one on its own (where the arrows
+    // then move to its neighbours), O opens it in the table.
+    function programKey(event: KeyboardEvent, onControl: boolean) {
+        switch(event.key) {
+            case 'ArrowDown':
+            case 'ArrowRight':
+                event.preventDefault();
+                stepProgram(1);
+                break;
+            case 'ArrowUp':
+            case 'ArrowLeft':
+                event.preventDefault();
+                stepProgram(-1);
+                break;
+            case 'Escape':
+                event.preventDefault();
+                clearSelection();
+                break;
+            case 'Enter': {
+                if (onControl || !programCursor) return;
+                event.preventDefault();
+                const blockId = programCursor.blockId;
+                navigateToBlock(data.find(d => d.blockId === blockId) ?? null);
+                break;
+            }
+            case 'o':
+            case 'O':
+                if (!programCursor) return;
+                event.preventDefault();
+                openInTable(programCursor);
+                break;
+        }
+    }
     document.addEventListener("keydown", onKeydown);
     disposers.push(() => document.removeEventListener("keydown", onKeydown));
 

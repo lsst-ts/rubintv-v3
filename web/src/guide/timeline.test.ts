@@ -20,14 +20,16 @@ vi.mock("astronomy-engine", async (importOriginal) => {
 
 const MARKUP = `
   <div class="guide-chart"></div>
-  <div class="guide-search-container">
-    <input class="guide-search-input" />
-    <div class="guide-search-results" style="display: none"></div>
-  </div>
-  <div class="guide-info-panel empty">
-    <h3 class="guide-panel-title">Selection Info</h3>
-    <div class="guide-panel-content"></div>
-  </div>
+  <aside class="guide-info-container">
+    <div class="guide-search-container">
+      <input class="guide-search-input" />
+      <div class="guide-search-results" style="display: none"></div>
+    </div>
+    <div class="guide-info-panel empty">
+      <h3 class="guide-panel-title">Selection Info</h3>
+      <div class="guide-panel-content"></div>
+    </div>
+  </aside>
   <div class="guide-floating-axis"><svg class="guide-floating-axis-svg"></svg></div>`;
 
 function block(program: string, begin: string, end: string, seq0: number, seq1: number): GuideBlockInput {
@@ -218,6 +220,15 @@ describe("time-zone axes", () => {
 });
 
 describe("program summary", () => {
+  // The summary's block list as [night, [[name, seq, hours], ...]] groups.
+  const blockList = () =>
+    Array.from(root.querySelectorAll(".guide-block-night-group")).map((group) => [
+      group.querySelector(".guide-block-night-head")!.textContent,
+      Array.from(group.querySelectorAll(".guide-block-item")).map((row) =>
+        Array.from(row.children).map((cell) => cell.textContent!.trim()),
+      ),
+    ]);
+
   test("double-click summarises every version of the program", () => {
     mount();
     fireEvent.dblClick(rect("BLOCK-T1", 10));
@@ -231,6 +242,19 @@ describe("program summary", () => {
     expect(summary).toContain("Average Duration: 0.58 hours");
     expect(summary).toContain("Date Range: 2025-04-12 to 2025-04-12");
     expect(rects().filter((r) => r.classList.contains("highlighted"))).toHaveLength(2);
+    // A line a block with its own name, under its night's heading.
+    expect(summary).toContain("Individual Blocks (2): Block Seq Hours");
+    expect(blockList()).toEqual([
+      [
+        "2025-04-12",
+        [
+          ["BLOCK-T1", "10–50", "0.67"],
+          ["BLOCK-T1_v2", "60–80", "0.50"],
+        ],
+      ],
+    ]);
+    // The double-clicked block is the one the arrow keys start from.
+    expect(selected()).toEqual(["BLOCK-T1#10"]);
   });
 
   test("lists blocks by night then seq, and a row flashes just its block", () => {
@@ -240,17 +264,27 @@ describe("program summary", () => {
       block("BLOCK-T5", "2025-04-13T01:00:00Z", "2025-04-13T01:30:00Z", 100, 120),
     ]);
     fireEvent.dblClick(rect("BLOCK-T5", 7));
-    const items = Array.from(root.querySelectorAll<HTMLElement>(".guide-block-item"));
-    expect(items.map((i) => i.textContent!.replace(/\s+/g, " ").trim())).toEqual([
-      "BLOCK-T5 2025-04-12 | Seq: 100-120 | 0.50h",
-      "BLOCK-T5 2025-04-12 | Seq: 300-4 | 2.00h",
-      "BLOCK-T5 2025-04-13 | Seq: 7-9 | 0.50h",
+    // Each night named once, over its own group of blocks.
+    expect(blockList()).toEqual([
+      [
+        "2025-04-12",
+        [
+          ["BLOCK-T5", "100–120", "0.50"],
+          ["BLOCK-T5", "300–4", "2.00"],
+        ],
+      ],
+      ["2025-04-13", [["BLOCK-T5", "7–9", "0.50"]]],
     ]);
+    const items = Array.from(root.querySelectorAll<HTMLElement>(".guide-block-item"));
     fireEvent.click(items[2]);
     const flashing = rects().filter((r) => r.classList.contains("flash"));
     expect(flashing.map((r) => datum(r).seq_num_0)).toEqual([7]);
-    // The summary stays up.
+    // The summary stays up, the row is now the current one, and the
+    // arrow keys carry on from it.
     expect(panelTitle()).toBe("Program Summary");
+    expect(items[2].classList.contains("current")).toBe(true);
+    key("ArrowUp");
+    expect(selected()).toEqual(["BLOCK-T5#300"]);
   });
 
   test("the date range takes in blocks that cross the day rollover", () => {
@@ -485,7 +519,7 @@ describe("keyboard", () => {
     expect(panelTitle()).toBe("Selection Info");
   });
 
-  test("arrows are ignored while typing, with search open, or with a program highlighted", () => {
+  test("arrows are ignored while typing or with search open", () => {
     mount();
     fireEvent.click(rect("BLOCK-T1", 10));
     key("ArrowRight", {}, input());
@@ -494,12 +528,139 @@ describe("keyboard", () => {
     search("block");
     key("ArrowRight");
     expect(selected()).toEqual(["BLOCK-T1#10"]);
-    key("Escape", {}, input());
+  });
+});
 
-    fireEvent.dblClick(rect("BLOCK-T1", 10));
-    key("ArrowRight");
+describe("program keys", () => {
+  const currentRow = () => root.querySelector<HTMLElement>(".guide-block-item.current");
+
+  test("Enter opens a block's program at that block, and Enter again shows the block", () => {
+    mount();
+    fireEvent.click(rect("BLOCK-T1", 10));
+    key("Enter");
     expect(panelTitle()).toBe("Program Summary");
+    expect(rects().filter((r) => r.classList.contains("highlighted"))).toHaveLength(2);
+    expect(selected()).toEqual(["BLOCK-T1#10"]);
+    expect(currentRow()!.textContent).toContain("10–50");
+    key("ArrowDown");
+    expect(selected()).toEqual(["BLOCK-T1_v2#60"]);
+    expect(currentRow()!.textContent).toContain("60–80");
+    key("Enter");
+    expect(panelTitle()).toBe("Block Information");
+    expect(panel()).toContain("Program: BLOCK-T1_v2");
+    // Back with a single block, the arrows move to its neighbours again.
+    key("ArrowRight");
+    expect(selected()).toEqual(["BLOCK-T2#90"]);
+  });
+
+  test("in a program the arrows step through its blocks in list order, stopping at the ends", () => {
+    mount([
+      block("BLOCK-T7", "2025-04-12T02:00:00Z", "2025-04-12T02:30:00Z", 1, 4), // 2025-04-11
+      block("BLOCK-T8", "2025-04-12T03:00:00Z", "2025-04-12T03:30:00Z", 5, 9),
+      block("BLOCK-T7", "2025-04-13T02:00:00Z", "2025-04-13T02:30:00Z", 5, 8), // 2025-04-12
+      block("BLOCK-T7", "2025-04-14T02:00:00Z", "2025-04-14T02:30:00Z", 9, 12), // 2025-04-13
+    ]);
+    search("T7");
+    fireEvent.click(resultItems()[0]);
+    // From search there is no current block until a key or a row picks one.
     expect(selected()).toEqual([]);
+    key("ArrowUp"); // from none, Up starts at the last
+    expect(selected()).toEqual(["BLOCK-T7#9"]);
+    key("ArrowDown"); // the last: stays
+    expect(selected()).toEqual(["BLOCK-T7#9"]);
+    key("ArrowLeft");
+    expect(selected()).toEqual(["BLOCK-T7#5"]);
+    key("ArrowUp");
+    expect(selected()).toEqual(["BLOCK-T7#1"]);
+    key("ArrowUp"); // the first: stays
+    expect(selected()).toEqual(["BLOCK-T7#1"]);
+    key("ArrowRight");
+    expect(selected()).toEqual(["BLOCK-T7#5"]);
+    // The current block is the one flashing; BLOCK-T8 is never stepped on.
+    expect(rects().filter((r) => r.classList.contains("flash")).map((r) => datum(r).seq_num_0)).toEqual([5]);
+    expect(datum(rects().find((r) => r.classList.contains("flash"))!).program).toBe("BLOCK-T7");
+  });
+
+  test("O opens the current block's exposures in the table, in a new tab", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    mount(NIGHTS, { rangeHref: (d, day) => `/table/${day}/${d.seq_num_0}` });
+    fireEvent.click(rect("BLOCK-T1", 10));
+    key("o");
+    expect(open).toHaveBeenLastCalledWith("/table/2025-04-12/10", "_blank", "noopener");
+    key("Enter");
+    key("ArrowDown");
+    key("O");
+    expect(open).toHaveBeenLastCalledWith("/table/2025-04-12/60", "_blank", "noopener");
+    // Cmd/Ctrl+O are the browser's.
+    key("o", { metaKey: true });
+    key("o", { ctrlKey: true });
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test("Enter on a focused link is the link's, and Escape clears a program too", () => {
+    mount(NIGHTS, { rangeHref: (d, day) => `/table/${day}/${d.seq_num_0}` });
+    fireEvent.click(rect("BLOCK-T1", 10));
+    const link = root.querySelector<HTMLAnchorElement>(".guide-panel-content a")!;
+    link.focus();
+    key("Enter", {}, link);
+    expect(panelTitle()).toBe("Block Information");
+    // The arrows still move from a focused link.
+    key("ArrowRight", {}, link);
+    expect(selected()).toEqual(["BLOCK-T1_v2#60"]);
+    key("Enter");
+    expect(panelTitle()).toBe("Program Summary");
+    key("Escape");
+    expect(panelTitle()).toBe("Selection Info");
+    expect(rects().filter((r) => r.classList.contains("highlighted"))).toHaveLength(0);
+  });
+
+  test("the list keeps the current row in view, bringing it to the middle once it leaves", () => {
+    mount(
+      Array.from({ length: 10 }, (_, i) => {
+        const day = `2025-05-${String(11 + i).padStart(2, "0")}`;
+        return block("BLOCK-T42", `${day}T03:00:00Z`, `${day}T03:30:00Z`, i + 1, i + 5);
+      }),
+    );
+    search("T42");
+    fireEvent.click(resultItems()[0]);
+    // A 100px panel, the list's rows 23px apart from 20px down (jsdom has
+    // no layout of its own; the pinned headings measure 0 here).
+    const panelEl = root.querySelector<HTMLElement>(".guide-info-panel")!;
+    panelEl.getBoundingClientRect = () => ({ top: 0, bottom: 100, height: 100 }) as DOMRect;
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".guide-block-item"));
+    rows.forEach((row, i) => {
+      row.getBoundingClientRect = () => {
+        const top = 20 + 23 * i - panelEl.scrollTop;
+        return { top, bottom: top + 23, height: 23 } as DOMRect;
+      };
+    });
+    const inView = () => {
+      const r = currentRow()!.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= 100;
+    };
+    key("ArrowDown"); // the first row, already in view
+    expect(panelEl.scrollTop).toBe(0);
+    for (let i = 0; i < 3; i++) key("ArrowDown"); // the fourth, past the bottom
+    expect(currentRow()).toBe(rows[3]);
+    const r = rows[3].getBoundingClientRect();
+    expect((r.top + r.bottom) / 2).toBeCloseTo(50);
+    for (let i = 0; i < 9; i++) {
+      key(i < 6 ? "ArrowDown" : "ArrowUp");
+      expect(inView()).toBe(true);
+    }
+  });
+
+  test("the panels list their keys, O only where there is a table to open", () => {
+    mount();
+    fireEvent.click(rect("BLOCK-T1", 10));
+    expect(text(".guide-keys")).toBe("←→↑↓ move · Enter program · Esc clear");
+    key("Enter");
+    expect(text(".guide-keys")).toBe("↑↓ step through blocks · Enter show block · Esc clear");
+    handle!.dispose();
+    root.remove();
+    mount(NIGHTS, { rangeHref: (d, day) => `/table/${day}/${d.seq_num_0}` });
+    fireEvent.click(rect("BLOCK-T1", 10));
+    expect(text(".guide-keys")).toBe("←→↑↓ move · Enter program · O open in table · Esc clear");
   });
 });
 
@@ -585,6 +746,26 @@ describe("scrolling", () => {
     expect(selected()).toEqual(["BLOCK-T609#1"]);
     // Its row centred in the 100px pane.
     expect(scrollTo.mock.calls.at(-1)![0].top).toBeCloseTo(r.top - 50);
+  });
+
+  test("the info column ends above the floating axes while it is sticky", async () => {
+    const { pane } = mountWithLayout(COLUMN);
+    const column = root.querySelector<HTMLElement>(".guide-info-container")!;
+    column.style.position = "sticky";
+    let columnTop = 0; // stuck to the pane's top
+    column.getBoundingClientRect = () => box(columnTop, 0);
+    window.dispatchEvent(new Event("resize"));
+    // From the column's top (0) to 8px short of the axes' top (80).
+    expect(column.style.maxHeight).toBe("72px");
+    // Scrolled back up, the column sits lower until it sticks again.
+    columnTop = 30;
+    pane.dispatchEvent(new Event("scroll"));
+    await new Promise((done) => requestAnimationFrame(done));
+    expect(column.style.maxHeight).toBe("42px");
+    // Stacked above the chart on narrow screens it is not sticky.
+    column.style.position = "static";
+    window.dispatchEvent(new Event("resize"));
+    expect(column.style.maxHeight).toBe("");
   });
 
   test("a pane that can't scroll is ignored", () => {

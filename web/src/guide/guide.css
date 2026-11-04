@@ -119,9 +119,10 @@
 
 /* Info panel */
 .guide-info-panel {
+  --panel-pad: 20px;
   flex: 1;
   min-height: 0;
-  padding: 20px;
+  padding: var(--panel-pad);
   background: var(--col-stripe);
   border-left: 1px solid var(--line-mid);
   overflow-y: auto;
@@ -145,13 +146,56 @@
 .info-muted { color: var(--ink-soft); }
 .info-italic { font-style: italic; }
 .info-small { font-size: 0.9em; }
-.guide-block-list { font-size: 0.9em; max-height: 300px; overflow-y: auto; }
-.guide-block-item {
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line-soft);
-  cursor: pointer;
+/* The program summary's block list flows in the panel, which is the one
+   scroll area; the heading and column names stay pinned at its top, and
+   each night's date under them while its blocks are in view. */
+.guide-blocks-head {
+  position: sticky;
+  /* Flush with the panel's top edge, over its padding, so no row shows
+     above the heading as the list scrolls under it. */
+  top: calc(-1 * var(--panel-pad));
+  z-index: 2;
+  background: var(--col-stripe);
+  padding: 4px 0 2px;
+  border-bottom: 1px solid var(--line-mid);
 }
+.guide-block-night-head {
+  position: sticky;
+  /* --blocks-head-h is the heading's height, measured when the list is drawn. */
+  top: calc(var(--blocks-head-h, 0px) - var(--panel-pad));
+  z-index: 1;
+  background: var(--col-stripe);
+  padding: 4px 4px 2px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+.guide-block-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 44px;
+  column-gap: 8px;
+  padding: 2px 4px;
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+.guide-block-row > :last-child { text-align: right; }
+.guide-block-cols { color: var(--ink-soft); padding-top: 4px; }
+.guide-block-item { cursor: pointer; }
 .guide-block-item:hover { background: var(--accent-soft); }
+.guide-block-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The block the arrow keys are on. */
+.guide-block-item.current { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+
+/* The keys that work in the panel shown. */
+.guide-keys { margin: 10px 0; line-height: 1.8; }
+.guide-keys kbd {
+  font: inherit;
+  padding: 0 4px;
+  border: 1px solid var(--line-mid);
+  border-radius: 3px;
+  background: var(--paper);
+}
 
 /* Floating axes pinned to the viewport bottom */
 .guide-floating-axis {
