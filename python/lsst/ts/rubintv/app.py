@@ -48,7 +48,11 @@ from lsst.ts.rubintv.api import (
 )
 from lsst.ts.rubintv.config.loader import load_models
 from lsst.ts.rubintv.config.settings import Settings, get_settings
-from lsst.ts.rubintv.data.blocknames import BlockNameService, load_snapshot
+from lsst.ts.rubintv.data.blocknames import (
+    INTERIM_ISSUE_NAMES,
+    BlockNameService,
+    load_snapshot,
+)
 from lsst.ts.rubintv.data.cache import DiskCache
 from lsst.ts.rubintv.data.consdb import ConsDbClient, read_token
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
@@ -98,7 +102,7 @@ def _build_guide(settings: Settings) -> tuple[BlockNameService, GuideService | N
     (see ``read_token``) so an unpopulated secret never blocks startup.
     """
     block_names = BlockNameService(
-        load_snapshot(),
+        {**load_snapshot(), **INTERIM_ISSUE_NAMES},
         zephyr_url=settings.zephyr_url,
         zephyr_token=read_token(settings.zephyr_token_file),
         jira_url=settings.jira_url,

@@ -98,7 +98,9 @@ Zephyr's test-case list leaves some test cases out (archived ones, it
 seems), so the refresh also asks for each missing `BLOCK-T` key on its
 own, about 60 extra requests a day. `BLOCK-123` is a Jira issue, named by
 its summary from Jira's search API with an Atlassian API token; without
-one these programs have no description. The two
+one, the ones observed so far are named from a temporary list in
+[blocknames.py](../python/lsst/ts/rubintv/data/blocknames.py)
+(`INTERIM_ISSUE_NAMES`) that the first Jira refresh overrides. The two
 are different blocks despite the similar numbers (`BLOCK-365` is the
 generic survey-imaging block, `BLOCK-T365` a field survey), so neither is
 given the other's name.
