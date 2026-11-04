@@ -42,7 +42,10 @@ from tests.test_guide import COLUMNS, row
 
 @contextmanager
 def run_app(**overrides: object) -> Iterator[PrefixedTestClient]:
+    # _env_file=None: a developer's .env (a ConsDB URL, a Zephyr token) must
+    # not reach these apps.
     settings = Settings(
+        _env_file=None,
         models_path=CONFIG_PATH,
         site="test",
         poll_interval_seconds=0.05,
