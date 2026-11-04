@@ -1574,6 +1574,13 @@
           "n_exposures": {
             "type": "integer",
             "title": "N Exposures"
+          },
+          "nights": {
+            "items": {
+              "$ref": "#/components/schemas/NightOut"
+            },
+            "type": "array",
+            "title": "Nights"
           }
         },
         "type": "object",
@@ -1585,7 +1592,8 @@
           "seq_num_1",
           "day_obs",
           "day_obs_end",
-          "n_exposures"
+          "n_exposures",
+          "nights"
         ],
         "title": "BlockOut",
         "description": "One observing block: a run of exposures of one science program."
@@ -2699,6 +2707,30 @@
           "content"
         ],
         "title": "MultilineText"
+      },
+      "NightOut": {
+        "properties": {
+          "day_obs": {
+            "type": "integer",
+            "title": "Day Obs"
+          },
+          "seq_num_0": {
+            "type": "integer",
+            "title": "Seq Num 0"
+          },
+          "seq_num_1": {
+            "type": "integer",
+            "title": "Seq Num 1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day_obs",
+          "seq_num_0",
+          "seq_num_1"
+        ],
+        "title": "NightOut",
+        "description": "A block's seq range on one of the nights it covers."
       },
       "NightReportOut": {
         "properties": {

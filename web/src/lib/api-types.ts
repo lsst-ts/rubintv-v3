@@ -628,6 +628,8 @@ export interface components {
             day_obs_end: number;
             /** N Exposures */
             n_exposures: number;
+            /** Nights */
+            nights: components["schemas"]["NightOut"][];
         };
         /** CalendarOut */
         CalendarOut: {
@@ -1012,6 +1014,18 @@ export interface components {
             content: string;
             /** Key */
             key?: string | null;
+        };
+        /**
+         * NightOut
+         * @description A block's seq range on one of the nights it covers.
+         */
+        NightOut: {
+            /** Day Obs */
+            day_obs: number;
+            /** Seq Num 0 */
+            seq_num_0: number;
+            /** Seq Num 1 */
+            seq_num_1: number;
         };
         /** NightReportOut */
         NightReportOut: {

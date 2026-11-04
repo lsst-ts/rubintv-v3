@@ -38,6 +38,16 @@ export interface GuideBlockInput {
     /** YYYYMMDD of the first / last exposure; present on API blocks. */
     day_obs?: number;
     day_obs_end?: number;
+    /** For a block over the day_obs rollover, where seq numbers restart:
+     *  its seq range on each night in turn. Absent or empty otherwise. */
+    nights?: { day_obs: number; seq_num_0: number; seq_num_1: number }[];
+}
+
+/** A block's seq range on one of the nights (YYYY-MM-DD) it covers. */
+export interface GuideNight {
+    day: string;
+    seq_num_0: number;
+    seq_num_1: number;
 }
 
 /** A block as the timeline sees it once parsed: dates are Dates and the
@@ -78,8 +88,9 @@ export interface RenderGuideOptions {
     links?: (block: GuideBlockDatum, day: string) => GuideLink[];
     /** Link for a block's observing day; null/absent leaves it as text. */
     dayHref?: (day: string) => string | null;
-    /** Link for a block's seq range; null/absent leaves it as text. */
-    rangeHref?: (block: GuideBlockDatum, day: string) => string | null;
+    /** Link for a block's seq range on one night; null/absent leaves it
+     *  as text. */
+    rangeHref?: (block: GuideBlockDatum, night: GuideNight) => string | null;
     /** Hide blocks shorter than this (default 5). */
     minBlockMinutes?: number;
     /** Empty rows to draw past the last block (default 6). */
@@ -780,13 +791,27 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         return newTabLink(href, day, { title: "Open this night in RubinTV in a new tab" });
     }
 
-    // The seq range as a link into the camera table (an addition over the
-    // original, which showed it as plain text).
-    function renderRange(d: GuideBlockDatum, day: string): string {
-        const text = `${d.seq_num_0} - ${d.seq_num_1}`;
-        const href = rangeHref ? rangeHref(d, day) : null;
+    // The seq range on a night as a link into the camera table (an addition
+    // over the original, which showed it as plain text).
+    function renderRange(d: GuideBlockDatum, night: GuideNight): string {
+        const text = `${night.seq_num_0} - ${night.seq_num_1}`;
+        const href = rangeHref ? rangeHref(d, night) : null;
         if (!href) return text;
         return newTabLink(href, text, { title: "Open these exposures in the camera table in a new tab" });
+    }
+
+    // A block's seq range on each night it covers. Seq numbers restart at
+    // each day_obs rollover, so a block over one comes with its range per
+    // night; any other is its own range on the night it is drawn on.
+    function nightsOf(d: GuideBlockDatum): GuideNight[] {
+        if (d.nights?.length) {
+            return d.nights.map(n => {
+                const s = String(n.day_obs);
+                const day = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+                return { day, seq_num_0: n.seq_num_0, seq_num_1: n.seq_num_1 };
+            });
+        }
+        return [{ day: d.day, seq_num_0: d.seq_num_0, seq_num_1: d.seq_num_1 }];
     }
 
     function renderLinks(d: GuideBlockDatum, day: string): string {
@@ -810,6 +835,10 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         // Get description from translation table if available
         const description = getDescription(d.program);
 
+        // A day and a seq range link for each night the block covers.
+        const nights = nightsOf(d);
+        const plural = nights.length > 1 ? 's' : '';
+
         panelTitle.text("Block Information");
         panelContent.html(`
             <div class="info-item">
@@ -823,12 +852,12 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             </div>
             ` : ''}
             <div class="info-item">
-                <div class="info-label">Observation Day:</div>
-                <div>${renderDay(d.day)}</div>
+                <div class="info-label">Observation Day${plural}:</div>
+                <div>${nights.map(n => renderDay(n.day)).join('<br>')}</div>
             </div>
             <div class="info-item">
-                <div class="info-label">Sequence Range:</div>
-                <div>${renderRange(d, d.day)}</div>
+                <div class="info-label">Sequence Range${plural}:</div>
+                <div>${nights.map(n => renderRange(d, n)).join('<br>')}</div>
             </div>
             <div class="info-item">
                 <div class="info-label">Duration:</div>
@@ -854,9 +883,12 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
         return `<div class="guide-keys info-muted info-small">${all.join(' · ')}</div>`;
     }
 
-    // A block's exposures in the camera table: the panel's Sequence Range link.
+    // A block's exposures in the camera table on the night clicked: that
+    // night's Sequence Range link in the panel.
     function tableHref(d: GuideBlockDatum): string | null {
-        return rangeHref ? rangeHref(d, d.day) : null;
+        if (!rangeHref) return null;
+        const nights = nightsOf(d);
+        return rangeHref(d, nights.find(n => n.day === d.day) ?? nights[0]);
     }
 
     // Open a block's exposures in the camera table in a new tab.

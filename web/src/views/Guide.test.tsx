@@ -44,6 +44,7 @@ const blocks: GuideBlocksOut = {
       day_obs: 20250412,
       day_obs_end: 20250412,
       n_exposures: 41,
+      nights: [],
     },
     {
       program: "BLOCK-T2",
@@ -54,6 +55,7 @@ const blocks: GuideBlocksOut = {
       day_obs: 20250412,
       day_obs_end: 20250412,
       n_exposures: 2,
+      nights: [],
     },
   ],
   loading: false,
@@ -186,7 +188,11 @@ test("a block across the day rollover is summarised once, under its first day", 
           seq_num_1: 90,
           day_obs: 20250412,
           day_obs_end: 20250413,
-          n_exposures: 31,
+          n_exposures: 101,
+          nights: [
+            { day_obs: 20250412, seq_num_0: 60, seq_num_1: 70 },
+            { day_obs: 20250413, seq_num_0: 1, seq_num_1: 90 },
+          ],
         },
       ],
     },
@@ -235,7 +241,12 @@ test("a block across day_obs rollovers links each night's part of its seq range"
           seq_num_1: 4,
           day_obs: 20250412,
           day_obs_end: 20250414,
-          n_exposures: 99,
+          n_exposures: 1404,
+          nights: [
+            { day_obs: 20250412, seq_num_0: 300, seq_num_1: 420 },
+            { day_obs: 20250413, seq_num_0: 1, seq_num_1: 980 },
+            { day_obs: 20250414, seq_num_0: 1, seq_num_1: 4 },
+          ],
         },
       ],
     },
@@ -247,21 +258,41 @@ test("a block across day_obs rollovers links each night's part of its seq range"
     return els;
   });
   expect(parts).toHaveLength(3);
-  const rangeHref = (part: Element) => {
+  const item = (label: string) =>
+    Array.from(container.querySelectorAll(".info-item")).find(
+      (el) => el.querySelector(".info-label")?.textContent === label,
+    )!;
+  const links = (label: string) =>
+    Array.from(item(label).querySelectorAll("a")).map((a) => [
+      a.textContent!.trim(),
+      a.getAttribute("href"),
+    ]);
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  for (const [i, part] of Array.from(parts).entries()) {
     fireEvent.click(part);
-    return screen.getByText("300 - 4").getAttribute("href");
-  };
-  // Seq numbers restart each night: the first night's part runs from
-  // seq_num_0 up, the last night's up to seq_num_1, and a night in between
-  // is the whole night.
-  expect(rangeHref(parts[0])).toBe("/rubintv/summit/lsstcam?date=2025-04-12&seq_filter=gte300");
-  expect(rangeHref(parts[1])).toBe("/rubintv/summit/lsstcam?date=2025-04-13");
-  expect(rangeHref(parts[2])).toBe("/rubintv/summit/lsstcam?date=2025-04-14&seq_filter=lte4");
-  // Both viewer links, Quick Look first, at the block's first exposure.
-  fireEvent.click(parts[0]);
-  const viewers = screen.getAllByRole("link", { name: /viewer/ });
-  expect(viewers.map((a) => a.textContent!.trim())).toEqual(["Quick Look viewer", "FITS image viewer"]);
-  expect(viewers[0].getAttribute("href")).toBe("http://ql.example/20250412_000300");
+    // Seq numbers restart each night, so whichever night's part is clicked
+    // the panel links each night and that night's own seq range.
+    expect(links("Observation Days:")).toEqual([
+      ["2025-04-12", "/rubintv/summit/lsstcam?date=2025-04-12"],
+      ["2025-04-13", "/rubintv/summit/lsstcam?date=2025-04-13"],
+      ["2025-04-14", "/rubintv/summit/lsstcam?date=2025-04-14"],
+    ]);
+    expect(links("Sequence Ranges:")).toEqual([
+      ["300 - 420", "/rubintv/summit/lsstcam?date=2025-04-12&seq_filter=between300_420"],
+      ["1 - 980", "/rubintv/summit/lsstcam?date=2025-04-13&seq_filter=between1_980"],
+      ["1 - 4", "/rubintv/summit/lsstcam?date=2025-04-14&seq_filter=between1_4"],
+    ]);
+    // O opens the range on the night clicked.
+    fireEvent.keyDown(document, { key: "o" });
+    expect(open).toHaveBeenLastCalledWith(links("Sequence Ranges:")[i][1], "_blank", "noopener");
+    // Both viewer links, Quick Look first, open the block's first exposure:
+    // a later night's own date with seq_num_0 would be some other exposure.
+    expect(links("External links:")).toEqual([
+      ["Quick Look viewer", "http://ql.example/20250412_000300"],
+      ["FITS image viewer", "http://fits.example/20250412_000300"],
+    ]);
+  }
+  open.mockRestore();
 });
 
 test("the FITS image viewer link is shown only on the summit and base networks", async () => {
