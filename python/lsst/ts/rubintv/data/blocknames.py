@@ -58,9 +58,35 @@ log = get_logger(__name__)
 
 SNAPSHOT_RESOURCE = "tblock_names.json"
 
+# TEMPORARY: names for the plain BLOCK-123 programs observed so far, served
+# until a Jira token is deployed. A Jira refresh replaces them with the
+# issues' own summaries (the ones here are those, bar the first two);
+# delete this once RUBINTV_JIRA_TOKEN_FILE is set in every deployment.
+INTERIM_ISSUE_NAMES = {
+    "BLOCK-365": "Generic survey imaging (science validation)",
+    "BLOCK-407": "Generic survey imaging (LSST survey)",
+    "BLOCK-351": "LSSTCam on TMA: Create test case for Bright Star Illumination",
+    "BLOCK-368": "LSSTCam on TMA: Create test case for Filter Swap",
+    "BLOCK-378": (
+        "Create a JSON file for the stray light from M2 baffle test with CBP"
+        " - BLOCK-T445"
+    ),
+    "BLOCK-387": "Pointing model observations with LSSTCam",
+    "BLOCK-390": "Verify pointing model",
+    "BLOCK-408": (
+        "v1 configuration early ops LSST survey for known poor seeing conditions"
+    ),
+    "BLOCK-416": "v2 config for constrained early ops LSST survey",
+    "BLOCK-417": "v3 configuration constrained early ops LSST survey",
+    "BLOCK-419": "v4 configuration for constrained early ops LSST survey",
+    "BLOCK-421": (
+        "v5 configuration standard pre-LSST survey with first alerts extra visits"
+    ),
+}
+
 
 def load_snapshot() -> dict[str, str]:
-    """The block names bundled with the package."""
+    """The test-case names bundled with the package."""
     resource = files("lsst.ts.rubintv.models").joinpath(SNAPSHOT_RESOURCE)
     raw = json.loads(resource.read_text())
     return {str(k): str(v) for k, v in raw.items()}

@@ -213,7 +213,8 @@ class Settings(BaseSettings):
     """File holding Jira Cloud's basic-auth credential: base64 of the
     account's ``email:api-token``, the form nightlydigest's
     ``jira-api-token`` secret (which deployments copy) is kept in. Unset =
-    no refresh from Jira; plain ``BLOCK-123`` programs have no description."""
+    no refresh from Jira; plain ``BLOCK-123`` programs have only the interim
+    names."""
 
     block_names_refresh_seconds: float = 86400.0
     """How often to re-fetch the block names from Zephyr and Jira when
