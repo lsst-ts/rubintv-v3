@@ -148,30 +148,22 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
 
     // Helper function to get the base block name (without version suffix)
     function getBaseBlockName(program: string): string {
+        // Some programs are recorded with an underscore or a stray lower-case
+        // letter in the prefix (BLOCK_T339_g, BLOCk-539); read them as
+        // BLOCK-T339_g and BLOCK-539, or the suffix rule below cuts them
+        // down to a catch-all "BLOCK".
+        const normalised = program.replace(/^block[-_](t?)(?=\d)/i, (_, t: string) => `BLOCK-${t.toUpperCase()}`);
         // Remove version suffixes like _v3, _v2, _1, _2, _hexapods, etc.
         // This handles both numeric versions (_v3, _1, _2) and descriptive versions (_hexapods)
-        return program.replace(/_(?:v)?\d+$|_[a-zA-Z][a-zA-Z0-9_]*$/, '');
+        return normalised.replace(/_(?:v)?\d+$|_[a-zA-Z][a-zA-Z0-9_]*$/, '');
     }
 
-    // Helper function to get the correct T-block name for description lookup
-    function getDescriptionKey(program: string): string {
-        // First remove any version suffix
-        const baseProgram = getBaseBlockName(program);
-
-        // If program is BLOCK-XYZ format (without T), try BLOCK-TXYZ
-        const blockMatch = baseProgram.match(/^BLOCK-(\d+)$/);
-        if (blockMatch) {
-            const tBlockName = `BLOCK-T${blockMatch[1]}`;
-            // Use T-block version if it exists in translation table, otherwise use base
-            return tblockNames[tBlockName] ? tBlockName : baseProgram;
-        }
-        return baseProgram;
-    }
-
-    // Helper function to get description for a program
+    // Helper function to get description for a program. The names are the
+    // BLOCK-T test cases'; a plain BLOCK-123 is a different block from
+    // BLOCK-T123 (the similar numbers were a slip when the data were taken),
+    // so it isn't given BLOCK-T123's name.
     function getDescription(program: string): string | undefined {
-        const descriptionKey = getDescriptionKey(program);
-        return tblockNames[descriptionKey];
+        return tblockNames[getBaseBlockName(program)];
     }
 
     // Formatting helpers
@@ -887,7 +879,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
             .filter(d => getBaseBlockName(d.program) === program)
             .sort((a, b) => a.day.localeCompare(b.day));
 
-        // Get description for the program (with BLOCK-T mapping)
+        // Get description for the program
         const description = getDescription(program);
 
         // The list's order, night then seq, is the arrow keys' order through
@@ -1169,7 +1161,7 @@ export function renderGuide(root: HTMLElement, opts: RenderGuideOptions): { disp
                     }
                 });
 
-                // Also search against descriptive title if available (with BLOCK-T mapping)
+                // Also search against descriptive title if available
                 const description = getDescription(program) || "";
                 const descriptionMatch = description ? fuzzyMatch(query, description) : { score: 0, matched: false };
                 if (descriptionMatch.matched && descriptionMatch.score > bestMatch.score) {
