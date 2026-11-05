@@ -124,14 +124,20 @@ test("metadata labels sort by click, Enter or Space, and show the direction", ()
   expect(screen.queryByRole("button", { name: /^monitor/ })).toBeNull();
 });
 
-test("the Seq.No header sorts and shows a descending arrow", () => {
+test("the Seq.No header sorts and shows the direction", () => {
   const onSort = vi.fn();
-  renderTable({ onSort, sort: { col: SEQ_COL, dir: "desc" } });
-  const th = screen.getByRole("columnheader", { name: /Seq\.No/ });
+  const { unmount } = renderTable({ onSort, sort: { col: SEQ_COL, dir: "desc" } });
+  let th = screen.getByRole("columnheader", { name: /Seq\.No/ });
   expect(th.getAttribute("aria-sort")).toBe("descending");
   expect(th.textContent).toContain("▼");
   fireEvent.click(within(th).getByRole("button"));
   expect(onSort).toHaveBeenCalledWith("seq");
+  unmount();
+
+  renderTable({ sort: { col: SEQ_COL, dir: "asc" } });
+  th = screen.getByRole("columnheader", { name: /Seq\.No/ });
+  expect(th.getAttribute("aria-sort")).toBe("ascending");
+  expect(th.textContent).toContain("▲");
 });
 
 test("a long night renders only the rows in view, padding the rest", () => {

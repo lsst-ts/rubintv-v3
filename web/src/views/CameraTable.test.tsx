@@ -237,3 +237,18 @@ test("filters that match nothing say so rather than showing no data", async () =
     await screen.findByText("No rows match the active filter."),
   ).toBeDefined();
 });
+
+test("a locked column is shown ticked and can't be unticked", async () => {
+  stub({ camera: { locked_columns: ["Filter"] } });
+  renderTable();
+  await screen.findByText("z_20");
+  fireEvent.click(screen.getByRole("button", { name: /Columns/ }));
+  const item = screen
+    .getByText("Filter", { selector: ".scrolling-title-text" })
+    .closest("label")!;
+  expect(item.className).toContain("locked");
+  expect(item.getAttribute("title")).toBe("Always shown when present");
+  const box = within(item).getByRole("checkbox") as HTMLInputElement;
+  expect(box.checked).toBe(true);
+  expect(box.disabled).toBe(true);
+});

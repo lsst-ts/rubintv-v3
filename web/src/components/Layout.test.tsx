@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -99,4 +99,67 @@ test("the backend test site labels the strip TEST", async () => {
   renderAt("/usdf/lsstcam");
   expect(await screen.findByText("Test instance")).toBeDefined();
   expect(screen.getByText("TEST")).toBeDefined();
+});
+
+test("the next-day stepper moves to the following day with data", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10", "2026-04-08", "2026-04-05"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  const router = createMemoryRouter(routes, {
+    initialEntries: ["/local/auxtel?date=2026-04-05"],
+  });
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider router={router} />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  // From the oldest date, "next" skips the empty days to 04-08.
+  const next = await screen.findByRole("button", { name: /Next day with data/ });
+  await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(next);
+  await waitFor(() =>
+    expect(router.state.location.search).toContain("date=2026-04-08"),
+  );
+});
+
+test("a camera with a nightly summary gets a tab for it", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = {
+        name: "auxtel",
+        title: "AuxTel",
+        channels: [],
+        metadata_columns: {},
+        night_report_label: "Night Log",
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  renderAt("/local/auxtel?date=2026-04-10");
+  // Labelled as the camera's config says, and carrying the date along.
+  const tab = await screen.findByRole("link", { name: /Night Log/ });
+  expect(tab.getAttribute("href")).toBe(
+    "/local/auxtel/nightly-summary?date=2026-04-10",
+  );
 });

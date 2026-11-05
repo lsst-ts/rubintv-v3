@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   fillTemplate,
   hasImageViewer,
@@ -142,5 +142,25 @@ describe("instanceEnv", () => {
 
   test("no site uses the hostname heuristic", () => {
     expect(instanceEnv()).toBe("localhost");
+  });
+});
+
+describe("instanceEnv off localhost", () => {
+  const real = window.location;
+  beforeEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...real, hostname: "usdf-rsp.slac.stanford.edu" },
+    });
+  });
+  afterEach(() => {
+    Object.defineProperty(window, "location", { configurable: true, value: real });
+  });
+
+  test("a real deployment on a prod site is prod", () => {
+    expect(instanceEnv("usdf-k8s", { env: "prod" })).toBe("prod");
+    expect(instanceEnv()).toBe("prod");
+    // Still dev when the deployment says so.
+    expect(instanceEnv("summit", { env: "dev" })).toBe("dev");
   });
 });

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { DatePicker } from "./DatePicker";
 
 function open(props: Partial<Parameters<typeof DatePicker>[0]> = {}) {
@@ -221,4 +221,196 @@ test("trigger chip is tinted historical when the date isn't the current day_obs"
   expect(trigger.className).toContain("is-past-day");
   expect(trigger.className).not.toContain("is-live-day");
   expect(trigger.getAttribute("title")).toMatch(/Historical day/);
+});
+
+const monthHeads = (dialog: HTMLElement) =>
+  [...dialog.querySelectorAll(".dp-mhead")].map((h) =>
+    h.querySelector(".month")!.textContent + " " + h.querySelector(".yr")!.textContent,
+  );
+
+test("the month arrows step by month and year, across year ends", () => {
+  localStorage.clear();
+  render(
+    <DatePicker
+      dates={["2026-01-10"]}
+      counts={{}}
+      maxSeq={{}}
+      value="2026-01-10"
+      onChange={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /2026-01-10/ }));
+  const dialog = screen.getByRole("dialog");
+  // Two months side by side, from the selected date's month.
+  expect(monthHeads(dialog)).toEqual(["January 2026", "February 2026"]);
+  fireEvent.click(within(dialog).getByTitle("Previous month"));
+  expect(monthHeads(dialog)).toEqual(["December 2025", "January 2026"]);
+  fireEvent.click(within(dialog).getByTitle("Next year"));
+  expect(monthHeads(dialog)).toEqual(["December 2026", "January 2027"]);
+  fireEvent.click(within(dialog).getByTitle("Next month"));
+  expect(monthHeads(dialog)).toEqual(["January 2027", "February 2027"]);
+  fireEvent.click(within(dialog).getByTitle("Previous year"));
+  expect(monthHeads(dialog)).toEqual(["January 2026", "February 2026"]);
+});
+
+test("a day with data but no max seq says it has data", () => {
+  const dialog = open({ maxSeq: {} });
+  expect(within(dialog).getByTitle("2026-04-10 · has data")).toBeDefined();
+});
+
+test("jump to latest picks the newest date, by click or keyboard", () => {
+  const onChange = vi.fn();
+  const props = {
+    dates: ["2026-04-10", "2026-03-01"],
+    counts: {},
+    maxSeq: {},
+    value: "2026-03-01",
+    onChange,
+  };
+  localStorage.clear();
+  render(<DatePicker {...props} />);
+  const trigger = screen.getByRole("button", { name: /2026-03-01/ });
+  const latest = () => screen.getByRole("button", { name: "jump to latest" });
+
+  fireEvent.click(trigger);
+  fireEvent.click(latest());
+  expect(onChange).toHaveBeenLastCalledWith("2026-04-10");
+  expect(screen.queryByRole("dialog")).toBeNull(); // picking closes it
+
+  fireEvent.click(trigger);
+  expect(fireEvent.keyDown(latest(), { key: "Tab" })).toBe(true);
+  expect(onChange).toHaveBeenCalledTimes(1);
+  // Space must not also scroll the page.
+  expect(fireEvent.keyDown(latest(), { key: " " })).toBe(false);
+  expect(onChange).toHaveBeenCalledTimes(2);
+  fireEvent.click(trigger);
+  fireEvent.keyDown(latest(), { key: "Enter" });
+  expect(onChange).toHaveBeenCalledTimes(3);
+});
+
+test("a heatmap month opens in the Months view from the keyboard too", () => {
+  const dialog = open({ counts: { "2026-04-10": 5 } });
+  fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));
+  const aug = within(dialog).getByTitle("Open Aug 2026 in the month view");
+
+  // A key on a day inside the month belongs to that day, not the month.
+  const apr = within(dialog).getByTitle("Open Apr 2026 in the month view");
+  fireEvent.keyDown(within(apr).getByTitle("2026-04-10 · 5 exposures"), {
+    key: "Enter",
+  });
+  expect(within(dialog).getByRole("tab", { name: "Heatmap" })
+    .getAttribute("aria-selected")).toBe("true");
+
+  fireEvent.keyDown(aug, { key: "Tab" });
+  expect(within(dialog).getByRole("tab", { name: "Heatmap" })
+    .getAttribute("aria-selected")).toBe("true");
+  expect(fireEvent.keyDown(aug, { key: " " })).toBe(false);
+  expect(monthHeads(dialog)[0]).toBe("August 2026");
+});
+
+test("heatmap shades days by how many exposures they had", () => {
+  const counts = {
+    "2026-04-01": 0,
+    "2026-04-02": 1,
+    "2026-04-03": 100,
+    "2026-04-04": 500,
+    "2026-04-05": 5000,
+  };
+  const dialog = open({ dates: Object.keys(counts).reverse(), counts });
+  fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));
+  const lv = (title: string) =>
+    within(dialog).getByTitle(title).className.match(/lv-\S+/)?.[0];
+  expect(lv("2026-04-01 · 0 exposures")).toBe("lv-0");
+  expect(lv("2026-04-02 · 1 exposure")).toBe("lv-1");
+  expect(lv("2026-04-03 · 100 exposures")).toBe("lv-2");
+  expect(lv("2026-04-04 · 500 exposures")).toBe("lv-3");
+  expect(lv("2026-04-05 · 5000 exposures")).toBe("lv-4");
+});
+
+test("a heatmap with no dates says so", () => {
+  localStorage.clear();
+  render(
+    <DatePicker dates={[]} counts={{}} maxSeq={{}} value="" onChange={() => {}} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /select date/ }));
+  fireEvent.click(screen.getByRole("tab", { name: "Heatmap" }));
+  expect(screen.getByText("No dates with data.")).toBeDefined();
+});
+
+test("a movie picker's chip explains its live or past tint", () => {
+  const { unmount } = render(
+    <DatePicker
+      movies
+      isCurrentDayObs
+      dates={["2026-04-10"]}
+      counts={{}}
+      maxSeq={{}}
+      value="2026-04-10"
+      onChange={() => {}}
+    />,
+  );
+  expect(screen.getByRole("button").getAttribute("title")).toBe(
+    "Movie for the current observing night.",
+  );
+  unmount();
+  render(
+    <DatePicker
+      movies
+      dates={["2026-04-10"]}
+      counts={{}}
+      maxSeq={{}}
+      value="2026-04-10"
+      onChange={() => {}}
+    />,
+  );
+  expect(screen.getByRole("button").getAttribute("title")).toMatch(
+    /past night/,
+  );
+});
+
+test("the view choice still works where storage is blocked", () => {
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  try {
+    render(
+      <DatePicker
+        dates={["2026-04-10"]}
+        counts={{}}
+        maxSeq={{}}
+        value="2026-04-10"
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2026-04-10/ }));
+    const heatmap = screen.getByRole("tab", { name: "Heatmap" });
+    expect(screen.getByRole("tab", { name: "Months" }).getAttribute("aria-selected"))
+      .toBe("true");
+    fireEvent.click(heatmap);
+    expect(heatmap.getAttribute("aria-selected")).toBe("true");
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+describe("across the noon-UTC day rollover", () => {
+  afterEach(() => vi.useRealTimers());
+
+  test("the new observing day becomes pickable without a reload", () => {
+    // 11:59 UTC on the 10th is still day_obs 2026-04-09: the 10th is future.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-10T11:59:30Z"));
+    const dialog = open({ maxSeq: {} });
+    const cell = () => within(dialog).getByTitle("2026-04-10 · has data");
+    expect(cell().tagName).toBe("DIV");
+    expect(cell().className).toContain("disabled");
+
+    // The picker re-reads day_obs each minute; past noon the 10th is today.
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(cell().tagName).toBe("BUTTON");
+    expect(cell().className).toContain("today");
+  });
 });

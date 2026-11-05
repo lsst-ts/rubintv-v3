@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { MediaInterruptionProvider } from "../lib/MediaInterruption";
-import { ProxiedImg, ProxiedVideo } from "./ProxiedMedia";
+import { InterruptedNotice, ProxiedImg, ProxiedVideo } from "./ProxiedMedia";
 
 // A response body that delivers `bytes` and then, unless `complete`, fails
 // the way a connection cut mid-transfer does.
@@ -107,4 +107,64 @@ test("a movie the server doesn't have isn't reported", async () => {
   // probe's verdict has been acted on by then.
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(report).not.toHaveBeenCalled();
+});
+
+test("an image whose retry can't connect fails as a plain <img> would", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+  const { img, onError, report } = renderImg();
+  fireEvent.error(img);
+  await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+  expect(report).not.toHaveBeenCalled();
+});
+
+test("a retry that gets no bytes at all fails as a plain <img> would", async () => {
+  stubFetch({ ok: true, body: new ReadableStream({ start: (c) => c.close() }) });
+  const { img, onError } = renderImg();
+  fireEvent.error(img);
+  await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+  expect(img.getAttribute("src")).toBe("/api/x.png");
+});
+
+test("a second failure while recovering doesn't start another fetch", async () => {
+  const fetchMock = stubFetch({ ok: true, body: body([1, 2, 3], true) });
+  const { img } = renderImg();
+  fireEvent.error(img);
+  fireEvent.error(img);
+  await waitFor(() => expect(img.getAttribute("src")).toMatch(/^blob:/));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("a recovered copy that still won't draw gives up", async () => {
+  // e.g. the bytes that arrived aren't a decodable image after all.
+  stubFetch({ ok: true, body: body([1, 2, 3], false) });
+  const { img, onError } = renderImg();
+  fireEvent.error(img);
+  await waitFor(() => expect(img.getAttribute("src")).toMatch(/^blob:/));
+  fireEvent.error(img);
+  expect(onError).toHaveBeenCalledTimes(1);
+});
+
+test("a movie whose server can't be reached counts as interrupted", async () => {
+  // The connection, not the file, is the problem.
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+  const { video, report } = renderVideo();
+  fireEvent.error(video);
+  await waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+});
+
+test("the interrupted-download notice reloads the page", () => {
+  const real = window.location;
+  const reload = vi.fn();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...real, reload },
+  });
+  try {
+    render(<InterruptedNotice />);
+    expect(screen.getByRole("alert")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /Reload/ }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  } finally {
+    Object.defineProperty(window, "location", { configurable: true, value: real });
+  }
 });
