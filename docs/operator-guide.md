@@ -86,8 +86,10 @@ shows "Sweeping ConsDB…" until it catches up), then polls for newer
 exposures every `RUBINTV_GUIDE_POLL_INTERVAL_SECONDS`. The grouped blocks
 are persisted under `RUBINTV_CACHE_DIR/guide/` so a restart is warm (a
 cache in an older release's format is skipped, logging
-`guide.cache.skipped`, and swept afresh); a ConsDB outage keeps serving the
-last blocks with a warning pill.
+`guide.cache.skipped`, and swept afresh; a directory that can't be created
+there, such as the default `/scratch` on a pod without the PVC, means no
+cache, after a single `guide.cache.disabled` warning); a ConsDB outage keeps
+serving the last blocks with a warning pill.
 
 The ConsDB pods accept in-cluster traffic from any namespace, so the
 in-cluster URL needs no secret. The block descriptions come from two

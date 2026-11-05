@@ -419,13 +419,15 @@ async def test_a_failed_cache_write_is_logged_and_retried_next_poll(
         "lsst.ts.rubintv.data.guide.log.warning",
         lambda event, **kw: warnings.append(event),
     )
-    # A file where the cache directory should be makes mkdir raise an
-    # OSError, and does so even when the tests run as root (unlike chmod).
-    blocker = tmp_path / "guide"
-    blocker.write_text("not a directory")
     client = FakeConsDb([row(1, "P", 0)])
     svc = make_service(client, tmp_path)
     guide = svc.instruments["lsstcam"]
+    # Mid-run, a file where the cache directory should be makes the write
+    # raise an OSError, and does so even when the tests run as root (unlike
+    # chmod).
+    blocker = tmp_path / "guide"
+    blocker.rmdir()
+    blocker.write_text("not a directory")
 
     await svc.poll(guide)
 
@@ -439,6 +441,31 @@ async def test_a_failed_cache_write_is_logged_and_retried_next_poll(
     assert not guide.dirty
     cached = json.loads((blocker / "lsstcam.json").read_text())
     assert cached["last_exposure_id"] == 2025041100001
+
+
+async def test_an_unusable_cache_dir_disables_the_cache_with_one_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # As the S3 disk cache does: cache_dir defaults to the PVC mount, which
+    # a pod without one, or a dev machine, lacks. That is "no cache", not a
+    # write retried, and warned about, on every poll.
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.guide.log.warning",
+        lambda event, **kw: warnings.append(event),
+    )
+    (tmp_path / "guide").write_text("not a directory")
+    client = FakeConsDb([row(1, "P", 0)])
+    svc = make_service(client, tmp_path)
+    guide = svc.instruments["lsstcam"]
+
+    await svc.poll(guide)
+    client.rows.append(row(2, "P", 1))
+    await svc.poll(guide)
+
+    assert len(guide.blocks()) == 1 and guide.error is None
+    assert warnings == ["guide.cache.disabled"]
+    assert not guide.dirty
 
 
 async def test_run_loop_survives_a_corrupt_cache_and_a_crashing_poll(

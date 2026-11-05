@@ -320,6 +320,18 @@ class GuideService:
         self._poll_interval = poll_interval
         self._page_size = page_size
         self._cache_dir = cache_dir / "guide" if cache_dir else None
+        # Probe the cache dir once up front, as the S3 disk cache does:
+        # cache_dir defaults to the PVC mount (/scratch), which not every pod
+        # (or dev machine) has, and an unusable one means "no cache", not a
+        # write retried and warned about on every poll.
+        if self._cache_dir is not None:
+            try:
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                log.warning(
+                    "guide.cache.disabled", dir=str(self._cache_dir), error=str(exc)
+                )
+                self._cache_dir = None
         self._max_gap = max_gap
         self.instruments: dict[str, InstrumentGuide] = {
             name: InstrumentGuide(name, BlockGrouper(max_gap), self._since_id)
