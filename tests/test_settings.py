@@ -117,3 +117,15 @@ def test_redis_stays_disabled_without_a_host(monkeypatch: pytest.MonkeyPatch) ->
 def test_s3_endpoint_url_is_read_unprefixed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_ENDPOINT_URL", "https://s3.ls.lsst.org")
     assert Settings(_env_file=None).s3_endpoint_url == "https://s3.ls.lsst.org"
+
+
+def test_the_suite_ignores_a_dotenv_in_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The app reads .env from where it starts; conftest's no_dotenv keeps a
+    # developer's local one (real cache dir, ConsDB, tokens) out of tests.
+    (tmp_path / ".env").write_text("RUBINTV_CACHE_DIR=/from/dotenv\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RUBINTV_CACHE_DIR", raising=False)
+    assert Settings(_env_file=".env").cache_dir == Path("/from/dotenv")
+    assert Settings().cache_dir != Path("/from/dotenv")
