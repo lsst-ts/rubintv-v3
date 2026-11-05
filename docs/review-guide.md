@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 327 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 341 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -387,8 +387,8 @@ Safe to skim.
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
-  `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`, and
-  the commit that noted the log guide.
+  `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
+  `fc0b960`, and the commit that noted the coverage pass.
 
 ---
 
@@ -786,6 +786,39 @@ then the renamed routes in `routes.tsx`, `api/nightreport.py`,
   app's pre-rename `night-report` URL redirects in the SPA's route table,
   so it also works under the Vite dev server. Internal names, JSON
   fields, camera config keys and the bucket's keys are unchanged
+
+### 50. Coverage pass and a CI coverage report
+Tests for what the suites never ran, on both halves, and a coverage
+report on every GitHub Actions run. Test-only apart from one dead-code
+removal: no shipped behaviour changes. Read `.github/workflows/ci.yml`
+and the `no_dotenv` fixture in `tests/conftest.py`; skim the rest.
+- `fc56967` CI: publish a coverage report. Each job writes its total
+  and the files short of 100% to the run's summary page and uploads the
+  HTML report as an artifact (kept 14 days), even when a test fails.
+  Reported, never enforced. Backend coverage now counts branches
+  (`[tool.coverage.run] branch = true`, so Jenkins and local runs too);
+  `web/scripts/coverage-summary.mjs` renders Vitest's json-summary
+- `96421c9` Keep the whole suite off the developer's `.env`: a
+  session-wide autouse fixture switches Settings' env file off, so the
+  suite behaves the same wherever pytest starts. A local `.env` had
+  pointed tests at the real cache dir (and, with the guide, at live
+  Zephyr)
+- Backend tests, branch coverage 94% → 99.4%: `ee02596` the app's
+  cache upkeep, metadata preload and root serving; `99f62bf` the
+  WebSocket handler's failure and cancellation paths; `5ba239a` config
+  edge cases, the settings cache, the CLI and build provenance;
+  `9484764` the data layer's failure, abort and bookkeeping paths;
+  `be7c6b7` API revalidation, proxy edge cases and relay failures
+- `6a33b40` Remove the store's unused `_date_of` helper (its last
+  caller went in `ba63985`; `data/source.py` keeps the live copy)
+- Frontend tests, statements 89% → 99.7%, branches 86% → 96%,
+  functions 77% → 98%: `de289b4` the theme picker, nav menu, cell modal
+  and small shared parts; `de8aef6` the socket's reconnects and the
+  layout-measuring hooks; `3e83582` the channel viewer's keys and zoom
+  and the table's toolbar; `6ae2e2b` the other views' actions,
+  fallbacks and failure paths; `cfd41b1` the pickers, filters, media
+  recovery and route guard. The stub socket in `src/test-setup.ts`
+  gains `liveSockets()`, `dropLiveSocket()` and `pushRawLiveFrame()`
 
 ---
 
