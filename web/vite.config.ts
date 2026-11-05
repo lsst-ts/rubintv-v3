@@ -42,7 +42,8 @@ export default defineConfig({
     coverage: {
       enabled: true,
       provider: "v8",
-      reporter: ["text", "html"],
+      // json-summary feeds the CI job summary (scripts/coverage-summary.mjs).
+      reporter: ["text", "html", "json-summary"],
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/**/*.test.{ts,tsx}",
