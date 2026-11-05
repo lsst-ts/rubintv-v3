@@ -122,6 +122,22 @@ def aws_profiles() -> Iterator[None]:
                     os.environ[var] = value
 
 
+@pytest.fixture(scope="session", autouse=True)
+def no_dotenv() -> Iterator[None]:
+    """Keep every Settings in the suite off the developer's ``.env``.
+
+    Settings reads ``.env`` from the working directory, so a run started in a
+    checkout set up for local work picked up its cache dir, ConsDB URL and
+    token files: tests then touched the real cache or services, slowed down,
+    or failed depending on where pytest was launched. With the file switched
+    off, a test's Settings hold only what it passes and the environment it
+    sets, wherever the suite runs.
+    """
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(Settings.model_config, "env_file", None)
+        yield
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Settings pointed at the repo's sample config, no Redis, no cache.

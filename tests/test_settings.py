@@ -150,3 +150,15 @@ def test_instance_env_rejects_unknown_values(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("RUBINTV_INSTANCE_ENV", "staging")
     with pytest.raises(ValueError, match="instance_env"):
         Settings(_env_file=None)
+
+
+def test_the_suite_ignores_a_dotenv_in_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The app reads .env from where it starts; conftest's no_dotenv keeps a
+    # developer's local one (real cache dir, ConsDB, tokens) out of tests.
+    (tmp_path / ".env").write_text("RUBINTV_CACHE_DIR=/from/dotenv\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RUBINTV_CACHE_DIR", raising=False)
+    assert Settings(_env_file=".env").cache_dir == Path("/from/dotenv")
+    assert Settings().cache_dir != Path("/from/dotenv")
