@@ -170,7 +170,12 @@ def fetch_zephyr_names(
     while url:
         page = _zephyr_get(url, token, timeout)
         assert page is not None
-        for case in page.get("values") or []:
+        values = page.get("values") or []
+        if not isinstance(values, list):
+            raise ZephyrError("Zephyr returned an unexpected page")
+        for case in values:
+            if not isinstance(case, dict):
+                continue
             key, name = case.get("key"), case.get("name")
             if key and name:
                 names[str(key)] = str(name)
@@ -277,7 +282,10 @@ def fetch_jira_names(
             raise JiraError(f"Jira unreachable: {exc}") from exc
         if not isinstance(page, dict):
             raise JiraError("Jira returned an unexpected page")
-        for issue in page.get("issues") or []:
+        issues = page.get("issues") or []
+        if not isinstance(issues, list):
+            raise JiraError("Jira returned an unexpected page")
+        for issue in issues:
             fields = issue.get("fields") if isinstance(issue, dict) else None
             summary = fields.get("summary") if isinstance(fields, dict) else None
             if summary and issue.get("key"):
