@@ -347,9 +347,8 @@ demands, but nothing breaks when it drifts.
 
 Structured logs (JSON in prod) carry a per-request `request_id` (honours an
 inbound `X-Request-ID` from the proxy, else generated, echoed on the
-response). Key log events: `startup.*`, `poll.ready`, `poll.historical.idle`,
-`day.rollover`, `ws.connect`/`ws.disconnect`, `redis.*`, `cache.*`,
-`subapp.*`, `spa.*`.
+response). The [log guide](log-guide.md) covers reading them in the cluster,
+what to look for when something is wrong, and what every event means.
 
 ### Watching the data flow
 
