@@ -139,3 +139,27 @@ def test_delete_missing_slice_is_noop(tmp_path: Path) -> None:
 
 def test_delete_disabled_is_noop() -> None:
     DiskCache(None).delete("local", "auxtel", "1970-01-01")  # no raise
+
+
+def test_a_failed_write_is_not_fatal(tmp_path: Path) -> None:
+    # A PVC hiccup mid-scan must cost a cache slice, not the scan loop: a
+    # file sitting where the camera's directory belongs makes the write fail.
+    cache = DiskCache(tmp_path)
+    (tmp_path / CACHE_VERSION / "local").mkdir(parents=True)
+    (tmp_path / CACHE_VERSION / "local" / "lsstcam").write_text("not a dir")
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    assert cache.load_all() == {}
+
+
+def test_failed_deletes_are_not_fatal(tmp_path: Path) -> None:
+    # A slice that can't be unlinked (here a directory in its place) is
+    # logged and skipped by both the per-date evict and the admin flush,
+    # which still removes everything else.
+    cache = DiskCache(tmp_path)
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    stuck = tmp_path / CACHE_VERSION / "local" / "lsstcam" / "2026-04-11.json"
+    stuck.mkdir()
+    cache.delete("local", "lsstcam", "2026-04-11")
+    assert cache.clear() == 1
+    assert stuck.is_dir()
+    assert cache.load_all() == {}

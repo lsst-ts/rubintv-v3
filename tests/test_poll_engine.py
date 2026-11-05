@@ -615,3 +615,119 @@ async def test_periodic_recent_pass_does_not_rewarm_metadata() -> None:
     assert warmed == [("loc", "cam")]
     await engine._scan_recent_window(warm=False)  # periodic tick: doesn't
     assert warmed == [("loc", "cam")]
+
+
+# -- the historical loop, on-demand memo and failure barrier -----------------
+
+
+class _EmptyPoller(FakePoller):
+    """Every prefix lists nothing."""
+
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        self.scanned.append((location, prefix))
+        return ScanResult(events=[], keys=set())
+
+
+async def test_historical_loop_retries_a_failed_sweep() -> None:
+    # A failed full sweep keeps the loading flag up and retries after a
+    # short pause instead of sleeping the 12h cadence with history missing.
+    # Later sweeps run with the flag already down.
+    class FailFirstSweep(FakePoller):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed = False
+
+        def scan(self, location: str, prefix: str) -> ScanResult:
+            if prefix == "cam/" and not self.failed:
+                self.failed = True
+                self.scanned.append((location, prefix))
+                raise RuntimeError("listing failed")
+            return super().scan(location, prefix)
+
+    poller = FailFirstSweep()
+    engine, _ = _engine(window=0, poller=poller)
+    pauses: list[tuple[float, bool]] = []
+    refreshes = 0
+
+    async def pause(seconds: float) -> bool:
+        pauses.append((seconds, engine.historical_loading))
+        return False
+
+    async def refresh(seconds: float) -> None:
+        nonlocal refreshes
+        refreshes += 1
+        if refreshes == 2:
+            engine._stop.set()
+
+    engine._pause = pause  # type: ignore[method-assign]
+    engine._refresh_recent_until = refresh  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._historical_loop(), timeout=5.0)
+    assert pauses == [(tasks._HISTORICAL_RETRY_SECONDS, True)]
+    assert [p for _, p in poller.scanned] == ["cam/", "cam/", "cam/"]
+    assert engine.historical_loading is False
+
+
+async def test_recent_refresh_with_no_time_left_returns_at_once() -> None:
+    engine, poller = _engine(window=1, recent_refresh=1.0)
+    await asyncio.wait_for(engine._refresh_recent_until(0), timeout=1.0)
+    assert poller.scanned == []
+
+
+async def test_scan_date_remembers_a_date_that_listed_empty() -> None:
+    # A client hammering a real-looking date with no data must not buy one
+    # S3 listing per request; a flush (rescan trigger) forgets the answer.
+    poller = _EmptyPoller()
+    engine, _ = _engine(window=0, poller=poller)
+    assert await engine.scan_date("loc", "cam", "2026-01-05") == 0
+    assert await engine.scan_date("loc", "cam", "2026-01-05") == 0
+    assert len(poller.scanned) == 1
+    engine.trigger_rescan()
+    assert await engine.scan_date("loc", "cam", "2026-01-05") == 0
+    assert len(poller.scanned) == 2
+
+
+async def test_empty_date_memo_is_bounded_oldest_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tasks, "_ON_DEMAND_EMPTY_MAX", 2)
+    poller = _EmptyPoller()
+    engine, _ = _engine(window=0, poller=poller)
+    for date in ("2026-01-01", "2026-01-02", "2026-01-03"):
+        await engine.scan_date("loc", "cam", date)
+    poller.scanned.clear()
+    for date in ("2026-01-03", "2026-01-02", "2026-01-01"):
+        await engine.scan_date("loc", "cam", date)
+    # Only the oldest answer was forgotten.
+    assert [p for _, p in poller.scanned] == ["cam/2026-01-01/"]
+
+
+async def test_failing_locations_all_finish_before_the_error_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A bare gather would raise at the first failure and leave the other
+    # location's worker running detached into the next cycle. Every worker
+    # finishes first; the first error propagates and the rest are logged.
+    class AlwaysFails(FakePoller):
+        def scan(self, location: str, prefix: str) -> ScanResult:
+            self.scanned.append((location, prefix))
+            raise RuntimeError(f"{location} unreachable")
+
+    logged: list[str] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: logged.append(event)
+
+    monkeypatch.setattr(tasks, "log", Recorder())
+    models = Models(
+        locations=[
+            Location(name=n, title=n, bucket=n, cameras=[Camera(name="cam", title="C")])
+            for n in ("one", "two")
+        ]
+    )
+    poller = AlwaysFails()
+    engine = PollEngine(models, EventStore(), poller)  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="one unreachable"):
+        await engine._scan_day("2026-01-05")
+    assert sorted(loc for loc, _ in poller.scanned) == ["one", "two"]
+    assert logged == ["poll.scan.location_error"]

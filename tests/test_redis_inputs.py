@@ -553,3 +553,100 @@ async def test_detector_loop_applies_stream_entries(
 
     await inputs.stop()
     assert fake.closed is True
+
+
+async def test_detector_seed_survives_an_unreadable_stream() -> None:
+    # One stream that can't be read (a WRONGTYPE key after a producer bug)
+    # must not stop the others seeding the Cluster Status page; an XREAD
+    # that brings nothing publishes nothing; and the reader returns cleanly
+    # once stopped.
+    bus = EventBus()
+    detectors = DetectorStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        detectors,
+        [
+            RedisDetector(key="BROKEN", name="broken"),
+            RedisDetector(key="CLUSTER_STATUS_SFM_SET_0", name="sfmSet0"),
+        ],
+    )
+    entry = {"data": json.dumps({"189": {"status": "busy", "type": "worker_status"}})}
+    reads = 0
+
+    class _Fake:
+        async def xrevrange(
+            self, stream_name: str, count: int = 1
+        ) -> list[tuple[str, dict[str, str]]]:
+            if stream_name == "stream:BROKEN":
+                raise RuntimeError("WRONGTYPE")
+            return [("1-1", entry)]
+
+        async def xread(self, last_ids: dict[str, str], block: int = 0) -> list[object]:
+            nonlocal reads
+            reads += 1
+            inputs._stop.set()
+            return []
+
+    inputs._redis = _Fake()  # type: ignore[assignment]
+    async with bus.subscribe() as stream:
+        await asyncio.wait_for(
+            inputs._supervise("detectors", inputs._detector_loop), timeout=5
+        )
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "detectorStatus"
+    assert detectors.all() == {"sfmSet0": {"workers": {"189": {"status": "busy"}}}}
+    assert reads == 1
+
+
+async def test_reader_failing_during_shutdown_is_not_restarted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # stop() closing the connection makes a blocked reader raise; that is
+    # shutdown, not a blip to reconnect from.
+    events: list[str] = []
+
+    class _Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: events.append(event)
+
+    monkeypatch.setattr("lsst.ts.rubintv.data.redis_inputs.log", _Recorder())
+    inputs = RedisInputs("redis://x", EventBus(), ControlStore(), DetectorStore(), [])
+    runs = 0
+
+    async def reader() -> None:
+        nonlocal runs
+        runs += 1
+        inputs._stop.set()
+        raise ConnectionError("connection closed")
+
+    await asyncio.wait_for(inputs._supervise("readback", reader), timeout=5)
+    assert runs == 1
+    assert events == ["redis.reader.error"]
+
+
+async def test_stop_during_the_reconnect_backoff_ends_the_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A reader whose stream simply ends is restarted after a backoff; a stop
+    # arriving during that backoff ends supervision without another run.
+    events: list[str] = []
+
+    class _Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: events.append(event)
+
+    monkeypatch.setattr("lsst.ts.rubintv.data.redis_inputs.log", _Recorder())
+    inputs = RedisInputs("redis://x", EventBus(), ControlStore(), DetectorStore(), [])
+    runs = 0
+
+    async def reader() -> None:
+        nonlocal runs
+        runs += 1
+        # Lands once the supervisor is waiting out the backoff.
+        asyncio.get_running_loop().call_soon(inputs._stop.set)
+
+    await asyncio.wait_for(inputs._supervise("readback", reader), timeout=5)
+    assert runs == 1
+    assert events == ["redis.reader.reconnect"]

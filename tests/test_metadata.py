@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Iterator
 
 import boto3
@@ -284,3 +285,57 @@ async def test_delta_since_an_unknown_version_is_none(
     await _rewrite(cache, {**rows, "7": {"Exposure time": 7.0}})
     assert await cache.delta_since("test", "lsstcam", DATE, etag1) is None
     assert await cache.delta_since("test", "lsstcam", DATE, "never-seen") is None
+
+
+async def _rows(cache: MetadataCache, n: int) -> None:
+    await _rewrite(
+        cache, {str(i): {"Exposure time": float(i)} for i in range(1, n + 1)}
+    )
+
+
+@pytest.mark.parametrize("rows", [5, 3], ids=["mid-document", "at-the-end"])
+async def test_an_aborted_stream_stops_and_never_seeds_the_cache(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch, rows: int
+) -> None:
+    # A subscriber leaving mid-transfer sets the abort flag; the worker
+    # stops at its next batch boundary (or before storing, if the document
+    # ran out first), and the partial dict must not be cached as the date's
+    # metadata.
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    await _rows(cache, rows)
+    abort = threading.Event()
+    batches = cache._stream_blocking("test", "lsstcam", DATE, abort)
+    assert len(next(batches).rows) == 2
+    abort.set()
+    assert list(batches) == []
+    assert cache._entries == {}
+
+
+async def test_an_aborted_stream_of_a_cached_copy_stops_too(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    await cache.get_with_etag("test", "lsstcam", DATE)  # cached, 5 rows
+    abort = threading.Event()
+    batches = cache._stream_blocking("test", "lsstcam", DATE, abort)
+    assert len(next(batches).rows) == 2
+    abort.set()
+    # No more rows go out; only the terminal marker, which nobody reads.
+    assert [b.rows for b in batches if not b.done] == []
+
+
+async def test_stream_of_whole_batches_has_no_trailing_chunk(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    await _rows(cache, 4)
+    chunks, etag = await _collect(cache)
+    assert [len(c) for c in chunks] == [2, 2]
+    assert etag is not None
+
+
+async def test_delta_since_for_a_date_without_metadata_is_none(
+    cache: MetadataCache,
+) -> None:
+    # Nothing to diff against: the caller falls back to the full stream.
+    assert await cache.delta_since("test", "lsstcam", "2026-04-11", "x") is None

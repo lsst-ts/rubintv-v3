@@ -710,3 +710,53 @@ async def test_new_date_publishes_calendar_update_once() -> None:
         (second,) = await _collect(bus, 1, stream)
         assert second.type == "channelData"
         assert next(iter(bus._queues)).empty()  # noqa: SLF001
+
+
+async def test_removed_events_are_left_to_reconciliation() -> None:
+    # Within one diff a rename emits CREATED(new) then REMOVED(old) for the
+    # same slot, so a REMOVED can't be applied on its own: apply ignores it
+    # and reconciliation against the next listing does the deleting.
+    store = EventStore()
+    key = "lsstcam/2026-04-10/c/000001/a.png"
+    await store.apply([created(key)])
+    removed = ObjectEvent(ObjectKind.REMOVED, "local", key)
+    assert await store.apply([removed]) == set()
+    assert await store.apply([]) == set()
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels["c"] == {1}
+
+
+async def test_latest_channel_image_falls_back_to_an_older_night() -> None:
+    # The camera card's thumbnail is the newest still frame of the primary
+    # channel: a newer night with only other channels so far doesn't count.
+    store = EventStore()
+    await store.apply(
+        [
+            created("lsstcam/2026-04-09/witness_detector/000003/a.jpg"),
+            created("lsstcam/2026-04-10/focal_plane/000004/b.png"),
+        ]
+    )
+    assert store.latest_channel_image("local", "lsstcam", "witness_detector") == (
+        "2026-04-09",
+        3,
+        "jpg",
+    )
+
+
+async def test_reconcile_a_cached_slice_without_extension_info() -> None:
+    # A warm-start slice can hold a channel's seqs with no extension entry
+    # (the cache stores each field separately); reconciling it must still
+    # drop the vanished seq.
+    store = EventStore()
+    store.load_snapshot(
+        {("local", "lsstcam"): {"2026-04-10": DateIndex(channels={"c": {1, 2}})}}
+    )
+    await store.reconcile(
+        ("local", "lsstcam"),
+        {"lsstcam/2026-04-10/c/000001/a.png"},
+        ScanScope(dates=frozenset({"2026-04-10"})),
+    )
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.channels == {"c": {1}}
