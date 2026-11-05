@@ -25,16 +25,20 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import boto3
 import pytest
-from lsst.ts.rubintv.app import create_app
+from fastapi.testclient import TestClient
+from lsst.ts.rubintv.app import _resolve_models_path, create_app
 from lsst.ts.rubintv.config.settings import Settings
-from lsst.ts.rubintv.data.cache import CACHE_VERSION
+from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
+from lsst.ts.rubintv.data.dayobs import get_current_day_obs
+from lsst.ts.rubintv.data.index import DateIndex
 from lsst.ts.rubintv.middleware import (
     CorrelationMiddleware,
     ResponseAborted,
@@ -55,18 +59,41 @@ from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
 
 
 @contextmanager
-def run_app(**overrides: object) -> Iterator[PrefixedTestClient]:
+def run_app(
+    objects: Mapping[str, bytes] | None = None, **overrides: object
+) -> Iterator[PrefixedTestClient]:
     # cache_dir=None: the setting defaults to the real /scratch PVC mount,
-    # which tests must never read or write (hermeticity).
+    # which tests must never read or write (hermeticity). ``objects`` seeds
+    # the bucket before the app starts, so the first scans see them.
     settings = Settings(
         models_path=CONFIG_PATH,
         poll_interval_seconds=0.05,
         **{"site": "test", "cache_dir": None, **overrides},  # type: ignore[arg-type]
     )
     with mock_aws():
-        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=TEST_BUCKET)
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=TEST_BUCKET)
+        for key, body in (objects or {}).items():
+            s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=body)
         with PrefixedTestClient(create_app(settings)) as client:
             yield client
+
+
+def wait_until(predicate: Callable[[], bool], timeout: float = 30.0) -> bool:
+    """Poll ``predicate`` until it holds. The budget is generous on purpose:
+    it bounds a hung test, it is not a timing assertion."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return predicate()
+
+
+def historical_idle(client: TestClient) -> bool:
+    """Whether the first full sweep (and its metadata preload) is done."""
+    body = client.get("/api/health/status").json()
+    return body["historical_loading"] is False
 
 
 def test_root_redirects_into_the_prefix() -> None:
@@ -126,6 +153,82 @@ def test_status_reports_cold_start_with_empty_cache_dir(tmp_path: Path) -> None:
         body = client.get("/api/health/status").json()
         assert body["cache_enabled"] is True
         assert body["warm_start"] is False
+
+
+def test_models_path_defaults_to_the_packaged_copy(tmp_path: Path) -> None:
+    # An installed app finds its models YAML inside the package, from any
+    # working directory; RUBINTV_MODELS_PATH still wins when a site sets it.
+    assert _resolve_models_path(None).read_text() == CONFIG_PATH.read_text()
+    mounted = tmp_path / "site.yaml"
+    assert _resolve_models_path(mounted) == mounted
+
+
+def test_scans_keep_the_cache_in_step_with_the_bucket(tmp_path: Path) -> None:
+    # Frames found by the current-day loop are persisted as they land, not
+    # only by the full snapshot (every 12h and at shutdown), so a restart
+    # mid-night warm-starts with tonight's data. A date whose objects are
+    # all deleted loses its slice the same way, so it can't seed the next
+    # warm start.
+    today = get_current_day_obs()
+    key = f"lsstcam/{today}/witness_detector/000001/a.png"
+    cached = tmp_path / CACHE_VERSION / "test" / "lsstcam" / f"{today}.json"
+    with run_app(cache_dir=tmp_path, recent_window_days=0) as client:
+        s3 = boto3.client("s3", region_name="us-east-1")
+        assert wait_until(lambda: historical_idle(client))
+        assert not cached.exists()
+        s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=b"x")
+        assert wait_until(cached.exists)
+        assert json.loads(cached.read_text())["channels"] == {"witness_detector": [1]}
+        s3.delete_object(Bucket=TEST_BUCKET, Key=key)
+        assert wait_until(lambda: not cached.exists())
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_full_sweep_evicts_cached_dates_the_bucket_lost(
+    tmp_path: Path, dry_run: bool
+) -> None:
+    # A slice cached for a date whose objects were deleted while the app was
+    # down: the warm start seeds it, the full sweep finds nothing there, and
+    # both the store and the cache file drop it, or the next warm start would
+    # offer it again. Dry-run reconciliation only reports what it would drop.
+    DiskCache(tmp_path).write(
+        "test", "lsstcam", "2025-01-01", DateIndex(channels={"witness_detector": {1}})
+    )
+    stale = tmp_path / CACHE_VERSION / "test" / "lsstcam" / "2025-01-01.json"
+    with run_app(
+        cache_dir=tmp_path, recent_window_days=0, reconcile_dry_run=dry_run
+    ) as client:
+        assert wait_until(lambda: historical_idle(client))
+        calendar = client.get("/api/locations/test/cameras/lsstcam/calendar").json()
+    if dry_run:
+        assert calendar["dates"] == ["2025-01-01"]
+        assert stale.exists()
+    else:
+        assert calendar["dates"] == []
+        assert not stale.exists()
+
+
+@pytest.mark.parametrize("preload_days", [3, 0])
+def test_full_sweep_preloads_recent_metadata(preload_days: int) -> None:
+    # After a camera's scan its most recent dates' metadata is fetched into
+    # memory, so the first table view is a warm hit. Proven by taking the
+    # file away afterwards: only a copy fetched during the scan can answer.
+    # A preload window of 0 turns it off.
+    date = "2026-04-10"
+    rows = {"1": {"Exposure time": 30.0}}
+    objects = {
+        f"lsstcam/{date}/witness_detector/000001/a.png": b"x",
+        f"lsstcam/{date}/metadata.json": json.dumps(rows).encode(),
+    }
+    with run_app(
+        objects, recent_window_days=0, metadata_preload_days=preload_days
+    ) as client:
+        assert wait_until(lambda: historical_idle(client))
+        boto3.client("s3", region_name="us-east-1").delete_object(
+            Bucket=TEST_BUCKET, Key=f"lsstcam/{date}/metadata.json"
+        )
+        got = client.get(f"/api/locations/test/cameras/lsstcam/metadata/{date}")
+    assert got.json() == (rows if preload_days else {})
 
 
 def test_correlation_header_echoed() -> None:
@@ -257,8 +360,27 @@ def test_spa_catch_all_does_not_shadow_api(tmp_path: Path) -> None:
         resp = client.get("/api/locations/ghost")
         assert resp.status_code == 404
         assert "SPA" not in resp.text
+        # So is an API path no router claims, which only the catch-all sees.
+        resp = client.get("/api/no-such-route")
+        assert resp.status_code == 404
+        assert "SPA" not in resp.text
         # A real API path still works.
         assert client.get("/api/locations").status_code == 200
+
+
+def test_empty_prefix_serves_everything_from_the_root(tmp_path: Path) -> None:
+    # With no prefix the SPA owns "/" itself: no redirect into a prefix, and
+    # the API sits at /api.
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html>SPA")
+
+    with run_app(spa_dist=dist, path_prefix="") as client:
+        root = client.get("http://testserver/", follow_redirects=False)
+        assert root.status_code == 200
+        assert "SPA" in root.text
+        live = client.get("http://testserver/api/health/live")
+        assert live.status_code == 200
 
 
 def test_response_bytes_reads_content_length_or_none() -> None:
