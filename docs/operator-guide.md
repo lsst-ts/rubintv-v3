@@ -132,6 +132,37 @@ source has no token at all. `blocknames.jira.credential_unrecognised`
 means the Jira file doesn't hold base64 of `email:api-token` (a bare API
 token, say), so Jira will refuse it.
 
+### Guide log events
+
+Everything the guide logs; `grep -F guide.` or `grep -F blocknames.` finds
+it in the pod's log.
+
+| Event | Level | Meaning |
+|---|---|---|
+| `guide.enabled` | info | The guide is on: the `consdb_url` and the `instruments` it sweeps. |
+| `guide.disabled` | info | No `RUBINTV_CONSDB_URL`, so no guide. |
+| `guide.cache.loaded` | info | A warm start for an `instrument`: the `blocks` and `last_exposure_id` read from the cache. |
+| `guide.cache.skipped` | info | The cache is from an older release or another `RUBINTV_GUIDE_SINCE`, so the instrument is swept afresh. |
+| `guide.cache.load_failed` | error | The cache file couldn't be read (traceback attached); a cold start. |
+| `guide.cache.disabled` | warning | The cache directory couldn't be created (`dir`, `error`), so the guide runs without a cache. Logged once. |
+| `guide.cache.write_failed` | warning | Writing the cache failed (`path`, `error`); retried after the next poll. |
+| `guide.page` | debug | A page of `rows` read from ConsDB. |
+| `guide.swept` | info | An `instrument`'s first sweep caught up (`blocks`, `exposures`) and "Sweeping ConsDB…" clears. |
+| `guide.consdb.error` | warning | A ConsDB query failed (`error`, e.g. `ConsDB HTTP 401`). The page shows it, keeps serving the last blocks, and the next poll retries. |
+| `guide.poll.error` | error | A poll failed unexpectedly (traceback attached); retried at the next interval. |
+| `token.unreadable` | warning | A token file (`path`) couldn't be read, so what it gates runs without it: the ConsDB token, the Zephyr token or the Jira credential. |
+| `blocknames.zephyr.connected` | info | A Zephyr refresh worked: `count` test cases, and the token's identity. |
+| `blocknames.jira.connected` | info | A Jira refresh worked: `count` issues, and the account. |
+| `blocknames.zephyr.disabled` | info | No Zephyr token: `BLOCK-T` names come from the bundled snapshot. |
+| `blocknames.jira.disabled` | info | No Jira credential: plain `BLOCK-n` names come from `INTERIM_ISSUE_NAMES`. |
+| `blocknames.jira.credential_unrecognised` | warning | The Jira credential isn't base64 of `email:api-token`, so Jira will refuse it. |
+| `blocknames.refresh.failed` | warning | One source's refresh failed (`source`, `error`). Its names stay as they were; the other source carries on. |
+| `blocknames.refresh.empty` | warning | A source answered with no names. Treated as a failure, so the names aren't blanked. |
+| `blocknames.refresh.error` | error | A refresh failed unexpectedly (traceback attached); retried at the next refresh. |
+| `blocknames.executions.resolved` | info | Test executions newly linked to the test case each ran (`count`, `total`). |
+| `blocknames.executions.failed` | warning | Looking up a test execution (`key`) failed; it and the rest wait for the next check, a minute later. |
+| `blocknames.executions.error` | error | A round of execution lookups failed unexpectedly (traceback attached); retried a minute later. |
+
 ### Running the guide locally
 
 The in-cluster URL only resolves inside Kubernetes. On your own machine,
