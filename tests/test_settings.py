@@ -35,7 +35,8 @@ from pathlib import Path
 import lsst.ts.rubintv.models as models_pkg
 import pytest
 from lsst.ts.rubintv.config.loader import load_models
-from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.config.settings import Settings, get_settings
+from pydantic import ValidationError
 
 CONFIG_PATH = Path(models_pkg.__file__).parent / "models_data.yaml"
 
@@ -162,3 +163,24 @@ def test_the_suite_ignores_a_dotenv_in_the_working_directory(
     monkeypatch.delenv("RUBINTV_CACHE_DIR", raising=False)
     assert Settings(_env_file=".env").cache_dir == Path("/from/dotenv")
     assert Settings().cache_dir != Path("/from/dotenv")
+
+
+def test_a_non_string_site_is_a_validation_error() -> None:
+    # Only strings go through the alias map, so anything else gets
+    # pydantic's own message instead of a TypeError from the lookup.
+    with pytest.raises(ValidationError, match="site"):
+        Settings(_env_file=None, site=["summit"])
+
+
+def test_process_settings_are_read_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every request handler reaches the same Settings; the environment is
+    # read at first use, not per call.
+    monkeypatch.setenv("RAPID_ANALYSIS_LOCATION", "SUMMIT")
+    get_settings.cache_clear()
+    try:
+        first = get_settings()
+        monkeypatch.setenv("RAPID_ANALYSIS_LOCATION", "USDF")
+        assert get_settings() is first
+        assert first.site == "summit"
+    finally:
+        get_settings.cache_clear()

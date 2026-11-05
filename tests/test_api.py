@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -193,6 +194,42 @@ def test_is_release_tracks_baked_in_git_sha(
     monkeypatch.delenv("RUBINTV_GIT_SHA", raising=False)
     assert build_info.is_release() is False
     build_info.is_release.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        FileNotFoundError("no git on PATH"),
+        subprocess.TimeoutExpired("git", 2),
+        subprocess.CompletedProcess(["git"], 128, stdout="", stderr="not a repo"),
+        subprocess.CompletedProcess(["git"], 0, stdout="\n", stderr=""),
+    ],
+    ids=["no-git", "timeout", "not-a-repo", "empty"],
+)
+def test_build_provenance_is_unknown_without_a_usable_git(
+    monkeypatch: pytest.MonkeyPatch, outcome: object
+) -> None:
+    # An image built without the git build args, or a checkout without git,
+    # reports "unknown" rather than failing: provenance is cosmetic and must
+    # never keep the app from starting.
+    from lsst.ts.rubintv import build_info
+
+    def run(*args: object, **kwargs: object) -> object:
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.delenv("RUBINTV_GIT_SHA", raising=False)
+    monkeypatch.delenv("RUBINTV_GIT_DATE", raising=False)
+    monkeypatch.setattr(subprocess, "run", run)
+    build_info.git_sha.cache_clear()
+    build_info.commit_date.cache_clear()
+    try:
+        assert build_info.git_sha() == "unknown"
+        assert build_info.commit_date() == "unknown"
+    finally:
+        build_info.git_sha.cache_clear()
+        build_info.commit_date.cache_clear()
 
 
 def test_admin_status_reports_is_admin_for_authed_user(
