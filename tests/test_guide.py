@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import re
 from datetime import UTC, datetime, timedelta
@@ -31,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from lsst.ts.rubintv.data import consdb
 from lsst.ts.rubintv.data.consdb import ConsDbClient, ConsDbError, QueryResult
 from lsst.ts.rubintv.data.guide import (
     TAI_MINUS_UTC,
@@ -275,7 +277,7 @@ def row(seq: int, program: str, begin_min: float, day_obs: int = 20250411) -> li
 
 
 def make_service(
-    client: FakeConsDb,
+    client: ConsDbClient,
     cache_dir: Path | None,
     page_size: int = 2,
     poll_interval: float = 3600,
@@ -367,6 +369,19 @@ async def test_consdb_failure_keeps_blocks_and_reports_error(tmp_path: Path) -> 
     client.fail = False
     await svc.poll(guide)
     assert guide.error is None
+
+
+async def test_a_consdb_reply_that_is_not_an_object_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Reported like any other failure, so the page says why it is stale,
+    # rather than escaping poll() as an AttributeError.
+    monkeypatch.setattr(consdb, "urlopen", lambda req, timeout=0: io.BytesIO(b"null"))
+    svc = make_service(ConsDbClient("http://consdb.test/consdb/query"), None)
+    guide = svc.instruments["lsstcam"]
+    assert await svc.poll(guide) == 0
+    assert guide.error == "ConsDB returned an unexpected reply"
+    assert not guide.swept
 
 
 async def test_a_sweep_that_fails_partway_persists_the_pages_it_read(

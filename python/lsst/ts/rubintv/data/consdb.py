@@ -115,10 +115,16 @@ class ConsDbClient:
             raise ConsDbError(f"ConsDB unreachable: {exc}") from exc
         except ValueError as exc:
             raise ConsDbError(f"ConsDB returned non-JSON: {exc}") from exc
+        # A reply of the wrong shape is a ConsDbError, which the guide
+        # reports, rather than an AttributeError or a zip() ValueError later.
+        if not isinstance(payload, dict):
+            raise ConsDbError("ConsDB returned an unexpected reply")
         columns = payload.get("columns")
         rows = payload.get("data")
         if not isinstance(columns, list) or not isinstance(rows, list):
             raise ConsDbError("ConsDB reply lacks 'columns'/'data'")
+        if not all(isinstance(r, list) and len(r) == len(columns) for r in rows):
+            raise ConsDbError("ConsDB reply has a row unlike its columns")
         return QueryResult(columns=[str(c) for c in columns], rows=rows)
 
     async def query(self, sql: str) -> QueryResult:

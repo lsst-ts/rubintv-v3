@@ -170,6 +170,35 @@ def test_a_reply_that_is_not_json_is_reported_as_such(
 
 
 @pytest.mark.parametrize(
+    "body", [b"null", b"[]", b'"ok"', b"42"], ids=["null", "list", "string", "number"]
+)
+def test_a_reply_that_is_not_an_object_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, body: bytes
+) -> None:
+    # JSON, but not an object: a ConsDbError the guide reports, rather than
+    # the AttributeError that used to escape it.
+    monkeypatch.setattr(consdb, "urlopen", answering(body, []))
+
+    with pytest.raises(ConsDbError, match=r"^ConsDB returned an unexpected reply$"):
+        ConsDbClient(URL).query_sync("SELECT 1")
+
+
+@pytest.mark.parametrize(
+    "data",
+    [[[1]], [[1, 2, 3]], [None], [{"a": 1, "b": 2}]],
+    ids=["short", "long", "null", "object"],
+)
+def test_a_row_that_does_not_match_the_columns_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, data: list[Any]
+) -> None:
+    reply = json.dumps({"columns": ["a", "b"], "data": data}).encode()
+    monkeypatch.setattr(consdb, "urlopen", answering(reply, []))
+
+    with pytest.raises(ConsDbError, match=r"^ConsDB reply has a row unlike its"):
+        ConsDbClient(URL).query_sync("SELECT 1")
+
+
+@pytest.mark.parametrize(
     "reply",
     [
         {"detail": "relation cdb_nope.exposure does not exist"},

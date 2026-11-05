@@ -93,7 +93,11 @@ def test_fetch_follows_next_links(monkeypatch: pytest.MonkeyPatch) -> None:
     base = "https://zephyr.example/v2"
     pages: dict[int, dict[str, Any]] = {
         0: {
-            "values": [{"key": "BLOCK-T1", "name": "One"}, {"key": "BLOCK-T2"}],
+            "values": [
+                {"key": "BLOCK-T1", "name": "One"},
+                {"key": "BLOCK-T2"},
+                "not a test case",
+            ],
             "next": f"{base}/testcases?projectKey=BLOCK&maxResults=2&startAt=2",
         },
         2: {"values": [{"key": "BLOCK-T3", "name": "Three"}]},
@@ -174,10 +178,15 @@ def test_a_failing_single_lookup_fails_the_fetch(
         fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
 
 
-def test_a_page_that_is_not_an_object_is_a_zephyr_error(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "body",
+    [b"[]", b'{"values": 5}', b'{"values": "BLOCK-T1"}', b'{"values": {"key": "x"}}'],
+    ids=["list", "values-number", "values-string", "values-object"],
+)
+def test_a_page_that_is_not_an_object_of_values_is_a_zephyr_error(
+    monkeypatch: pytest.MonkeyPatch, body: bytes
 ) -> None:
-    monkeypatch.setattr(blocknames, "urlopen", lambda req, timeout=0: _Resp(b"[]"))
+    monkeypatch.setattr(blocknames, "urlopen", lambda req, timeout=0: _Resp(body))
 
     with pytest.raises(ZephyrError, match="^Zephyr returned an unexpected page$"):
         fetch_zephyr_names("https://z/v2", "tok", "BLOCK")
@@ -344,8 +353,10 @@ def test_jira_fetch_follows_next_page_tokens(monkeypatch: pytest.MonkeyPatch) ->
     [
         (b"<html>login</html>", "Jira unreachable: "),
         (b"[]", "Jira returned an unexpected page"),
+        (b'{"issues": 5}', "Jira returned an unexpected page"),
+        (b'{"issues": {"key": "BLOCK-1"}}', "Jira returned an unexpected page"),
     ],
-    ids=["not-json", "not-an-object"],
+    ids=["not-json", "not-an-object", "issues-number", "issues-object"],
 )
 def test_a_bad_jira_page_is_a_jira_error(
     monkeypatch: pytest.MonkeyPatch, body: bytes, message: str
