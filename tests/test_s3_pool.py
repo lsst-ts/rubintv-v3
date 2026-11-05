@@ -117,3 +117,19 @@ def test_empty_default_endpoint_counts_as_unset() -> None:
         [Location(name="bare", title="Bare", bucket="b")], default_endpoint=""
     )
     assert "amazonaws.com" in pool.client_for("bare").meta.endpoint_url
+
+
+async def test_warm_up_builds_only_the_clients_still_missing(
+    locations: list[Location],
+) -> None:
+    # Startup pre-builds every client in parallel; one a request already
+    # built is kept (handlers may hold it), and a second warm-up is free.
+    with mock_aws():
+        pool = S3ClientPool(locations)
+        default = pool.client_for("local")
+        await pool.warm_up()
+        assert pool.client_for("local") is default
+        poller = pool.poller_client_for("local")
+        await pool.warm_up()
+        assert pool.poller_client_for("local") is poller
+        pool.close()

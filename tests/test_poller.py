@@ -140,3 +140,10 @@ def test_scan_carries_each_objects_etag(poller: PollerFixture) -> None:
     poller.put("lsstcam/2026-04-10/metadata.json", body=b"changed")  # type: ignore[operator]
     (event,) = poller.poller.scan("local", "lsstcam/").events
     assert event.etag and event.etag != first
+
+
+def test_scan_of_an_unregistered_location_fails_loud(poller: PollerFixture) -> None:
+    # A location the app never registered is a wiring bug, not an empty
+    # bucket: listing must not quietly report "nothing here".
+    with pytest.raises(KeyError, match="no bucket registered for location 'ghost'"):
+        poller.poller.scan("ghost", "auxtel/")
