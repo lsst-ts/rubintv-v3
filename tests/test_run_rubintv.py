@@ -24,6 +24,8 @@
 from __future__ import annotations
 
 import pytest
+import uvicorn
+from lsst.ts.rubintv import run_rubintv
 from lsst.ts.rubintv.run_rubintv import parse_args
 
 
@@ -53,6 +55,23 @@ def test_port_and_host_flags_win(monkeypatch: pytest.MonkeyPatch) -> None:
     args = parse_args(["--port", "8080", "--host", "127.0.0.1"])
     assert args.port == 8080
     assert args.host == "127.0.0.1"
+
+
+def test_main_serves_the_app_with_the_parsed_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The console script hands uvicorn the app by import string (so it is
+    # built in the server process) along with the parsed host/port/level.
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: calls.append((app, kw)))
+    monkeypatch.setattr("sys.argv", ["run_rubintv", "--port", "8080", "-l", "debug"])
+    run_rubintv.main()
+    assert calls == [
+        (
+            "lsst.ts.rubintv.main:app",
+            {"host": "0.0.0.0", "port": 8080, "log_level": "debug"},
+        )
+    ]
 
 
 def test_env_log_level_trace_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
