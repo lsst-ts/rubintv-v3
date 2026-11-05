@@ -598,14 +598,3 @@ def _apply_stale(idx: DateIndex, stale: StaleEntries) -> None:
     for channel in stale.per_day:
         del idx.per_day[channel]
     idx.night_report_keys -= stale.night_report_keys
-
-
-def _date_of(key: str) -> str | None:
-    """Extract the day_obs from any conforming key, without full parsing."""
-    if (ev := parse_channel_event(key)) is not None:
-        return ev.day_obs
-    if (nr := parse_night_report(key)) is not None:
-        return nr.day_obs
-    if (md := parse_metadata(key)) is not None:
-        return md.day_obs
-    return None
