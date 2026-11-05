@@ -17,8 +17,11 @@ class StubWebSocket {
   onmessage: ((ev: { data: string }) => void) | null = null;
   // Frames the view sent us (subscribe/unsubscribe), for assertions.
   sent: unknown[] = [];
+  // Set once the app closes this socket (e.g. a tab tearing down its
+  // connection), so a test can tell a socket the app abandoned.
+  closed = false;
 
-  constructor() {
+  constructor(public url = "") {
     StubWebSocket.instances.push(this);
   }
 
@@ -29,7 +32,9 @@ class StubWebSocket {
       this.sent.push(data);
     }
   }
-  close() {}
+  close() {
+    this.closed = true;
+  }
 }
 
 // Open every socket this test has constructed, firing `onopen` so the view's
@@ -48,6 +53,24 @@ export function pushLiveMessage(frame: unknown): void {
   for (const sock of StubWebSocket.instances) {
     sock.onmessage?.({ data: json });
   }
+}
+
+// Every socket this test has constructed, oldest first — a reconnect shows up
+// as a new entry.
+export function liveSockets(): readonly StubWebSocket[] {
+  return StubWebSocket.instances;
+}
+
+// Drop the current connection from the server side, as a backend restart or
+// network blip would: fire `onclose` on the newest socket (older ones are
+// already dead). Call inside act().
+export function dropLiveSocket(): void {
+  StubWebSocket.instances.at(-1)?.onclose?.();
+}
+
+// Deliver a raw text frame, unparsed — for frames that aren't JSON at all.
+export function pushRawLiveFrame(data: string): void {
+  for (const sock of StubWebSocket.instances) sock.onmessage?.({ data });
 }
 
 // Drop sockets from prior tests so each test sees only its own connection.
