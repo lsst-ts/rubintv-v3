@@ -682,6 +682,45 @@ async def test_refresh_loop_outlives_an_unexpected_error(
     assert svc.source == "zephyr" and svc.names["BLOCK-T9"] == "Nine"
 
 
+async def test_execution_loop_outlives_an_unexpected_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A ZephyrError ends a round quietly; anything else escapes
+    # resolve_executions, and the loop must log it and look again after the
+    # interval rather than stop resolving executions for good.
+    calls: list[str] = []
+
+    def fetch(base_url: str, token: str, key: str) -> str:
+        calls.append(key)
+        if len(calls) == 1:
+            raise TypeError("'NoneType' object is not subscriptable")
+        return "BLOCK-T382"
+
+    logged: list[str] = []
+    monkeypatch.setattr(blocknames, "fetch_zephyr_execution", fetch)
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.blocknames.log.exception",
+        lambda event, **kw: logged.append(event),
+    )
+    svc = with_programs(["E8024"], execution_check_interval=60)
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError  # as stop() would, mid-sleep
+
+    with monkeypatch.context() as m:
+        m.setattr(asyncio, "sleep", fake_sleep)
+        with pytest.raises(asyncio.CancelledError):
+            await svc._execution_loop()
+
+    assert logged == ["blocknames.executions.error"]
+    assert sleeps == [60, 60]
+    assert calls == ["BLOCK-E8024", "BLOCK-E8024"]
+    assert svc.aliases["BLOCK-E8024"] == "BLOCK-T382"
+
+
 async def test_stop_cancels_the_refresh_task() -> None:
     svc = BlockNameService({}, zephyr_url="https://z/v2", zephyr_token="t")
     svc.start()
