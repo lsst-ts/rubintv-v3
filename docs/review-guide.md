@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 324 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 327 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -387,8 +387,8 @@ Safe to skim.
   `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
-  `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, and the commit
-  that noted the aborted-stream test fix.
+  `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`, and
+  the commit that noted the log guide.
 
 ---
 
@@ -616,6 +616,7 @@ Safe to skim.
 - `887eb48` Enable the mandatory insert-license pre-commit hook
 - `b17284d` Add COPYRIGHT and adopt GPL licence in project file
 - `1efac3f` Add run-rubintv skill: launch and drive the dev stack
+- `1bc673c` Gitignore a local `.env`
 
 ### 42. Protocol tidy-up: unused topics and the heartbeat removal
 Dead surface removed once the running app showed what was actually used.
@@ -675,6 +676,10 @@ per camera per second since the poller became stateless), and
   config did not catch
 - `90ccb29` Mark the late import in check_reconcile for flake8 like its
   neighbours
+- `e2a951d` Add a log guide (`docs/log-guide.md`): getting at the logs in
+  the cluster, what to grep for by symptom, and a catalogue of all 112
+  events. `tests/test_log_guide.py` fails when the code logs an event no
+  doc lists, or the catalogue lists one the code no longer logs
 
 ### 45. Metadata by the stream alone; calendar on new dates only
 What the first capture showed: the REST metadata request duplicated the
