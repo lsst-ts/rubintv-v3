@@ -158,3 +158,119 @@ test("an empty per-day channel shows its last date but keeps the live link", asy
   const link = screen.getByRole("link", { name: /movies/ });
   expect(link.getAttribute("href")).toBe("/local/lsstcam/movies/current");
 });
+
+test("a per-day channel's card shows tonight's artifact, movie or stills", async () => {
+  stub({
+    channels: [
+      channel("movie", { per_day: true }),
+      channel("plots", { per_day: true }),
+      channel("legacy", { per_day: true }),
+      channel("bare", { per_day: true }),
+    ],
+    payload: {
+      ...emptyPayload,
+      per_day: {
+        movie: { seq: "final", ext: "mp4" },
+        plots: { seq: "final", ext: "png" },
+        // Entries indexed before extensions were recorded fall back to the
+        // channel default, then to mp4.
+        legacy: { seq: "final" },
+        bare: { seq: "final" },
+      } as unknown as DatePayload["per_day"],
+      extensions: { legacy: { default: "jpg", exceptions: {} } },
+    },
+    channelLatest: {},
+  });
+  const { container } = renderBrowser();
+  const card = async (name: string) =>
+    (await screen.findByRole("link", { name: new RegExp(`^${name}`) }));
+
+  const movie = await card("movie");
+  await waitFor(() =>
+    expect(movie.querySelector("video")?.getAttribute("src")).toMatch(/\.mp4$/),
+  );
+  expect(movie.textContent).toContain("movie");
+
+  const plots = await card("plots");
+  expect(plots.querySelector("img")?.getAttribute("src")).toMatch(/\.png$/);
+  expect(plots.textContent).toContain("stills");
+
+  expect((await card("legacy")).querySelector("img")?.getAttribute("src"))
+    .toMatch(/\.jpg$/);
+  expect((await card("bare")).querySelector("video")).not.toBeNull();
+  expect(container.querySelectorAll(".chc-card")).toHaveLength(4);
+});
+
+test("a live channel whose latest file is a video shows a video card", async () => {
+  stub({
+    channels: [channel("focus")],
+    payload: {
+      ...emptyPayload,
+      channels: { focus: [3] },
+      extensions: { focus: { default: "png", exceptions: { "3": "mp4" } } },
+    },
+    channelLatest: {},
+  });
+  renderBrowser();
+  const card = await screen.findByRole("link", { name: /focus/ });
+  // The card renders before the night's payload; the video follows it.
+  await waitFor(() =>
+    expect(card.querySelector("video")?.getAttribute("src")).toContain(
+      "/000003/image.mp4",
+    ),
+  );
+  expect(card.textContent).toContain("Seq num 3");
+});
+
+test("a broken card image stops showing as loading", async () => {
+  stub({
+    channels: [channel("witness")],
+    payload: { ...emptyPayload, channels: { witness: [1] } },
+    channelLatest: {},
+  });
+  renderBrowser();
+  const img = await screen.findByRole("img", { name: /witness latest/ });
+  // No extension info: png.
+  expect(img.getAttribute("src")).toContain("/000001/image.png");
+  fireEvent.error(img);
+  await waitFor(() =>
+    expect(screen.queryByRole("status", { name: "Loading image" })).toBeNull(),
+  );
+});
+
+test("a card more than five frames behind the night is flagged", async () => {
+  stub({
+    channels: [channel("lead"), channel("close"), channel("behind")],
+    payload: {
+      ...emptyPayload,
+      channels: { lead: [20], close: [15], behind: [12] },
+    },
+    channelLatest: {},
+  });
+  renderBrowser();
+  const behind = await screen.findByRole("link", { name: /^behind/ });
+  expect(behind.className).toContain("chc-card--stale");
+  const lag = behind.querySelector(".chc-lag")!;
+  expect(lag.textContent).toBe("8 behind");
+  expect(lag.getAttribute("title")).toBe("8 frames behind the latest channel");
+  // Five behind is normal jitter, not stale.
+  const close = screen.getByRole("link", { name: /^close/ });
+  expect(close.className).not.toContain("chc-card--stale");
+});
+
+describe("on the live observing night", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${NEWEST}T20:00:00Z`));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test("the grid says it's showing tonight", async () => {
+    stub({ channels: [channel("witness")], payload: emptyPayload, channelLatest: {} });
+    const { container } = renderBrowser();
+    await screen.findByText("tonight");
+    expect(container.querySelector(".chc-dayobs--live")?.textContent).toBe(
+      `Showing tonight · ${NEWEST}`,
+    );
+  });
+});

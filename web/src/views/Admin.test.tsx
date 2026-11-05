@@ -1,4 +1,11 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
@@ -155,4 +162,130 @@ test("all redis-writing actions are disabled when redis is not configured", asyn
 
   // Flush historical cache does NOT touch Redis, so it stays clickable.
   expect(isDisabled("Flush historical cache")).toBe(false);
+});
+
+// Make every POST fail: with a JSON detail (an HTTP error the server
+// explains), a non-JSON body (only the status is known), or no response at all.
+function failPosts(kind: "detail" | "bare" | "network") {
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method !== "POST") return inner(input, init);
+    if (kind === "network") return Promise.reject(new TypeError("offline"));
+    return Promise.resolve({
+      ok: false,
+      status: 503,
+      json: () =>
+        kind === "detail"
+          ? Promise.resolve({ detail: "redis is not configured" })
+          : Promise.reject(new SyntaxError("not json")),
+    });
+  }) as unknown as typeof fetch;
+}
+
+const feedback = () => screen.findByRole("status");
+const boxFor = async (title: string) =>
+  (await screen.findByRole("heading", { name: title })).closest(
+    ".admin-box",
+  ) as HTMLElement;
+
+test("a menu sends whichever option is picked", async () => {
+  stub();
+  renderAdmin(createQueryClient());
+  const box = await boxFor("AOS Pipeline");
+  fireEvent.change(within(box).getByRole("combobox"), {
+    target: { value: "TIE" },
+  });
+  fireEvent.click(within(box).getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].body).toEqual({
+    key: "RUBINTV_CONTROL_AOS_PIPELINE",
+    value: "TIE",
+  });
+  expect((await feedback()).textContent).toBe("AOS Pipeline: done");
+});
+
+test("any key/value pair can be set once a key is given", async () => {
+  stub();
+  renderAdmin(createQueryClient());
+  const box = await boxFor("Set key / value");
+  const send = within(box).getByRole("button", { name: "Send" });
+  expect((send as HTMLButtonElement).disabled).toBe(true);
+
+  fireEvent.change(within(box).getByLabelText("control key"), {
+    target: { value: "RUBINTV_X" },
+  });
+  fireEvent.change(within(box).getByLabelText("control value"), {
+    target: { value: "on" },
+  });
+  fireEvent.click(send);
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].url).toContain("/admin/controls/set");
+  expect(posts[0].body).toEqual({ key: "RUBINTV_X", value: "on" });
+  const msg = await feedback();
+  expect(msg.textContent).toBe("set RUBINTV_X: done");
+  expect(msg.className).toContain("ok");
+});
+
+test("the witness detector is set from its own box", async () => {
+  stub();
+  renderAdmin(createQueryClient());
+  const box = await boxFor("Witness Detector");
+  fireEvent.change(within(box).getByLabelText("witness detector value"), {
+    target: { value: "R22_S11" },
+  });
+  fireEvent.click(within(box).getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].url).toContain("/admin/witness-detector");
+  expect(posts[0].body).toEqual({ key: "", value: "R22_S11" });
+});
+
+test("reset head node and flush historical each fire after a confirm", async () => {
+  stub();
+  renderAdmin(createQueryClient());
+  fireEvent.click(await screen.findByRole("button", { name: "Reset Head Node" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Reset — confirm/ }),
+  );
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].url).toContain("/admin/reset-head-node");
+
+  fireEvent.click(screen.getByRole("button", { name: "Flush historical cache" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Flush cache — confirm/ }),
+  );
+  await waitFor(() => expect(posts).toHaveLength(2));
+  expect(posts[1].url).toContain("/admin/flush-historical");
+  expect((await feedback()).textContent).toBe("Flush historical cache: done");
+});
+
+test.each([
+  ["detail", "redis is not configured"],
+  ["bare", "503"],
+] as const)(
+  "a refused action says why (%s body)",
+  async (kind, why) => {
+    stub();
+    failPosts(kind);
+    renderAdmin(createQueryClient());
+    const box = await boxFor("AOS Pipeline");
+    fireEvent.click(within(box).getByRole("button", { name: "Send" }));
+    const msg = await feedback();
+    expect(msg.textContent).toBe(
+      `AOS Pipeline failed — POST /admin/controls/set -> ${why}`,
+    );
+    expect(msg.className).toContain("err");
+  },
+);
+
+test("an action that never reaches the server reports the error", async () => {
+  stub();
+  failPosts("network");
+  renderAdmin(createQueryClient());
+  fireEvent.click(await screen.findByRole("button", { name: "Flush historical cache" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Flush cache — confirm/ }),
+  );
+  expect((await feedback()).textContent).toBe(
+    "Flush historical cache failed — TypeError: offline",
+  );
 });

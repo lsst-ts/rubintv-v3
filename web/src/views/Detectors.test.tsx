@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
@@ -165,4 +165,151 @@ test("non-admins get no restart controls (server-gated action is hidden)", async
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Restart Workers" })).toBeNull(),
   );
+});
+
+const SET1 = "Imaging Worker Set 1";
+const snapshot = (detectors: Record<string, unknown>) => ({
+  type: "detectorStatus",
+  data: { detectors },
+});
+
+test("a set reporting a worker count shows that many cells", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  const title = await screen.findByText("SFM Step 1b");
+  const cells = () =>
+    [...title.parentElement!.querySelectorAll(".detector-cell")].map((c) =>
+      c.className.replace("detector-cell ", ""),
+    );
+  // Before any report: the configured fallback of 8, all missing.
+  expect(cells()).toHaveLength(8);
+
+  // 10 advertised, one with detail: the rest are placeholders.
+  act(() =>
+    applyLiveMessage(
+      qc,
+      snapshot({ sfmStep1b: { numWorkers: 10, workers: { "0": { status: "busy" } } } }),
+    ),
+  );
+  await waitFor(() => expect(cells()).toHaveLength(10));
+  expect(cells()[0]).toBe("status-busy");
+  expect(new Set(cells().slice(1))).toEqual(new Set(["status-missing"]));
+});
+
+test("a refused restart says why", async () => {
+  stub();
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    init?.method === "POST"
+      ? Promise.resolve({
+          ok: false,
+          status: 403,
+          json: () => Promise.resolve({ detail: "site admins only" }),
+        })
+      : inner(input, init)) as unknown as typeof fetch;
+  renderDetectors(createQueryClient());
+  (await screen.findAllByRole("button", { name: "Restart Workers" }))[0].click();
+  (await screen.findAllByRole("button", { name: /Confirm restart/ }))[0].click();
+  const msg = await screen.findByRole("status");
+  expect(msg.textContent).toBe(
+    `${SET1} restart failed — POST /detectors/sfmSet0/restart -> site admins only`,
+  );
+  expect(msg.className).toContain("err");
+});
+
+describe("the focal-plane canvas", () => {
+  // jsdom has neither layout nor a 2D context: give the canvas container a
+  // width (delivered through a ResizeObserver that fires on observe, as a
+  // browser's does) and record what each canvas draws.
+  interface Drawn {
+    fills: string[];
+    texts: Array<[string, number, number]>;
+  }
+  const drawn = new Map<HTMLCanvasElement, Drawn>();
+  const realRO = globalThis.ResizeObserver;
+  const realGetContext = HTMLCanvasElement.prototype.getContext;
+  const realRect = HTMLElement.prototype.getBoundingClientRect;
+
+  beforeEach(() => {
+    drawn.clear();
+    globalThis.ResizeObserver = class {
+      constructor(private cb: () => void) {}
+      observe() {
+        this.cb();
+      }
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return { width: 400 } as DOMRect;
+    };
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
+      const rec: Drawn = { fills: [], texts: [] };
+      drawn.set(this, rec);
+      const ctx = {
+        fillStyle: "",
+        scale() {},
+        clearRect() {
+          rec.fills = [];
+          rec.texts = [];
+        },
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        closePath() {},
+        stroke() {},
+        fill() {
+          rec.fills.push(ctx.fillStyle);
+        },
+        fillText(t: string, x: number, y: number) {
+          rec.texts.push([t, x, y]);
+        },
+      };
+      return ctx;
+    } as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
+
+  afterEach(() => {
+    globalThis.ResizeObserver = realRO;
+    HTMLCanvasElement.prototype.getContext = realGetContext;
+    HTMLElement.prototype.getBoundingClientRect = realRect;
+  });
+
+  test("colours each detector by its worker's state and labels queues", async () => {
+    stub();
+    const qc = createQueryClient();
+    renderDetectors(qc);
+    const section = (await screen.findByText(SET1)).parentElement!;
+    const canvas = section.querySelector("canvas")!;
+
+    act(() =>
+      applyLiveMessage(
+        qc,
+        snapshot({
+          sfmSet0: {
+            workers: {
+              "0": { status: "queued", queue_length: 3 },
+              "1": { status: "busy" },
+              "2": { status: "queued" }, // no length: nothing to label
+            },
+          },
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(drawn.get(canvas)?.fills[0]).toBe("#ef4444"));
+    const { fills, texts } = drawn.get(canvas)!;
+    // All 189 detectors are drawn; unreported ones read as missing.
+    expect(fills).toHaveLength(189);
+    expect(fills.slice(0, 3)).toEqual(["#ef4444", "#eab308", "#ef4444"]);
+    expect(new Set(fills.slice(3))).toEqual(new Set(["#d1d5db"]));
+    // Only the queue with a length is labelled, inside the canvas.
+    expect(texts).toHaveLength(1);
+    const [label, x, y] = texts[0];
+    expect(label).toBe("3");
+    for (const v of [x, y]) {
+      expect(v).toBeGreaterThan(0);
+      expect(v).toBeLessThan(400);
+    }
+  });
 });
