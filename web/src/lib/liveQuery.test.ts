@@ -271,3 +271,44 @@ test("an incomplete stream records no version (nothing to diff from)", () => {
   });
   expect(metadataEtag(qc, "local", "lsstcam", "2026-04-10")).toBeNull();
 });
+
+const keysOf = (calls: unknown[][]) =>
+  calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
+
+test("nightReport refreshes that night's summary; without a date, nothing", () => {
+  const qc = new QueryClient();
+  const calls = spyInvalidate(qc);
+  const msg = { type: "nightReport", location: "local", camera: "lsstcam" };
+  applyLiveMessage(qc, msg);
+  expect(calls).toEqual([]);
+  applyLiveMessage(qc, { ...msg, date: "2026-04-10" });
+  expect(keysOf(calls)).toEqual([
+    JSON.stringify(queryKeys.nightReport("local", "lsstcam", "2026-04-10")),
+  ]);
+});
+
+test("dayChange refreshes the calendar so the new night appears", () => {
+  const qc = new QueryClient();
+  const calls = spyInvalidate(qc);
+  applyLiveMessage(qc, { type: "dayChange", location: "local", camera: "lsstcam" });
+  expect(keysOf(calls)).toEqual([
+    JSON.stringify(queryKeys.calendar("local", "lsstcam")),
+  ]);
+});
+
+test("site-wide snapshots without a payload store an empty one", () => {
+  const qc = new QueryClient();
+  applyLiveMessage(qc, { type: "detectorStatus" });
+  applyLiveMessage(qc, { type: "controlReadback" });
+  expect(qc.getQueryData(queryKeys.detectorStatus())).toEqual({});
+  expect(qc.getQueryData(queryKeys.controlReadback())).toEqual({});
+});
+
+test("a delta with no body still marks the rows current at its version", () => {
+  const qc = new QueryClient();
+  const at = ["local", "lsstcam", "2026-04-10"] as const;
+  qc.setQueryData(queryKeys.metadataStream(...at), { "1": { a: 1 } });
+  applyLiveMessage(qc, { type: "metadataDelta", location: "local", camera: "lsstcam", date: "2026-04-10" });
+  expect(qc.getQueryData(queryKeys.metadataStream(...at))).toEqual({ "1": { a: 1 } });
+  expect(metadataEtag(qc, ...at)).toBeNull();
+});

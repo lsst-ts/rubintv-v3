@@ -168,3 +168,65 @@ test("seq_filter round-trips through filters and back, with no percent-encoding"
     expect(p.toString()).toBe(`seq_filter=${sf}`);
   }
 });
+
+test("matchRow: the remaining comparison and text operators", () => {
+  const r = { exp: "30", name: "HD 1234" };
+  const m = (op: string, value: string, col = "exp") =>
+    matchRow(0, r, [{ col, op, value }]);
+  expect(m("<", "40")).toBe(true);
+  expect(m("<", "30")).toBe(false);
+  expect(m(">=", "30")).toBe(true);
+  expect(m(">=", "31")).toBe(false);
+  expect(m("<=", "30")).toBe(true);
+  expect(m("<=", "29")).toBe(false);
+  expect(m("ends", "1234", "name")).toBe(true);
+  expect(m("ends", "HD", "name")).toBe(false);
+  // A comparison against a non-number never matches, whichever side.
+  expect(m(">", "abc")).toBe(false);
+  expect(m(">", "10", "name")).toBe(false);
+  // An operator this version doesn't know (e.g. from an old link) lets the
+  // row through rather than hiding everything.
+  expect(m("matches", "x")).toBe(true);
+});
+
+test("matchRow: a malformed range matches nothing", () => {
+  const f = (v: string, t = "5") =>
+    matchRow(0, { t }, [{ col: "t", op: "between", value: v }]);
+  expect(f("a, 10")).toBe(false); // separator present, a bound isn't a number
+  expect(f("1-x")).toBe(false); // bare hyphen, a bound isn't a number
+  expect(f("1, 2, 3")).toBe(false); // not two bounds
+  expect(f("10")).toBe(false); // one bound
+  expect(f("1, 10", "n/a")).toBe(false); // the cell isn't a number
+  // Bounds may come in either order.
+  expect(f("10, 1")).toBe(true);
+});
+
+test("matchRow: a missing cell compares as empty", () => {
+  expect(matchRow(0, {}, [{ col: "x", op: "=", value: "" }])).toBe(true);
+  expect(matchRow(0, { x: null }, [{ col: "x", op: "~", value: "a" }])).toBe(false);
+});
+
+test("seqFilterToFilters skips clauses that carry no value", () => {
+  // "gte" with nothing after it, an empty "between", and a stray separator.
+  expect(seqFilterToFilters("gte-between-lt10--")).toEqual([
+    { col: SEQ_COL, op: "<", value: "10" },
+  ]);
+  expect(seqFilterToFilters("  ")).toEqual([]);
+  expect(filtersToSeqFilter([])).toBeNull();
+});
+
+test("sampleValues stops at its limit and skips blanks", () => {
+  const m: Metadata = {};
+  for (let i = 0; i < 12; i++) m[String(i)] = { c: i % 3 === 0 ? "—" : `v${i}` };
+  const got = sampleValues(m, "c", 5);
+  expect(got).toEqual(["v1", "v2", "v4", "v5", "v7"]);
+});
+
+test("inferType: a column with no values reads as string", () => {
+  expect(inferType({ "1": { c: "" }, "2": { c: null } }, "c")).toBe("string");
+  expect(inferType({}, SEQ_COL)).toBe("number");
+});
+
+test("opLabel falls back to the raw op for one it doesn't know", () => {
+  expect(opLabel("number", "~")).toBe("~");
+});

@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { useColumnPrefs } from "./columns";
 
 const LOC = "loc";
@@ -212,4 +212,33 @@ test("navigating to another camera loads that camera's prefs, not the first's", 
   rerender({ cam: "camB" });
   expect(result.current.hidden.has("C")).toBe(true);
   expect(result.current.hidden.has("B")).toBe(false);
+});
+
+test("a camera with no saved prefs starts from its own defaults", () => {
+  // camA has a saved layout, camB has none: moving to camB must not keep
+  // camA's hidden set.
+  localStorage.setItem(`rubintv.columns.${LOC}.camA`, JSON.stringify(["B", "C"]));
+  const { result, rerender } = renderHook(
+    ({ cam }) => useColumnPrefs(LOC, cam, WIDE, WIDE_DEFAULTS),
+    { initialProps: { cam: "camA" } },
+  );
+  expect(result.current.visible).toEqual(["A", "D"]);
+  rerender({ cam: "camB" });
+  expect(result.current.visible).toEqual(WIDE_DEFAULTS);
+});
+
+test("with storage blocked, column edits still apply for the session", () => {
+  const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  try {
+    const { result } = wide();
+    act(() => result.current.toggle("A"));
+    expect(result.current.visible).toContain("A");
+    act(() => result.current.reorder(["C", "A", "B"]));
+    expect(result.current.visible).toEqual(["C", "A", "B"]);
+    expect(set).toHaveBeenCalled();
+  } finally {
+    set.mockRestore();
+  }
 });
