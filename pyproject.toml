@@ -102,3 +102,11 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 # Always-on coverage reporting; no --cov-fail-under, so it never fails the run.
 addopts = "--cov=lsst.ts.rubintv --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+# Count branches as well as lines: an `if` whose other arm no test takes is a
+# gap even when every line under it ran.
+branch = true
+
+[tool.coverage.report]
+precision = 1
