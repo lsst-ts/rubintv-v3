@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
@@ -124,4 +124,76 @@ test("distinguishes a stale camera from one that has never had data", async () =
   // a link to its camera.
   expect(screen.getByRole("link", { name: /Stale Cam/ })).toBeDefined();
   expect(screen.getByRole("link", { name: /Nodata Cam/ })).toBeDefined();
+});
+
+test("a thumbnail drops its spinner once loaded, or its image once broken", async () => {
+  stubLocation([
+    {
+      name: "a",
+      title: "Cam A",
+      online: true,
+      latest_date: "2026-04-10",
+      primary_image: "/locations/local/cameras/a/channels/x/2026-04-10/000001/image.jpg",
+    },
+    {
+      name: "b",
+      title: "Cam B",
+      online: true,
+      latest_date: "2026-04-10",
+      primary_image: "/locations/local/cameras/b/channels/x/2026-04-10/000001/image.jpg",
+    },
+  ]);
+  renderAt("/local");
+  await waitFor(() => expect(screen.getAllByAltText("")).toHaveLength(2));
+  const [a, b] = screen.getAllByAltText("");
+  expect(screen.getAllByLabelText("Loading image")).toHaveLength(2);
+
+  fireEvent.load(a);
+  await waitFor(() =>
+    expect(screen.getAllByLabelText("Loading image")).toHaveLength(1),
+  );
+  expect(a.className).not.toContain("chc-img-loading");
+
+  // A frame that fails to load falls back to the placeholder.
+  fireEvent.error(b);
+  expect(await screen.findByText("no recent frame")).toBeDefined();
+  expect(screen.getAllByAltText("")).toHaveLength(1);
+});
+
+test("an offline camera is shown but not navigable", async () => {
+  stubLocation([
+    {
+      name: "off",
+      title: "Off Cam",
+      online: false,
+      latest_date: "2026-04-10",
+      primary_image: "/locations/local/cameras/off/channels/x/2026-04-10/000001/image.jpg",
+    },
+  ]);
+  renderAt("/local");
+  const label = await screen.findByText("offline");
+  expect(label.getAttribute("title")).toMatch(/disabled in the configuration/);
+  // No thumbnail fetch for it: the placeholder says why.
+  expect(screen.getByText("no recent data")).toBeDefined();
+  expect(screen.queryByRole("link", { name: /Off Cam/ })).toBeNull();
+  expect(screen.getByText("Off Cam").closest(".cam-card")?.className).toContain(
+    "off",
+  );
+});
+
+test("a location with cluster status offers it under Apps", async () => {
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (!String(input).endsWith("/api/locations/local")) {
+      return inner(input, init);
+    }
+    return Promise.resolve(inner(input, init)).then(async (r) => {
+      const body = { ...(await r.json()), has_cluster_status: true };
+      return { ok: true, json: () => Promise.resolve(body) };
+    });
+  }) as unknown as typeof fetch;
+  renderAt("/local");
+  const card = await screen.findByRole("link", { name: /Cluster status/ });
+  expect(card.getAttribute("href")).toBe("/detectors");
+  expect(screen.getByText("Apps")).toBeDefined();
 });
