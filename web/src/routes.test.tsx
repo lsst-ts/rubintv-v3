@@ -117,6 +117,49 @@ test("a multi-location deployment shows the grouped landing", async () => {
   expect(router.state.location.pathname).toBe("/");
 });
 
+// The guide is reached from Home's Apps section and from the nav menu, and
+// both offer it only when the deployment has a ConsDB to build it from.
+test.each([{ enabled: true }, { enabled: false }])(
+  "Home and the menu link to the guide only when it's enabled ($enabled)",
+  async ({ enabled }) => {
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.endsWith("/api/locations")
+        ? [
+            { name: "summit-usdf", title: "Summit" },
+            { name: "base-usdf", title: "Base" },
+          ]
+        : url.endsWith("/api/guide")
+          ? { enabled, instruments: [], day_start_utc_hour: 12, max_gap_minutes: 15 }
+          : { camera_groups: [], has_cluster_status: false };
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+    }) as unknown as typeof fetch;
+
+    const client = createQueryClient();
+    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+    render(
+      <QueryClientProvider client={client}>
+        <LiveProvider>
+          <RouterProvider router={router} />
+        </LiveProvider>
+      </QueryClientProvider>,
+    );
+    // Wait for the guide's config itself, so a missing link below is its
+    // answer rather than a fetch still in flight.
+    await waitFor(() =>
+      expect(client.getQueryState(["guide", "config"])?.status).toBe("success"),
+    );
+    expect(await screen.findByText("Summit")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+
+    const href = enabled ? "/guide" : null;
+    const card = screen.queryByRole("link", { name: /^Observing guide/ });
+    expect(card?.getAttribute("href") ?? null).toBe(href);
+    const item = screen.queryByRole("menuitem", { name: "Observing guide" });
+    expect(item?.getAttribute("href") ?? null).toBe(href);
+  },
+);
+
 test("channels route renders the channel browser, grouped by cadence", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
