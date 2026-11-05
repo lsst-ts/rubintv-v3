@@ -1021,3 +1021,148 @@ def test_proxy_502_on_upstream_error(
         f"{DATE}/000001/image.png"
     )
     assert resp.status_code == 502
+
+
+def test_metadata_revalidates_by_etag(seeded_client: TestClient) -> None:
+    # A table polling a date's metadata gets a bodyless 304 while the file
+    # is unchanged; a date with no metadata.json has no version to offer.
+    url = f"/api/locations/test/cameras/lsstcam/metadata/{DATE}"
+    etag = seeded_client.get(url).headers["ETag"]
+    resp = seeded_client.get(url, headers={"If-None-Match": etag})
+    assert resp.status_code == 304
+    assert resp.content == b""
+    empty = seeded_client.get("/api/locations/test/cameras/lsstcam/metadata/2026-03-03")
+    assert empty.json() == {}
+    assert "ETag" not in empty.headers
+
+
+def test_event_key_of_another_camera_is_404(seeded_client: TestClient) -> None:
+    key = f"auxtel/{DATE}/monitor/000001/a.png"
+    resp = seeded_client.get(
+        "/api/locations/test/cameras/lsstcam/events", params={"key": key}
+    )
+    assert resp.status_code == 404
+
+
+def test_camera_without_channels_has_no_card_image() -> None:
+    from lsst.ts.rubintv.api.data import _primary_image_path
+    from lsst.ts.rubintv.config.models import Camera
+
+    camera = Camera(name="bare", title="Bare")
+    assert camera.primary_channel is None
+    assert _primary_image_path(None, "test", camera) is None  # type: ignore[arg-type]
+
+
+def test_night_report_skips_text_it_cannot_read(seeded_client: TestClient) -> None:
+    # Tonight's report is rewritten through the night, so one text object can
+    # hold partial JSON when fetched: that section is skipped, the rest of
+    # the report (other text, the plots) still comes back.
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    for _ in range(60):
+        if state.camera_status()[("test", "lsstcam")].full_complete:
+            break
+        time.sleep(0.05)
+    other = "2025-08-24"
+    s3 = boto3.client("s3", region_name="us-east-1")
+    base = f"lsstcam/{other}/night_report"
+    good = [{"type": "multiline", "key": "s", "title": "S", "content": "ok"}]
+    s3.put_object(
+        Bucket=TEST_BUCKET, Key=f"{base}/good_md.json", Body=json.dumps(good).encode()
+    )
+    s3.put_object(Bucket=TEST_BUCKET, Key=f"{base}/torn_md.json", Body=b'[{"type": ')
+    s3.put_object(Bucket=TEST_BUCKET, Key=f"{base}/Coverage/c.png", Body=b"x")
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{other}"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [item["content"] for item in body["text"]] == ["ok"]
+    assert [plot["filename"] for plot in body["plots"]] == ["c.png"]
+
+
+def test_night_report_plot_revalidates_and_serves_ranges(
+    seeded_client: TestClient,
+) -> None:
+    s3 = boto3.client("s3", region_name="us-east-1")
+    key = f"lsstcam/{DATE}/night_report/Coverage/range.png"
+    s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=b"0123456789")
+    url = (
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"
+        "/plot/Coverage/range.png"
+    )
+    etag = seeded_client.get(url).headers["ETag"]
+    assert seeded_client.get(url, headers={"If-None-Match": etag}).status_code == 304
+    part = seeded_client.get(url, headers={"Range": "bytes=2-5"})
+    assert part.status_code == 206
+    assert part.content == b"2345"
+
+
+def test_proxy_keeps_a_meaningful_stored_content_type(
+    seeded_client: TestClient,
+) -> None:
+    # The filename guess is only a fallback for objects stored as a generic
+    # octet-stream; a real stored type is the producer's word and wins.
+    s3 = boto3.client("s3", region_name="us-east-1")
+    s3.put_object(
+        Bucket=TEST_BUCKET,
+        Key=(
+            f"lsstcam/{DATE}/witness_detector/000009/"
+            f"lsstcam_witness_detector_{DATE}_000009.png"
+        ),
+        Body=b"x",
+        ContentType="image/webp",
+    )
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{DATE}/000009/image.png"
+    )
+    assert resp.headers["Content-Type"] == "image/webp"
+
+
+def test_proxy_treats_a_bare_404_from_s3_as_missing(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Some S3 gateways report a missing key as a generic ClientError with
+    # code 404 rather than NoSuchKey: that is a 404 here, not a 502.
+    from botocore.exceptions import ClientError
+
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    client = state.s3.client_for("test")
+
+    def _missing(*_a: object, **_k: object) -> None:
+        raise ClientError({"Error": {"Code": "404"}}, "GetObject")
+
+    monkeypatch.setattr(client, "get_object", _missing)
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"
+        "/plot/Coverage/elana_coverage.png"
+    )
+    assert resp.status_code == 404
+
+
+def test_iter_body_ends_cleanly_when_the_break_follows_the_last_byte() -> None:
+    # A read that fails only after the final byte has nothing left to fetch:
+    # the stream ends whole, with no resume and no abort.
+    client = _ResumeClient(b"0123456789")
+    sent: list[bytes] = []
+    _stream(client, b"0123456789", keep=10, sent=sent)
+    assert b"".join(sent) == b"0123456789"
+    assert client.ranges == []
+
+
+def test_admin_flush_redis_503_when_redis_drops_mid_request(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lsst.ts.rubintv.data.redis_inputs import RedisUnavailable
+
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    state.redis._redis = _FakeAdminRedis()  # noqa: SLF001 - enables the gate
+
+    async def _gone() -> None:
+        raise RedisUnavailable("connection lost")
+
+    monkeypatch.setattr(state.redis, "flushdb", _gone)
+    resp = seeded_client.post(
+        "/api/admin/flush-redis", headers={"X-Auth-User": "testadmin"}
+    )
+    assert resp.status_code == 503

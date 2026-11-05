@@ -176,3 +176,11 @@ def test_event_malformed_visit_is_404(client: TestClient) -> None:
         follow_redirects=False,
     )
     assert resp.status_code == 404
+
+
+def test_event_with_a_truncated_key_is_404(client: TestClient) -> None:
+    # A link whose key lost its tail can't be resolved: a clean 404, not 500.
+    resp = client.get(
+        "/summit/lsstcam/event?key=lsstcam/2025-04-22", follow_redirects=False
+    )
+    assert resp.status_code == 404

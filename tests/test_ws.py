@@ -86,6 +86,23 @@ def test_manager_unsubscribe_removes_topic_index() -> None:
     assert c1.queue.qsize() == 0
 
 
+def test_manager_keeps_a_topic_while_others_subscribe() -> None:
+    # One subscriber leaving (unsubscribe or disconnect) must not cut the
+    # topic off for the rest; unsubscribing from a topic never joined is a
+    # no-op.
+    topic = "camera|test|lsstcam"
+    mgr = ConnectionManager()
+    c1, c2, c3 = (Connection(id=i, socket=None) for i in "123")  # type: ignore[arg-type]
+    mgr._connections.update({"1": c1, "2": c2, "3": c3})  # noqa: SLF001
+    for conn in (c1, c2, c3):
+        mgr.subscribe(conn, topic)
+    mgr.unsubscribe(c1, topic)
+    mgr.unsubscribe(c1, "camera|test|never-joined")
+    mgr.disconnect(c3)
+    mgr.publish_to_topic(topic, ServerMessage(type="channelData"))
+    assert (c1.queue.qsize(), c2.queue.qsize(), c3.queue.qsize()) == (0, 1, 0)
+
+
 def test_manager_disconnect_cleans_topic_index() -> None:
     # Dropping a connection removes it from every topic set, and empty topic
     # sets are deleted so the index doesn't accumulate dead keys.

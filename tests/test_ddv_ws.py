@@ -198,3 +198,41 @@ async def test_handle_worker_cleans_up_on_non_disconnect_error() -> None:
     with pytest.raises(RuntimeError):
         await bridge.handle_worker(sock)
     assert bridge._workers == {}
+
+
+class _DeadSocket(_FakeSocket):
+    """A socket whose sends fail: the peer has gone."""
+
+    async def send_text(self, text: str) -> None:
+        raise RuntimeError("socket closed")
+
+
+async def test_job_sent_to_a_dead_worker_goes_to_the_next() -> None:
+    # A worker can vanish between connecting and being handed a job; the job
+    # must not be lost with it.
+    bridge = ddv_mod.DdvBridge()
+    dead = ddv_mod._Worker("dead", _DeadSocket())  # type: ignore[arg-type]
+    live_socket = _FakeSocket()
+    live = ddv_mod._Worker("live", live_socket)  # type: ignore[arg-type]
+    bridge._workers = {"dead": dead, "live": live}
+    client = ddv_mod._Client("c", _FakeSocket())  # type: ignore[arg-type]
+    await bridge._dispatch("job", client)
+    assert list(bridge._workers) == ["live"]
+    assert live_socket.sent == ["job"]
+    assert live.client is client
+
+
+async def test_result_for_a_vanished_client_frees_the_worker() -> None:
+    # The client left before its result arrived: the send fails quietly and
+    # the worker moves straight on to the next queued job.
+    bridge = ddv_mod.DdvBridge()
+    gone = ddv_mod._Client("gone", _DeadSocket())  # type: ignore[arg-type]
+    waiting_socket = _FakeSocket()
+    waiting = ddv_mod._Client("waiting", waiting_socket)  # type: ignore[arg-type]
+    worker_socket = _FakeSocket()
+    worker = ddv_mod._Worker("w", worker_socket, busy=True, client=gone)  # type: ignore[arg-type]
+    bridge._workers = {"w": worker}
+    bridge._queue.append(ddv_mod._Job("next-job", waiting))
+    await bridge._finish(worker, "result")
+    assert worker_socket.sent == ["next-job"]
+    assert worker.client is waiting
