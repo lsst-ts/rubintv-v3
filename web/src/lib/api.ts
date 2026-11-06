@@ -10,7 +10,6 @@ import type {
   CameraOut,
   ControlsOut,
   DatePayload,
-  DetectorsConfigOut,
   LocationOut,
   LocationSummary,
   Metadata,
@@ -102,16 +101,11 @@ export const api = {
       `/locations/${enc(loc)}/cameras/${enc(cam)}/nightly-summary/${enc(date)}`,
     ),
 
-  controls: (loc: string) =>
-    getJson<ControlsOut>(`/locations/${enc(loc)}/admin/controls`),
-
   // Site-wide control readback + admin menus + detector streams. These are
   // deployment-wide (their config is not nested under a location).
   siteControls: () => getJson<ControlsOut>("/admin/controls"),
 
   adminMenus: () => getJson<AdminMenusOut>("/admin/menus"),
-
-  detectorsConfig: () => getJson<DetectorsConfigOut>("/detectors/config"),
 
   // Admin panel: header info + write actions. The control writes go to Redis
   // (plain SET); the readback returns asynchronously over the admin WS topic.

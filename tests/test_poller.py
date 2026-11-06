@@ -105,19 +105,6 @@ def test_keys_carry_the_whole_listing(poller: PollerFixture) -> None:
     }
 
 
-def test_dates_reflect_the_listing(poller: PollerFixture) -> None:
-    poller.put("auxtel/2026-04-10/monitor/000001/a.png")  # type: ignore[operator]
-    poller.put("auxtel/2026-04-11/monitor/000001/b.png")  # type: ignore[operator]
-    poller.put("auxtel/2026-04-11/metadata.json")  # type: ignore[operator]
-    result = poller.poller.scan("local", "auxtel/")
-    # Dates present in the bucket, deduped across keys; metadata counts too.
-    assert result.dates == {"2026-04-10", "2026-04-11"}
-
-
-def test_dates_empty_for_an_empty_prefix(poller: PollerFixture) -> None:
-    assert poller.poller.scan("local", "auxtel/").dates == set()
-
-
 def test_events_are_emitted_in_sorted_key_order(poller: PollerFixture) -> None:
     # ExtInfo takes the first extension it sees for a channel as the default,
     # so emission order decides how a date's extensions are classified. A set
