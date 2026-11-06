@@ -1,0 +1,432 @@
+import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Link,
+  Outlet,
+  useLocation as useRouterLocation,
+  useMatches,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { S3Status } from "./S3Status";
+import { InterruptedNotice } from "./ProxiedMedia";
+import { MediaInterruptionProvider } from "../lib/MediaInterruption";
+import { LoadingBanner } from "./LoadingBanner";
+import { NavMenu } from "./NavMenu";
+import { DatePicker } from "./DatePicker";
+import { STALE } from "../lib/queryClient";
+import { api } from "../lib/api";
+import { instanceEnv, processingBanner } from "../lib/links";
+import { useShellNav, tabsForCamera } from "../lib/useShellNav";
+import { useRouteValid } from "../lib/useRouteValid";
+import { setCameraTabPref } from "../lib/cameraTabPref";
+
+// The deployment site (RAPID_ANALYSIS_LOCATION) from /api/config, used to label the
+// header. Undefined until it resolves — the env strip goes by the declared
+// instance env (and a localhost check) meanwhile, so dev still flags at once.
+function useSite(): string | undefined {
+  const { data } = useQuery({
+    queryKey: ["config"],
+    queryFn: api.config,
+    staleTime: STALE.config,
+  });
+  return data?.site;
+}
+
+// App shell: a single full-width main column whose topbar carries the
+// wayfinding (breadcrumb + NavMenu drawer), the page title + per-camera view
+// tabs, and the date stepper. The old collapsible sidebar has been retired in
+// favour of the NavMenu drawer (RubinTV Design System, ui_kits/rubintv), so the
+// brand lockup now appears only on the Home hero. Breadcrumbs derive from the
+// URL params (Decision 7).
+export function Layout() {
+  const { location, camera } = useParams();
+  const { pathname, search } = useRouterLocation();
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const nav = useShellNav();
+  const site = useSite();
+  // A media download on this page was cut short (see ProxiedMedia): the
+  // topbar offers a reload. The notice belongs to the page it was raised on,
+  // so navigating clears it.
+  const [mediaInterrupted, setMediaInterrupted] = useState(false);
+  const reportInterruption = useCallback(() => setMediaInterrupted(true), []);
+  useEffect(() => setMediaInterrupted(false), [pathname, search]);
+  // Whether the outlet is showing the 404 page. Two ways to get there: the
+  // URL names a location/camera/channel this deployment doesn't have (the
+  // route guard), or it matched no route at all (the "*" route, flagged by its
+  // handle — it binds no params, so useParams can't distinguish it from Home).
+  // The shell must not dress that page as the thing it couldn't find: no tabs,
+  // date picker, camera breadcrumb or scan-status pills, so every "are we on a
+  // camera/location" test below is gated on the route being real.
+  const matches = useMatches();
+  const unmatchedPath = matches.some(
+    (m) => (m.handle as { notFound?: boolean } | undefined)?.notFound,
+  );
+  const notFound = useRouteValid() === "missing" || unmatchedPath;
+
+  const onCamera = !!location && !!camera && !nav.system && !notFound;
+  // Until the camera config arrives the shell can't tell what kind of camera
+  // this is — a live-view camera (All Sky) has no Table tab or date picker,
+  // and the title is the config's, not the URL's name — so the title, tabs
+  // and date picker are held back rather than drawn for a regular camera and
+  // then swapped out. The title and tabs rows keep their height (invisible
+  // stand-ins) so the page doesn't jump when they land. A failed fetch
+  // settles too, and falls back to the URL name and a Table tab as before.
+  const cameraPending = onCamera && nav.cameraPending;
+
+  // The per-camera view tabs (Table / Channels / Nightly Summary …) from the
+  // real camera config. Only shown on a camera route. The Nightly Summary tab
+  // needs the date in view to have one, except on its own page: a deep link to
+  // a night without one still shows which view it is.
+  const tabs = cameraPending
+    ? []
+    : tabsForCamera(
+        nav.cameraInfo,
+        nav.hasNightReport || nav.activeTab === "nightly-summary",
+      );
+
+  // The LSSTCam processing-mode banner ("USDF Nightly Validation Processing" /
+  // "Summit Quicklook Processing"). Non-null only on the lsstcam/lsstcam_aos
+  // cameras of the USDF/summit locations; it labels what the pipeline behind
+  // this view is doing.
+  const banner = onCamera ? processingBanner(location, camera) : null;
+
+  // A full-width strip warning that this isn't production. It shows if the
+  // backend site is a non-prod shape (local/gha/test), the deployment declares
+  // itself dev (RUBINTV_INSTANCE_ENV), or the page is on localhost. Shown on
+  // every full-shell route, but not on headerless embeds (bare chromeless
+  // tiles).
+  const env = instanceEnv(site);
+  const ENV_LABELS: Record<string, string> = {
+    localhost: "Localhost — development server",
+    dev: "Development instance",
+    ci: "CI — GitHub Actions",
+    test: "Test instance",
+  };
+  const envLabel = ENV_LABELS[env] ?? null;
+  const ENV_TAGS: Record<string, string> = {
+    localhost: "LOCAL",
+    dev: "DEV",
+    ci: "CI",
+    test: "TEST",
+  };
+  const envTag = ENV_TAGS[env] ?? "";
+  // A camera can have no tabs (live-view cameras with no night report), in
+  // which case the topbar is laid out like the non-camera pages — no tabs row,
+  // so the status pills get the bottom padding they'd otherwise lack. While
+  // the config is pending the row is kept, holding its place.
+  const hasTabs = onCamera && (cameraPending || tabs.length > 0);
+
+  // The date picker is hoisted from the Table view into the shell so the
+  // selected date persists across the Table / Channels / single-channel tabs —
+  // previously switching tabs (or opening a plot) dropped the ?date= and the
+  // Table reverted to the newest day. It shows on any per-date camera view once
+  // a date resolves and the camera config says it isn't a live-view camera
+  // (which has no per-date table).
+  const showDatePicker =
+    onCamera && !cameraPending && !nav.cameraInfo?.live_view && nav.date !== "";
+
+  // Applying a date. On the Table view we just update ?date= in place. From a
+  // Channels/single-channel view — where a historical date has no meaning (the
+  // grid always shows the newest frame per channel) — picking a date takes the
+  // user to that date's Table, which is where the date applies.
+  //
+  // Picking a date (via the picker or the prev/next-day steppers, which both
+  // call this) is an inherently Table action, so remember Table as the wanted
+  // tab: the next camera the user opens then lands on its Table too, matching
+  // where this date actually applies.
+  //
+  // The exception is a per-day channel page (e.g. Tonight's Movie): there the
+  // picker offers the channel's own nights, so a pick opens that night's
+  // artifact in place (a fixed ?date=, dropping out of live mode).
+  const applyDate = (d: string) => {
+    if (nav.perDayChannel) {
+      navigate(`/${location}/${camera}/${nav.perDayChannel}?date=${d}`);
+      return;
+    }
+    setCameraTabPref("table");
+    if (nav.activeTab === "table") {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set("date", d);
+          return p;
+        },
+        { replace: true },
+      );
+    } else {
+      navigate(`/${location}/${camera}?date=${d}`);
+    }
+  };
+
+  // Headerless embedding (?headerless=true): render only the view, with no app
+  // shell — no topbar, breadcrumbs or tabs. This lets any view (the live Mosaic
+  // in particular) be dropped into an <iframe> as a bare tile. It's a global
+  // param, matching the original app, so it applies to whatever route is
+  // mounted. The nav hooks above still run, so their data stays warm.
+  if (params.get("headerless") === "true") {
+    return (
+      <div className="shell headerless">
+        <main className="app-content">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
+
+  // The Home (index) route is the full-bleed launcher — the one place that
+  // carries the brand — and it draws its own floating NavMenu. So it renders
+  // WITHOUT the wayfinding topbar (which would otherwise duplicate the "home"
+  // breadcrumb and the drawer). Every inner page (a location, a camera, or a
+  // system page) gets the topbar. Home is the only route with neither a
+  // :location param nor a system path — except the router's "*" catch-all,
+  // which also has no params but must NOT get the brandless full-bleed
+  // treatment: a 404 needs the topbar's breadcrumb and drawer to get back out.
+  const isHome = !location && !nav.system && pathname === "/";
+  if (isHome) {
+    return (
+      <div className="app-root">
+        {envLabel && (
+          <div className={`env-strip env-${env}`} role="status">
+            <span className="env-tag">{envTag}</span>
+            <span className="env-label">{envLabel}</span>
+          </div>
+        )}
+        <div className="main main--full">
+          <Outlet />
+        </div>
+      </div>
+    );
+  }
+
+  // The topbar's big page title. Camera pages show the camera title; a bare
+  // location page shows the location's display title (e.g. "USDF"). System
+  // pages (status/detectors/admin) render their own <h1> in the view body, so
+  // they get no topbar title here to avoid double-titling.
+  const onLocation = !!location && !camera && !nav.system && !notFound;
+  const locationTitle =
+    nav.locations.find((l) => l.name === location)?.title ?? location;
+  const title = onCamera
+    ? (nav.cameraInfo?.title ?? camera)
+    : onLocation
+      ? locationTitle
+      : null;
+
+  // The date picker names whose dates it offers — the camera's, or on a
+  // per-day channel page that channel's movie nights — and the steppers say
+  // which kind of day they step to, so the two can't be mistaken.
+  const perDayTitle = nav.perDayChannel
+    ? (nav.cameraInfo?.channels?.find((c) => c.name === nav.perDayChannel)
+        ?.title ?? nav.perDayChannel)
+    : null;
+  const stepNoun = perDayTitle ? "night with a movie" : "day with data";
+
+  return (
+    <div className="app-root">
+      <div className="main main--full">
+        {/* Without the tabs row the status pills would sit flush on the
+            topbar's bottom border; pad the bottom in that case. */}
+        <header className={"topbar" + (hasTabs ? "" : " no-tabs")}>
+          {/* Utility strip: breadcrumb (rooted at a "home" link, never the brand, so
+              "RubinTV" isn't repeated across the app — the big page title
+              carries the leaf) on the left; the non-prod env warning centred; and
+              scan/S3 status + the NavMenu drawer on the right. */}
+          <div className="topbar-strip">
+            <nav className="crumb breadcrumbs" aria-label="Breadcrumb">
+              {/* "home" is never the current page here — Home has its own
+                  full-bleed chrome and isn't wrapped in this topbar — so it's
+                  always a link back to the launcher, on every inner page
+                  (locations, cameras, and the system pages). */}
+              <Link to="/">home</Link>
+              {location && !notFound && (
+                <>
+                  <span className="sep" aria-hidden="true">
+                    ›
+                  </span>
+                  {camera ? (
+                    <Link to={`/${location}`}>{location}</Link>
+                  ) : (
+                    <span className="here">{location}</span>
+                  )}
+                </>
+              )}
+              {location && camera && !notFound && (
+                <>
+                  <span className="sep" aria-hidden="true">
+                    ›
+                  </span>
+                  <span className="here" aria-current="page">
+                    {camera}
+                  </span>
+                </>
+              )}
+              {/* System pages (status/detectors/admin) have no :location, so
+                  the system name is the crumb leaf. */}
+              {nav.system && (
+                <>
+                  <span className="sep" aria-hidden="true">
+                    ›
+                  </span>
+                  <span className="here" aria-current="page">
+                    {nav.system}
+                  </span>
+                </>
+              )}
+            </nav>
+
+            {/* Non-prod warning, centred in the strip. Absolutely centred so
+                it stays put regardless of how wide the breadcrumb or the
+                status/menu cluster grow. Keeps the env colour as a pill so the
+                "this isn't production" signal survives the move off the old
+                full-width bar. */}
+            {envLabel && (
+              <div className={`env-pill env-${env}`} role="status">
+                <span className="env-tag">{envTag}</span>
+                <span className="env-label">{envLabel}</span>
+              </div>
+            )}
+
+            <div className="topbar-strip-right">
+              <div className="topbar-status">
+                {/* S3 connectivity is only meaningful (and only actionable)
+                    while viewing a camera's images, so — like the historical
+                    refresh pill — it's scoped to camera pages. The WebSocket
+                    'connected' indicator now lives on the Status page. */}
+                {onCamera && <S3Status linkToStatus />}
+                {/* Historical-scan notice sits with the other status signals
+                    as a compact inline pill, not a full-width banner. Scan
+                    progress for a location/camera that doesn't exist is
+                    meaningless, so it's suppressed on the 404 page. */}
+                {!notFound && (
+                  <LoadingBanner location={location} camera={camera} />
+                )}
+                {mediaInterrupted && <InterruptedNotice />}
+              </div>
+              <NavMenu />
+            </div>
+          </div>
+
+          {/* System pages (status/detectors/admin) have no title and no tabs —
+              they render their own <h1> in the view body — so this row would be
+              an empty padded strip. Only mount it when it has content. */}
+          {(title || hasTabs) && (
+            <div className="topbar-main">
+              {/* Title row: camera name, then the date stepper, then the
+                processing-mode chip. The date sits in the headline because it
+                is page scope (it applies across every view tab, and switching
+                tabs carries it along) rather than a view switcher — it was
+                previously seated at the end of the tabs row, where a trailing
+                control read as a utility and users missed it. */}
+              {(title || showDatePicker) && (
+                <div className="title-row">
+                  {title && (
+                    <h2
+                      className={cameraPending ? "is-pending" : undefined}
+                      aria-hidden={cameraPending || undefined}
+                    >
+                      {title}
+                    </h2>
+                  )}
+                  {showDatePicker && (
+                    <span className="topbar-datepicker date-stepper">
+                      <button
+                        type="button"
+                        className="tb-btn step"
+                        aria-label={`Previous ${stepNoun}`}
+                        title={`Previous ${stepNoun}`}
+                        disabled={!nav.olderDate}
+                        onClick={() =>
+                          nav.olderDate && applyDate(nav.olderDate)
+                        }
+                      >
+                        ‹
+                      </button>
+                      <DatePicker
+                        dates={nav.pickerDates}
+                        counts={nav.calendar?.counts ?? {}}
+                        maxSeq={nav.calendar?.max_seq ?? {}}
+                        movies={perDayTitle !== null}
+                        title={perDayTitle ?? title ?? undefined}
+                        // A movie picker's days are all movie nights already.
+                        perDay={perDayTitle ? undefined : nav.perDayMarks}
+                        value={nav.date}
+                        isCurrentDayObs={nav.isCurrentDayObs}
+                        onChange={applyDate}
+                      />
+                      <button
+                        type="button"
+                        className="tb-btn step"
+                        aria-label={`Next ${stepNoun}`}
+                        title={`Next ${stepNoun}`}
+                        disabled={!nav.newerDate}
+                        onClick={() =>
+                          nav.newerDate && applyDate(nav.newerDate)
+                        }
+                      >
+                        ›
+                      </button>
+                    </span>
+                  )}
+                  {banner && (
+                    <span
+                      className={`processing-banner site-${location}`}
+                      role="status"
+                    >
+                      {banner}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {hasTabs && (
+                <div className="tabs">
+                  {cameraPending && (
+                    <span className="tab is-pending" aria-hidden="true">
+                      Table
+                    </span>
+                  )}
+                  {tabs.map((tab) => {
+                    const base =
+                      `/${location}/${camera}` +
+                      (tab.suffix ? `/${tab.suffix}` : "");
+                    // Carry the resolved date into every tab link so switching
+                    // views keeps the day in view — the fix for returning to the
+                    // Table and seeing the newest day instead of the one you
+                    // left. The Nightly Summary link already takes ?date= too.
+                    const to = nav.date ? `${base}?date=${nav.date}` : base;
+                    const active = nav.activeTab === tab.id;
+                    return (
+                      <Link
+                        key={tab.id}
+                        to={to}
+                        className={"tab" + (active ? " active" : "")}
+                        aria-current={active ? "page" : undefined}
+                        // Remember the Table/Channels choice so the next camera
+                        // opens on the same tab (setCameraTabPref ignores the
+                        // others). CameraTable reads this to redirect on arrival.
+                        onClick={() => setCameraTabPref(tab.id)}
+                      >
+                        {tab.label}
+                        {tab.count != null && (
+                          <span className="count">{tab.count}</span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </header>
+
+        <main className="app-content">
+          <MediaInterruptionProvider value={reportInterruption}>
+            <Outlet />
+          </MediaInterruptionProvider>
+        </main>
+      </div>
+    </div>
+  );
+}

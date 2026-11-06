@@ -1,0 +1,315 @@
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { createQueryClient } from "../lib/queryClient";
+import { LiveProvider } from "../lib/LiveContext";
+import { applyLiveMessage } from "../lib/liveQuery";
+import { Detectors } from "./Detectors";
+
+let posts: string[] = [];
+
+// `admin` controls what /admin/status reports for is_admin — the Restart
+// controls are hidden unless the user is a site admin.
+function stub({ admin = true }: { admin?: boolean } = {}) {
+  posts = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (init?.method === "POST") {
+      posts.push(url);
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, detail: "restarted" }),
+      });
+    }
+    if (url.includes("/admin/status")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ is_admin: admin }),
+      });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  }) as unknown as typeof fetch;
+}
+
+function renderDetectors(qc: ReturnType<typeof createQueryClient>) {
+  return render(
+    <QueryClientProvider client={qc}>
+      <LiveProvider>
+        <MemoryRouter>
+          <Detectors />
+        </MemoryRouter>
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+}
+
+test("renders the Cluster Status layout: heading, legend, sections, queues", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+
+  expect(await screen.findByRole("heading", { name: "Cluster Status" })).toBeDefined();
+  // Legend labels.
+  expect(screen.getByText("Free")).toBeDefined();
+  expect(screen.getByText("Missing")).toBeDefined();
+  // Hardcoded section titles.
+  expect(screen.getByText("Imaging Worker Set 1")).toBeDefined();
+  expect(screen.getByText("CWFS Worker Set 4")).toBeDefined();
+  expect(screen.getByText("SFM Step 1b")).toBeDefined();
+  expect(screen.getByText("Backlog Workers")).toBeDefined();
+  expect(screen.getByText("Other Queues")).toBeDefined();
+});
+
+test("renders queued cell content and the Other Queues table from live data", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  await screen.findByText("SFM Step 1b");
+
+  act(() =>
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        detectors: {
+          sfmStep1b: {
+            workers: {
+              "0": { status: "queued", queue_length: 4 },
+              "1": { status: "free" },
+            },
+          },
+          otherQueues: { text: { queueA: "12" } },
+        },
+      },
+    }),
+  );
+
+  // The queued cell shows its queue length; the Other Queues row appears.
+  expect(await screen.findByText("4")).toBeDefined();
+  expect(await screen.findByText("queueA")).toBeDefined();
+  expect(screen.getByText("12")).toBeDefined();
+});
+
+test("a later full snapshot replaces the previous one (no stale sets linger)", async () => {
+  // The rebuild's contract is that the backend pushes the *entire* site-wide
+  // snapshot on every detectorStatus message (detectors.all()), and the client
+  // replaces the cache slot wholesale — there is no per-set merge. This is what
+  // immunises it against the v2 bug where successive single-set deltas were
+  // shaped differently from the initial snapshot. Assert that a second snapshot
+  // both updates a changed set and drops a set that's no longer present.
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  await screen.findByText("SFM Step 1b");
+
+  // First snapshot: a queued cell in sfmStep1b and an Other Queues row.
+  act(() =>
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        detectors: {
+          sfmStep1b: {
+            workers: { "0": { status: "queued", queue_length: 7 } },
+          },
+          otherQueues: { text: { queueA: "12" } },
+        },
+      },
+    }),
+  );
+  expect(await screen.findByText("7")).toBeDefined();
+  expect(await screen.findByText("queueA")).toBeDefined();
+
+  // Second full snapshot: queue length changes, and otherQueues is gone.
+  act(() =>
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        detectors: {
+          sfmStep1b: {
+            workers: { "0": { status: "queued", queue_length: 3 } },
+          },
+        },
+      },
+    }),
+  );
+
+  // The changed value shows; the stale ones are gone (wholesale replace).
+  expect(await screen.findByText("3")).toBeDefined();
+  await waitFor(() => expect(screen.queryByText("7")).toBeNull());
+  expect(screen.queryByText("queueA")).toBeNull();
+});
+
+test("restart requires a confirm click, then POSTs the set's restart", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  await screen.findByText("Imaging Worker Set 1");
+
+  // First Restart Workers button (Imaging Worker Set 1 -> sfmSet0). The buttons
+  // appear once /admin/status resolves is_admin=true, so wait for them.
+  const buttons = await screen.findAllByRole("button", { name: "Restart Workers" });
+  buttons[0].click(); // arms confirm
+  expect(posts.length).toBe(0);
+
+  const confirm = await screen.findAllByRole("button", { name: /Confirm restart/ });
+  confirm[0].click();
+  await waitFor(() => expect(posts.length).toBe(1));
+  expect(posts[0]).toContain("/api/detectors/sfmSet0/restart");
+});
+
+test("non-admins get no restart controls (server-gated action is hidden)", async () => {
+  stub({ admin: false });
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  // The page renders fully; only the admin-only Restart buttons are absent.
+  await screen.findByText("Imaging Worker Set 1");
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Restart Workers" })).toBeNull(),
+  );
+});
+
+const SET1 = "Imaging Worker Set 1";
+const snapshot = (detectors: Record<string, unknown>) => ({
+  type: "detectorStatus",
+  data: { detectors },
+});
+
+test("a set reporting a worker count shows that many cells", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  const title = await screen.findByText("SFM Step 1b");
+  const cells = () =>
+    [...title.parentElement!.querySelectorAll(".detector-cell")].map((c) =>
+      c.className.replace("detector-cell ", ""),
+    );
+  // Before any report: the configured fallback of 8, all missing.
+  expect(cells()).toHaveLength(8);
+
+  // 10 advertised, one with detail: the rest are placeholders.
+  act(() =>
+    applyLiveMessage(
+      qc,
+      snapshot({ sfmStep1b: { numWorkers: 10, workers: { "0": { status: "busy" } } } }),
+    ),
+  );
+  await waitFor(() => expect(cells()).toHaveLength(10));
+  expect(cells()[0]).toBe("status-busy");
+  expect(new Set(cells().slice(1))).toEqual(new Set(["status-missing"]));
+});
+
+test("a refused restart says why", async () => {
+  stub();
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    init?.method === "POST"
+      ? Promise.resolve({
+          ok: false,
+          status: 403,
+          json: () => Promise.resolve({ detail: "site admins only" }),
+        })
+      : inner(input, init)) as unknown as typeof fetch;
+  renderDetectors(createQueryClient());
+  (await screen.findAllByRole("button", { name: "Restart Workers" }))[0].click();
+  (await screen.findAllByRole("button", { name: /Confirm restart/ }))[0].click();
+  const msg = await screen.findByRole("status");
+  expect(msg.textContent).toBe(
+    `${SET1} restart failed — POST /detectors/sfmSet0/restart -> site admins only`,
+  );
+  expect(msg.className).toContain("err");
+});
+
+describe("the focal-plane canvas", () => {
+  // jsdom has neither layout nor a 2D context: give the canvas container a
+  // width (delivered through a ResizeObserver that fires on observe, as a
+  // browser's does) and record what each canvas draws.
+  interface Drawn {
+    fills: string[];
+    texts: Array<[string, number, number]>;
+  }
+  const drawn = new Map<HTMLCanvasElement, Drawn>();
+  const realRO = globalThis.ResizeObserver;
+  const realGetContext = HTMLCanvasElement.prototype.getContext;
+  const realRect = HTMLElement.prototype.getBoundingClientRect;
+
+  beforeEach(() => {
+    drawn.clear();
+    globalThis.ResizeObserver = class {
+      constructor(private cb: () => void) {}
+      observe() {
+        this.cb();
+      }
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return { width: 400 } as DOMRect;
+    };
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
+      const rec: Drawn = { fills: [], texts: [] };
+      drawn.set(this, rec);
+      const ctx = {
+        fillStyle: "",
+        scale() {},
+        clearRect() {
+          rec.fills = [];
+          rec.texts = [];
+        },
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        closePath() {},
+        stroke() {},
+        fill() {
+          rec.fills.push(ctx.fillStyle);
+        },
+        fillText(t: string, x: number, y: number) {
+          rec.texts.push([t, x, y]);
+        },
+      };
+      return ctx;
+    } as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
+
+  afterEach(() => {
+    globalThis.ResizeObserver = realRO;
+    HTMLCanvasElement.prototype.getContext = realGetContext;
+    HTMLElement.prototype.getBoundingClientRect = realRect;
+  });
+
+  test("colours each detector by its worker's state and labels queues", async () => {
+    stub();
+    const qc = createQueryClient();
+    renderDetectors(qc);
+    const section = (await screen.findByText(SET1)).parentElement!;
+    const canvas = section.querySelector("canvas")!;
+
+    act(() =>
+      applyLiveMessage(
+        qc,
+        snapshot({
+          sfmSet0: {
+            workers: {
+              "0": { status: "queued", queue_length: 3 },
+              "1": { status: "busy" },
+              "2": { status: "queued" }, // no length: nothing to label
+            },
+          },
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(drawn.get(canvas)?.fills[0]).toBe("#ef4444"));
+    const { fills, texts } = drawn.get(canvas)!;
+    // All 189 detectors are drawn; unreported ones read as missing.
+    expect(fills).toHaveLength(189);
+    expect(fills.slice(0, 3)).toEqual(["#ef4444", "#eab308", "#ef4444"]);
+    expect(new Set(fills.slice(3))).toEqual(new Set(["#d1d5db"]));
+    // Only the queue with a length is labelled, inside the canvas.
+    expect(texts).toHaveLength(1);
+    const [label, x, y] = texts[0];
+    expect(label).toBe("3");
+    for (const v of [x, y]) {
+      expect(v).toBeGreaterThan(0);
+      expect(v).toBeLessThan(400);
+    }
+  });
+});

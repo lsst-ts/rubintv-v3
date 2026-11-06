@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- RubinTV v3 favicon, small cut: TV + ringed planet only. Outline flips to
+       light ink on dark browser chrome via prefers-color-scheme. -->
+  <style>
+    .ink { fill: #23282d; }
+    .ink-s { stroke: #23282d; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #e8edef; }
+      .ink-s { stroke: #e8edef; }
+    }
+  </style>
+  <g class="ink-s" stroke-width="4.2" stroke-linecap="round">
+    <path d="M24 14 L15 4"/><path d="M40 14 L49 4"/>
+  </g>
+  <circle class="ink" cx="15" cy="4" r="3.6"/><circle class="ink" cx="49" cy="4" r="3.6"/>
+  <g class="ink-s" stroke-width="3.4" stroke-linejoin="round">
+    <rect x="3" y="14" width="58" height="48" rx="9" fill="#0a8d93"/>
+    <rect x="10" y="21" width="44" height="34" rx="5" fill="#14181b"/>
+  </g>
+  <g transform="translate(32 38) rotate(-18)">
+    <ellipse rx="17.5" ry="4.2" fill="none" stroke="#19d3da" stroke-width="3.4" opacity="0.6"/>
+    <circle r="9.5" fill="#e8edef"/>
+    <clipPath id="ring-front"><rect x="-20.5" y="0" width="41.0" height="7.6"/></clipPath>
+    <ellipse rx="17.5" ry="4.2" fill="none" stroke="#19d3da" stroke-width="3.4" clip-path="url(#ring-front)"/>
+  </g>
+</svg>
