@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 345 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 347 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -388,8 +388,8 @@ Safe to skim.
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
-  `fc0b960`, `be142d2`, and the commit that noted the dead-code removal
-  and the coverage gate.
+  `fc0b960`, `be142d2`, `cbfb3ad`, and the commit that noted the
+  Nightly Summary tab's per-night gate.
 
 ---
 
@@ -771,10 +771,12 @@ Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
 
 ### 49. Nightly Summary, second pass
 The night report's page (headed Nightly Summary) drew its plots too
-small to read, and its button and URLs still said "night report".
-Review `PlotModal` and `PlotPanel` in `web/src/views/NightReport.tsx`,
-then the renamed routes in `routes.tsx`, `api/nightreport.py`,
-`api/proxy.py` and `legacy_redirects.py`.
+small to read, its button and URLs still said "night report", and its
+camera tab never appeared. Review `PlotModal` and `PlotPanel` in
+`web/src/views/NightReport.tsx`, then the renamed routes in
+`routes.tsx`, `api/nightreport.py`, `api/proxy.py` and
+`legacy_redirects.py`, then `tabsForCamera` in
+`web/src/lib/useShellNav.ts`.
 - `59dba2c` Enlarge a Nightly Summary plot on click: each plot opens
   filling the window; a click anywhere but the caption, Escape or the
   close button closes it. It closes on the click, not on pointerdown, so
@@ -792,6 +794,13 @@ then the renamed routes in `routes.tsx`, `api/nightreport.py`,
   sets, so auxtel (configured by `night_report_prefix` alone) never got
   it; either field now opens the tab and the label stays an optional
   rename
+- `b151804` Show the tab only on nights that have a Nightly Summary: it
+  also needs the date payload's `has_night_report`, which the shell
+  reads from the query slot the Table and Channels views share (asked
+  for only when the camera's config offers a summary). On the summary's
+  own page the tab stays, so a deep link to a night without one still
+  shows which view it is. The table's toolbar button, shown under the
+  same condition, goes as a duplicate
 
 ### 50. Coverage pass, a CI coverage report and a gate
 Tests for what the suites never ran, on both halves, a coverage report
