@@ -137,7 +137,13 @@ test("the next-day stepper moves to the following day with data", async () => {
   );
 });
 
-test("a camera with a nightly summary gets a tab for it", async () => {
+// AuxTel with one date, 2026-04-10: `config` sets what the camera config says
+// about a Nightly Summary, and the date payload says whether that night has
+// one.
+function stubNightReportCamera(
+  config: Partial<CameraOut>,
+  hasNightReport: boolean,
+) {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = {};
@@ -151,13 +157,25 @@ test("a camera with a nightly summary gets a tab for it", async () => {
         title: "AuxTel",
         channels: [],
         metadata_columns: {},
-        night_report_label: "Night Log",
+        ...config,
       };
     } else if (/\/dates\//.test(url)) {
-      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: {},
+        extensions: {},
+        has_night_report: hasNightReport,
+      };
+    } else if (/\/nightly-summary\//.test(url)) {
+      body = { exists: hasNightReport };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
+}
+
+test("a night with a nightly summary gets a tab for it", async () => {
+  stubNightReportCamera({ night_report_label: "Night Log" }, true);
   renderAt("/local/auxtel?date=2026-04-10");
   // Labelled as the camera's config says, and carrying the date along.
   const tab = await screen.findByRole("link", { name: /Night Log/ });
@@ -166,27 +184,52 @@ test("a camera with a nightly summary gets a tab for it", async () => {
   );
 });
 
-test("a nightly summary configured by prefix alone gets the default tab label", () => {
+test("a nightly summary configured by prefix alone gets the default tab label", async () => {
   // As auxtel is configured: a prefix, no label.
-  const tabs = tabsForCamera({
-    name: "auxtel",
-    title: "AuxTel",
-    channels: [],
-    night_report_label: null,
-    night_report_prefix: "auxtel_night_reports",
-  } as unknown as CameraOut);
-  expect(tabs.find((t) => t.id === "nightly-summary")?.label).toBe(
-    "Nightly Summary",
+  stubNightReportCamera({ night_report_prefix: "auxtel_night_reports" }, true);
+  renderAt("/local/auxtel?date=2026-04-10");
+  // The Table's toolbar links there too; the tab is the one in the tabs row.
+  await waitFor(() =>
+    expect(
+      screen
+        .getAllByRole("link", { name: "Nightly Summary" })
+        .some((l) => l.classList.contains("tab")),
+    ).toBe(true),
   );
 });
 
+test("the nightly summary page keeps its tab on a night without one", async () => {
+  // A deep link to a night with no summary: the page says so, and the tab
+  // still shows which view this is.
+  stubNightReportCamera({ night_report_prefix: "auxtel_night_reports" }, false);
+  renderAt("/local/auxtel/nightly-summary?date=2026-04-10");
+  const tab = await screen.findByRole("link", { name: "Nightly Summary" });
+  expect(tab.getAttribute("aria-current")).toBe("page");
+});
+
+const AUXTEL = {
+  name: "auxtel",
+  title: "AuxTel",
+  channels: [],
+  night_report_label: null,
+  night_report_prefix: "auxtel_night_reports",
+} as unknown as CameraOut;
+
+test("a night without a nightly summary gets no tab for it", () => {
+  expect(tabsForCamera(AUXTEL, false).map((t) => t.id)).toEqual(["table"]);
+  expect(tabsForCamera(AUXTEL, true).map((t) => t.id)).toEqual([
+    "table",
+    "nightly-summary",
+  ]);
+});
+
 test("a camera without a nightly summary gets no tab for it", () => {
-  const tabs = tabsForCamera({
+  const comcam = {
+    ...AUXTEL,
     name: "comcam",
     title: "ComCam",
-    channels: [],
-    night_report_label: null,
     night_report_prefix: null,
-  } as unknown as CameraOut);
-  expect(tabs.map((t) => t.id)).toEqual(["table"]);
+  } as unknown as CameraOut;
+  // Even if a night somehow had one, the config doesn't offer the view.
+  expect(tabsForCamera(comcam, true).map((t) => t.id)).toEqual(["table"]);
 });
