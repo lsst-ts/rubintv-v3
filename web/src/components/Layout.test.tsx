@@ -4,6 +4,8 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createQueryClient } from "../lib/queryClient";
 import { LiveProvider } from "../lib/LiveContext";
+import type { CameraOut } from "../lib/types";
+import { tabsForCamera } from "../lib/useShellNav";
 import { routes } from "../routes";
 
 // The shell reads the location/camera from the URL, so a bare fetch stub is
@@ -162,4 +164,29 @@ test("a camera with a nightly summary gets a tab for it", async () => {
   expect(tab.getAttribute("href")).toBe(
     "/local/auxtel/nightly-summary?date=2026-04-10",
   );
+});
+
+test("a nightly summary configured by prefix alone gets the default tab label", () => {
+  // As auxtel is configured: a prefix, no label.
+  const tabs = tabsForCamera({
+    name: "auxtel",
+    title: "AuxTel",
+    channels: [],
+    night_report_label: null,
+    night_report_prefix: "auxtel_night_reports",
+  } as unknown as CameraOut);
+  expect(tabs.find((t) => t.id === "nightly-summary")?.label).toBe(
+    "Nightly Summary",
+  );
+});
+
+test("a camera without a nightly summary gets no tab for it", () => {
+  const tabs = tabsForCamera({
+    name: "comcam",
+    title: "ComCam",
+    channels: [],
+    night_report_label: null,
+    night_report_prefix: null,
+  } as unknown as CameraOut);
+  expect(tabs.map((t) => t.id)).toEqual(["table"]);
 });
