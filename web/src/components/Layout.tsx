@@ -76,9 +76,16 @@ export function Layout() {
   // settles too, and falls back to the URL name and a Table tab as before.
   const cameraPending = onCamera && nav.cameraPending;
 
-  // The per-camera view tabs (Table / Channels / Night report …) from the real
-  // camera config. Only shown on a camera route.
-  const tabs = cameraPending ? [] : tabsForCamera(nav.cameraInfo);
+  // The per-camera view tabs (Table / Channels / Nightly Summary …) from the
+  // real camera config. Only shown on a camera route. The Nightly Summary tab
+  // needs the date in view to have one, except on its own page: a deep link to
+  // a night without one still shows which view it is.
+  const tabs = cameraPending
+    ? []
+    : tabsForCamera(
+        nav.cameraInfo,
+        nav.hasNightReport || nav.activeTab === "nightly-summary",
+      );
 
   // The LSSTCam processing-mode banner ("USDF Nightly Validation Processing" /
   // "Summit Quicklook Processing"). Non-null only on the lsstcam/lsstcam_aos

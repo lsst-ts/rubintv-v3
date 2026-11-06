@@ -16,8 +16,8 @@ import { CameraTable } from "./CameraTable";
 // The camera table's toolbar and states, rendered on its own (no app shell):
 // row density and the column picker's views (both remembered per browser),
 // column toggles and sorting, the streamed-metadata progress note, the
-// Nightly Summary link, the "since last image" clock, and the filtered-empty
-// notice. Most table flows run through the full router in routes.test.
+// "since last image" clock, and the filtered-empty notice. Most table flows
+// run through the full router in routes.test.
 
 const TODAY = "2026-04-11";
 
@@ -28,7 +28,6 @@ function stub({
     "10": { Exposure: 30, Filter: "z_20" },
     "11": { Exposure: 15, Filter: "r_03", "Date begin": "2026-04-11T03:00:00" },
   } as Record<string, unknown>,
-  hasNightReport = false,
 } = {}) {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
@@ -51,7 +50,7 @@ function stub({
         metadata: {},
         channels: { c: [10, 11] },
         extensions: {},
-        has_night_report: hasNightReport,
+        has_night_report: false,
       };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
@@ -71,10 +70,6 @@ function renderTable(path = `/local/auxtel?date=${TODAY}`) {
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/:location/:camera" element={<CameraTable />} />
-            <Route
-              path="/:location/:camera/nightly-summary"
-              element={<p>summary page</p>}
-            />
           </Routes>
         </MemoryRouter>
       </LiveProvider>
@@ -204,13 +199,6 @@ test("streamed metadata shows its progress until the stream completes", async ()
 
   act(() => pushLiveMessage({ type: "metadataComplete", ...frame, total: 2 }));
   await waitFor(() => expect(screen.queryByText(/loading metadata/)).toBeNull());
-});
-
-test("a night with a Nightly Summary links to it", async () => {
-  stub({ hasNightReport: true });
-  renderTable();
-  fireEvent.click(await screen.findByRole("link", { name: "Nightly Summary" }));
-  expect(await screen.findByText("summary page")).toBeDefined();
 });
 
 test("today's table shows the camera's time-since-last-image clock", async () => {

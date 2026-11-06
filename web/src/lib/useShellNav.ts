@@ -3,7 +3,7 @@ import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { queryKeys } from "./liveQuery";
-import { STALE, currentDayObs } from "./queryClient";
+import { STALE, currentDayObs, staleTimeForDate } from "./queryClient";
 import type { CalendarOut, CameraOut } from "./types";
 
 // Derives the app-shell's navigation state from the router + real backend data,
@@ -20,10 +20,21 @@ export interface ShellTab {
   count?: number;
 }
 
+// Whether a camera's config offers a Nightly Summary at all. The prefix is
+// what advertises one; the label is an optional rename (auxtel sets only the
+// prefix, so it takes the default).
+export function offersNightReport(cam: CameraOut | undefined): boolean {
+  return !!(cam?.night_report_label || cam?.night_report_prefix);
+}
+
 // Which tabs a camera offers, derived from its real CameraOut capabilities.
 // Table is always present; the others appear only when the backend advertises
-// them, so we never link a camera to a view it doesn't have.
-export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
+// them, so we never link a camera to a view it doesn't have. `hasNightReport`
+// says whether the date in view has a Nightly Summary.
+export function tabsForCamera(
+  cam: CameraOut | undefined,
+  hasNightReport = false,
+): ShellTab[] {
   // Live-view cameras (e.g. All Sky) have no per-seq table or channel grid —
   // the base camera route is the live panel itself — so they get neither the
   // Table nor Channels tab. A Nightly Summary is still a distinct view if
@@ -42,9 +53,10 @@ export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
       count: channelCount,
     });
   }
-  // The config advertises a Nightly Summary with its prefix; the label is an
-  // optional rename (auxtel sets only the prefix, so it takes the default).
-  if (cam.night_report_label || cam.night_report_prefix) {
+  // Only for a date that has a Nightly Summary: the config says the camera can
+  // have them, but not every night does, and a tab that opens on "No summary
+  // for this date." is a dead end.
+  if (offersNightReport(cam) && hasNightReport) {
     tabs.push({
       id: "nightly-summary",
       label: cam.night_report_label || "Nightly Summary",
@@ -102,6 +114,9 @@ export interface ShellNav {
   perDayMarks: Record<string, string[]>;
   // Whether `date` is the current observing day (UTC−12 rule); tints the chip.
   isCurrentDayObs: boolean;
+  // Whether `date` has a Nightly Summary; false until its payload lands, and
+  // for a camera whose config offers none.
+  hasNightReport: boolean;
   // Adjacent dates with data for the prev/next-day steppers (null at an end).
   olderDate: string | null;
   newerDate: string | null;
@@ -241,6 +256,18 @@ export function useShellNav(): ShellNav {
   // with data" can still be an old night when observing has paused.
   const isCurrentDayObs = date !== "" && date === currentDayObs();
 
+  // Whether the date in view has a Nightly Summary, which gates its tab. Read
+  // from the date payload the Table and Channels views fetch (React Query
+  // shares the slot), and only asked for when the camera offers one, so views
+  // that don't load the payload don't start to for every camera.
+  const datePayloadQ = useQuery({
+    queryKey: queryKeys.datePayload(location, camera, date),
+    queryFn: () => api.datePayload(location, camera, date),
+    enabled: offersNightReport(cameraQ.data) && date !== "",
+    staleTime: date ? staleTimeForDate(new Date(date)) : 0,
+  });
+  const hasNightReport = datePayloadQ.data?.has_night_report === true;
+
   // Defensive: fetch stubs (and a backend mid-deploy) can return non-arrays;
   // never let the shell crash the whole app over malformed nav data.
   const rawLocations = Array.isArray(locationsQ.data) ? locationsQ.data : [];
@@ -273,6 +300,7 @@ export function useShellNav(): ShellNav {
     perDayChannel,
     perDayMarks,
     isCurrentDayObs,
+    hasNightReport,
     olderDate,
     newerDate,
   };
