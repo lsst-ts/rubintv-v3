@@ -31,11 +31,13 @@ jobs:
         run: uv run ruff format --check .
       - name: mypy
         run: uv run mypy -p lsst.ts.rubintv
+      # The coverage gate lives here only, set just under the suite's level
+      # (99.5% when added): local and Jenkins runs report without failing,
+      # so running a single test file locally stays green.
       - name: pytest
-        run: uv run pytest -q
-      # Coverage is reported, never enforced: pytest leaves .coverage and
-      # htmlcov/ behind (pyproject addopts), and these publish them even
-      # when a test failed.
+        run: uv run pytest -q --cov-fail-under=99
+      # pytest leaves .coverage and htmlcov/ behind (pyproject addopts);
+      # these publish them even when a test or the gate failed.
       - name: Coverage summary
         if: ${{ !cancelled() && hashFiles('htmlcov/index.html') != '' }}
         run: |
@@ -74,9 +76,16 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      # The coverage gate lives here only, set just under the suite's levels
+      # when added (statements/lines 99.7%, functions 98.3%, branches 96.1%
+      # here and 95.0% on deploy, which carries the guide).
       - name: Test
-        run: npm run test
-      # Reported, never enforced (vite.config.ts sets no thresholds).
+        run: >-
+          npm run test --
+          --coverage.thresholds.statements=99
+          --coverage.thresholds.lines=99
+          --coverage.thresholds.functions=97
+          --coverage.thresholds.branches=94
       - name: Coverage summary
         if: ${{ !cancelled() && hashFiles('web/coverage/coverage-summary.json') != '' }}
         run: node scripts/coverage-summary.mjs >> "$GITHUB_STEP_SUMMARY"
