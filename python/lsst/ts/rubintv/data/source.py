@@ -46,11 +46,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind
-from lsst.ts.rubintv.data.parser import (
-    parse_channel_event,
-    parse_metadata,
-    parse_night_report,
-)
 from lsst.ts.rubintv.logging import get_logger
 
 if TYPE_CHECKING:
@@ -85,11 +80,6 @@ class ScanResult:
 
     events: list[ObjectEvent]
     keys: set[str]
-
-    @property
-    def dates(self) -> set[str]:
-        """The day_obs values present in this listing."""
-        return {date for key in self.keys if (date := _date_of(key)) is not None}
 
 
 class S3Poller:
@@ -142,17 +132,6 @@ class S3Poller:
             for obj in page.get("Contents", []):
                 result[obj["Key"]] = obj.get("ETag")
         return result
-
-
-def _date_of(key: str) -> str | None:
-    """Extract the day_obs from any conforming key, without full parsing."""
-    if (ev := parse_channel_event(key)) is not None:
-        return ev.day_obs
-    if (nr := parse_night_report(key)) is not None:
-        return nr.day_obs
-    if (md := parse_metadata(key)) is not None:
-        return md.day_obs
-    return None
 
 
 if TYPE_CHECKING:

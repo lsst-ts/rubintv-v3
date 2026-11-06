@@ -11,10 +11,3 @@ import { DEPLOYMENT } from "./deployment";
 // when it serves the built SPA, else from Vite's dev-server `base`.
 export const BASE =
   DEPLOYMENT.prefix ?? import.meta.env.BASE_URL.replace(/\/$/, "");
-
-// URL for a camera/location logo image, bundled with the SPA under
-// `public/logos/` and served at `${BASE}/logos/<file>`. The `logo` config value
-// is a bare filename (e.g. "Summit.jpg"); returns null when a config entry has
-// no logo so callers can fall back to a plain (photoless) button.
-export const logoUrl = (logo: string | null | undefined): string | null =>
-  logo ? `${BASE}/logos/${logo}` : null;
