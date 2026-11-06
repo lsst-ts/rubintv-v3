@@ -52,7 +52,8 @@ export default defineConfig(({ command }) => ({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test-setup.ts",
-    // Always-on coverage reporting; no thresholds, so it never fails the run.
+    // Always-on coverage reporting. The thresholds are passed in CI only
+    // (.github/workflows/ci.yml), so partial local runs never fail on them.
     coverage: {
       enabled: true,
       provider: "v8",

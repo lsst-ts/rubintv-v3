@@ -100,7 +100,8 @@ namespace_packages = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# Always-on coverage reporting; no --cov-fail-under, so it never fails the run.
+# Always-on coverage reporting. The gate (--cov-fail-under) is set in CI
+# only, so partial local runs and Jenkins are never failed by it.
 addopts = "--cov=lsst.ts.rubintv --cov-report=term-missing --cov-report=html"
 
 [tool.coverage.run]
