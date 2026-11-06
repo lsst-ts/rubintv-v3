@@ -42,7 +42,9 @@ export function tabsForCamera(cam: CameraOut | undefined): ShellTab[] {
       count: channelCount,
     });
   }
-  if (cam.night_report_label) {
+  // The config advertises a Nightly Summary with its prefix; the label is an
+  // optional rename (auxtel sets only the prefix, so it takes the default).
+  if (cam.night_report_label || cam.night_report_prefix) {
     tabs.push({
       id: "nightly-summary",
       label: cam.night_report_label || "Nightly Summary",
