@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 341 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 345 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -388,7 +388,8 @@ Safe to skim.
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
-  `fc0b960`, and the commit that noted the coverage pass.
+  `fc0b960`, `be142d2`, and the commit that noted the dead-code removal
+  and the coverage gate.
 
 ---
 
@@ -786,16 +787,22 @@ then the renamed routes in `routes.tsx`, `api/nightreport.py`,
   app's pre-rename `night-report` URL redirects in the SPA's route table,
   so it also works under the Vite dev server. Internal names, JSON
   fields, camera config keys and the bucket's keys are unchanged
+- `b3f10a0` Show the Nightly Summary tab for cameras configured by
+  prefix: the tab was gated on `night_report_label`, which no camera
+  sets, so auxtel (configured by `night_report_prefix` alone) never got
+  it; either field now opens the tab and the label stays an optional
+  rename
 
-### 50. Coverage pass and a CI coverage report
-Tests for what the suites never ran, on both halves, and a coverage
-report on every GitHub Actions run. Test-only apart from one dead-code
-removal: no shipped behaviour changes. Read `.github/workflows/ci.yml`
-and the `no_dotenv` fixture in `tests/conftest.py`; skim the rest.
+### 50. Coverage pass, a CI coverage report and a gate
+Tests for what the suites never ran, on both halves, a coverage report
+on every GitHub Actions run, and a gate that fails CI when coverage
+drops. Tests and CI apart from dead-code removals: no shipped behaviour
+changes. Read `.github/workflows/ci.yml` and the `no_dotenv` fixture in
+`tests/conftest.py`; skim the rest.
 - `fc56967` CI: publish a coverage report. Each job writes its total
   and the files short of 100% to the run's summary page and uploads the
   HTML report as an artifact (kept 14 days), even when a test fails.
-  Reported, never enforced. Backend coverage now counts branches
+  Backend coverage now counts branches
   (`[tool.coverage.run] branch = true`, so Jenkins and local runs too);
   `web/scripts/coverage-summary.mjs` renders Vitest's json-summary
 - `96421c9` Keep the whole suite off the developer's `.env`: a
@@ -819,6 +826,14 @@ and the `no_dotenv` fixture in `tests/conftest.py`; skim the rest.
   fallbacks and failure paths; `cfd41b1` the pickers, filters, media
   recovery and route guard. The stub socket in `src/test-setup.ts`
   gains `liveSockets()`, `dropLiveSocket()` and `pushRawLiveFrame()`
+- `d2ae567` Remove dead code the pass turned up: the `api.controls` and
+  `api.detectorsConfig` client helpers (the endpoints stay),
+  `basePath.logoUrl` (pointed at a `public/logos/` the SPA no longer
+  ships) and `ScanResult.dates` with the private `_date_of` behind it
+- `1669b1e` Fail CI when coverage drops: backend below 99% (99.5%
+  today); frontend below 99% of statements and lines, 97% of functions
+  and 94% of branches. Set on the CI command lines only, so partial
+  local runs and Jenkins report without failing
 
 ---
 
