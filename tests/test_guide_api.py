@@ -84,9 +84,13 @@ def test_blocks_are_served_once_the_sweep_completes(
 
     def fake_query(self: consdb.ConsDbClient, sql: str) -> QueryResult:
         seen.append(sql)
-        return (
-            QueryResult(COLUMNS, rows) if len(seen) == 1 else QueryResult(COLUMNS, [])
-        )
+        # Each instrument sweeps in its own task, querying from a thread, so
+        # the two instruments' queries arrive in any order. Answer lsstcam's
+        # first query, counting only lsstcam's (its one task sends them in
+        # turn), not whichever query happened to come first.
+        lsstcam_queries = [s for s in seen if "cdb_lsstcam." in s]
+        first_lsstcam_page = lsstcam_queries == [sql]
+        return QueryResult(COLUMNS, rows if first_lsstcam_page else [])
 
     monkeypatch.setattr(consdb.ConsDbClient, "query_sync", fake_query)
     token = tmp_path / "token"
@@ -109,7 +113,9 @@ def test_blocks_are_served_once_the_sweep_completes(
         latiss = cfg["instruments"][1]
         assert (latiss["location"], latiss["camera"]) == ("test", "auxtel")
 
-        deadline = time.monotonic() + 5
+        # Generous: the loop leaves as soon as the sweep is done, and the
+        # Jenkins box is slow.
+        deadline = time.monotonic() + 30
         while True:
             body = app.get("/api/guide/lsstcam/blocks").json()
             if not body["loading"] or time.monotonic() > deadline:
