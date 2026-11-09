@@ -1,0 +1,174 @@
+/* RubinTV wireframe shared styles */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Kalam:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --ink: #1d1d22;
+  --ink-2: #3a3a44;
+  --ink-soft: #6c6c76;
+  --line: #1d1d22;
+  --line-soft: #b7b7bd;
+  --paper: #f5f1e8;
+  --paper-2: #efeadd;
+  --paper-3: #e7e1d2;
+  --accent: #6b5bd6;       /* dim astronomy purple */
+  --accent-soft: #cdc5f1;
+  --warn: #d97742;
+  --good: #5b8a4c;
+  --hand: 'Kalam', 'Caveat', cursive;
+  --display: 'Kalam', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; font-family: var(--sans); color: var(--ink); background: var(--paper); }
+
+/* Sketchy box */
+.wf {
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  position: relative;
+}
+.wf-thick { border-width: 2.25px; }
+.wf-dashed { border-style: dashed; }
+.wf-dotted { border-style: dotted; }
+
+/* Wobble: subtle sketch effect via filter */
+.sketch { filter: url(#wf-roughen); }
+
+/* Hand labels */
+.hand { font-family: var(--hand); font-weight: 500; letter-spacing: 0.2px; }
+.hand-b { font-family: var(--hand); font-weight: 700; }
+.mono { font-family: var(--mono); }
+
+/* Annotation callouts */
+.note {
+  font-family: var(--hand);
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1.2;
+  position: absolute;
+}
+.note .arrow { display: inline-block; }
+
+/* Placeholder image */
+.ph {
+  background:
+    repeating-linear-gradient(135deg, var(--paper-2) 0 8px, var(--paper-3) 8px 16px);
+  border: 1.25px solid var(--ink);
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+}
+.ph.dark {
+  background: repeating-linear-gradient(135deg, #20202a 0 8px, #2a2a36 8px 16px);
+  color: #c8c8d0;
+}
+
+/* Color chip blocks for the colorful camera-table cells (intentionally muted) */
+.chip { width: 100%; aspect-ratio: 1; border: 1.25px solid var(--ink); }
+.c-cyan { background: #cfe6e8; }
+.c-mint { background: #d4e7c5; }
+.c-pink { background: #e4c5d8; }
+.c-violet { background: #cfc2e0; }
+.c-purp { background: #b8aed3; }
+.c-blue { background: #c4d6e6; }
+.c-rose { background: #e6c5cb; }
+.c-orng { background: #e8c8a8; }
+
+/* Filled "busy" / "free" / etc states */
+.s-free { background: #c8e0a8; }
+.s-busy { background: #e8c490; }
+.s-queue { background: #e0a8b8; }
+.s-restart { background: #d4b8e0; }
+.s-guest { background: #b8d4e0; }
+.s-missing { background: #d8d8d4; }
+
+/* Buttons (sketchy) */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  font-family: var(--hand);
+  font-size: 14px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.btn-tab { background: var(--paper-2); }
+.btn-active { background: var(--ink); color: var(--paper); }
+
+/* Tag */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1.25px solid var(--ink);
+  padding: 2px 8px;
+  font-family: var(--hand); font-size: 12px;
+  border-radius: 999px;
+  background: var(--paper);
+}
+.tag.live { background: #f5e6e0; }
+.tag.live::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--warn); animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* Dotted leader / divider */
+.divider { border-top: 1.5px dashed var(--ink); margin: 12px 0; }
+.divider-soft { border-top: 1px dashed var(--line-soft); margin: 8px 0; }
+
+/* Squiggle underline */
+.squiggle {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 4'><path d='M0 2 Q 5 0 10 2 T 20 2' fill='none' stroke='%231d1d22' stroke-width='1'/></svg>");
+  background-repeat: repeat-x;
+  background-position: bottom;
+  background-size: 12px 4px;
+  padding-bottom: 4px;
+}
+
+/* Variation header strip */
+.vhead {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1.5px solid var(--ink);
+}
+.vhead .vlabel {
+  font-family: var(--hand); font-weight: 700;
+  font-size: 18px;
+}
+.vhead .vsub {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+}
+
+/* Crosshatch shading */
+.hatch {
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 4px, rgba(29,29,34,0.18) 4px 5px);
+}
+
+/* Scrollable data zone fakery */
+.scroller {
+  border: 1.25px solid var(--ink);
+  background: var(--paper-2);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Detector grid cells (CCDs) */
+.ccd { width: 100%; aspect-ratio: 1; border: 1px solid var(--ink); }
+
+/* Annotation arrow svg helper */
+.callout {
+  font-family: var(--hand); color: var(--accent); font-size: 13px;
+  line-height: 1.15;
+}
+
+/* Avoid text selection issues during sketch */
+.wf, .ph, .chip, .ccd { user-select: none; }
