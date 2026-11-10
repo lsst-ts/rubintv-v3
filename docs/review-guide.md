@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 353 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 355 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -389,7 +389,7 @@ Safe to skim.
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
-  and the commit that noted the request logging.
+  `cc8e35c`, and the commit that noted who sent each request.
 
 ---
 
@@ -877,6 +877,9 @@ then the one line in `configure_logging`.
   access log at info, uvicorn's own is disabled, and successful
   `kube-probe/` requests and `/api/health/status` polls stay at debug.
   A failed one (400 and up) is info, probe or not
+- `0b0552a` Log who sent each request: `client` (the peer, in the
+  cluster the ingress), `forwarded_for` and `user_agent`, after a burst
+  of requests for one date payload on USDF dev couldn't be traced
 
 ---
 
