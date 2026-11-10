@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 347 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 349 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -388,8 +388,8 @@ Safe to skim.
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
-  `fc0b960`, `be142d2`, `cbfb3ad`, and the commit that noted the
-  Nightly Summary tab's per-night gate.
+  `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, and the commit that
+  noted the preview fix.
 
 ---
 
@@ -843,6 +843,20 @@ changes. Read `.github/workflows/ci.yml` and the `no_dotenv` fixture in
   today); frontend below 99% of statements and lines, 97% of functions
   and 94% of branches. Set on the CI command lines only, so partial
   local runs and Jenkins report without failing
+
+### 51. Previews that don't hold up the next page
+On USDF dev a slow grid of previews stalled the page a user clicked
+through to. The media proxy is sync, so it runs on Starlette's shared
+worker-thread pool, and the JSON endpoints' dependencies were sync
+too, so a page's data queued behind preview downloads. Review
+`api/deps.py` and the test.
+- `8e4ced1` Keep page data off the thread pool the image proxy fills:
+  the shared dependencies (`get_app_state`, `get_models`,
+  `get_location`, `get_camera`, `valid_date`) and the camera detail
+  endpoint are async, so page data never needs a worker thread; the
+  proxy stays sync. Previews ask for low fetch priority.
+  `test_page_data_needs_no_worker_thread` makes the pool unusable and
+  checks page data still answers
 
 ---
 
