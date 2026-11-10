@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 355 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 357 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -389,7 +389,8 @@ Safe to skim.
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
-  `cc8e35c`, and the commit that noted who sent each request.
+  `cc8e35c`, `444ff4c`, and the commit that noted the date payload's
+  metadata refetch.
 
 ---
 
@@ -697,6 +698,12 @@ link; the calendar was refetched on every exposure. Review
   `refresh` carries `since_etag`; a `metadataDelta` (rows + removed)
   replaces the full re-stream when the versions line up, else it falls
   back to the stream.
+- `612cf58` (later, from a USDF dev pod log) Don't refetch the date payload
+  when metadata.json is rewritten: the payload carries no metadata, yet a
+  `metadata` message invalidated it, so a poll finding an exposure's
+  images and its metadata rewrite fetched the payload twice (the first
+  fetch cancelled but already sent). Only the REST metadata query is
+  refreshed now
 
 ### 46. All Sky, second pass
 Review `web/src/views/AllSky.tsx` and the All Sky block of
