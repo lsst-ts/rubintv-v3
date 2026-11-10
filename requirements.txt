@@ -14,6 +14,8 @@ botocore==1.43.15
     # via
     #   boto3
     #   s3transfer
+certifi==2026.5.20
+    # via rubintv
 click==8.4.1
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -35,6 +37,8 @@ jmespath==1.1.0
     #   boto3
     #   botocore
 orjson==3.11.9
+    # via rubintv
+pillow==13.0.0
     # via rubintv
 pydantic==2.13.4
     # via

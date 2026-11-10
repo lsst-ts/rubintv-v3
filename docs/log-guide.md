@@ -96,7 +96,9 @@ because a re-listing no longer found them in the bucket.
 **Images don't load, or stop part way.** `proxy.miss` is an image
 requested that isn't in the bucket; `proxy.stream.broken` is a download that
 failed mid-way and couldn't be resumed (`proxy.stream.resume` is one that
-was).
+was). The location and Channels cards show thumbnails: `thumbs.miss` and
+`thumbs.unreadable` are their equivalents, and `thumbs.built` says how long
+each took to fetch and shrink.
 
 **Live updates lag or stop for some viewers.** `ws.client.slow` means a
 browser couldn't keep up and messages to it were dropped;
@@ -225,6 +227,9 @@ default) so a restart is warm.
 | `proxy.nr_plot.miss` | info | A requested night-report plot wasn't in the bucket; answered 404. |
 | `proxy.stream.resume` | info | A download broke mid-way and was resumed from `offset`. |
 | `proxy.stream.broken` | warning | A download broke mid-way and couldn't be resumed (too many retries, or the object changed since it began); the browser's download is cut short. |
+| `thumbs.built` | info | A card's thumbnail was made from a frame (`location`, `camera`, `channel`, `date`, `seq`): `bytes` shrunk to `thumb_bytes`, taking `fetch_ms` to get from S3 and `shrink_ms` to resize. Once per frame; later requests are served from memory. |
+| `thumbs.miss` | info | A thumbnail was asked for a frame that isn't in the bucket under `prefix`; answered 404. |
+| `thumbs.unreadable` | warning | A frame (`key`) couldn't be decoded to make a thumbnail (`error`); the browser is redirected to the full-size frame. |
 
 ### WebSocket
 

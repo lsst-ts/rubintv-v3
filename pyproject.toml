@@ -23,6 +23,8 @@ dependencies = [
     "structlog>=24.4",
     "redis>=5.1",
     "ijson>=3.3",
+    # Shrinks frames to preview-sized JPEGs for the location and Channels cards.
+    "pillow>=11",
 ]
 
 [project.optional-dependencies]

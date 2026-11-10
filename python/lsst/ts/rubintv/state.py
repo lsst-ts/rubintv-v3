@@ -42,6 +42,7 @@ from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.store import EventStore
+from lsst.ts.rubintv.data.thumbs import ThumbnailCache
 from lsst.ts.rubintv.s3.client import S3ClientPool
 from lsst.ts.rubintv.ws.handler import WsService
 
@@ -59,6 +60,7 @@ class AppState:
     controls: ControlStore
     detectors: DetectorStore
     ws: WsService
+    thumbs: ThumbnailCache
     ready: bool = field(default=False)
     cache_enabled: bool = field(default=False)
     """Whether a disk cache is configured. When false, every restart is a

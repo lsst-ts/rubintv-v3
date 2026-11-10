@@ -230,8 +230,8 @@ test("a broken card image stops showing as loading", async () => {
   });
   renderBrowser();
   const img = await screen.findByRole("img", { name: /witness latest/ });
-  // No extension info: png.
-  expect(img.getAttribute("src")).toContain("/000001/image.png");
+  // No extension info: png. The card asks for the frame's thumbnail.
+  expect(img.getAttribute("src")).toContain("/000001/thumb/image.png");
   fireEvent.error(img);
   await waitFor(() =>
     expect(screen.queryByRole("status", { name: "Loading image" })).toBeNull(),

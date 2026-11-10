@@ -435,6 +435,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/locations/{location}/cameras/{camera}/channels/{channel}/{date}/{seq}/thumb/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proxy Thumbnail
+         * @description A preview-sized JPEG of the frame ``proxy_object`` serves.
+         *
+         *     The URL is that frame's with ``thumb/`` before the filename, so the
+         *     filename's extension finds the object the same way. Async, with its
+         *     S3 read and resize on the thumbnail cache's own threads: a grid of
+         *     cold previews never occupies the worker threads page data needs.
+         */
+        get: operations["proxy_thumbnail_api_locations__location__cameras__camera__channels__channel___date___seq__thumb__filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations/{location}/cameras/{camera}/nightly-summary/{date}/plot/{group}/{filename}": {
         parameters: {
             query?: never;
@@ -1655,6 +1680,44 @@ export interface operations {
             header?: {
                 "if-none-match"?: string | null;
                 Range?: string | null;
+            };
+            path: {
+                channel: string;
+                seq: string;
+                filename: string;
+                date: string;
+                location: string;
+                camera: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    proxy_thumbnail_api_locations__location__cameras__camera__channels__channel___date___seq__thumb__filename__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
             };
             path: {
                 channel: string;

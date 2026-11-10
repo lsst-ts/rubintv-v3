@@ -10,8 +10,9 @@ import type { ChannelOut, DatePayload } from "../lib/types";
 import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
 // The Channels tab: a responsive grid of latest-frame cards, one per channel,
-// each showing that channel's most recent image (or movie, for per-day
-// channels) with its title, live/day tag, and seq/age line. Clicking a card
+// each showing that channel's most recent image (as the server's shrunk copy,
+// api.thumbUrl) or movie (for per-day channels) with its title, live/day tag,
+// and seq/age line. Clicking a card
 // opens that channel's live single-exposure viewer. Ported from the design's
 // "Layout A" (design/from-claude/channels-layouts.jsx) into the current v2
 // light design language, driven by the real camera config + date payload.
@@ -126,7 +127,7 @@ function ChannelCard({
             <>
               <ProxiedImg
                 ref={imgRef}
-                src={media.src}
+                src={api.thumbUrl(media.src)}
                 alt={`${ch.title} latest`}
                 loading="lazy"
                 // A preview, not the content: let the channel page's requests

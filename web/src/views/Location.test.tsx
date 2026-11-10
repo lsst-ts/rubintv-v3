@@ -71,11 +71,13 @@ function renderAt(path: string) {
 
 test("a camera with a primary image renders it with the shared loading treatment", async () => {
   renderAt("/local");
-  // The card thumbnail is the primary-channel image. In jsdom the load event
-  // never fires, so we observe the loading state: the same fade-in class and
-  // spinner overlay the Channels grid uses.
+  // The card thumbnail is the primary-channel image's shrunk copy. In jsdom
+  // the load event never fires, so we observe the loading state: the same
+  // fade-in class and spinner overlay the Channels grid uses.
   const img = (await screen.findByAltText("")) as HTMLImageElement;
-  expect(img.getAttribute("src")).toContain("witness_detector");
+  expect(img.getAttribute("src")).toMatch(
+    /\/channels\/witness_detector\/2026-04-10\/000002\/thumb\/image\.jpg$/,
+  );
   expect(img.className).toContain("cam-thumb-img");
   expect(img.className).toContain("chc-img-loading");
   // The shared spinner overlay is present while loading.

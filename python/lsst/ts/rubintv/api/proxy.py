@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from lsst.ts.rubintv.api.deps import (
     get_app_state,
     get_camera,
@@ -50,6 +50,7 @@ from lsst.ts.rubintv.api.deps import (
     valid_date,
 )
 from lsst.ts.rubintv.config.models import Camera, Location
+from lsst.ts.rubintv.data.thumbs import IMAGE_EXTS, NotAnImage
 from lsst.ts.rubintv.logging import get_logger
 from lsst.ts.rubintv.middleware import ResponseAborted
 from lsst.ts.rubintv.state import AppState
@@ -97,24 +98,10 @@ def proxy_object(
     safe_segment(seq, field="seq")
     safe_segment(filename, field="filename")
 
-    # Channels may override the path segment used in S3 keys (Channel.prefix);
-    # the URL uses the channel *name*, but the bucket may store under a
-    # different prefix.
-    ch = camera.channel(channel)
-    channel_segment = ch.prefix if ch is not None and ch.prefix else channel
-    prefix = f"{camera.name}/{date}/{channel_segment}/{seq}/"
+    prefix = _frame_prefix(camera, channel, date, seq)
     client: S3Client = state.s3.client_for(location.name)
     bucket = location.bucket
 
-    # Object keys follow a fixed convention — the seq directory holds a single
-    # file named for the artifact it identifies:
-    #   {camera}/{date}/{segment}/{seq}/{camera}_{channel}_{date}_{seq}.{ext}
-    #   e.g. lsstcam/2026-05-28/witness_detector/000759/
-    #            lsstcam_witness_detector_2026-05-28_000759.jpg
-    # The filename stem uses the channel *name* (not the prefix segment). So we
-    # can build the key directly from the URL's extension and GET it without a
-    # LIST. The LIST is kept only as a fallback for any object that doesn't
-    # follow the convention (legacy data, unexpected filename).
     conditional: ConditionalArgs = {}
     if if_none_match is not None:
         conditional["IfNoneMatch"] = if_none_match
@@ -126,7 +113,7 @@ def proxy_object(
     key: str | None = None
     if ext is not None:
         # Try the convention key directly (the common case): no LIST.
-        key = f"{prefix}{camera.name}_{channel}_{date}_{seq}.{ext}"
+        key = _convention_key(prefix, camera, channel, date, seq, ext)
         result = _get_object(client, bucket, key, conditional)
         if isinstance(result, Response):
             return result  # 304 Not Modified
@@ -156,6 +143,64 @@ def proxy_object(
     return _stream_object(
         client, bucket, key, obj, download_name, range_header is not None
     )
+
+
+@router.get(
+    "/locations/{location}/cameras/{camera}/channels/{channel}/{date}/{seq}"
+    "/thumb/{filename}"
+)
+async def proxy_thumbnail(
+    channel: str,
+    seq: str,
+    filename: str,
+    date: str = Depends(valid_date),
+    location: Location = Depends(get_location),
+    camera: Camera = Depends(get_camera),
+    state: AppState = Depends(get_app_state),
+    if_none_match: str | None = Header(default=None),
+) -> Response:
+    """A preview-sized JPEG of the frame ``proxy_object`` serves.
+
+    The URL is that frame's with ``thumb/`` before the filename, so the
+    filename's extension finds the object the same way. Async, with its
+    S3 read and resize on the thumbnail cache's own threads: a grid of
+    cold previews never occupies the worker threads page data needs.
+    """
+    safe_segment(channel, field="channel")
+    safe_segment(seq, field="seq")
+    safe_segment(filename, field="filename")
+    # Configured channels only: the cache keeps one thumbnail per channel,
+    # so its size is bounded by the config, not by URLs a client makes up.
+    if camera.channel(channel) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"unknown channel: {channel}")
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    if ext.lower() not in IMAGE_EXTS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no thumbnail for {filename!r}")
+
+    prefix = _frame_prefix(camera, channel, date, seq)
+    key = _convention_key(prefix, camera, channel, date, seq, ext)
+    client: S3Client = state.s3.client_for(location.name)
+    try:
+        thumb = await state.thumbs.get(
+            (location.name, camera.name, channel),
+            (date, seq),
+            lambda: _read_frame(client, location.bucket, prefix, key),
+        )
+    except NotAnImage as exc:
+        # The frame is there but won't decode here: send the browser to it.
+        log.warning(
+            "thumbs.unreadable", location=location.name, key=key, error=str(exc)
+        )
+        return RedirectResponse(f"../{filename}", status.HTTP_307_TEMPORARY_REDIRECT)
+    if thumb is None:
+        log.info("thumbs.miss", location=location.name, prefix=prefix)
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"no object under prefix: {prefix}"
+        )
+    headers = {"Cache-Control": _CACHE_CONTROL, "ETag": thumb.etag}
+    if if_none_match == thumb.etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(thumb.jpeg, media_type="image/jpeg", headers=headers)
 
 
 @router.get(
@@ -383,3 +428,55 @@ def _resolve_key(client: S3Client, bucket: str, prefix: str) -> str | None:
     if not contents:
         return None
     return contents[0]["Key"]
+
+
+def _frame_prefix(camera: Camera, channel: str, date: str, seq: str) -> str:
+    """The seq directory holding a channel frame.
+
+    Channels may override the path segment used in S3 keys
+    (``Channel.prefix``): the URL uses the channel *name*, but the bucket
+    may store under a different prefix.
+    """
+    ch = camera.channel(channel)
+    segment = ch.prefix if ch is not None and ch.prefix else channel
+    return f"{camera.name}/{date}/{segment}/{seq}/"
+
+
+def _convention_key(
+    prefix: str, camera: Camera, channel: str, date: str, seq: str, ext: str
+) -> str:
+    """The key a frame has under the bucket's naming convention.
+
+    The seq directory holds a single file named for the artifact it
+    identifies::
+
+        {camera}/{date}/{segment}/{seq}/{camera}_{channel}_{date}_{seq}.{ext}
+        e.g. lsstcam/2026-05-28/witness_detector/000759/
+                 lsstcam_witness_detector_2026-05-28_000759.jpg
+
+    The filename stem uses the channel *name* (not the prefix segment), so
+    the key can be built from the URL's extension and fetched without a
+    LIST. Listing ``prefix`` stays as the fallback for an object that
+    doesn't follow the convention (legacy data, unexpected filename).
+    """
+    return f"{prefix}{camera.name}_{channel}_{date}_{seq}.{ext}"
+
+
+def _read_frame(client: S3Client, bucket: str, prefix: str, key: str) -> bytes | None:
+    """A whole frame: at ``key``, else the one listed under ``prefix``.
+
+    ``None`` when neither is there. Unconditional GETs, so ``_get_object``
+    can't answer with a 304 or 416 here.
+    """
+    obj = _get_object(client, bucket, key, {})
+    if obj is None:
+        listed = _resolve_key(client, bucket, prefix)
+        obj = None if listed is None else _get_object(client, bucket, listed, {})
+    if obj is None:
+        return None
+    assert not isinstance(obj, Response)
+    body = obj["Body"]
+    try:
+        return body.read()
+    finally:
+        body.close()

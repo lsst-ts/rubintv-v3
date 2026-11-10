@@ -145,6 +145,12 @@ export const api = {
   primaryImageUrl: (path: string | null | undefined): string | null =>
     path ? `${BASE}/api${path}` : null,
 
+  // The preview-sized JPEG of the frame at `src` (a mediaUrl or a
+  // primaryImageUrl): the same URL with `thumb/` before the filename. The
+  // server shrinks each frame once and keeps it in memory; one it can't
+  // shrink redirects to the full frame, and a movie has no thumbnail (404).
+  thumbUrl: (src: string): string => src.replace(/\/([^/]*)$/, "/thumb/$1"),
+
   // Build a proxied URL for a Nightly Summary plot. The plot key is fully known
   // ({camera}/{date}/night_report/{group}/{filename}), so the dedicated route
   // GETs it directly rather than resolving by prefix listing.
