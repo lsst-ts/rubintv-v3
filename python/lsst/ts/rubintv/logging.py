@@ -33,6 +33,28 @@ import sys
 import structlog
 
 
+class _WebsocketsChatter(logging.Filter):
+    """Drop websockets' frame-by-frame and keepalive debug lines.
+
+    uvicorn hands websockets its ``uvicorn.error`` logger, and at debug
+    websockets logs every frame each way (``> TEXT ...``, ``< TEXT ...``)
+    and every keepalive ping and pong (``% ...``): lines for each client
+    every few seconds, the frames already counted by ``ws.frame.sent``.
+    Its lines on connection state and failure (``=``, ``-``, ``x``, ``!``)
+    pass.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not (
+            record.levelno == logging.DEBUG
+            and isinstance(record.msg, str)
+            and record.msg[:2] in ("> ", "< ", "% ")
+        )
+
+
+_WEBSOCKETS_CHATTER = _WebsocketsChatter()
+
+
 def configure_logging(*, json_logs: bool, level: str = "INFO") -> None:
     """Configure structlog and the stdlib logging it wraps.
 
@@ -64,7 +86,8 @@ def configure_logging(*, json_logs: bool, level: str = "INFO") -> None:
     # warning: a typo in RUBINTV_LOG_LEVEL must not crash-loop the pod exactly
     # when an operator is trying to turn logging up.
     name = level.upper()
-    if name == "TRACE":
+    trace = name == "TRACE"
+    if trace:
         name = "DEBUG"
     resolved = logging.getLevelNamesMapping().get(name)
 
@@ -85,6 +108,12 @@ def configure_logging(*, json_logs: bool, level: str = "INFO") -> None:
     # plain-text access line lacks. uvicorn configured its loggers before
     # importing the app, so this sticks, however the server was started.
     logging.getLogger("uvicorn.access").disabled = True
+    # "trace" keeps websockets' chatter, for when the WebSocket protocol
+    # itself is in doubt; debug is for the app's own detail.
+    errors = logging.getLogger("uvicorn.error")
+    errors.removeFilter(_WEBSOCKETS_CHATTER)
+    if not trace:
+        errors.addFilter(_WEBSOCKETS_CHATTER)
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

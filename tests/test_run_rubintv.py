@@ -146,3 +146,33 @@ def test_configure_logging_silences_uvicorns_access_log(
     monkeypatch.setattr(access, "disabled", False)
     configure_logging(json_logs=False, level="INFO")
     assert access.disabled
+
+
+def test_debug_leaves_websockets_frame_chatter_to_trace() -> None:
+    # At debug, websockets (through uvicorn.error) logged every frame and
+    # every keepalive ping and pong; ws.frame.sent already counts the frames.
+    # Connection state and failures still pass, and "trace" keeps the lot.
+    import logging
+
+    from lsst.ts.rubintv.logging import configure_logging
+
+    errors = logging.getLogger("uvicorn.error")
+
+    def passes(msg: str) -> bool:
+        record = errors.makeRecord(
+            errors.name, logging.DEBUG, __file__, 0, msg, (), None
+        )
+        return bool(errors.filter(record))
+
+    try:
+        configure_logging(json_logs=False, level="DEBUG")
+        assert not passes("% sending keepalive ping")
+        assert not passes("> %s")
+        assert not passes("< %s")
+        assert passes("! failing connection with code %d")
+        assert passes("= connection is OPEN")
+        configure_logging(json_logs=False, level="trace")
+        assert passes("% sending keepalive ping")
+        assert passes("> %s")
+    finally:
+        configure_logging(json_logs=False, level="INFO")  # restore default

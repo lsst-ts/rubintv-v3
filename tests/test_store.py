@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from lsst.ts.rubintv.data import store as store_module
 from lsst.ts.rubintv.data.bus import EventBus
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, StoreChange
 from lsst.ts.rubintv.data.index import DateIndex, ExtInfo, PerDayRef
@@ -760,3 +761,23 @@ async def test_reconcile_a_cached_slice_without_extension_info() -> None:
     idx = store.date_index("local", "lsstcam", "2026-04-10")
     assert idx is not None
     assert idx.channels == {"c": {1}}
+
+
+async def test_an_apply_that_changes_nothing_logs_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The current-day poll applies every prefix's whole listing each second,
+    # nearly always to no effect; a debug line for each was most of the log.
+    logged: list[tuple[str, int, int]] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **f: logged.append((event, f["events"], f["changes"]))
+
+    monkeypatch.setattr(store_module, "log", Recorder())
+    store = EventStore()
+    events = [created("lsstcam/2026-04-10/c/000001/a.png")]
+    await store.apply(events)
+    await store.apply(events)
+    # The first apply adds the slot and the date: channelData, calendarUpdate.
+    assert logged == [("store.apply", 1, 2)]

@@ -31,8 +31,11 @@ Reads JSON-lines log output (a file, or stdin) produced with
 - ``ws.frame.sent``: frames and bytes per message type, and per-connection
   totals from ``ws.disconnect``;
 - ``poll.current.cycle``: cycle time and keys listed per current-day cycle;
-- ``poll.scan``: listings per scope, how many changed anything;
-- ``store.apply``: events seen vs. changes published.
+- ``poll.scan``: listings per scope, how many changed anything (the
+  current-day poll's ``day`` listings appear only when they changed
+  something; its cycles count the rest);
+- ``store.apply``: events seen vs. changes published, for the listings
+  that changed something.
 
 Usage::
 
