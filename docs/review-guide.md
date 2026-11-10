@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 357 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 359 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -389,8 +389,8 @@ Safe to skim.
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
-  `cc8e35c`, `444ff4c`, and the commit that noted the date payload's
-  metadata refetch.
+  `cc8e35c`, `444ff4c`, `dc0530a`, and the commit that noted the
+  readable debug level.
 
 ---
 
@@ -874,11 +874,13 @@ were also full-size frames. Review `api/deps.py`, then
   thumbnail; an unreadable frame redirects to the full one. Pillow
   joins the dependencies; API artifacts regenerated
 
-### 52. Request logging
+### 52. Logging: requests, and a debug level worth reading
 A pod's info log was nearly all uvicorn access lines, plain text with
 no timestamp: the kubelet's probes and every open camera page's 5 s
-status poll. Review `_routine` and the level choice in `middleware.py`,
-then the one line in `configure_logging`.
+status poll. Its debug log was about 22 lines a second of the poll
+saying nothing had changed. Review `_routine` and the level choice in
+`middleware.py`, then `configure_logging`, then the `day` rule in
+`PollEngine._apply_scan`.
 - `3744ef1` Log each request once, as JSON, and keep probes and polls
   out of info: `http.request` (already logged, at debug) becomes the
   access log at info, uvicorn's own is disabled, and successful
@@ -887,6 +889,10 @@ then the one line in `configure_logging`.
 - `0b0552a` Log who sent each request: `client` (the peer, in the
   cluster the ingress), `forwarded_for` and `user_agent`, after a burst
   of requests for one date payload on USDF dev couldn't be traced
+- `990d2ca` Make debug readable: a current-day listing that changed
+  nothing isn't logged (`poll.current.cycle` sums them), `store.apply`
+  only when it changed something, and websockets' frame and keepalive
+  lines are filtered off `uvicorn.error` unless the level is `trace`
 
 ---
 
