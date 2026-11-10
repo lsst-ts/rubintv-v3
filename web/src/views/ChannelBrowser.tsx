@@ -129,6 +129,9 @@ function ChannelCard({
                 src={media.src}
                 alt={`${ch.title} latest`}
                 loading="lazy"
+                // A preview, not the content: let the channel page's requests
+                // go first if the user clicks through mid-load.
+                fetchPriority="low"
                 onLoad={() => setImgLoaded(true)}
                 onError={() => setImgLoaded(true)}
                 className={imgLoaded ? undefined : "chc-img-loading"}

@@ -413,6 +413,35 @@ def test_impossible_date_422(seeded_client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_page_data_needs_no_worker_thread(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The media proxy streams S3 objects on Starlette's shared worker-thread
+    # pool, so a grid of slow previews can fill it. The JSON a page needs on
+    # arrival must not queue behind them: its endpoints *and* their
+    # dependencies are async, so FastAPI never hands them to that pool.
+    # Make the pool unusable and check every one still answers.
+    def no_threads(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("handed to the worker-thread pool")
+
+    monkeypatch.setattr("fastapi.routing.run_in_threadpool", no_threads)
+    monkeypatch.setattr("fastapi.dependencies.utils.run_in_threadpool", no_threads)
+
+    base = "/api/locations/test/cameras/lsstcam"
+    for path in [
+        "/api/locations/test",
+        base,
+        f"{base}/calendar",
+        f"{base}/dates/{DATE}",
+        f"{base}/metadata/{DATE}",
+    ]:
+        assert seeded_client.get(path).status_code == 200, path
+
+    # The guard bites: the proxy is sync by design (blocking S3 reads).
+    with pytest.raises(AssertionError, match="worker-thread pool"):
+        seeded_client.get(f"{base}/channels/witness_detector/{DATE}/000001/a.png")
+
+
 def test_night_report(seeded_client: TestClient) -> None:
     resp = seeded_client.get(
         f"/api/locations/test/cameras/lsstcam/nightly-summary/{DATE}"

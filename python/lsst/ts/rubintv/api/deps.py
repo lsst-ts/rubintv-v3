@@ -55,18 +55,18 @@ def safe_segment(value: str, *, field: str) -> str:
     return value
 
 
-def get_app_state(request: Request) -> AppState:
+async def get_app_state(request: Request) -> AppState:
     """Return the assembled application state."""
     return request.app.state.app_state  # type: ignore[no-any-return]
 
 
-def get_models(request: Request) -> Models:
+async def get_models(request: Request) -> Models:
     """Return the validated config model tree."""
     state: AppState = request.app.state.app_state
     return state.models
 
 
-def get_location(location: str, models: Models = Depends(get_models)) -> Location:
+async def get_location(location: str, models: Models = Depends(get_models)) -> Location:
     """Resolve a location path param, 404 if unknown."""
     loc = models.location(location)
     if loc is None:
@@ -74,7 +74,7 @@ def get_location(location: str, models: Models = Depends(get_models)) -> Locatio
     return loc
 
 
-def get_camera(camera: str, location: Location = Depends(get_location)) -> Camera:
+async def get_camera(camera: str, location: Location = Depends(get_location)) -> Camera:
     """Resolve a camera path param within a location, 404 if unknown."""
     cam = location.camera(camera)
     if cam is None:
@@ -85,7 +85,7 @@ def get_camera(camera: str, location: Location = Depends(get_location)) -> Camer
     return cam
 
 
-def valid_date(date: str) -> str:
+async def valid_date(date: str) -> str:
     """Validate a YYYY-MM-DD path param, 422 if malformed.
 
     The shape check alone would admit calendar-impossible dates like
