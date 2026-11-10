@@ -80,6 +80,11 @@ def configure_logging(*, json_logs: bool, level: str = "INFO") -> None:
         structlog.get_logger(__name__).warning(
             "logging.level.unknown", requested=level, using="INFO"
         )
+    # Each request is logged once, as CorrelationMiddleware's http.request
+    # event, which carries the timestamp, request id and duration uvicorn's
+    # plain-text access line lacks. uvicorn configured its loggers before
+    # importing the app, so this sticks, however the server was started.
+    logging.getLogger("uvicorn.access").disabled = True
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

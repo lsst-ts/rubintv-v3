@@ -26,9 +26,12 @@ emitted while handling a request carries it. Honours an inbound
 ``X-Request-ID`` (from the reverse proxy) or generates one, and echoes it
 back on the response.
 
-Every request is also summarised as an ``http.request`` debug event with
-its duration and response size, so the data flow can be measured from the
-logs alone (``scripts/flow_summary.py`` aggregates them).
+Every request is also summarised as an ``http.request`` event with its
+duration and response size, so the data flow can be measured from the
+logs alone (``scripts/flow_summary.py`` aggregates them). It is the app's
+access log, standing in for uvicorn's plain-text one (silenced in
+``configure_logging``): ``info``, except for routine traffic (see
+``_routine``), which logs at ``debug``.
 
 This is a plain ASGI middleware, not Starlette's BaseHTTPMiddleware
 (``@app.middleware("http")``). That one relays the body through a response
@@ -76,6 +79,21 @@ def response_bytes(headers: Headers) -> int | None:
     return int(raw) if raw is not None and raw.isdigit() else None
 
 
+def _routine(request: Request, status: int) -> bool:
+    """Whether a request is routine traffic, logged at debug, not info.
+
+    That is the kubelet's probes (on bare ``/`` and the redirect they
+    follow into the prefix) and the S3 status pill's poll of
+    ``/api/health/status``, every 5 s from each open camera page. Between
+    them they were nearly every line of a pod's info log. A failed one
+    (400 and up) isn't routine: it stays at info.
+    """
+    if status >= 400:
+        return False
+    probe = request.headers.get("user-agent", "").startswith("kube-probe/")
+    return probe or request.url.path.endswith("/api/health/status")
+
+
 class CorrelationMiddleware:
     """Tag each request with an id, echo it, and log its timing."""
 
@@ -101,7 +119,8 @@ class CorrelationMiddleware:
                 # Duration is to response headers: a streamed body (proxy,
                 # large metadata) is still in flight here, so this measures
                 # the handler, not the transfer.
-                log.debug(
+                emit = log.debug if _routine(request, message["status"]) else log.info
+                emit(
                     "http.request",
                     method=request.method,
                     path=request.url.path,
