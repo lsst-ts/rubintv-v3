@@ -361,8 +361,8 @@ session can be measured without a profiler:
 | `ws.frame.sent` | `type`, `bytes`, `camera`, `date`, `seq` | every WebSocket frame put on the wire |
 | `ws.disconnect` | `frames_sent`, `bytes_sent` | a connection's lifetime totals |
 | `poll.current.cycle` | `cycle_seconds`, `keys` | each 1s current-day cycle: wall time and keys listed |
-| `poll.scan` | `scope`, `prefix`, `keys`, `slices_touched` | each S3 listing; `info` only when it changed the index, `debug` when it was a silent re-listing |
-| `store.apply` | `events`, `changes` | how much of a listing was actually new |
+| `poll.scan` | `scope`, `prefix`, `keys`, `slices_touched` | each S3 listing; `info` only when it changed the index, `debug` when it was a silent re-listing, except the current-day poll's silent ones, which `poll.current.cycle` sums |
+| `store.apply` | `events`, `changes` | how much of a listing was actually new; logged only when something was |
 
 Capture a session and summarise it:
 

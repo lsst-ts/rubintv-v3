@@ -424,24 +424,26 @@ class PollEngine:
     ) -> set[tuple[str, str, str]]:
         """Apply one listing to the store, persist what changed, and log it.
 
-        ``poll.scan`` is info only when something changed. The poller
-        re-lists every prefix each cycle, so an unchanged listing is the
-        routine case and goes to debug — at info it would be one line per
-        camera per second, all saying nothing happened.
+        ``poll.scan`` is info only when something changed. An unchanged
+        listing is the routine case and goes to debug, except the
+        current-day loop's: it re-lists every prefix each second, so even at
+        debug that was a line per camera per second saying nothing happened.
+        Its ``poll.current.cycle`` line sums them instead.
         """
         touched: set[tuple[str, str, str]] = set()
         if result.events:
             touched = await self._store.apply(result.events)
             await self._persist_slices(touched)
-        emit = log.info if touched else log.debug
-        emit(
-            "poll.scan",
-            scope=scope,
-            location=location,
-            prefix=prefix,
-            keys=len(result.keys),
-            slices_touched=len(touched),
-        )
+        if touched or scope != "day":
+            emit = log.info if touched else log.debug
+            emit(
+                "poll.scan",
+                scope=scope,
+                location=location,
+                prefix=prefix,
+                keys=len(result.keys),
+                slices_touched=len(touched),
+            )
         return touched
 
     async def _reconcile_day(

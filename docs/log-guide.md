@@ -60,7 +60,8 @@ Set `RUBINTV_JSON_LOGS=1` to get the cluster's format.
 
 | Level | Meaning |
 |---|---|
-| `debug` | Per-frame and per-cycle detail, and routine requests (the kubelet's probes, the page's status poll); off by default and too much for a busy pod. See "Watching the data flow" in the operator guide. |
+| `trace` | Everything `debug` logs, plus uvicorn's own protocol tracing: each ASGI message, and websockets' line for every WebSocket frame and keepalive ping. Only for a problem in the WebSocket protocol itself. |
+| `debug` | Per-frame and per-cycle detail, and routine requests (the kubelet's probes, the page's status poll); off by default. About a line a second on a quiet pod, much more while clients are connected and data arrives. See "Watching the data flow" in the operator guide. |
 | `info` | Normal operation: startup steps, sweeps completing, clients connecting, each HTTP request. |
 | `warning` | Something degraded or was refused; the app carries on. Worth reading. |
 | `error` | An operation failed; usually with a traceback. The loop or request that failed is retried or abandoned, never the whole app. |
@@ -161,7 +162,7 @@ The current day's prefixes are listed every `RUBINTV_POLL_INTERVAL_SECONDS`
 |---|---|---|
 | `poll.current.start` | info | The current-day poll started; the `day` and the `prefixes` it lists. |
 | `poll.current.heartbeat` | info | About once a minute while polling: `keys_last_cycle` and `cycle_seconds`. Its absence means the loop isn't running. |
-| `poll.current.cycle` | debug | Every cycle: `keys` listed and `cycle_seconds`. |
+| `poll.current.cycle` | debug | Every cycle: `keys` listed and `cycle_seconds`. The cycle's own listings get no `poll.scan` line unless they changed something. |
 | `poll.current.slow` | warning | A cycle took longer than 5 s (`cycle_seconds`); logged on entering the slow state. The page shows an "S3 slow" notice. |
 | `poll.current.error` | error | A cycle failed, nearly always S3 unreachable; traceback attached. The page shows "S3 unreachable" and the poll retries every cycle. |
 | `poll.ready` | info | The first current-day poll finished; the pod reports ready from here. |
@@ -186,7 +187,7 @@ repeats every 12 hours, and the recent window is re-listed every
 | `poll.historical.idle` | info | History is complete for the first time since startup or a rescan; the "loading history" notice clears. |
 | `poll.historical.error` | error | The sweep failed; traceback attached. Retried after 60 s, and the loading notice stays up meanwhile. |
 | `poll.historical.rescan` | info | A rescan was requested (by an admin flush) and starts now. |
-| `poll.scan` | info / debug | One listing: `scope` (`day`, `recent`, `historical` or `on-demand`), `location`, `prefix`, `keys` and `slices_touched`. `info` when it changed the index, `debug` when it changed nothing. |
+| `poll.scan` | info / debug | One listing: `scope` (`day`, `recent`, `historical` or `on-demand`), `location`, `prefix`, `keys` and `slices_touched`. `info` when it changed the index, `debug` when it changed nothing, except a current-day (`day`) listing, which isn't logged when it changed nothing: there is one per camera every second, and `poll.current.cycle` sums them. |
 | `poll.scan.error` | error | Listing a date opened on demand failed. |
 | `poll.scan.empty_cached` | debug | A date opened on demand is already known to be empty, so it isn't listed again. |
 | `poll.scan.location_error` | error | More than one location failed in the same sweep: the first failure gets the traceback, each other one gets this line. |
@@ -197,7 +198,7 @@ repeats every 12 hours, and the recent window is re-listed every
 
 | Event | Level | Meaning |
 |---|---|---|
-| `store.apply` | debug | A listing applied to the index: `events` seen and `changes` made. Many events and no changes is a re-listing that found nothing new. |
+| `store.apply` | debug | A listing that changed the index: `events` seen and `changes` published. A listing that changed nothing isn't logged. |
 | `store.reconcile.stale` | info | A re-listing no longer found some of a date's entries in the bucket; they're dropped (`entries`, with a summary per kind). Logged before the drop. |
 | `store.reconcile.date_dropped` | info | Every entry for a date is gone, so the date leaves the calendar. |
 | `store.reconcile.dry_run_enabled` | warning | `RUBINTV_RECONCILE_DRY_RUN` is on: entries deleted from the bucket are reported but stay listed. |

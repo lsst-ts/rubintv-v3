@@ -731,3 +731,25 @@ async def test_failing_locations_all_finish_before_the_error_propagates(
         await engine._scan_day("2026-01-05")
     assert sorted(loc for loc, _ in poller.scanned) == ["one", "two"]
     assert logged == ["poll.scan.location_error"]
+
+
+async def test_only_a_changed_current_day_listing_is_logged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The current-day loop re-lists every prefix each second, and an
+    # unchanged listing logged a debug line per camera per second. Other
+    # scopes list rarely and still log theirs at debug; a change is info.
+    logged: list[tuple[str, str]] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: logged.append((level, fields["scope"]))
+
+    monkeypatch.setattr(tasks, "log", Recorder())
+    engine, poller = _engine(window=0)
+    prefix = "cam/2026-01-05/"
+    result = poller.scan("loc", prefix)
+    await engine._apply_scan("day", "loc", prefix, result)  # new: info
+    await engine._apply_scan("day", "loc", prefix, result)  # unchanged: nothing
+    await engine._apply_scan("recent", "loc", prefix, result)  # unchanged: debug
+    assert logged == [("info", "day"), ("debug", "recent")]
