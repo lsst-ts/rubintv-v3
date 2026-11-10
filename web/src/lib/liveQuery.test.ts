@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import {
   applyLiveMessage,
   metadataEtag,
@@ -40,6 +40,51 @@ test("channelData invalidates date payload and calendar", () => {
   expect(keys).not.toContain(
     JSON.stringify(queryKeys.calendar("local", "lsstcam")),
   );
+});
+
+test("metadata refreshes the REST metadata but not the date payload", () => {
+  const qc = new QueryClient();
+  const calls = spyInvalidate(qc);
+  applyLiveMessage(qc, {
+    type: "metadata",
+    location: "local",
+    camera: "lsstcam",
+    date: "2026-04-10",
+  });
+  const keys = calls.map((c) =>
+    JSON.stringify((c[0] as { queryKey: unknown }).queryKey),
+  );
+  expect(keys).toContain(
+    JSON.stringify(queryKeys.metadata("local", "lsstcam", "2026-04-10")),
+  );
+  // The payload carries no metadata, so a rewrite can't have changed it.
+  expect(keys).not.toContain(
+    JSON.stringify(queryKeys.datePayload("local", "lsstcam", "2026-04-10")),
+  );
+});
+
+test("an exposure's images and metadata in one poll fetch the payload once", async () => {
+  // Seen on USDF dev: one poll found an exposure's images and its
+  // metadata.json rewrite, and the page fetched the date payload twice. The
+  // second invalidation cancelled the first fetch and started another, but
+  // a cancelled fetch has already gone to the server.
+  const qc = new QueryClient();
+  let fetches = 0;
+  const observer = new QueryObserver(qc, {
+    queryKey: queryKeys.datePayload("local", "lsstcam", "2026-04-10"),
+    queryFn: async () => ++fetches,
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
+
+  const frame = { location: "local", camera: "lsstcam", date: "2026-04-10" };
+  applyLiveMessage(qc, { type: "channelData", ...frame });
+  applyLiveMessage(qc, { type: "metadata", ...frame });
+  await vi.waitFor(() =>
+    expect(observer.getCurrentResult().fetchStatus).toBe("idle"),
+  );
+  expect(fetches).toBe(2);
+  unsubscribe();
 });
 
 test("calendarUpdate invalidates the calendar", () => {
