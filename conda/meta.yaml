@@ -45,6 +45,7 @@ requirements:
     - structlog
     - redis-py
     - ijson
+    - pillow
     - nodejs
 
 test:

@@ -1252,6 +1252,108 @@
         }
       }
     },
+    "/api/locations/{location}/cameras/{camera}/channels/{channel}/{date}/{seq}/thumb/{filename}": {
+      "get": {
+        "tags": [
+          "proxy"
+        ],
+        "summary": "Proxy Thumbnail",
+        "description": "A preview-sized JPEG of the frame ``proxy_object`` serves.\n\nThe URL is that frame's with ``thumb/`` before the filename, so the\nfilename's extension finds the object the same way. Async, with its\nS3 read and resize on the thumbnail cache's own threads: a grid of\ncold previews never occupies the worker threads page data needs.",
+        "operationId": "proxy_thumbnail_api_locations__location__cameras__camera__channels__channel___date___seq__thumb__filename__get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "seq",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Seq"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/locations/{location}/cameras/{camera}/nightly-summary/{date}/plot/{group}/{filename}": {
       "get": {
         "tags": [

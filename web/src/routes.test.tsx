@@ -228,7 +228,7 @@ test("channel browser advances its cards on a live channelData message", async (
   // The card first shows seq 250 (its src encodes the zero-padded seq).
   const img = await screen.findByRole("img", { name: "Monitor latest" });
   await waitFor(() =>
-    expect(img.getAttribute("src")).toContain("/000250/image.png"),
+    expect(img.getAttribute("src")).toContain("/000250/thumb/image.png"),
   );
 
   // Open the connection so the view's queued subscribe frame flushes.
@@ -263,7 +263,7 @@ test("channel browser advances its cards on a live channelData message", async (
 
   // The same <img> element now points at the newer exposure — no reload.
   await waitFor(() =>
-    expect(img.getAttribute("src")).toContain("/000252/image.png"),
+    expect(img.getAttribute("src")).toContain("/000252/thumb/image.png"),
   );
 });
 

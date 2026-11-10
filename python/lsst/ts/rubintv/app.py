@@ -63,6 +63,7 @@ from lsst.ts.rubintv.data.redis_inputs import RedisInputs
 from lsst.ts.rubintv.data.source import S3Poller
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.data.tasks import PollEngine
+from lsst.ts.rubintv.data.thumbs import ThumbnailCache
 from lsst.ts.rubintv.logging import configure_logging, get_logger
 from lsst.ts.rubintv.middleware import CorrelationMiddleware
 from lsst.ts.rubintv.s3.client import S3ClientPool
@@ -214,6 +215,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ws=ws_service,
         block_names=block_names,
         guide=guide,
+        thumbs=ThumbnailCache(),
         cache_enabled=cache.enabled,
         warm_start=warm_start,
     )
@@ -346,6 +348,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await ws_service.stop()
         await engine.stop()
         await write_cache()
+        state.thumbs.close()
         s3.close()
         log.info("shutdown.complete")
 

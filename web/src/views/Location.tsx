@@ -8,7 +8,8 @@ import { usePageTitle } from "../lib/usePageTitle";
 import { ProxiedImg } from "../components/ProxiedMedia";
 
 // The camera-card thumbnail: the latest frame of the camera's primary channel
-// (CameraSummary.primary_image, resolved server-side). Reuses the Channels
+// (CameraSummary.primary_image, resolved server-side), fetched as the server's
+// shrunk copy (api.thumbUrl) rather than the full frame. Reuses the Channels
 // grid's image-loading logic (see ChannelBrowser's ChannelCard): the image
 // fades in once loaded rather than painting top-down, with a spinner overlay
 // meanwhile — keyed on src so a swap re-arms it and a cached image (img.complete
@@ -39,7 +40,7 @@ function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
       <ProxiedImg
         ref={imgRef}
         className={"cam-thumb-img" + (imgLoaded ? "" : " chc-img-loading")}
-        src={src}
+        src={api.thumbUrl(src)}
         alt=""
         loading="lazy"
         // A preview, not the content: let the next page's requests go first

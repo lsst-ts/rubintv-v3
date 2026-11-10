@@ -44,6 +44,7 @@ from lsst.ts.rubintv.data.guide import GuideService
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.store import EventStore
+from lsst.ts.rubintv.data.thumbs import ThumbnailCache
 from lsst.ts.rubintv.s3.client import S3ClientPool
 from lsst.ts.rubintv.ws.handler import WsService
 
@@ -63,6 +64,7 @@ class AppState:
     ws: WsService
     block_names: BlockNameService
     """Science-program key -> description, for the observing-block guide."""
+    thumbs: ThumbnailCache
     guide: GuideService | None = field(default=None)
     """Observing-block guide built from ConsDB; ``None`` when no ConsDB URL
     is configured (the guide page is then hidden)."""
