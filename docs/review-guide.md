@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 349 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 351 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -388,8 +388,8 @@ Safe to skim.
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
-  `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, and the commit that
-  noted the preview fix.
+  `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, and the
+  commit that noted the thumbnails.
 
 ---
 
@@ -844,12 +844,13 @@ changes. Read `.github/workflows/ci.yml` and the `no_dotenv` fixture in
   and 94% of branches. Set on the CI command lines only, so partial
   local runs and Jenkins report without failing
 
-### 51. Previews that don't hold up the next page
+### 51. Previews: off the worker threads, then thumbnails
 On USDF dev a slow grid of previews stalled the page a user clicked
 through to. The media proxy is sync, so it runs on Starlette's shared
 worker-thread pool, and the JSON endpoints' dependencies were sync
-too, so a page's data queued behind preview downloads. Review
-`api/deps.py` and the test.
+too, so a page's data queued behind preview downloads. The previews
+were also full-size frames. Review `api/deps.py`, then
+`data/thumbs.py`, `proxy_thumbnail` in `api/proxy.py` and their tests.
 - `8e4ced1` Keep page data off the thread pool the image proxy fills:
   the shared dependencies (`get_app_state`, `get_models`,
   `get_location`, `get_camera`, `valid_date`) and the camera detail
@@ -857,6 +858,14 @@ too, so a page's data queued behind preview downloads. Review
   proxy stays sync. Previews ask for low fetch priority.
   `test_page_data_needs_no_worker_thread` makes the pool unusable and
   checks page data still answers
+- `fc2bc5f` Show the cards' previews as thumbnails built on request: a
+  route beside the proxy (`.../{seq}/thumb/{filename}`) shrinks the
+  frame to fit 640px as JPEG with Pillow, 7x fewer bytes across every
+  USDF channel's latest frame for 18 ms median, 62 ms worst. The cache
+  keeps the newest thumbnail per configured channel; concurrent
+  requests share one build on the cache's own threads. A movie has no
+  thumbnail; an unreadable frame redirects to the full one. Pillow
+  joins the dependencies; API artifacts regenerated
 
 ---
 
