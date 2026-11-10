@@ -141,7 +141,7 @@ async def get_location_detail(
 
 
 @router.get("/locations/{location}/cameras/{camera}", response_model=CameraOut)
-def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
+async def get_camera_detail(camera: Camera = Depends(get_camera)) -> CameraOut:
     return CameraOut(
         name=camera.name,
         title=camera.title,

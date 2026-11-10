@@ -42,6 +42,9 @@ function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
         src={src}
         alt=""
         loading="lazy"
+        // A preview, not the content: let the next page's requests go first
+        // if the user clicks through while thumbnails are still arriving.
+        fetchPriority="low"
         onLoad={() => setImgLoaded(true)}
         onError={() => setFailed(true)}
       />
