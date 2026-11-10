@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 351 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 353 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -388,8 +388,8 @@ Safe to skim.
   `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
-  `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, and the
-  commit that noted the thumbnails.
+  `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
+  and the commit that noted the request logging.
 
 ---
 
@@ -866,6 +866,17 @@ were also full-size frames. Review `api/deps.py`, then
   requests share one build on the cache's own threads. A movie has no
   thumbnail; an unreadable frame redirects to the full one. Pillow
   joins the dependencies; API artifacts regenerated
+
+### 52. Request logging
+A pod's info log was nearly all uvicorn access lines, plain text with
+no timestamp: the kubelet's probes and every open camera page's 5 s
+status poll. Review `_routine` and the level choice in `middleware.py`,
+then the one line in `configure_logging`.
+- `3744ef1` Log each request once, as JSON, and keep probes and polls
+  out of info: `http.request` (already logged, at debug) becomes the
+  access log at info, uvicorn's own is disabled, and successful
+  `kube-probe/` requests and `/api/health/status` polls stay at debug.
+  A failed one (400 and up) is info, probe or not
 
 ---
 
