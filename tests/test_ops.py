@@ -516,3 +516,25 @@ def test_requests_log_at_info_and_routine_traffic_at_debug(
         ("debug", "/rubintv/api/health/live", 200),
         ("info", "/rubintv/api/no-such-route", 404),
     ]
+
+
+def test_a_request_is_logged_with_who_sent_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # In the cluster the peer is the ingress (or an in-cluster caller), so a
+    # burst of requests couldn't be traced to its sender: the line also
+    # carries the forwarded-for address and the user agent.
+    logged: list[dict[str, Any]] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: logged.append(fields)
+
+    monkeypatch.setattr(middleware, "log", Recorder())
+    sender = {"X-Forwarded-For": "10.0.0.7", "User-Agent": "python-requests/2.32"}
+    with run_app() as client:
+        client.get("/api/health/live", headers=sender)
+    (fields,) = logged
+    assert fields["client"] == "testclient"
+    assert fields["forwarded_for"] == "10.0.0.7"
+    assert fields["user_agent"] == "python-requests/2.32"

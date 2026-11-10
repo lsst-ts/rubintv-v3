@@ -185,7 +185,7 @@ session can be measured without a profiler:
 
 | Event | Fields | What it measures |
 |---|---|---|
-| `http.request` | `method`, `path`, `status`, `duration_ms`, `bytes` | every REST/proxy request: time to response headers, uncompressed body size (`null` for a chunked stream) |
+| `http.request` | `method`, `path`, `status`, `duration_ms`, `bytes`, `client`, `forwarded_for`, `user_agent` | every REST/proxy request: time to response headers, uncompressed body size (`null` for a chunked stream) |
 | `ws.frame.sent` | `type`, `bytes`, `camera`, `date`, `seq` | every WebSocket frame put on the wire |
 | `ws.disconnect` | `frames_sent`, `bytes_sent` | a connection's lifetime totals |
 | `poll.current.cycle` | `cycle_seconds`, `keys` | each 1s current-day cycle: wall time and keys listed |

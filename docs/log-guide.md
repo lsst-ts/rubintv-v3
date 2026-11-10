@@ -43,6 +43,8 @@ logs --since=1h | jq -cR 'fromjson? | select(.level == "warning" or .level == "e
 logs --since=24h | jq -rR 'fromjson? | .event' | sort | uniq -c | sort -rn | head -20
 # Requests that failed, or took over a second to answer
 logs --since=1h | jq -cR 'fromjson? | select(.event == "http.request" and (.status >= 400 or .duration_ms > 1000))'
+# Who sent the requests for one path, busiest first (a page or a script?)
+logs --since=1h | jq -rR 'fromjson? | select(.event == "http.request" and (.path | endswith("/dates/2026-11-09"))) | [.forwarded_for // .client, .user_agent] | @tsv' | sort | uniq -c | sort -rn
 # Everything logged for one request
 logs --since=1h | jq -cR 'fromjson? | select(.request_id == "<id>")'
 # Each error with its traceback
@@ -140,7 +142,7 @@ Grouped by area. Where an event is logged at two levels, both are given.
 | `shutdown.complete` | info | Shutdown finished; the cache was written. |
 | `config.admin_wildcard_disabled` | warning | The site's `admin_for` contains `*` but `RUBINTV_ALLOW_ADMIN_WILDCARD` isn't set, so the wildcard is ignored. Usually a pod started with the wrong `RUBINTV_SITE`. |
 | `logging.level.unknown` | warning | `RUBINTV_LOG_LEVEL` isn't a level name; logging at `INFO` instead. |
-| `http.request` | info / debug | One HTTP request: `method`, `path`, `status`, `duration_ms` (to the response headers) and `bytes`. The access log; uvicorn's own is switched off. `debug` for routine traffic that succeeded: the kubelet's probes (user agent `kube-probe/`) and `/api/health/status`, which each open camera page polls every 5 s. Anything else, and any response of 400 or above, is `info`. |
+| `http.request` | info / debug | One HTTP request: `method`, `path`, `status`, `duration_ms` (to the response headers) and `bytes`, and who sent it: `client` (the peer: in the cluster, the ingress or an in-cluster caller), `forwarded_for` (the `X-Forwarded-For` header, `null` without one) and `user_agent`. The access log; uvicorn's own is switched off. `debug` for routine traffic that succeeded: the kubelet's probes (user agent `kube-probe/`) and `/api/health/status`, which each open camera page polls every 5 s. Anything else, and any response of 400 or above, is `info`. |
 
 ### S3 clients
 

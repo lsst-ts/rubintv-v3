@@ -127,6 +127,13 @@ class CorrelationMiddleware:
                     status=message["status"],
                     duration_ms=round((time.perf_counter() - started) * 1000, 1),
                     bytes=response_bytes(headers),
+                    # Who asked: the peer (in the cluster, the ingress or an
+                    # in-cluster caller), the address the proxy says it
+                    # forwarded for, and the user agent, which tells the
+                    # page apart from a script.
+                    client=request.client.host if request.client else None,
+                    forwarded_for=request.headers.get("x-forwarded-for"),
+                    user_agent=request.headers.get("user-agent"),
                 )
             await send(message)
 
