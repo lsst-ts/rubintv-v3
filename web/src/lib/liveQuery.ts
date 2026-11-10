@@ -130,9 +130,16 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
     case "perDay":
     case "metadata":
       if (date) {
-        qc.invalidateQueries({
-          queryKey: queryKeys.datePayload(location, camera, date),
-        });
+        // The date payload carries no metadata (see DatePayload), so a
+        // metadata.json rewrite leaves it as it was. Refetching it anyway
+        // cost each open page a whole payload per rewrite, and the file is
+        // rewritten as each exposure's rows land, often in the same poll as
+        // its images (two fetches for one exposure).
+        if (type !== "metadata") {
+          qc.invalidateQueries({
+            queryKey: queryKeys.datePayload(location, camera, date),
+          });
+        }
         // The REST metadata query is normally disabled (the stream delivers
         // metadata; see useMetadata), so this only matters when it is the
         // active path — then a rewrite must refetch. Harmless otherwise.
