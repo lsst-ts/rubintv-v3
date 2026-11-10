@@ -31,8 +31,9 @@ its `request_id`, the same value returned in the response's `X-Request-ID`
 header. An `error` line from a caught exception carries the traceback in
 `exception`.
 
-uvicorn's own lines are plain text, not JSON: its startup messages and an
-access-log line per request (`"GET /rubintv/api/... HTTP/1.1" 200`). So
+uvicorn's own lines are plain text, not JSON: its startup and shutdown
+messages, and the traceback of an error no handler caught. Its access log
+is switched off; the app logs each request as `http.request` instead. So
 when using `jq`, read raw lines and skip the ones that aren't JSON:
 
 ```bash
@@ -40,6 +41,8 @@ when using `jq`, read raw lines and skip the ones that aren't JSON:
 logs --since=1h | jq -cR 'fromjson? | select(.level == "warning" or .level == "error")'
 # The loudest events: a quick way to see what a pod has been doing
 logs --since=24h | jq -rR 'fromjson? | .event' | sort | uniq -c | sort -rn | head -20
+# Requests that failed, or took over a second to answer
+logs --since=1h | jq -cR 'fromjson? | select(.event == "http.request" and (.status >= 400 or .duration_ms > 1000))'
 # Everything logged for one request
 logs --since=1h | jq -cR 'fromjson? | select(.request_id == "<id>")'
 # Each error with its traceback
@@ -55,8 +58,8 @@ Set `RUBINTV_JSON_LOGS=1` to get the cluster's format.
 
 | Level | Meaning |
 |---|---|
-| `debug` | Per-request, per-frame and per-cycle detail; off by default and too much for a busy pod. See "Watching the data flow" in the operator guide. |
-| `info` | Normal operation: startup steps, sweeps completing, clients connecting. |
+| `debug` | Per-frame and per-cycle detail, and routine requests (the kubelet's probes, the page's status poll); off by default and too much for a busy pod. See "Watching the data flow" in the operator guide. |
+| `info` | Normal operation: startup steps, sweeps completing, clients connecting, each HTTP request. |
 | `warning` | Something degraded or was refused; the app carries on. Worth reading. |
 | `error` | An operation failed; usually with a traceback. The loop or request that failed is retried or abandoned, never the whole app. |
 
@@ -137,7 +140,7 @@ Grouped by area. Where an event is logged at two levels, both are given.
 | `shutdown.complete` | info | Shutdown finished; the cache was written. |
 | `config.admin_wildcard_disabled` | warning | The site's `admin_for` contains `*` but `RUBINTV_ALLOW_ADMIN_WILDCARD` isn't set, so the wildcard is ignored. Usually a pod started with the wrong `RUBINTV_SITE`. |
 | `logging.level.unknown` | warning | `RUBINTV_LOG_LEVEL` isn't a level name; logging at `INFO` instead. |
-| `http.request` | debug | One HTTP request: `method`, `path`, `status`, `duration_ms` (to the response headers) and `bytes`. |
+| `http.request` | info / debug | One HTTP request: `method`, `path`, `status`, `duration_ms` (to the response headers) and `bytes`. The access log; uvicorn's own is switched off. `debug` for routine traffic that succeeded: the kubelet's probes (user agent `kube-probe/`) and `/api/health/status`, which each open camera page polls every 5 s. Anything else, and any response of 400 or above, is `info`. |
 
 ### S3 clients
 

@@ -131,3 +131,18 @@ def test_json_logs_render_the_traceback(monkeypatch: pytest.MonkeyPatch) -> None
     record = json.loads(out.getvalue())
     assert "exc_info" not in record
     assert "ConnectionError: endpoint unreachable" in record["exception"]
+
+
+def test_configure_logging_silences_uvicorns_access_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # CorrelationMiddleware's http.request is the access log; uvicorn's own
+    # plain-text line would log every request a second time.
+    import logging
+
+    from lsst.ts.rubintv.logging import configure_logging
+
+    access = logging.getLogger("uvicorn.access")
+    monkeypatch.setattr(access, "disabled", False)
+    configure_logging(json_logs=False, level="INFO")
+    assert access.disabled

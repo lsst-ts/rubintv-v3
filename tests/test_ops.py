@@ -34,6 +34,7 @@ from typing import Any
 import boto3
 import pytest
 from fastapi.testclient import TestClient
+from lsst.ts.rubintv import middleware
 from lsst.ts.rubintv.app import _resolve_models_path, create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
@@ -486,3 +487,32 @@ def test_requests_still_carry_the_correlation_id_when_timed() -> None:
         resp = client.get("/api/health/live", headers={"X-Request-ID": "t-1"})
         assert resp.status_code == 200
         assert resp.headers["X-Request-ID"] == "t-1"
+
+
+def test_requests_log_at_info_and_routine_traffic_at_debug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # http.request is the pod's access log. The kubelet's probes and the S3
+    # pill's 5 s status poll were nearly every line of it, so they drop to
+    # debug; anything that fails stays at info, probe or not.
+    logged: list[tuple[str, str, int]] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **f: logged.append((level, f["path"], f["status"]))
+
+    monkeypatch.setattr(middleware, "log", Recorder())
+    probe = {"User-Agent": "kube-probe/1.30"}
+    with run_app() as client:
+        client.get("/api/health/live")
+        client.get("/api/health/status")
+        client.get("http://testserver/", headers=probe, follow_redirects=False)
+        client.get("/api/health/live", headers=probe)
+        client.get("/api/no-such-route", headers=probe)
+    assert logged == [
+        ("info", "/rubintv/api/health/live", 200),
+        ("debug", "/rubintv/api/health/status", 200),
+        ("debug", "/", 307),
+        ("debug", "/rubintv/api/health/live", 200),
+        ("info", "/rubintv/api/no-such-route", 404),
+    ]
