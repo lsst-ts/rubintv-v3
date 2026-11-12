@@ -808,7 +808,6 @@ h1, h2 {
   font-family: var(--display); font-weight: 700; font-size: 16px;
   color: var(--ink); letter-spacing: -0.01em;
 }
-.home-tagline .sep { width: 1px; height: 14px; background: var(--line-mid); display: inline-block; }
 
 /* Section heads on the landing + location pages: uppercase mono-ish label. */
 .landing-h {
@@ -819,7 +818,8 @@ h1, h2 {
 .landing-inner .landing-h:first-of-type { margin-top: 6px; }
 
 /* Home location/app cards: text cards with the display face for names, mono for
-   ids, hairline + soft shadow lifting to the accent line on hover. */
+   an app's one-line description, hairline + soft shadow lifting to the accent
+   line on hover. */
 .loc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .loc-card {
   border: 1px solid var(--line-mid); border-radius: 8px;
@@ -830,6 +830,9 @@ h1, h2 {
   display: flex; flex-direction: column; gap: 6px;
   text-decoration: none; color: var(--ink);
 }
+/* A location card is its title alone (the id under it said nothing the title
+   didn't), so its padding is even rather than trimmed above a label. */
+.loc-card.bare { padding-bottom: 18px; }
 .loc-card:hover {
   background: var(--paper-3); transform: translateY(-2px);
   border-color: var(--accent-line); box-shadow: var(--shadow-pop);

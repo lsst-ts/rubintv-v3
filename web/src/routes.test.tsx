@@ -1716,11 +1716,11 @@ test("historical All Sky date shows the final movie only, no stills", async () =
 test("home renders", async () => {
   renderAt("/");
   // The launcher home carries the brand as the Rubin mark (the one place it
-  // appears) plus the "RubinTV · live camera displays" tagline.
+  // appears) plus the RubinTV wordmark.
   expect(
     await screen.findByRole("img", { name: "Vera C. Rubin Observatory" }),
   ).toBeDefined();
-  expect(await screen.findByText("live camera displays")).toBeDefined();
+  expect(await screen.findByText("RubinTV")).toBeDefined();
 });
 
 test("home sets the browser tab title to the app name", async () => {
