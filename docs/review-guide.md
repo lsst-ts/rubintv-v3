@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 359 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 362 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -389,8 +389,8 @@ Safe to skim.
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
-  `cc8e35c`, `444ff4c`, `dc0530a`, and the commit that noted the
-  readable debug level.
+  `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, and the commit that
+  noted the camera table's third pass.
 
 ---
 
@@ -893,6 +893,23 @@ saying nothing had changed. Review `_routine` and the level choice in
   nothing isn't logged (`poll.current.cycle` sums them), `store.apply`
   only when it changed something, and websockets' frame and keepalive
   lines are filtered off `uvicorn.error` unless the level is `trace`
+
+### 53. Camera table, third pass: the whole window for rows
+The table scrolled in a box under the topbar, toolbar and a 150px
+header, so a laptop showed about a dozen rows. Review `syncTopbar`,
+`scrollKeyTarget` and `focusOwnsKey` in `CameraDataTable.tsx` (with
+the `.topbar` hide rule in `index.css` and `measureTopbar` in
+`Layout.tsx`), then `lib/prefs.ts` and the NavMenu's two new rows.
+- `f90a2b7` Shorten the table's angled header to 110px, and keep its
+  labels inside it: the length cap now allows for a label's 6px lift
+  and 16px thickness, so a long one ends in an ellipsis rather than
+  being clipped at the header's top
+- `e9ef9b7` Let the camera table fill the window, and page it from the
+  keyboard: scrolled down, the table hides the topbar (an "Auto-hide
+  topbar" switch in the NavMenu, on by default); jump to top / bottom
+  buttons in the toolbar; PageUp/PageDown and friends from anywhere,
+  without taking focus, paging by rows so none hides under the sticky
+  header; row density moves to the NavMenu
 
 ---
 
