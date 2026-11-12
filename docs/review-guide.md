@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 368 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 371 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -194,6 +194,10 @@ state rather than each step.
 - `ca364d4` Add prev/next-day stepper buttons around the date picker
 - `acf4d5c` Add UTC clock + per-camera time-since-last clock to the table
   header
+- `5300a99` (later, from a user's report) Scroll the column search's list
+  to follow ↑ ↓: it shows about seven rows, and the highlight went out of
+  sight past them. Keys scroll it, hovering doesn't (`moveTo` in
+  `FilterControl.tsx`)
 
 ### 16. Seq.No URL filter
 Another iterative arc landing on the `?seq_filter` catch-all + its docs.
@@ -394,7 +398,7 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  `da6cb7f`, and the commit that noted the date picker's month grids.
+  `da6cb7f`, `6604211`, and the commit that noted the keyboard shortcuts.
 
 ---
 
@@ -924,6 +928,21 @@ the `.topbar` hide rule in `index.css` and `measureTopbar` in
   buttons in the toolbar; PageUp/PageDown and friends from anywhere,
   without taking focus, paging by rows so none hides under the sticky
   header; row density moves to the NavMenu
+
+### 54. Keyboard shortcuts: a ? panel, and [ ] and / keys
+Review `lib/shortcuts.ts` first: the one list of shortcuts, which the
+panel (`components/KeyboardHelp.tsx`) shows and every handler matches
+key presses against (`pressed`), and `pageKeysPaused`, which stands the
+page's keys down in a text field or under a modal. Then the handlers that
+read it: `onDayKey` in `Layout.tsx`, `FilterControl`'s `/`, the channel
+arrows in `Channel.tsx`, `scrollKeyTarget` in `CameraDataTable.tsx`, and
+Esc in `useDismiss` and the NavMenu.
+- `aa65cea` Add a keyboard-shortcuts panel (press ?, or the NavMenu's last
+  entry), grouped by where the keys work with this page's groups first;
+  [ and ] step the day like the ‹ › by the date picker; / opens the
+  add-filter form with the column search in focus. Controls name their
+  keys in tooltips and aria-keyshortcuts. The channel arrows now stand
+  down while typing or under a modal, and ignore ⌘/Ctrl/Alt
 
 ---
 
