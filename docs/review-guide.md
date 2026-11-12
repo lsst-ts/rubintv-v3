@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 362 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 364 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -389,8 +389,8 @@ Safe to skim.
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
-  `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, and the commit that
-  noted the camera table's third pass.
+  `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, and the
+  commit that noted the home page trim.
 
 ---
 
@@ -510,6 +510,9 @@ out.
 - `e043b70` Add favicon
 - `3088b59` Add a Simon Krughoff memorial to the home page
 - `0751ea0` Tint the memorial plaque in the mark's own teal
+- `fecbb10` Trim the home page: the location cards drop their ids
+  (just the title, evenly padded) and the hero its "live camera
+  displays" tagline
 
 ### 35. Location and Channels cards
 - `9396183` Hide Previously Used Channels group on USDF Summit
