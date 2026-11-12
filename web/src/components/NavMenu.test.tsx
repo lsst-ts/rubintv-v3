@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { NavMenu } from "./NavMenu";
+import { KeyboardHelp } from "./KeyboardHelp";
 
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
@@ -190,4 +191,22 @@ test("the topbar auto-hide is switched in the drawer and remembered", async () =
       .getByRole("switch", { name })
       .getAttribute("aria-checked"),
   ).toBe("false");
+});
+
+test("its last entry opens the keyboard-shortcuts panel", async () => {
+  stub();
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter>
+        <NavMenu />
+        <KeyboardHelp here={["anywhere"]} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const menu = await openMenu();
+  const entry = within(menu).getByRole("menuitem", { name: /Keyboard shortcuts/ });
+  expect(entry.getAttribute("aria-keyshortcuts")).toBe("?");
+  fireEvent.click(entry);
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeDefined();
 });

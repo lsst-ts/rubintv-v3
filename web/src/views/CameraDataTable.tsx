@@ -20,6 +20,7 @@ import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { cellFlagClass, formatCell } from "../lib/metaCells";
 import { fillTemplate } from "../lib/links";
 import { useAutoHideTopbar, type Density } from "../lib/prefs";
+import { pressed } from "../lib/shortcuts";
 import { CopyButton } from "../components/CopyButton";
 import { CellModal } from "../components/CellModal";
 import { ViewerIcon, QuicklookIcon, DetailsIcon } from "../components/Icons";
@@ -158,7 +159,8 @@ function syncTopbar(wrap: HTMLElement, enabled: boolean) {
 // for `view` px. Paging moves the row at the view's bottom edge (often cut off
 // by it) to the top, or the one at its top edge to the bottom, so a page never
 // skips a row. An arrow steps a row; ⌘↑ / ⌘↓ (macOS) go to the ends, like
-// Home / End.
+// Home / End. The keys are SHORTCUTS' (lib/shortcuts), which the help panel
+// lists.
 function scrollKeyTarget(
   e: KeyboardEvent,
   wrap: HTMLElement,
@@ -178,17 +180,12 @@ function scrollKeyTarget(
     return row && row.end - view < top ? row.end - view : top - view;
   };
   let to: number;
-  if (e.metaKey) {
-    if (e.key === "ArrowUp") to = 0;
-    else if (e.key === "ArrowDown") to = end;
-    else return null;
-  } else if (e.key === "PageDown") to = pageDown();
-  else if (e.key === "PageUp") to = pageUp();
-  else if (e.key === " ") to = e.shiftKey ? pageUp() : pageDown();
-  else if (e.key === "ArrowDown") to = top + rowH;
-  else if (e.key === "ArrowUp") to = top - rowH;
-  else if (e.key === "End") to = end;
-  else if (e.key === "Home") to = 0;
+  if (pressed(e, "top")) to = 0;
+  else if (pressed(e, "bottom")) to = end;
+  else if (pressed(e, "pageDown")) to = pageDown();
+  else if (pressed(e, "pageUp")) to = pageUp();
+  else if (pressed(e, "rowDown")) to = top + rowH;
+  else if (pressed(e, "rowUp")) to = top - rowH;
   else return null;
   return Math.min(Math.max(to, 0), end);
 }
@@ -631,7 +628,7 @@ function CameraDataTableInner({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const wrap = wrapRef.current;
-      if (!wrap || e.defaultPrevented || e.ctrlKey || e.altKey) return;
+      if (!wrap || e.defaultPrevented) return;
       const to = scrollKeyTarget(
         e,
         wrap,

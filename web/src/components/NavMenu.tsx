@@ -8,12 +8,15 @@ import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useSubapps } from "../lib/useSubapps";
+import { openKeyboardHelp } from "../lib/keyboardHelp";
+import { ariaKeys, keyHint, pressed } from "../lib/shortcuts";
 
 // NavMenu — a single hamburger button that opens a compact drawer, replacing
 // the app-shell sidebar. It consolidates wayfinding (Home, every location, and
 // every app) and tucks the preferences (theme, table row density, the topbar
-// auto-hiding) behind the same trigger, so none sits out in the open. Rendered top-right on the
-// Home hero and in the topbar's utility strip on every inner page.
+// auto-hiding) behind the same trigger, so none sits out in the open, along
+// with the keyboard-shortcuts panel. Rendered top-right on the Home hero and
+// in the topbar's utility strip on every inner page.
 //
 // Ported from the design's NavMenu (RubinTV Design System, ui_kits/rubintv/
 // NavMenu.jsx) but driven by react-router links + the real config API rather
@@ -38,7 +41,7 @@ export function NavMenu() {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (pressed(e, "close")) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -176,6 +179,22 @@ export function NavMenu() {
           <div className="navmenu-pref">
             <span className="navmenu-appearance-label">Auto-hide topbar</span>
             <AutoHideToggle />
+          </div>
+
+          <div className="navmenu-help">
+            <button
+              type="button"
+              className="navmenu-link"
+              role="menuitem"
+              aria-keyshortcuts={ariaKeys("help")}
+              onClick={() => {
+                close();
+                openKeyboardHelp();
+              }}
+            >
+              Keyboard shortcuts
+              <kbd>{keyHint("help")}</kbd>
+            </button>
           </div>
         </div>
       )}

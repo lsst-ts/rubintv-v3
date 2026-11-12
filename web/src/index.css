@@ -729,6 +729,17 @@ h1, h2 {
   padding: 6px 8px 3px;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
+/* The keyboard-shortcuts entry, last, under a rule like Appearance's; a
+   <button> wearing .navmenu-link, with its key at the right. */
+.navmenu-help {
+  margin-top: 5px; padding-top: 4px;
+  border-top: 1px solid var(--line-soft);
+}
+.navmenu-help .navmenu-link {
+  width: 100%; border: none; background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between;
+  text-align: left;
+}
 /* An on/off preference switch (AutoHideToggle), in the segmented pickers'
    palette: a pill track whose thumb slides right, onto the accent, when on. */
 .pref-switch {
@@ -1834,6 +1845,46 @@ a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft)
   padding: 0 4px;
 }
 .cell-modal-close:hover { color: var(--ink); }
+
+/* A key to press, drawn as a key cap: the shortcuts panel and the NavMenu. */
+kbd {
+  font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  color: var(--ink); background: var(--paper-2);
+  border: 1px solid var(--line-mid); border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 6px; min-width: 1.7em; text-align: center;
+  display: inline-block;
+}
+
+/* The keyboard-shortcuts panel (press ?): .cell-modal's card, a group per
+   place the keys work, those this page answers first and tagged. */
+.keys-modal { width: min(90vw, 560px); }
+.keys-modal:focus { outline: none; }
+.keys-body { padding: 2px 16px 14px; }
+.keys-group h3 {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 14px 0 7px;
+  font-family: var(--hand); font-size: 10.5px; font-weight: 600;
+  color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.keys-here {
+  font-size: 9.5px; font-weight: 500; color: var(--accent);
+  text-transform: none; letter-spacing: 0;
+  border: 1px solid var(--accent-line); border-radius: 999px; padding: 0 7px;
+}
+/* One key-column width for every group, so the descriptions line up down the
+   panel: room for the widest, "Page Up or Shift Space". */
+.keys-group dl {
+  display: grid; grid-template-columns: 190px 1fr;
+  gap: 7px 16px; margin: 0; align-items: baseline;
+}
+.keys-group dt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.keys-group dd { margin: 0; font-size: 13px; color: var(--ink); }
+.keys-or { font-size: 11px; color: var(--ink-soft); margin: 0 2px; }
+.keys-foot {
+  margin: 16px 0 0; padding-top: 10px; border-top: 1px solid var(--line-soft);
+  font-size: 12px; color: var(--ink-soft);
+}
 .cell-dict { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .cell-dict th.key,
 .cell-dict td.value {

@@ -201,6 +201,24 @@ test("with several filters a 'clear all' removes them together", () => {
   expect(screen.queryByText(/of 1 row/)).toBeNull();
 });
 
+test("/ opens the form with the column search in focus", () => {
+  render(<Harness />);
+  const button = screen.getByRole("button", { name: "Add or edit filters" });
+  expect(button.getAttribute("title")).toBe("Add or edit filters (/)");
+  expect(fireEvent.keyDown(document.body, { key: "/" })).toBe(false);
+  const form = screen.getByRole("dialog", { name: "Add filter" });
+  const search = within(form).getByLabelText("Filter column");
+  expect(document.activeElement).toBe(search);
+  // The column list is open to type into.
+  expect(form.querySelectorAll(".list .item")).toHaveLength(COLUMNS.length);
+
+  // A / typed into the form's fields is text.
+  const value = within(form).getByLabelText("Filter value");
+  value.focus();
+  expect(fireEvent.keyDown(value, { key: "/" })).toBe(true);
+  expect(document.activeElement).toBe(value);
+});
+
 test("↑ ↓ scroll the column list to keep the highlighted column in view", () => {
   const columns = Array.from({ length: 20 }, (_, i) => `col${i}`);
   render(
