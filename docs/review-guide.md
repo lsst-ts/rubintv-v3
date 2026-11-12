@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 366 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 368 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -169,6 +169,10 @@ state rather than each step.
   split
 - `928daec` Heatmap: whole mini-month is the month-jump target;
   distinguish day vs seq
+- `280a1aa` (later, from a user's report) Drop other months' days from
+  the month grids, where they read as empty nights (the 1st sits under
+  its weekday; six week rows keep the height), and open with the newest
+  month on the right rather than beside a future one (`viewFor`)
 
 ### 14. Table cells, headers, action columns
 - `9cfebc6` Show channel titles in the camera table header, not ref names
@@ -390,7 +394,7 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  and the commit that noted the metadata-only dates.
+  `da6cb7f`, and the commit that noted the date picker's month grids.
 
 ---
 
