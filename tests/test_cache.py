@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
@@ -35,6 +36,7 @@ def sample_index() -> DateIndex:
         extensions={"witness_detector": ExtInfo(default="png", exceptions={2: "jpg"})},
         per_day={"movies": PerDayRef(seq="final", ext="mp4")},
         night_report_keys={"lsstcam/2026-04-10/night_report/s_md.json"},
+        has_metadata=True,
         metadata_etag='"abc123"',
     )
 
@@ -71,7 +73,23 @@ def test_round_trip(tmp_path: Path) -> None:
     # the proxy resolves the filename by listing the prefix at request time.
     assert idx.per_day["movies"] == PerDayRef(seq="final", ext="mp4")
     assert idx.night_report_keys == {"lsstcam/2026-04-10/night_report/s_md.json"}
+    assert idx.has_metadata
     assert idx.metadata_etag == '"abc123"'
+
+
+def test_slice_without_has_metadata_infers_it_from_the_etag(tmp_path: Path) -> None:
+    # Slices written before has_metadata held an ETag only where the date had
+    # metadata, so a warm start must not forget it (or re-announce it).
+    cache = DiskCache(tmp_path)
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    cache.write("local", "lsstcam", "2026-04-11", DateIndex(channels={"c": {1}}))
+    for path in (tmp_path / CACHE_VERSION).glob("*/*/*.json"):
+        raw = json.loads(path.read_text())
+        del raw["has_metadata"]
+        path.write_text(json.dumps(raw))
+    loaded = cache.load_all()[("local", "lsstcam")]
+    assert loaded["2026-04-10"].has_metadata
+    assert not loaded["2026-04-11"].has_metadata
 
 
 def test_corrupt_file_is_skipped(tmp_path: Path) -> None:

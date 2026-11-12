@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from lsst.ts.rubintv.data.bus import EventBus
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind, SeqNum, StoreChange
@@ -175,13 +175,7 @@ class EventStore:
         caller (e.g. the poll engine) can persist exactly those to disk.
         """
         changes: set[StoreChange] = set()
-        # metadata.json records against an existing date index (see
-        # _insert), so apply it after the channel keys that create one —
-        # listing order is by key, which sorts "metadata.json" in among the
-        # channel directories.
-        ordered = [e for e in events if not e.key.endswith("/metadata.json")]
-        ordered += [e for e in events if e.key.endswith("/metadata.json")]
-        for i, event in enumerate(ordered):
+        for i, event in enumerate(events):
             parsed = self._classify(event)
             if parsed is None:
                 continue  # non-conforming key — safely ignored
@@ -277,19 +271,18 @@ class EventStore:
             idx.night_report_keys.add(key)
             return True
         if (md := parse_metadata(key)) is not None:
-            # metadata.json content is fetched separately; only its ETag is
-            # kept, so the producer rewriting today's file (same key) still
-            # publishes. A date with no indexed data isn't served, so there
-            # is nothing to record against — and a source that reports no
-            # ETag can't signal rewrites at all.
-            existing = self._dates[loc_cam].get(md.day_obs)
-            if (
-                existing is None
-                or event.etag is None
-                or existing.metadata_etag == event.etag
-            ):
-                return False
-            existing.metadata_etag = event.etag
+            # metadata.json content is fetched separately; the index keeps
+            # its presence, which alone makes the date (the table's rows come
+            # from metadata), and its ETag, so the producer rewriting today's
+            # file (same key) still publishes. A source that reports no ETag
+            # can't signal rewrites at all.
+            idx = self._date_index(loc_cam, md.day_obs)
+            self._calendar[loc_cam].add(md.day_obs)
+            added = not idx.has_metadata
+            idx.has_metadata = True
+            if event.etag is None or idx.metadata_etag == event.etag:
+                return added
+            idx.metadata_etag = event.etag
             return True
         return False
 
@@ -394,8 +387,8 @@ class EventStore:
         """Per-date exposure count (distinct seq_nums across all channels).
 
         Feeds the date picker's activity overview (heatmap tint). A day with
-        only per-day artifacts or a night report (no per-seq channels) counts
-        as 0.
+        only per-day artifacts, a night report or metadata (no per-seq
+        channels) counts as 0.
         """
         dates = self._dates.get((location, camera), {})
         counts: dict[str, int] = {}
@@ -503,6 +496,7 @@ class _IndexSlice:
     channels: dict[str, set[SeqNum]]
     per_day: set[str]
     night_report_keys: set[str]
+    has_metadata: bool = False
 
 
 _EMPTY_SLICE = _IndexSlice(channels={}, per_day=set(), night_report_keys=set())
@@ -533,6 +527,8 @@ def _index_keys(observed: set[str]) -> dict[str, _IndexSlice]:
                 sl.channels.setdefault(ev.channel, set()).add(ev.seq_num)
         elif (nr := parse_night_report(key)) is not None:
             slice_for(nr.day_obs).night_report_keys.add(key)
+        elif (md := parse_metadata(key)) is not None:
+            slices[md.day_obs] = replace(slice_for(md.day_obs), has_metadata=True)
     return slices
 
 
@@ -549,6 +545,7 @@ class StaleEntries:
     seqs: dict[str, set[SeqNum]]
     per_day: set[str]
     night_report_keys: set[str]
+    metadata: bool = False
 
     @property
     def total(self) -> int:
@@ -556,11 +553,14 @@ class StaleEntries:
             sum(len(s) for s in self.seqs.values())
             + len(self.per_day)
             + len(self.night_report_keys)
+            + int(self.metadata)
         )
 
     @property
     def is_empty(self) -> bool:
-        return not (self.seqs or self.per_day or self.night_report_keys)
+        return not (
+            self.seqs or self.per_day or self.night_report_keys or self.metadata
+        )
 
     def summary(self) -> dict[str, object]:
         """Compact, log-friendly description of what would be dropped."""
@@ -568,6 +568,7 @@ class StaleEntries:
             "seqs": {ch: sorted(s, key=str) for ch, s in self.seqs.items()},
             "per_day": sorted(self.per_day),
             "night_report_keys": sorted(self.night_report_keys),
+            "metadata": self.metadata,
         }
 
 
@@ -582,6 +583,7 @@ def _stale_entries(idx: DateIndex, wanted: _IndexSlice) -> StaleEntries:
         seqs=seqs,
         per_day={ch for ch in idx.per_day if ch not in wanted.per_day},
         night_report_keys=idx.night_report_keys - wanted.night_report_keys,
+        metadata=idx.has_metadata and not wanted.has_metadata,
     )
 
 
@@ -599,3 +601,6 @@ def _apply_stale(idx: DateIndex, stale: StaleEntries) -> None:
     for channel in stale.per_day:
         del idx.per_day[channel]
     idx.night_report_keys -= stale.night_report_keys
+    if stale.metadata:
+        idx.has_metadata = False
+        idx.metadata_etag = None
