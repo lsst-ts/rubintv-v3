@@ -1684,6 +1684,9 @@ a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft)
 
 /* ── Data table ────────────────────────────────────────────────────────── */
 .table-wrap {
+  /* Height of the angled-label header (see "Angled header overlay"), which
+     also sets how long a label can run before its ellipsis (--hdr-rise). */
+  --header-h: 110px;
   flex: 1;
   overflow: auto;
   background: var(--paper);
@@ -1946,7 +1949,7 @@ a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft)
 
 /* ── Angled header overlay ─────────────────────────────────────────────── */
 .hs-angled thead th {
-  height: var(--header-h, 150px);
+  height: var(--header-h);
   vertical-align: bottom;
   padding: 0;
 }
@@ -1960,8 +1963,8 @@ a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft)
 }
 .header-overlay {
   position: sticky; top: 0;
-  height: var(--header-h, 150px);
-  margin-bottom: calc(var(--header-h, 150px) * -1);
+  height: var(--header-h);
+  margin-bottom: calc(var(--header-h) * -1);
   pointer-events: none;
   z-index: 7;
 }
@@ -1972,10 +1975,15 @@ a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft)
   pointer-events: none;
 }
 .header-overlay .hdr-label {
-  /* Diagonal rise cap: a -45° label may extend up by at most the header
-     height, i.e. length ≤ header-h × √2. The component caps last-column labels
-     further (rightward room) by taking min(--hdr-rise, room) inline. */
-  --hdr-rise: calc(var(--header-h, 150px) * 1.4142);
+  /* Diagonal rise cap: the longest a label's box can be and stay inside the
+     header. Turned -45° about its bottom-left corner, a box w long and h thick
+     reaches (w + h) / √2 above that corner, which sits 6px up (bottom), so
+     w ≤ (header-h − 6px) × √2 − h, with h = 12px of text + 4px of padding.
+     It's the box (border-box: padding and sort arrow in), so the text inside
+     truncates. The component caps last-column labels further (rightward room)
+     by taking min(--hdr-rise, room) inline. */
+  --hdr-rise: calc((var(--header-h) - 6px) * 1.4142 - 16px);
+  max-width: var(--hdr-rise);
   position: absolute;
   bottom: 6px;
   transform: rotate(-45deg);
@@ -1990,7 +1998,6 @@ a.per-day-item:hover { background: var(--paper-3); border-color: var(--ink-soft)
    below) so it stays visible at the label's anchored bottom end. */
 .header-overlay .hdr-label .label-text {
   display: block;
-  max-width: var(--hdr-rise);
   overflow: hidden; text-overflow: ellipsis;
 }
 /* Orderable metadata labels: clickable, with a sort arrow when active. */
