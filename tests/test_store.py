@@ -391,6 +391,42 @@ async def test_reconcile_removes_a_vanished_night_report() -> None:
     assert not store.has_night_report("local", "lsstcam", "2026-04-10")
 
 
+async def test_reconcile_drops_a_date_whose_metadata_vanished() -> None:
+    store = EventStore()
+    await store.apply([created("lsstcam/2026-04-10/metadata.json", etag="m1")])
+    outcome = await store.reconcile(
+        ("local", "lsstcam"), set(), ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    assert outcome.dropped == {"2026-04-10"}
+    assert store.calendar("local", "lsstcam") == []
+
+
+async def test_reconcile_keeps_a_metadata_only_date_still_listed() -> None:
+    store = EventStore()
+    key = "lsstcam/2026-04-10/metadata.json"
+    await store.apply([created(key, etag="m1")])
+    outcome = await store.reconcile(
+        ("local", "lsstcam"), {key}, ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    assert outcome.dropped == set() and outcome.changed == set()
+    assert store.calendar("local", "lsstcam") == ["2026-04-10"]
+
+
+async def test_reconcile_clears_vanished_metadata_on_a_date_with_data() -> None:
+    # The date survives on its channel data, but a later metadata.json must
+    # register as new, so its presence and ETag go.
+    store = EventStore()
+    image = "lsstcam/2026-04-10/c/000001/a.png"
+    await store.apply([created(image), created("lsstcam/2026-04-10/metadata.json")])
+    outcome = await store.reconcile(
+        ("local", "lsstcam"), {image}, ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    assert outcome.changed == {"2026-04-10"}
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert not idx.has_metadata and idx.metadata_etag is None
+
+
 async def test_reconcile_for_unknown_camera_creates_nothing() -> None:
     # Reconciling a camera that was never indexed must not create empty
     # structures or raise.
@@ -582,8 +618,6 @@ async def test_metadata_publishes_only_when_its_etag_changes() -> None:
     store = EventStore(bus)
     await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
     async with bus.subscribe() as stream:
-        # metadata.json sorts before the channel dirs in a listing; apply
-        # still records it, because metadata is applied after channel keys.
         await store.apply(
             [
                 created("lsstcam/2026-04-11/metadata.json", etag="m1"),
@@ -606,28 +640,32 @@ async def test_metadata_publishes_only_when_its_etag_changes() -> None:
         assert idx is not None and idx.metadata_etag == "m2"
 
 
-async def test_metadata_without_an_indexed_date_is_ignored() -> None:
-    # A date with no channel data isn't served, so a lone metadata.json
-    # neither creates an index nor publishes.
+async def test_metadata_alone_makes_a_date() -> None:
+    # The producer writes metadata.json before any channel image (daytime
+    # calibrations, the start of a night). The table builds its rows from
+    # metadata, so the date must reach the calendar on the strength of it.
     bus = EventBus()
     store = EventStore(bus)
-    async with bus.subscribe():
+    async with bus.subscribe() as stream:
         touched = await store.apply(
             [created("lsstcam/2026-04-10/metadata.json", etag="m1")]
         )
-    assert touched == set()
-    assert store.date_index("local", "lsstcam", "2026-04-10") is None
-    assert store.calendar("local", "lsstcam") == []
+        types = {c.type for c in await _collect(bus, 2, stream)}
+    assert types == {"metadata", "calendarUpdate"}
+    assert touched == {("local", "lsstcam", "2026-04-10")}
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None and idx.has_metadata and not idx.is_empty
+    assert store.calendar("local", "lsstcam") == ["2026-04-10"]
 
 
-async def test_metadata_without_an_etag_never_publishes() -> None:
-    # A source that reports no ETag can't tell a rewrite from a re-listing.
+async def test_metadata_without_an_etag_publishes_only_its_arrival() -> None:
+    # A source that reports no ETag can't tell a rewrite from a re-listing,
+    # so only the file's first appearance is a change.
     store = EventStore()
     await store.apply([created("lsstcam/2026-04-10/c/000001/a.png")])
-    touched = await store.apply(
-        [ObjectEvent(ObjectKind.CREATED, "local", "lsstcam/2026-04-10/metadata.json")]
-    )
-    assert touched == set()
+    event = ObjectEvent(ObjectKind.CREATED, "local", "lsstcam/2026-04-10/metadata.json")
+    assert await store.apply([event]) == {("local", "lsstcam", "2026-04-10")}
+    assert await store.apply([event]) == set()
 
 
 async def test_reconcile_reports_surviving_changed_dates() -> None:

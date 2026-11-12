@@ -102,6 +102,10 @@ class DateIndex:
     # folding both into one ExtInfo would let whichever arrived last decide.
     per_day: dict[str, PerDayRef] = field(default_factory=dict)
     night_report_keys: set[str] = field(default_factory=set)
+    # Whether the date has a metadata.json. The table builds its rows from
+    # metadata, so this alone puts a date on the calendar: the producer
+    # writes it before any channel image lands (e.g. daytime calibrations).
+    has_metadata: bool = False
     # ETag of the date's metadata.json as last listed. The content lives in
     # the MetadataCache; this is only so a rewrite of the file (same key,
     # new content) still registers as a change worth telling clients about.
@@ -109,9 +113,7 @@ class DateIndex:
 
     @property
     def is_empty(self) -> bool:
-        """No channel data, per-day artifact or night report.
-
-        A metadata ETag alone does not count: metadata is served only for
-        dates that have data, so an index holding nothing else is gone.
-        """
-        return not (self.channels or self.per_day or self.night_report_keys)
+        """No channel data, per-day artifact, night report or metadata."""
+        return not (
+            self.channels or self.per_day or self.night_report_keys or self.has_metadata
+        )
