@@ -41,6 +41,7 @@ function ColumnCombo({
   const [open, setOpen] = useState(false);
   const [kbdIdx, setKbdIdx] = useState(0);
   const rootRef = useRef<HTMLSpanElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   useDismiss(open, rootRef, () => {
     setOpen(false);
     setQuery("");
@@ -52,7 +53,30 @@ function ColumnCombo({
     return columns.filter((c) => c.toLowerCase().includes(q));
   }, [query, columns]);
 
-  useEffect(() => setKbdIdx(0), [query]);
+  // A new search highlights its first match, so show the list from the top.
+  useEffect(() => {
+    setKbdIdx(0);
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [query]);
+
+  // Move the highlight by key, scrolling the list just enough to keep it in
+  // view below the sticky count line; the list shows only seven or so rows.
+  // Only keys scroll: a hovered row is already in view, and scrolling under a
+  // still pointer would move the hover on again.
+  const moveTo = (i: number) => {
+    setKbdIdx(i);
+    const list = listRef.current;
+    const item = list?.querySelectorAll<HTMLElement>(".item")[i];
+    if (!list || !item) return;
+    const head = list.querySelector<HTMLElement>(".count")?.offsetHeight ?? 0;
+    const top = item.offsetTop;
+    const bottom = top + item.offsetHeight;
+    if (top - head < list.scrollTop) {
+      list.scrollTop = top - head;
+    } else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight;
+    }
+  };
 
   const pick = (col: string) => {
     onChange(col);
@@ -79,10 +103,10 @@ function ColumnCombo({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            setKbdIdx((i) => Math.min(matches.length - 1, i + 1));
+            moveTo(Math.min(matches.length - 1, kbdIdx + 1));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            setKbdIdx((i) => Math.max(0, i - 1));
+            moveTo(Math.max(0, kbdIdx - 1));
           } else if (e.key === "Enter" && matches[kbdIdx]) {
             e.preventDefault();
             pick(matches[kbdIdx]);
@@ -93,7 +117,11 @@ function ColumnCombo({
         }}
       />
       {open && (
-        <div className="list" onMouseDown={(e) => e.preventDefault()}>
+        <div
+          className="list"
+          ref={listRef}
+          onMouseDown={(e) => e.preventDefault()}
+        >
           <div className="count">
             {matches.length} of {columns.length} columns
           </div>
