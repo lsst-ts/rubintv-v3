@@ -11,13 +11,14 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { LiveProvider } from "../lib/LiveContext";
 import { openLiveSockets, pushLiveMessage } from "../test-setup";
+import { setDensity } from "../lib/prefs";
 import { CameraTable } from "./CameraTable";
 
 // The camera table's toolbar and states, rendered on its own (no app shell):
-// row density and the column picker's views (both remembered per browser),
-// column toggles and sorting, the streamed-metadata progress note, the
-// "since last image" clock, and the filtered-empty notice. Most table flows
-// run through the full router in routes.test.
+// row density (set in the NavMenu), the column picker's views (remembered per
+// browser), column toggles and sorting, the streamed-metadata progress note,
+// the "since last image" clock, and the filtered-empty notice. Most table
+// flows run through the full router in routes.test.
 
 const TODAY = "2026-04-11";
 
@@ -62,6 +63,9 @@ beforeEach(() => {
   stub();
 });
 afterEach(() => vi.restoreAllMocks());
+// The virtualizer settles each scroll on a 150ms timer that outlives the
+// table; let the last one fire before the environment (and its window) goes.
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 200)));
 
 function renderTable(path = `/local/auxtel?date=${TODAY}`) {
   return render(
@@ -81,37 +85,15 @@ const table = () => document.querySelector<HTMLElement>(".data-table")!;
 const seqOrder = () =>
   [...document.querySelectorAll("td.seq")].map((td) => td.textContent);
 
-test("row density is chosen from a menu and remembered", async () => {
-  const { unmount } = renderTable();
+test("the table takes its row density from the menu's setting", async () => {
+  localStorage.setItem("rubintv.density", "compact");
+  renderTable();
   await screen.findByText("10");
+  expect(table().className).toContain("dens-compact");
+
+  // Picked in the NavMenu, elsewhere in the shell: the table restyles in place.
+  act(() => setDensity("regular"));
   expect(table().className).toContain("dens-regular");
-
-  fireEvent.click(screen.getByRole("button", { name: /Density/ }));
-  const menu = screen.getByRole("menu", { name: "Row density" });
-  expect(
-    within(menu).getByRole("menuitemradio", { name: "regular" })
-      .getAttribute("aria-checked"),
-  ).toBe("true");
-  fireEvent.click(within(menu).getByRole("menuitemradio", { name: "compact" }));
-
-  expect(screen.queryByRole("menu", { name: "Row density" })).toBeNull();
-  expect(table().className).toContain("dens-compact");
-  expect(localStorage.getItem("rubintv.density")).toBe("compact");
-
-  unmount();
-  renderTable();
-  await screen.findByText("10");
-  expect(table().className).toContain("dens-compact");
-});
-
-test("the density menu toggles shut from its button", async () => {
-  renderTable();
-  await screen.findByText("10");
-  const btn = screen.getByRole("button", { name: /Density/ });
-  fireEvent.click(btn);
-  expect(btn.getAttribute("aria-expanded")).toBe("true");
-  fireEvent.click(btn);
-  expect(screen.queryByRole("menu", { name: "Row density" })).toBeNull();
 });
 
 test("the column picker's Reorder view is remembered", async () => {
@@ -136,7 +118,7 @@ test("the column picker's Reorder view is remembered", async () => {
   expect(screen.getByLabelText("Search columns")).toBeDefined();
 });
 
-test("density and picker view still work where storage is blocked", async () => {
+test("the picker view still works where storage is blocked", async () => {
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
     throw new Error("blocked");
   });
@@ -145,10 +127,6 @@ test("density and picker view still work where storage is blocked", async () => 
   });
   renderTable();
   await screen.findByText("10");
-  fireEvent.click(screen.getByRole("button", { name: /Density/ }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "compact" }));
-  expect(table().className).toContain("dens-compact");
-
   fireEvent.click(screen.getByRole("button", { name: /Columns/ }));
   fireEvent.click(screen.getByRole("tab", { name: "Reorder" }));
   expect(screen.getByText("Drag to reorder the shown columns")).toBeDefined();
@@ -239,4 +217,46 @@ test("a locked column is shown ticked and can't be unticked", async () => {
   const box = within(item).getByRole("checkbox") as HTMLInputElement;
   expect(box.checked).toBe(true);
   expect(box.disabled).toBe(true);
+});
+
+test("the toolbar's jump buttons take the table to either end", async () => {
+  renderTable();
+  await screen.findByText("10");
+  const top = screen.getByRole<HTMLButtonElement>("button", {
+    name: "Jump to top",
+  });
+  const bottom = screen.getByRole<HTMLButtonElement>("button", {
+    name: "Jump to bottom",
+  });
+  // jsdom has no layout: give the table room to scroll, and raise the scroll
+  // events a browser would.
+  const wrap = document.querySelector<HTMLElement>(".table-wrap")!;
+  Object.defineProperty(wrap, "scrollHeight", { value: 4000 });
+  Object.defineProperty(wrap, "clientHeight", { value: 600 });
+  const scrolled = () =>
+    act(() => {
+      wrap.dispatchEvent(new Event("scroll"));
+    });
+  scrolled();
+  expect([top.disabled, bottom.disabled]).toEqual([true, false]);
+
+  fireEvent.click(bottom);
+  expect(wrap.scrollTop).toBe(4000);
+  scrolled();
+  expect([top.disabled, bottom.disabled]).toEqual([false, true]);
+
+  fireEvent.click(top);
+  expect(wrap.scrollTop).toBe(0);
+  scrolled();
+  expect([top.disabled, bottom.disabled]).toEqual([true, false]);
+});
+
+test("with no table drawn, both jump buttons are off", async () => {
+  renderTable(`/local/auxtel?date=${TODAY}&seq_filter=gte50`);
+  await screen.findByText("No rows match the active filter.");
+  for (const name of ["Jump to top", "Jump to bottom"]) {
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name }).disabled,
+    ).toBe(true);
+  }
 });

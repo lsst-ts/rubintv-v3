@@ -7,6 +7,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { useMetadata } from "../lib/useMetadata";
 import { useColumnPrefs } from "../lib/columns";
+import { useDensity } from "../lib/prefs";
 import { useDismiss } from "../lib/useDismiss";
 import { useColumnPickerWidth } from "../lib/useColumnPickerWidth";
 import { hasImageViewer, isDevInstance } from "../lib/links";
@@ -18,6 +19,8 @@ import {
   ColumnsIcon,
   ChevronDownIcon,
   ResizeGripIcon,
+  JumpToTopIcon,
+  JumpToBottomIcon,
 } from "../components/Icons";
 import { FilterControl, FilterBar } from "../components/FilterControl";
 import { ColumnOrderList } from "../components/ColumnOrderList";
@@ -38,7 +41,11 @@ import {
   type SortState,
 } from "../lib/sort";
 import { AllSky } from "./AllSky";
-import { CameraDataTable, type Density } from "./CameraDataTable";
+import {
+  CameraDataTable,
+  type ScrollEdges,
+  type TableScroll,
+} from "./CameraDataTable";
 
 // The main camera view: date picker, per-seq-num table with channel columns
 // and metadata columns, per-day artifacts. Subscribes to the camera topic so
@@ -108,31 +115,16 @@ export function CameraTable() {
     return m;
   }, [liveChannels]);
 
-  // Row density (compact / regular), persisted per browser.
-  const [density, setDensity] = useState<Density>(() => {
-    try {
-      const d = localStorage.getItem("rubintv.density");
-      if (d === "compact" || d === "regular") return d;
-    } catch {
-      // ignore
-    }
-    return "regular";
-  });
-  const pickDensity = (d: Density) => {
-    try {
-      localStorage.setItem("rubintv.density", d);
-    } catch {
-      // ignore
-    }
-    setDensity(d);
-  };
+  // Row density (compact / regular): a per-browser preference, picked in the
+  // NavMenu.
+  const [density] = useDensity();
 
   const [colsOpen, setColsOpen] = useState(false);
   const [colsQuery, setColsQuery] = useState("");
   // Which picker view is showing: "select" (show/hide catalogue) or "reorder"
   // (drag list). Split so a camera with many chosen columns isn't a wall of
   // both at once. Persisted per browser so the picker reopens where you left
-  // it (like density).
+  // it.
   const [colsMode, setColsMode] = useState<"select" | "reorder">(() => {
     try {
       const m = localStorage.getItem("rubintv.colsMode");
@@ -154,10 +146,13 @@ export function CameraTable() {
   const colsRef = useRef<HTMLDivElement | null>(null);
   useDismiss(colsOpen, colsRef, () => setColsOpen(false));
 
-  // The density picker popover, dismissed like the column picker.
-  const [densityOpen, setDensityOpen] = useState(false);
-  const densityRef = useRef<HTMLDivElement | null>(null);
-  useDismiss(densityOpen, densityRef, () => setDensityOpen(false));
+  // The jump-to-top/bottom buttons: they drive the table through its handle,
+  // and each is disabled at the end the table reports it's at.
+  const tableRef = useRef<TableScroll>(null);
+  const [edges, setEdges] = useState<ScrollEdges>({
+    atTop: true,
+    atBottom: true,
+  });
 
   // Per-row action links/buttons, driven by per-camera config. Each is shown
   // only when its template is configured. {dev} and {siteLoc} are fixed for the
@@ -380,13 +375,16 @@ export function CameraTable() {
     }
   }
 
+  // The empty states below draw no table (see the render's tail).
+  const noTable = date === "" || seqNums.length === 0;
+
   return (
     <section className="cam-table">
-      {/* Toolbar: columns, filter, download · clocks, density.
+      {/* Toolbar: columns, filter, download · clocks, jumps.
           The date picker + prev/next steppers now live in the shell topbar
           (see Layout), so the selected date persists across the Table /
           Channels / single-channel tabs rather than resetting to the newest
-          day on every tab switch. */}
+          day on every tab switch. Row density is set in the NavMenu. */}
       <div className="cam-toolbar">
         <div className="cols-cluster" ref={colsRef}>
           <button
@@ -542,36 +540,29 @@ export function CameraTable() {
 
         <LiveClocks sinceLabel={sinceLabel} lastImage={lastImageTime} />
 
-        <div className="density-cluster" ref={densityRef}>
+        {/* Jump to the table's top / bottom (also the Home / End keys). With
+            no table drawn there's nowhere to go, so both disable. */}
+        <div className="jump-cluster">
           <button
             type="button"
             className="tb-btn"
-            aria-expanded={densityOpen}
-            title="Row density"
-            onClick={() => setDensityOpen((o) => !o)}
+            aria-label="Jump to top"
+            title="Jump to top (Home)"
+            disabled={noTable || edges.atTop}
+            onClick={() => tableRef.current?.jumpTo("top")}
           >
-            <span>Density</span>
-            <ChevronDownIcon />
+            <JumpToTopIcon />
           </button>
-          {densityOpen && (
-            <div className="density-pop" role="menu" aria-label="Row density">
-              {(["compact", "regular"] as Density[]).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={density === d}
-                  className={density === d ? "active" : ""}
-                  onClick={() => {
-                    pickDensity(d);
-                    setDensityOpen(false);
-                  }}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            className="tb-btn"
+            aria-label="Jump to bottom"
+            title="Jump to bottom (End)"
+            disabled={noTable || edges.atBottom}
+            onClick={() => tableRef.current?.jumpTo("bottom")}
+          >
+            <JumpToBottomIcon />
+          </button>
         </div>
       </div>
 
@@ -654,6 +645,8 @@ export function CameraTable() {
           quicklookTmpl={quicklookTmpl}
           copyRowTmpl={copyRowTmpl}
           linkCtx={linkCtx}
+          ref={tableRef}
+          onEdgesChange={setEdges}
         />
       )}
     </section>

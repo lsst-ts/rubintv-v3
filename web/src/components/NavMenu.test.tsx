@@ -4,9 +4,12 @@ import { MemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { NavMenu } from "./NavMenu";
 
+beforeEach(() => localStorage.clear());
+afterEach(() => vi.restoreAllMocks());
+
 // The hamburger drawer: wayfinding to Home, every location and every app, plus
-// the theme picker. Each link closes the drawer, as do Escape and a click
-// outside it.
+// the theme and table row density pickers. Each link closes the drawer, as do
+// Escape and a click outside it.
 
 function stub({
   clusterStatus = false,
@@ -116,4 +119,75 @@ test("Escape and an outside click close the drawer; inside clicks don't", async 
   await openMenu();
   fireEvent.mouseDown(screen.getByText("Page body"));
   expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("the table row density is picked in the drawer and remembered", async () => {
+  stub();
+  const { unmount } = renderMenu();
+  const rows = within(await openMenu()).getByRole("group", {
+    name: "Table row density",
+  });
+  const pressed = (name: string) =>
+    within(rows).getByRole("button", { name }).getAttribute("aria-pressed");
+  expect([pressed("Compact rows"), pressed("Regular rows")]).toEqual([
+    "false",
+    "true",
+  ]);
+
+  fireEvent.click(within(rows).getByRole("button", { name: "Compact rows" }));
+  expect([pressed("Compact rows"), pressed("Regular rows")]).toEqual([
+    "true",
+    "false",
+  ]);
+  expect(localStorage.getItem("rubintv.density")).toBe("compact");
+
+  unmount();
+  renderMenu();
+  const again = within(await openMenu()).getByRole("group", {
+    name: "Table row density",
+  });
+  expect(
+    within(again)
+      .getByRole("button", { name: "Compact rows" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
+test("the row density still switches where storage is blocked", async () => {
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  stub();
+  renderMenu();
+  const rows = within(await openMenu()).getByRole("group", {
+    name: "Table row density",
+  });
+  const compact = within(rows).getByRole("button", { name: "Compact rows" });
+  fireEvent.click(compact);
+  expect(compact.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(within(rows).getByRole("button", { name: "Regular rows" }));
+  expect(compact.getAttribute("aria-pressed")).toBe("false");
+});
+
+test("the topbar auto-hide is switched in the drawer and remembered", async () => {
+  stub();
+  const { unmount } = renderMenu();
+  const name = "Auto-hide topbar";
+  const toggle = within(await openMenu()).getByRole("switch", { name });
+  expect(toggle.getAttribute("aria-checked")).toBe("true"); // on by default
+
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-checked")).toBe("false");
+  expect(localStorage.getItem("rubintv.autoHideTopbar")).toBe("off");
+
+  unmount();
+  renderMenu();
+  expect(
+    within(await openMenu())
+      .getByRole("switch", { name })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
 });

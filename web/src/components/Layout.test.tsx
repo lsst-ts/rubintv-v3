@@ -103,6 +103,34 @@ test("the backend test site labels the strip TEST", async () => {
   expect(screen.getByText("TEST")).toBeDefined();
 });
 
+test("the topbar publishes its height for the table to hide it by", async () => {
+  // jsdom has no layout: give the topbar a height, and run the observer's
+  // callback on observe, as a browser does once the element is laid out.
+  class ImmediateResizeObserver {
+    cb: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) {
+      this.cb = cb;
+    }
+    observe() {
+      this.cb([], this as unknown as ResizeObserver);
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("ResizeObserver", ImmediateResizeObserver);
+  const height = vi
+    .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+    .mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("topbar") ? 132 : 0;
+    });
+
+  const { container } = renderAt("/usdf/auxtel");
+  await screen.findByRole("link", { name: "usdf" });
+  const main = container.querySelector<HTMLElement>(".main")!;
+  expect(main.style.getPropertyValue("--topbar-h")).toBe("132px");
+  height.mockRestore();
+});
+
 test("the next-day stepper moves to the following day with data", async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);

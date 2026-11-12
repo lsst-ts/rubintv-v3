@@ -211,6 +211,21 @@ h1, h2 {
 .topbar {
   background: var(--paper);
   position: relative;
+  transition: margin-top 0.2s ease;
+}
+/* Scrolled down, the camera table hides the topbar so it can fill the window
+   (CameraDataTable flags its scroll box data-hide-topbar). The topbar slides up
+   by its own height (--topbar-h, measured by Layout) out of .main, which clips
+   it, and the page below follows it up. Once out of sight it turns hidden so
+   its links leave the tab order; coming back, that lifts before the slide. */
+.app-root:has(.table-wrap[data-hide-topbar]) .topbar {
+  margin-top: calc(-1 * var(--topbar-h, 0px));
+  visibility: hidden;
+  transition: margin-top 0.2s ease, visibility 0s 0.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .app-root:has(.table-wrap[data-hide-topbar]) .topbar { transition: none; }
 }
 
 /* Utility strip across the top: breadcrumb (rooted at "home") on the left; the
@@ -708,6 +723,37 @@ h1, h2 {
   font-family: var(--hand); font-size: 10px; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: 0.08em;
 }
+/* Further preferences (table row density, topbar auto-hide), each a row under
+   Appearance. */
+.navmenu-pref {
+  padding: 6px 8px 3px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+/* An on/off preference switch (AutoHideToggle), in the segmented pickers'
+   palette: a pill track whose thumb slides right, onto the accent, when on. */
+.pref-switch {
+  position: relative; flex-shrink: 0;
+  width: 36px; height: 20px;
+  padding: 0;
+  border: 1px solid var(--line-mid); border-radius: 999px;
+  background: var(--paper-2);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.pref-switch-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--ink-soft);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.pref-switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.pref-switch[aria-checked="true"] .pref-switch-thumb {
+  transform: translateX(16px);
+  background: var(--paper);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pref-switch, .pref-switch-thumb { transition: none; }
+}
 
 /* ── Home landing (the ONLY page that carries the brand) ────────────────── */
 .landing {
@@ -933,6 +979,8 @@ h1, h2 {
 .cam-toolbar .tb-btn:hover { background: var(--paper-3); border-color: var(--ink-soft); }
 .cam-toolbar .tb-btn:disabled { opacity: 0.5; cursor: default; }
 .cam-toolbar .tb-grow { flex: 1; }
+/* Jump to the table's top / bottom: an icon pair at the toolbar's end. */
+.cam-toolbar .jump-cluster { display: inline-flex; gap: 4px; }
 .cam-toolbar .tb-btn .frac {
   font-family: var(--mono); font-size: 10px; color: var(--ink-soft);
 }
@@ -1259,30 +1307,6 @@ h1, h2 {
   color: var(--ink);
   border-bottom-color: var(--ink);
 }
-
-/* Row-density picker: a toolbar button opening a small option popover. */
-.density-cluster { position: relative; display: inline-flex; }
-.density-pop {
-  position: absolute;
-  top: calc(100% + 6px); right: 0;
-  min-width: 130px;
-  background: var(--paper);
-  border: 1.5px solid var(--stroke);
-  border-radius: 6px;
-  box-shadow: var(--shadow-pop);
-  z-index: 20;
-  display: flex; flex-direction: column;
-  padding: 4px;
-}
-.density-pop button {
-  border: none; background: transparent;
-  font-family: var(--hand); font-size: 13px;
-  color: var(--ink); text-align: left;
-  padding: 6px 10px; border-radius: 4px;
-  cursor: pointer;
-}
-.density-pop button:hover { background: var(--paper-3); }
-.density-pop button.active { color: var(--accent); font-weight: 600; }
 
 /* Column-picker popover. Its right edge drags wider (grips at the top- and
    bottom-right corners) from the default 720px to reveal truncated column
@@ -3030,6 +3054,7 @@ button.danger:disabled {
 }
 
 /* ── Theme switcher (light / dark / system segmented control) ───────────── */
+/* The NavMenu's table row density picker (DensityToggle) wears it too. */
 .theme-seg {
   display: inline-flex;
   gap: 2px;
