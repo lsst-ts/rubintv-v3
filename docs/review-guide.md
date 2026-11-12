@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 364 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 366 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -389,8 +389,8 @@ Safe to skim.
   `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
-  `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, and the
-  commit that noted the home page trim.
+  `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
+  and the commit that noted the metadata-only dates.
 
 ---
 
@@ -659,6 +659,13 @@ Review `EventStore._insert`/`apply` and `ReconcileResult` in
   a cold full sweep publishes thousands of changes in one apply, past
   the 1000-entry bus queue, and the overflow was dropped — tabs on those
   dates never learned they had changed.
+- `3ca0b5b` (later, found against V2 on USDF dev) Let a date with only
+  `metadata.json` reach the calendar: `40ee3ff` recorded metadata only
+  against a date that already had channel data, so a day whose producer
+  had written metadata but no images yet (daytime calibrations) never
+  appeared, though the table builds its rows from metadata.
+  `DateIndex.has_metadata` now makes the date on its own; reconcile clears
+  it when the file goes, and old cache slices infer it from their ETag.
 
 ### 44. Data-flow instrumentation
 Debug-level timing and size for every hop (`http.request`,
