@@ -200,3 +200,58 @@ test("with several filters a 'clear all' removes them together", () => {
   expect(applied()).toEqual([]);
   expect(screen.queryByText(/of 1 row/)).toBeNull();
 });
+
+test("↑ ↓ scroll the column list to keep the highlighted column in view", () => {
+  const columns = Array.from({ length: 20 }, (_, i) => `col${i}`);
+  render(
+    <FilterControl
+      columns={columns}
+      metadata={{}}
+      filters={[]}
+      setFilters={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Add or edit filters" }));
+  const search = screen.getByLabelText("Filter column");
+  fireEvent.focus(search);
+  const list = document.querySelector<HTMLElement>(".filter-combo .list")!;
+  // jsdom has no layout: give the list a 22px count line, then 20px rows,
+  // 160px of which show.
+  const size = (el: Element, prop: string, value: number) =>
+    Object.defineProperty(el, prop, { configurable: true, value });
+  size(list.querySelector(".count")!, "offsetHeight", 22);
+  list.querySelectorAll(".item").forEach((item, i) => {
+    size(item, "offsetTop", 22 + 20 * i);
+    size(item, "offsetHeight", 20);
+  });
+  size(list, "clientHeight", 160);
+  const press = (key: string, times: number) => {
+    for (let n = 0; n < times; n++) fireEvent.keyDown(search, { key });
+  };
+  const active = () => list.querySelector(".kbd-active")!.textContent;
+
+  // Rows 0-5 fit under the count line; row 6 ends at 162, so the list scrolls
+  // by 2 to show it whole, and on with each row after.
+  press("ArrowDown", 5);
+  expect(list.scrollTop).toBe(0);
+  press("ArrowDown", 1);
+  expect(list.scrollTop).toBe(2);
+  press("ArrowDown", 4);
+  expect(active()).toMatch(/^col10/);
+  expect(list.scrollTop).toBe(82);
+  // Going back up, the list holds still until the highlight reaches the
+  // count line, then follows it to the top.
+  press("ArrowUp", 5);
+  expect(list.scrollTop).toBe(82);
+  press("ArrowUp", 1);
+  expect(list.scrollTop).toBe(80);
+  press("ArrowUp", 4);
+  expect(active()).toMatch(/^col0/);
+  expect(list.scrollTop).toBe(0);
+
+  // A new search starts from its first match, at the top.
+  press("ArrowDown", 8);
+  fireEvent.change(search, { target: { value: "col1" } });
+  expect(active()).toMatch(/^col1/);
+  expect(list.scrollTop).toBe(0);
+});
