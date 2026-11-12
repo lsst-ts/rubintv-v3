@@ -96,6 +96,23 @@ export function JumpToCurrentIcon() {
   );
 }
 
+// Table jumps — an arrow up to a bar (top) and down to a bar (bottom).
+export function JumpToTopIcon() {
+  return (
+    <svg {...base}>
+      <path d="M5 4h14M12 20V8M6 14l6-6 6 6" />
+    </svg>
+  );
+}
+
+export function JumpToBottomIcon() {
+  return (
+    <svg {...base}>
+      <path d="M5 20h14M12 4v12M6 10l6 6 6-6" />
+    </svg>
+  );
+}
+
 // Image viewer — an external-link "open image" glyph.
 export function ViewerIcon() {
   return (

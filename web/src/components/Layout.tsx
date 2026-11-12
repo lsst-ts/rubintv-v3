@@ -53,6 +53,20 @@ export function Layout() {
   const [mediaInterrupted, setMediaInterrupted] = useState(false);
   const reportInterruption = useCallback(() => setMediaInterrupted(true), []);
   useEffect(() => setMediaInterrupted(false), [pathname, search]);
+  // The topbar's height, published as --topbar-h on the main column. The
+  // camera table hides the topbar while it's scrolled down (see .topbar in
+  // index.css): the CSS slides it out by exactly this much, and the table
+  // reads it to check it has the scroll room to hide it at all. A callback
+  // ref, as the topbar mounts and unmounts with the route (Home has none).
+  const measureTopbar = useCallback((bar: HTMLElement | null) => {
+    const main = bar?.parentElement;
+    if (!bar || !main) return;
+    const ro = new ResizeObserver(() =>
+      main.style.setProperty("--topbar-h", `${bar.offsetHeight}px`),
+    );
+    ro.observe(bar, { box: "border-box" });
+    return () => ro.disconnect();
+  }, []);
   // Whether the outlet is showing the 404 page. Two ways to get there: the
   // URL names a location/camera/channel this deployment doesn't have (the
   // route guard), or it matched no route at all (the "*" route, flagged by its
@@ -228,7 +242,10 @@ export function Layout() {
       <div className="main main--full">
         {/* Without the tabs row the status pills would sit flush on the
             topbar's bottom border; pad the bottom in that case. */}
-        <header className={"topbar" + (hasTabs ? "" : " no-tabs")}>
+        <header
+          ref={measureTopbar}
+          className={"topbar" + (hasTabs ? "" : " no-tabs")}
+        >
           {/* Utility strip: breadcrumb (rooted at a "home" link, never the brand, so
               "RubinTV" isn't repeated across the app — the big page title
               carries the leaf) on the left; the non-prod env warning centred; and

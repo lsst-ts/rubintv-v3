@@ -1,4 +1,13 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import type { DatePayload, Metadata } from "../lib/types";
@@ -10,11 +19,11 @@ import {
 import { useAngledHeaders } from "../lib/useAngledHeaders";
 import { cellFlagClass, formatCell } from "../lib/metaCells";
 import { fillTemplate } from "../lib/links";
+import { useAutoHideTopbar, type Density } from "../lib/prefs";
 import { CopyButton } from "../components/CopyButton";
 import { CellModal } from "../components/CellModal";
 import { ViewerIcon, QuicklookIcon, DetailsIcon } from "../components/Icons";
 
-export type Density = "compact" | "regular";
 const ROW_PAD: Record<Density, string> = {
   // Compact trims the horizontal cell padding too (5px vs the regular 8px), so
   // values sit closer to their column edges — the vertical 3px already sets the
@@ -22,6 +31,9 @@ const ROW_PAD: Record<Density, string> = {
   compact: "3px 5px",
   regular: "6px 8px",
 };
+// A row's height before it's measured. Also the arrow keys' step (see
+// scrollKeyTarget).
+const ROW_EST: Record<Density, number> = { compact: 33, regular: 39 };
 
 export interface Column {
   key: string;
@@ -105,6 +117,105 @@ function foldoutLabel(data: Record<string, unknown> | unknown[]): string | null 
     return data.DISPLAY_VALUE;
   }
   return null;
+}
+
+// Scrolled down, the table hides the shell's topbar so it can fill the window:
+// it flags its scroll box data-hide-topbar and the CSS (see .topbar) slides the
+// topbar away. The flag is set straight on the DOM — it's styling only, and a
+// React state would re-render the whole table each time it flips. It sets once
+// the table is scrolled past HIDE_TOPBAR_AFTER px and clears only back at the
+// very top, so easing up a few rows doesn't bounce the topbar in and out. With
+// the NavMenu's auto-hide preference off (`enabled`), it never sets.
+const HIDE_TOPBAR_AFTER = 24;
+
+function syncTopbar(wrap: HTMLElement, enabled: boolean) {
+  const top = wrap.scrollTop;
+  const hidden = wrap.hasAttribute("data-hide-topbar");
+  let hide: boolean;
+  if (!enabled) {
+    hide = false;
+  } else if (hidden) {
+    hide = top >= 1;
+  } else if (top <= HIDE_TOPBAR_AFTER) {
+    hide = false;
+  } else {
+    // Hiding grows this box by the topbar's height (--topbar-h, measured by
+    // Layout), cutting the scroll range by as much. A table without that much
+    // range to spare would be clamped back to the top, bringing the topbar
+    // straight back on the next scroll event — so it stays. Unmeasured (0)
+    // stays too: the CSS would have nothing to slide it by.
+    const topbarH =
+      parseFloat(getComputedStyle(wrap).getPropertyValue("--topbar-h")) || 0;
+    const range = wrap.scrollHeight - wrap.clientHeight;
+    hide = topbarH > 0 && range - topbarH > HIDE_TOPBAR_AFTER;
+  }
+  if (hide !== hidden) wrap.toggleAttribute("data-hide-topbar", hide);
+}
+
+// Where a scroll key takes the table's scroll box, or null for a key it
+// doesn't answer. `rowAt` finds the row at an offset in the body's own
+// coordinates, in which the rows clear of the sticky header run from scrollTop
+// for `view` px. Paging moves the row at the view's bottom edge (often cut off
+// by it) to the top, or the one at its top edge to the bottom, so a page never
+// skips a row. An arrow steps a row; ⌘↑ / ⌘↓ (macOS) go to the ends, like
+// Home / End.
+function scrollKeyTarget(
+  e: KeyboardEvent,
+  wrap: HTMLElement,
+  headH: number,
+  rowH: number,
+  rowAt: (offset: number) => { start: number; end: number } | undefined,
+): number | null {
+  const top = wrap.scrollTop;
+  const view = Math.max(wrap.clientHeight - headH, rowH);
+  const end = wrap.scrollHeight - wrap.clientHeight;
+  const pageDown = () => {
+    const row = rowAt(top + view - 1);
+    return row && row.start > top ? row.start : top + view;
+  };
+  const pageUp = () => {
+    const row = rowAt(top);
+    return row && row.end - view < top ? row.end - view : top - view;
+  };
+  let to: number;
+  if (e.metaKey) {
+    if (e.key === "ArrowUp") to = 0;
+    else if (e.key === "ArrowDown") to = end;
+    else return null;
+  } else if (e.key === "PageDown") to = pageDown();
+  else if (e.key === "PageUp") to = pageUp();
+  else if (e.key === " ") to = e.shiftKey ? pageUp() : pageDown();
+  else if (e.key === "ArrowDown") to = top + rowH;
+  else if (e.key === "ArrowUp") to = top - rowH;
+  else if (e.key === "End") to = end;
+  else if (e.key === "Home") to = 0;
+  else return null;
+  return Math.min(Math.max(to, 0), end);
+}
+
+// Whether a scroll key belongs to what has focus rather than to the table:
+// typing in a field, working a popup (the date picker, filter, menus, a cell's
+// details, the column picker's tabs), or a focus inside another box with room
+// to scroll (the column picker's list), which the browser scrolls itself.
+// Space presses a focused control, so it's the table's only when nothing has
+// focus.
+const OWNS_KEYS =
+  'input, textarea, select, [role="dialog"], [role="menu"], [role="tablist"]';
+
+function focusOwnsKey(e: KeyboardEvent, wrap: HTMLElement): boolean {
+  const el = document.activeElement;
+  if (!el || el === document.body) return false;
+  if (e.key === " " || el.closest(OWNS_KEYS)) return true;
+  for (let n = el.parentElement; n && n !== wrap; n = n.parentElement) {
+    const { overflowY } = getComputedStyle(n);
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      n.scrollHeight > n.clientHeight
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // One table row. Extracted and memoized so that, with virtualization, only the
@@ -316,6 +427,20 @@ interface Props {
     controller: string | undefined;
     isDevInstance: boolean;
   };
+  // The table's scroll controls, for the toolbar's jump buttons.
+  ref?: Ref<TableScroll>;
+  // Told when the table reaches or leaves its top / bottom, so each jump
+  // button can be disabled at its own end.
+  onEdgesChange?: (edges: ScrollEdges) => void;
+}
+
+export interface TableScroll {
+  jumpTo: (edge: "top" | "bottom") => void;
+}
+
+export interface ScrollEdges {
+  atTop: boolean;
+  atBottom: boolean;
 }
 
 // The camera data table: sticky Seq.No column, channel chips, per-row action
@@ -339,6 +464,8 @@ function CameraDataTableInner({
   quicklookTmpl,
   copyRowTmpl,
   linkCtx,
+  ref,
+  onEdgesChange,
 }: Props) {
   // Column widths, fixed for the whole date: metadata columns are sized to
   // their widest value across all rows (see metaColumnChars). The table's own
@@ -401,14 +528,59 @@ function CameraDataTableInner({
   // prepended rows don't displace it. A few px of slack absorbs sub-pixel
   // scroll positions and momentum settling.
   const [atTop, setAtTop] = useState(true);
+  // Likewise at the very bottom. Both edges go to the parent (onEdgesChange)
+  // for the toolbar's jump buttons, each disabled at its own end.
+  const [atBottom, setAtBottom] = useState(true);
+  useEffect(
+    () => onEdgesChange?.({ atTop, atBottom }),
+    [atTop, atBottom, onEdgesChange],
+  );
+  // The NavMenu's topbar auto-hide preference, which the scroll sync reads
+  // through a ref: turning it on then waits for the next scroll, rather than
+  // whisking the topbar (and the menu open in it) away under the pointer.
+  // Turning it off brings the topbar straight back.
+  const [autoHide] = useAutoHideTopbar();
+  const autoHideRef = useRef(autoHide);
+  useEffect(() => {
+    autoHideRef.current = autoHide;
+    if (!autoHide) wrapRef.current?.removeAttribute("data-hide-topbar");
+  }, [autoHide, wrapRef]);
+  const syncScroll = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    setAtTop(wrap.scrollTop <= 4);
+    setAtBottom(
+      wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 4,
+    );
+    syncTopbar(wrap, autoHideRef.current);
+  }, [wrapRef]);
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const onScroll = () => setAtTop(wrap.scrollTop <= 4);
-    onScroll(); // sync initial state (e.g. after a remount with a saved scroll)
-    wrap.addEventListener("scroll", onScroll, { passive: true });
-    return () => wrap.removeEventListener("scroll", onScroll);
-  }, [wrapRef]);
+    syncScroll(); // sync initial state (e.g. after a remount with a saved scroll)
+    wrap.addEventListener("scroll", syncScroll, { passive: true });
+    // Resizing the box (the window, or the topbar sliding away) moves its
+    // bottom edge without a scroll.
+    const ro = new ResizeObserver(syncScroll);
+    ro.observe(wrap);
+    return () => {
+      wrap.removeEventListener("scroll", syncScroll);
+      ro.disconnect();
+    };
+  }, [wrapRef, syncScroll]);
+
+  // The toolbar's jump buttons. Instant rather than smooth: they're jumps, and
+  // a smooth scroll down a long night would render rows the whole way.
+  useImperativeHandle(
+    ref,
+    () => ({
+      jumpTo: (edge) => {
+        const wrap = wrapRef.current;
+        if (wrap) wrap.scrollTop = edge === "top" ? 0 : wrap.scrollHeight;
+      },
+    }),
+    [wrapRef],
+  );
 
   // The "newest" highlight tracks the largest seq, not the visually-first row:
   // sorting ascending (or by any metadata column) can put the oldest exposure
@@ -422,7 +594,7 @@ function CameraDataTableInner({
   const rowVirtualizer = useVirtualizer({
     count: seqNums.length,
     getScrollElement: () => wrapRef.current,
-    estimateSize: () => (density === "compact" ? 33 : 39),
+    estimateSize: () => ROW_EST[density],
     overscan: 12,
     // Key rows by their seq number, not the default list index. The table is
     // newest-first, so a live exposure prepends a row and shifts every index
@@ -445,6 +617,35 @@ function CameraDataTableInner({
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
+  // A table that changes height (a filter, a new date, live rows) moves its
+  // bottom edge, and one that shrinks can be clamped back to the top without a
+  // scroll event — while one too short to scroll has no way to raise one — so
+  // re-check the edges and the topbar when the height changes.
+  useEffect(() => syncScroll(), [totalSize, syncScroll]);
+
+  // Scroll keys from anywhere on the page. A browser sends PageUp/PageDown and
+  // the like to the table's scroll box only once something in it has been
+  // clicked; until then they go to the page, which doesn't scroll. So the table
+  // answers them itself, without taking focus: that would move where Tab goes
+  // next, and the tab order rightly starts at the topbar.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const wrap = wrapRef.current;
+      if (!wrap || e.defaultPrevented || e.ctrlKey || e.altKey) return;
+      const to = scrollKeyTarget(
+        e,
+        wrap,
+        headRef.current?.offsetHeight ?? 0,
+        ROW_EST[density],
+        (offset) => rowVirtualizer.getVirtualItemForOffset(offset),
+      );
+      if (to === null || focusOwnsKey(e, wrap)) return;
+      e.preventDefault();
+      wrap.scrollTop = to;
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wrapRef, headRef, density, rowVirtualizer]);
   const padTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
   const padBottom =
     virtualRows.length > 0

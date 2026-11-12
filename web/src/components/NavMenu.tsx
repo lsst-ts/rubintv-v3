@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ThemeToggle } from "./ThemeToggle";
+import { DensityToggle } from "./DensityToggle";
+import { AutoHideToggle } from "./AutoHideToggle";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
@@ -10,8 +12,8 @@ import { useGuideConfig } from "../lib/useGuide";
 
 // NavMenu — a single hamburger button that opens a compact drawer, replacing
 // the app-shell sidebar. It consolidates wayfinding (Home, every location, and
-// every app) and tucks the appearance (theme) control behind the same trigger,
-// so the theme buttons no longer sit out in the open. Rendered top-right on the
+// every app) and tucks the preferences (theme, table row density, the topbar
+// auto-hiding) behind the same trigger, so none sits out in the open. Rendered top-right on the
 // Home hero and in the topbar's utility strip on every inner page.
 //
 // Ported from the design's NavMenu (RubinTV Design System, ui_kits/rubintv/
@@ -178,6 +180,14 @@ export function NavMenu() {
           <div className="navmenu-appearance">
             <span className="navmenu-appearance-label">Appearance</span>
             <ThemeToggle />
+          </div>
+          <div className="navmenu-pref">
+            <span className="navmenu-appearance-label">Table rows</span>
+            <DensityToggle />
+          </div>
+          <div className="navmenu-pref">
+            <span className="navmenu-appearance-label">Auto-hide topbar</span>
+            <AutoHideToggle />
           </div>
         </div>
       )}
