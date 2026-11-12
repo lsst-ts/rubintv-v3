@@ -17,8 +17,9 @@ import type { LocationSummary } from "../lib/types";
 //   3. Apps                  (Cluster status, if any location has it, +
 //                             mounted sub-apps)
 // Each section is hidden when it has no entries. Ported from the RubinTV Design
-// System launcher home (ui_kits/rubintv); cards carry only real data (title,
-// id, freshness) — no fabricated blurbs, counts, or camera photos.
+// System launcher home (ui_kits/rubintv); cards carry only real data (a
+// location card just its title) — no fabricated blurbs, counts, or camera
+// photos.
 
 // A mounted sub-app path ("/rubintv/ddv") turned into a card. The last path
 // segment is the app id; short ids ("ddv") are upper-cased.
@@ -29,14 +30,13 @@ function subappLabel(path: string): string {
 
 function LocationCard({ loc }: { loc: LocationSummary }) {
   return (
-    <Link className="loc-card" to={`/${loc.name}`}>
+    <Link className="loc-card bare" to={`/${loc.name}`}>
       <div className="loc-card-top">
         <span className="loc-name">{loc.title}</span>
         <span className="loc-arrow" aria-hidden="true">
           →
         </span>
       </div>
-      <div className="loc-label">{loc.name}</div>
     </Link>
   );
 }
@@ -91,8 +91,6 @@ export function Home() {
         </div>
         <div className="home-tagline">
           <b>RubinTV</b>
-          <span className="sep" />
-          live camera displays
         </div>
 
         {isPending && <p className="skeleton">Loading locations…</p>}
