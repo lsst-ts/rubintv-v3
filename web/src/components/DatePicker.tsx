@@ -4,7 +4,8 @@ import { currentDayObs } from "../lib/queryClient";
 import { CalendarIcon, FilmIcon } from "./Icons";
 
 // Date picker with two views that share one popover:
-//   • months  — two side-by-side month grids (recent dates, default)
+//   • months  — two side-by-side month grids (recent dates, default), the
+//               newest month on the right
 //   • heatmap — a GitHub-contributions-style year overview for scanning a wide,
 //               sparse span at a glance
 // A header button toggles between them; the chosen view is remembered. Clicking
@@ -43,6 +44,21 @@ function viewFromKey(k: string | undefined): ViewMonth {
   }
   const now = new Date();
   return { y: now.getUTCFullYear(), m: now.getUTCMonth() };
+}
+
+function shiftMonth(v: ViewMonth, months: number): ViewMonth {
+  const nm = v.m + months;
+  return { y: v.y + Math.floor(nm / 12), m: ((nm % 12) + 12) % 12 };
+}
+
+// The two grids show `view` and the month after it. A date opens in the left
+// grid unless the right one would then be a month that hasn't started; then
+// it opens in the right, so the newest nights don't sit beside an empty
+// future month.
+function viewFor(k: string, today: string): ViewMonth {
+  const v = viewFromKey(k);
+  const t = viewFromKey(today);
+  return v.y * 12 + v.m >= t.y * 12 + t.m ? shiftMonth(v, -1) : v;
 }
 
 // "Today" for the picker is the current *observing day* (day_obs, noon-UTC
@@ -103,25 +119,14 @@ function MonthGrid({
   const m = base.getUTCMonth();
   const firstDow = (base.getUTCDay() + 6) % 7;
   const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const daysInPrev = new Date(Date.UTC(y, m, 0)).getUTCDate();
 
-  const cells: { d: number; out: boolean; key: string }[] = [];
-  for (let i = 0; i < firstDow; i++) {
-    const d = daysInPrev - firstDow + 1 + i;
-    const pm = m === 0 ? 11 : m - 1;
-    const py = m === 0 ? y - 1 : y;
-    cells.push({ d, out: true, key: key(py, pm, d) });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ d, out: false, key: key(y, m, d) });
-  }
-  let nextD = 1;
-  while (cells.length < 42) {
-    const nm = m === 11 ? 0 : m + 1;
-    const ny = m === 11 ? y + 1 : y;
-    cells.push({ d: nextD, out: true, key: key(ny, nm, nextD) });
-    nextD++;
-  }
+  // Only the month's own days. The neighbouring months' days used to pad the
+  // grid, greyed out and without their data, so they read as empty nights;
+  // instead the 1st is placed under its weekday.
+  const cells = Array.from({ length: daysInMonth }, (_, i) => ({
+    d: i + 1,
+    key: key(y, m, i + 1),
+  }));
 
   return (
     <div className="dp-month">
@@ -144,30 +149,28 @@ function MonthGrid({
         {DOW.map((d, i) => (
           <div key={i} className="dow">{d}</div>
         ))}
-        {cells.map((c, i) => {
+        {cells.map((c) => {
           const future = c.key > today;
-          const data = !c.out && hasData(c.key);
+          const data = hasData(c.key);
           const selectable = data && !future;
           // Max seq for the day (per-seq cameras only). The seq number is the
           // data cue for those; All Sky (no seq) keeps the has-data dot.
           const seq = data && showSeq ? maxSeq[c.key] : undefined;
           const classes = ["dp-day"];
-          if (c.out) classes.push("out");
-          else if (future || !data) classes.push("disabled");
+          if (future || !data) classes.push("disabled");
           if (data && !showSeq) classes.push("has-data");
           const extras = data ? perDay[c.key] : undefined;
           if (extras?.length) classes.push("has-per-day");
-          if (!c.out && c.key === today) classes.push("today");
-          if (!c.out && c.key === selected) classes.push("selected");
-          const title = c.out
-            ? ""
-            : data
-              ? (seq !== undefined
-                  ? `${c.key} · max seq ${seq}`
-                  : showSeq
-                    ? `${c.key} · has data`
-                    : `${c.key} · movie`) + perDaySuffix(extras)
-              : c.key;
+          if (c.key === today) classes.push("today");
+          if (c.key === selected) classes.push("selected");
+          const title = data
+            ? (seq !== undefined
+                ? `${c.key} · max seq ${seq}`
+                : showSeq
+                  ? `${c.key} · has data`
+                  : `${c.key} · movie`) + perDaySuffix(extras)
+            : c.key;
+          const style = c.d === 1 ? { gridColumnStart: firstDow + 1 } : undefined;
           // Selectable days are real <button>s so they're keyboard-operable
           // (the grid was mouse-only — a <div onClick> can't be tabbed to or
           // activated with Enter/Space). Non-selectable cells stay inert divs.
@@ -179,16 +182,17 @@ function MonthGrid({
           );
           return selectable ? (
             <button
-              key={i}
+              key={c.key}
               type="button"
               className={classes.join(" ")}
+              style={style}
               title={title}
               onClick={() => onPick(c.key)}
             >
               {inner}
             </button>
           ) : (
-            <div key={i} className={classes.join(" ")} title={title}>
+            <div key={c.key} className={classes.join(" ")} style={style} title={title}>
               {inner}
             </div>
           );
@@ -431,7 +435,7 @@ export function DatePicker({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>(readMode);
-  const [view, setView] = useState<ViewMonth>(() => viewFromKey(value));
+  const [view, setView] = useState<ViewMonth>(() => viewFor(value, todayKey()));
   const rootRef = useRef<HTMLSpanElement | null>(null);
   useDismiss(open, rootRef, () => setOpen(false));
 
@@ -472,10 +476,7 @@ export function DatePicker({
   };
 
   const step = (months: number) => {
-    setView((v) => {
-      const nm = v.m + months;
-      return { y: v.y + Math.floor(nm / 12), m: ((nm % 12) + 12) % 12 };
-    });
+    setView((v) => shiftMonth(v, months));
   };
 
   // Selecting a day (in either view) commits and closes.
@@ -484,15 +485,15 @@ export function DatePicker({
     setOpen(false);
   };
 
-  // Heatmap month-title click: switch to the Months view centred on that month
+  // Heatmap month-title click: switch to the Months view showing that month
   // (overview → detail), without committing a date.
   const jumpToMonthView = (y: number, m: number) => {
-    setView({ y, m });
+    setView(viewFor(key(y, m, 1), today));
     setModePersisted("months");
   };
 
   const openPicker = () => {
-    setView(viewFromKey(value || latest));
+    setView(viewFor(value || latest, today));
     setOpen((o) => !o);
   };
 

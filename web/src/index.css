@@ -1133,7 +1133,12 @@ h1, h2 {
   font-family: var(--mono); font-size: 11px; color: var(--ink); cursor: pointer;
 }
 .dp-mhead .arr:hover { background: var(--paper-3); }
-.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+/* Six week rows whatever the month spans, so the popover keeps its height as
+   the arrows step through months of four, five or six weeks. */
+.dp-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: auto repeat(6, 38px); gap: 1px;
+}
 .dp-grid .dow {
   font-family: var(--mono); font-size: 9px; color: var(--ink-soft);
   text-align: center; padding: 4px 0 5px;
@@ -1162,8 +1167,6 @@ h1, h2 {
   content: ""; position: absolute; bottom: 4px;
   width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
 }
-.dp-day.out { color: var(--line-soft); cursor: default; }
-.dp-day.out:hover { background: transparent; }
 .dp-day.today { border-color: var(--ink); font-weight: 700; }
 .dp-day.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .dp-day.selected.has-data::after { background: var(--paper); }

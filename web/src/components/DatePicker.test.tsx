@@ -253,6 +253,74 @@ test("the month arrows step by month and year, across year ends", () => {
   expect(monthHeads(dialog)).toEqual(["January 2026", "February 2026"]);
 });
 
+test("a month grid holds only its own days, the 1st under its weekday", () => {
+  const dialog = open();
+  const [april, may] = [...dialog.querySelectorAll(".dp-grid")];
+  const days = april.querySelectorAll<HTMLElement>(".dp-day");
+  // No greyed-out March or May days padding April out to six weeks.
+  expect(days).toHaveLength(30);
+  expect(days[0].textContent).toBe("1");
+  // 1 April 2026 is a Wednesday, the grid's third column.
+  expect(days[0].style.gridColumnStart).toBe("3");
+  expect(days[1].style.gridColumnStart).toBe("");
+  expect(may.querySelectorAll(".dp-day")).toHaveLength(31);
+});
+
+describe("the months the picker opens on", () => {
+  afterEach(() => vi.useRealTimers());
+
+  function openAt(now: string, value: string) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    localStorage.clear();
+    render(
+      <DatePicker
+        dates={[value]}
+        counts={{}}
+        maxSeq={{}}
+        value={value}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: value }));
+    return screen.getByRole("dialog");
+  }
+
+  test("the current month opens on the right, not beside a future one", () => {
+    const dialog = openAt("2026-11-12T16:00:00Z", "2026-11-12");
+    expect(monthHeads(dialog)).toEqual(["October 2026", "November 2026"]);
+  });
+
+  test("last month opens on the left, beside the current one", () => {
+    const dialog = openAt("2026-11-12T16:00:00Z", "2026-10-20");
+    expect(monthHeads(dialog)).toEqual(["October 2026", "November 2026"]);
+  });
+
+  test("an older month opens on the left, beside the month after it", () => {
+    const dialog = openAt("2026-11-12T16:00:00Z", "2026-07-10");
+    expect(monthHeads(dialog)).toEqual(["July 2026", "August 2026"]);
+  });
+
+  test("across a year end", () => {
+    const dialog = openAt("2027-01-05T16:00:00Z", "2027-01-05");
+    expect(monthHeads(dialog)).toEqual(["December 2026", "January 2027"]);
+  });
+
+  test("the current month is the observing day's, not the UTC date's", () => {
+    // 06:00 UTC on 1 December is still day_obs 2026-11-30: December hasn't
+    // started, so November stays on the right.
+    const dialog = openAt("2026-12-01T06:00:00Z", "2026-11-30");
+    expect(monthHeads(dialog)).toEqual(["October 2026", "November 2026"]);
+  });
+
+  test("a heatmap jump to the current month puts it on the right", () => {
+    const dialog = openAt("2026-11-12T16:00:00Z", "2026-11-12");
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Heatmap" }));
+    fireEvent.click(within(dialog).getByTitle("Open Nov 2026 in the month view"));
+    expect(monthHeads(dialog)).toEqual(["October 2026", "November 2026"]);
+  });
+});
+
 test("a day with data but no max seq says it has data", () => {
   const dialog = open({ maxSeq: {} });
   expect(within(dialog).getByTitle("2026-04-10 · has data")).toBeDefined();
