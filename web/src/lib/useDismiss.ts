@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { pressed } from "./shortcuts";
 
 // A stack of the currently-active Escape dismissers, most-recently-activated
 // last. Escape dismisses only the top one, so stacked overlays (e.g. a
@@ -39,7 +40,7 @@ export function useDismiss(
     const entry = dismiss;
     escapeStack.push(entry);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (!pressed(e, "close")) return;
       if (escapeStack[escapeStack.length - 1] === entry) {
         e.stopPropagation();
         dismiss();

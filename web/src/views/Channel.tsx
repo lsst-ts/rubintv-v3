@@ -9,6 +9,7 @@ import { useMetadata } from "../lib/useMetadata";
 import { usePageTitle } from "../lib/usePageTitle";
 import { cellFlagClass, formatCell } from "../lib/metaCells";
 import { usePersistentToggle } from "../lib/usePersistentToggle";
+import { ariaKeys, keyHint, pageKeysPaused, pressed } from "../lib/shortcuts";
 import {
   ViewerIcon,
   JumpToCurrentIcon,
@@ -368,28 +369,24 @@ function SeqChannel({ live }: { live: boolean }) {
   // step through the other channels available for this seq. We preventDefault
   // on any arrow we actually act on — Shift+Arrow is the browser's
   // extend-selection shortcut, so without this stepping channels would drag a
-  // text selection across the page.
+  // text selection across the page. The keys stand down while a field has
+  // focus or a modal (the shortcuts panel) is up.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.shiftKey) {
-        if (e.key === "ArrowLeft" && prevChan !== null) {
-          e.preventDefault();
-          navigate(chanNavTo(prevChan));
-        }
-        if (e.key === "ArrowRight" && nextChan !== null) {
-          e.preventDefault();
-          navigate(chanNavTo(nextChan));
-        }
-        return;
-      }
-      if (e.key === "ArrowLeft" && prev !== null) {
-        e.preventDefault();
-        navigate(navTo(prev));
-      }
-      if (e.key === "ArrowRight" && next !== null) {
-        e.preventDefault();
-        navigate(navTo(next));
-      }
+      if (pageKeysPaused()) return;
+      const to =
+        pressed(e, "prevChannel") && prevChan !== null
+          ? chanNavTo(prevChan)
+          : pressed(e, "nextChannel") && nextChan !== null
+            ? chanNavTo(nextChan)
+            : pressed(e, "prevExposure") && prev !== null
+              ? navTo(prev)
+              : pressed(e, "nextExposure") && next !== null
+                ? navTo(next)
+                : null;
+      if (to === null) return;
+      e.preventDefault();
+      navigate(to);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -448,7 +445,13 @@ function SeqChannel({ live }: { live: boolean }) {
         <span style={{ flex: 1 }} />
         <nav className="seq-nav">
           {prev !== null ? (
-            <Link className="seq-arrow" to={navTo(prev)} aria-label={`Previous (${prev})`}>
+            <Link
+              className="seq-arrow"
+              to={navTo(prev)}
+              aria-label={`Previous (${prev})`}
+              title={`Previous exposure (${keyHint("prevExposure")})`}
+              aria-keyshortcuts={ariaKeys("prevExposure")}
+            >
               <ArrowLeftIcon />
               {prev}
             </Link>
@@ -459,7 +462,13 @@ function SeqChannel({ live }: { live: boolean }) {
           )}
           <span className="seq-current">{seq}</span>
           {next !== null ? (
-            <Link className="seq-arrow" to={navTo(next)} aria-label={`Next (${next})`}>
+            <Link
+              className="seq-arrow"
+              to={navTo(next)}
+              aria-label={`Next (${next})`}
+              title={`Next exposure (${keyHint("nextExposure")})`}
+              aria-keyshortcuts={ariaKeys("nextExposure")}
+            >
               {next}
               <ArrowRightIcon />
             </Link>
@@ -486,7 +495,7 @@ function SeqChannel({ live }: { live: boolean }) {
           <nav
             className="chv-chan-strip"
             aria-label="Channels for this exposure"
-            title="Shift + ← / → to switch channel"
+            title={`${keyHint("prevChannel")} / ${keyHint("nextChannel")} to switch channel`}
           >
             {siblingChannels.map((c) => {
               const active = c.name === channel;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -15,12 +15,20 @@ import { MediaInterruptionProvider } from "../lib/MediaInterruption";
 import { LoadingBanner } from "./LoadingBanner";
 import { NavMenu } from "./NavMenu";
 import { DatePicker } from "./DatePicker";
+import { KeyboardHelp } from "./KeyboardHelp";
 import { STALE } from "../lib/queryClient";
 import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
 import { useRouteValid } from "../lib/useRouteValid";
 import { setCameraTabPref } from "../lib/cameraTabPref";
+import {
+  ariaKeys,
+  keyHint,
+  pageKeysPaused,
+  pressed,
+  type Scope,
+} from "../lib/shortcuts";
 
 // The deployment site (RAPID_ANALYSIS_LOCATION) from /api/config, used to label the
 // header. Undefined until it resolves — the env strip goes by the declared
@@ -41,7 +49,7 @@ function useSite(): string | undefined {
 // brand lockup now appears only on the Home hero. Breadcrumbs derive from the
 // URL params (Decision 7).
 export function Layout() {
-  const { location, camera } = useParams();
+  const { location, camera, channel } = useParams();
   const { pathname, search } = useRouterLocation();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -175,12 +183,44 @@ export function Layout() {
     }
   };
 
+  const headerless = params.get("headerless") === "true";
+
+  // [ and ] step the day like the ‹ › beside the date picker, wherever those
+  // show. The handler reads this render's dates through a ref (refreshed after
+  // each render), so the listener is added once.
+  const onDayKey = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    onDayKey.current = (e) => {
+      if (!showDatePicker || headerless) return;
+      if (e.defaultPrevented || pageKeysPaused()) return;
+      const to = pressed(e, "prevDay")
+        ? nav.olderDate
+        : pressed(e, "nextDay")
+          ? nav.newerDate
+          : undefined;
+      if (to === undefined) return;
+      e.preventDefault();
+      if (to) applyDate(to);
+    };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => onDayKey.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The shortcut groups this page answers, which the help panel leads with.
+  const keyScopes: Scope[] = ["anywhere"];
+  if (showDatePicker) keyScopes.push("days");
+  if (showDatePicker && nav.activeTab === "table") keyScopes.push("table");
+  if (onCamera && channel && !nav.perDayChannel) keyScopes.push("channel");
+
   // Headerless embedding (?headerless=true): render only the view, with no app
   // shell — no topbar, breadcrumbs or tabs. This lets any view (the live Mosaic
   // in particular) be dropped into an <iframe> as a bare tile. It's a global
   // param, matching the original app, so it applies to whatever route is
   // mounted. The nav hooks above still run, so their data stays warm.
-  if (params.get("headerless") === "true") {
+  if (headerless) {
     return (
       <div className="shell headerless">
         <main className="app-content">
@@ -211,6 +251,7 @@ export function Layout() {
         <div className="main main--full">
           <Outlet />
         </div>
+        <KeyboardHelp here={keyScopes} />
       </div>
     );
   }
@@ -352,7 +393,8 @@ export function Layout() {
                         type="button"
                         className="tb-btn step"
                         aria-label={`Previous ${stepNoun}`}
-                        title={`Previous ${stepNoun}`}
+                        title={`Previous ${stepNoun} (${keyHint("prevDay")})`}
+                        aria-keyshortcuts={ariaKeys("prevDay")}
                         disabled={!nav.olderDate}
                         onClick={() =>
                           nav.olderDate && applyDate(nav.olderDate)
@@ -376,7 +418,8 @@ export function Layout() {
                         type="button"
                         className="tb-btn step"
                         aria-label={`Next ${stepNoun}`}
-                        title={`Next ${stepNoun}`}
+                        title={`Next ${stepNoun} (${keyHint("nextDay")})`}
+                        aria-keyshortcuts={ariaKeys("nextDay")}
                         disabled={!nav.newerDate}
                         onClick={() =>
                           nav.newerDate && applyDate(nav.newerDate)
@@ -444,6 +487,7 @@ export function Layout() {
           </MediaInterruptionProvider>
         </main>
       </div>
+      <KeyboardHelp here={keyScopes} />
     </div>
   );
 }

@@ -165,6 +165,83 @@ test("the next-day stepper moves to the following day with data", async () => {
   );
 });
 
+test("[ and ] step the day as the stepper buttons do, but not while typing", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10", "2026-04-08", "2026-04-05"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  const router = createMemoryRouter(routes, {
+    initialEntries: ["/local/auxtel?date=2026-04-08"],
+  });
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider router={router} />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  const date = () => router.state.location.search;
+  const next = await screen.findByRole("button", { name: /Next day with data/ });
+  await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(false));
+  // The buttons name their keys.
+  expect(next.getAttribute("title")).toBe("Next day with data (])");
+  expect(next.getAttribute("aria-keyshortcuts")).toBe("]");
+
+  expect(fireEvent.keyDown(document.body, { key: "]" })).toBe(false);
+  await waitFor(() => expect(date()).toContain("date=2026-04-10"));
+  fireEvent.keyDown(document.body, { key: "[" });
+  await waitFor(() => expect(date()).toContain("date=2026-04-08"));
+
+  // ⌘[ is the browser's Back, and a [ typed into a field is text.
+  expect(fireEvent.keyDown(document.body, { key: "[", metaKey: true })).toBe(true);
+  const field = document.createElement("input");
+  document.body.append(field);
+  field.focus();
+  expect(fireEvent.keyDown(field, { key: "[" })).toBe(true);
+  field.remove();
+  expect(date()).toContain("date=2026-04-08");
+});
+
+test("[ and ] do nothing in a headerless embed, which has no stepper", async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: ["2026-04-10", "2026-04-08"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  const router = createMemoryRouter(routes, {
+    initialEntries: ["/local/auxtel?date=2026-04-08&headerless=true"],
+  });
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider router={router} />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("No data for 2026-04-08.");
+  expect(fireEvent.keyDown(document.body, { key: "]" })).toBe(true);
+  expect(router.state.location.search).toContain("date=2026-04-08");
+});
+
 // AuxTel with one date, 2026-04-10: `config` sets what the camera config says
 // about a Nightly Summary, and the date payload says whether that night has
 // one.

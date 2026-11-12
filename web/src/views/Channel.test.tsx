@@ -105,6 +105,20 @@ test("at the ends of the night the arrows do nothing, and leave the page be", as
   expect(where(router)).toBe("/local/auxtel/monitor?seq=9&date=2026-04-10");
 });
 
+test("the arrows stand down under a modal, and with ⌘ held", async () => {
+  const router = renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
+  await screen.findByRole("link", { name: "Next (9)" });
+  // ⌘→ is the browser's Forward.
+  expect(fireEvent.keyDown(window, { key: "ArrowRight", metaKey: true })).toBe(true);
+  // The shortcuts panel (or a cell's details) is up over the page.
+  const modal = document.createElement("div");
+  modal.setAttribute("aria-modal", "true");
+  document.body.append(modal);
+  expect(press("ArrowRight")).toBe(true);
+  modal.remove();
+  expect(where(router)).toBe("/local/auxtel/monitor?seq=7&date=2026-04-10");
+});
+
 test("Shift+arrows step through the channels that share this exposure", async () => {
   const router = renderAt("/local/auxtel/imexam?seq=7&date=2026-04-10");
   await screen.findByRole("navigation", { name: "Channels for this exposure" });

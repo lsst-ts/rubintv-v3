@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Metadata } from "../lib/types";
 import {
   OPS_BY_TYPE,
@@ -9,6 +9,7 @@ import {
   type FilterType,
 } from "../lib/filters";
 import { useDismiss } from "../lib/useDismiss";
+import { ariaKeys, keyHint, pageKeysPaused, pressed } from "../lib/shortcuts";
 import { ChevronDownIcon } from "./Icons";
 
 // Highlight the matched substring of a column label.
@@ -31,11 +32,13 @@ function ColumnCombo({
   typeOf,
   value,
   onChange,
+  inputRef,
 }: {
   columns: string[];
   typeOf: (c: string) => FilterType;
   value: string;
   onChange: (col: string) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -89,6 +92,7 @@ function ColumnCombo({
   return (
     <span className="filter-combo" ref={rootRef}>
       <input
+        ref={inputRef}
         value={display}
         placeholder="search columns…"
         aria-label="Filter column"
@@ -155,6 +159,7 @@ function FilterForm({
   title,
   submitLabel,
   onSubmit,
+  columnRef,
 }: {
   columns: string[];
   metadata: Metadata;
@@ -162,6 +167,7 @@ function FilterForm({
   title: string;
   submitLabel: string;
   onSubmit: (f: Filter) => void;
+  columnRef?: RefObject<HTMLInputElement | null>;
 }) {
   const [draftCol, setDraftCol] = useState(initial?.col ?? "");
   const [draftOp, setDraftOp] = useState(initial?.op ?? "=");
@@ -213,6 +219,7 @@ function FilterForm({
         <ColumnCombo
           columns={columns}
           typeOf={typeOf}
+          inputRef={columnRef}
           value={draftCol}
           onChange={(k) => {
             setDraftCol(k);
@@ -290,6 +297,26 @@ export function FilterControl({
   const rootRef = useRef<HTMLSpanElement | null>(null);
   useDismiss(open, rootRef, () => setOpen(false));
 
+  // / opens the form with its column search in focus, so a filter can be made
+  // without the mouse: type to find the column, Enter, Tab to the value.
+  const columnRef = useRef<HTMLInputElement | null>(null);
+  const [focusAsks, setFocusAsks] = useState(0);
+  useEffect(() => {
+    if (focusAsks) columnRef.current?.focus();
+  }, [focusAsks]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !pressed(e, "addFilter") || pageKeysPaused()) {
+        return;
+      }
+      e.preventDefault();
+      setOpen(true);
+      setFocusAsks((n) => n + 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <span className="filter-cluster" ref={rootRef}>
       <button
@@ -297,8 +324,9 @@ export function FilterControl({
         className={"filter-btn" + (filters.length ? " active" : "")}
         aria-expanded={open}
         aria-label="Add or edit filters"
+        aria-keyshortcuts={ariaKeys("addFilter")}
         onClick={() => setOpen((v) => !v)}
-        title="Add or edit filters"
+        title={`Add or edit filters (${keyHint("addFilter")})`}
       >
         <span>filter</span>
         {filters.length > 0 && <span className="count">{filters.length}</span>}
@@ -311,6 +339,7 @@ export function FilterControl({
           metadata={metadata}
           title="Add filter"
           submitLabel="add filter"
+          columnRef={columnRef}
           onSubmit={(f) => {
             setFilters([...filters, f]);
             setOpen(false);
