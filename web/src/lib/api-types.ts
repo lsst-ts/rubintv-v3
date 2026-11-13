@@ -1577,7 +1577,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path: {
                 location: string;
@@ -1674,7 +1674,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1705,7 +1705,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1740,7 +1740,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1775,7 +1775,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1806,7 +1806,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path: {
                 set_name: string;
@@ -1839,7 +1839,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1870,7 +1870,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-auth-user"?: string | null;
+                "x-auth-request-user"?: string | null;
             };
             path?: never;
             cookie?: never;
