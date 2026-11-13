@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 371 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 373 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -398,7 +398,8 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  `da6cb7f`, `6604211`, and the commit that noted the keyboard shortcuts.
+  `da6cb7f`, `6604211`, `1c16cfa`, and the commit that noted the Status
+  page's image counts.
 
 ---
 
@@ -585,6 +586,11 @@ final `ColumnOrderList` and `useColumnPrefs`.
 - `9b0e699` Reword Redis-off warning now that writes are blocked, not
   failed
 - `d4c2e83` Show full version only on deployed builds; sha+date locally
+- `09517d6` (later) Show each camera's found-image count on the Scan
+  Status page, so a sweep making progress reads differently from one
+  finding nothing: `image_count` per camera on `/status`, summed from
+  the in-memory index by `EventStore.image_count` (frames plus per-day
+  artifacts; no S3). `app_status` turns `async` for loop confinement
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
