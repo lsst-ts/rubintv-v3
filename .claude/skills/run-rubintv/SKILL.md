@@ -123,7 +123,7 @@ uv run pytest -q                # 250 tests, ~55s, writes htmlcov/
   active (`VIRTUAL_ENV=... does not match the project environment`) — ignore
   it; it still uses `.venv`.
 - **Admin writes need an auth header.** In deployment Gafaelfawr injects the
-  authenticated user; the vite proxy fakes it locally (`X-Auth-User:
+  authenticated user; the vite proxy fakes it locally (`X-Auth-Request-User:
   localdev`, override with `RUBINTV_DEV_USER`). Hitting the backend directly
   without the header 403s admin routes.
 - **In-cluster only:** never rely on `$RUBINTV_PORT` (Kubernetes service

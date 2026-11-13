@@ -24,8 +24,8 @@
 For now controls are held in an in-memory placeholder so the API shape and
 the admin-gating are in place; Phase 4 swaps the backing store for Redis
 and wires live readback. Writes are gated on the per-location admin user
-list. The authenticated user arrives via a reverse-proxy header
-(``X-Auth-User``), matching the embargoed-deployment model.
+list. The authenticated user arrives in ``X-Auth-Request-User``, which
+Gafaelfawr's ingress sets from the login session.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ class ControlsOut(BaseModel):
 
 def require_admin(
     location: Location = Depends(get_location),
-    x_auth_user: str | None = Header(default=None),
+    x_auth_request_user: str | None = Header(default=None),
 ) -> str:
     """Ensure the caller is an admin for this location.
 
@@ -79,12 +79,12 @@ def require_admin(
     convention used by open deployments (base/tucson/local) where there is
     no per-user gating.
     """
-    if x_auth_user is None:
+    if x_auth_request_user is None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "admin access required for this location"
         )
-    if "*" in location.admin_users or x_auth_user in location.admin_users:
-        return x_auth_user
+    if "*" in location.admin_users or x_auth_request_user in location.admin_users:
+        return x_auth_request_user
     raise HTTPException(
         status.HTTP_403_FORBIDDEN, "admin access required for this location"
     )
@@ -179,29 +179,29 @@ def get_detectors_config(
 # arrives asynchronously on the admin WS topic, so these return immediately.
 
 
-def is_site_admin(state: AppState, x_auth_user: str | None) -> bool:
-    """Whether ``x_auth_user`` is a site admin (non-raising).
+def is_site_admin(state: AppState, x_auth_request_user: str | None) -> bool:
+    """Whether ``x_auth_request_user`` is a site admin (non-raising).
 
     ``admin_users`` is the same site-wide list on every location (the loader
     copies the site's ``admin_for`` entry), so 'admin for any location' is
     equivalent to 'site admin'. ``"*"`` means any authenticated user.
     """
-    if x_auth_user is None:
+    if x_auth_request_user is None:
         return False
     return any(
-        "*" in loc.admin_users or x_auth_user in loc.admin_users
+        "*" in loc.admin_users or x_auth_request_user in loc.admin_users
         for loc in state.models.locations
     )
 
 
 def require_site_admin(
     state: AppState = Depends(get_app_state),
-    x_auth_user: str | None = Header(default=None),
+    x_auth_request_user: str | None = Header(default=None),
 ) -> str:
     """Ensure the caller is an admin for *any* location in this deployment."""
-    if not is_site_admin(state, x_auth_user):
+    if not is_site_admin(state, x_auth_request_user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "admin access required")
-    return x_auth_user or ""
+    return x_auth_request_user or ""
 
 
 def allowed_control_keys(state: AppState) -> set[str]:
@@ -240,7 +240,7 @@ async def _set_redis(state: AppState, key: str, value: str) -> AdminActionOut:
 @router.get("/admin/status", response_model=AdminStatusOut)
 def get_admin_status(
     state: AppState = Depends(get_app_state),
-    x_auth_user: str | None = Header(default=None),
+    x_auth_request_user: str | None = Header(default=None),
 ) -> AdminStatusOut:
     return AdminStatusOut(
         version=__version__,
@@ -250,7 +250,7 @@ def get_admin_status(
         redis_enabled=state.redis is not None and state.redis.enabled,
         cache_enabled=state.cache_enabled,
         witness_detector_key=state.settings.witness_detector_key,
-        is_admin=is_site_admin(state, x_auth_user),
+        is_admin=is_site_admin(state, x_auth_request_user),
     )
 
 
