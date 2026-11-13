@@ -27,7 +27,9 @@ export default defineConfig(({ command }) => ({
         // In deployment Gafaelfawr injects the authenticated user; locally
         // there is no auth proxy, so inject one here or the admin gate 403s
         // every write (local's admin_for is "*" = any authenticated user).
-        headers: { "X-Auth-User": process.env.RUBINTV_DEV_USER ?? "localdev" },
+        headers: {
+          "X-Auth-Request-User": process.env.RUBINTV_DEV_USER ?? "localdev",
+        },
         // Pass a backend abort on. When the S3 proxy can't finish an object
         // it closes the connection mid-body (so the browser never keeps a
         // short file as whole), but the dev proxy would leave the browser's

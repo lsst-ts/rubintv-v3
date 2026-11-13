@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 371 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 373 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -398,7 +398,8 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  `da6cb7f`, `6604211`, and the commit that noted the keyboard shortcuts.
+  `da6cb7f`, `6604211`, `1c16cfa`, and the commit that noted the admin
+  header fix.
 
 ---
 
@@ -617,6 +618,10 @@ Facts learned from the real phalanx/USDF deployment, each small.
   (`spa.py`) fits `index.html` to `RUBINTV_PATH_PREFIX` as it is served
   (summit dev runs at `/rubintv-dev`); `RUBINTV_INSTANCE_ENV` replaces
   the "-dev"-in-the-URL guess for the dev strip and `{dev}` links
+- `2b841c5` Read the admin user from `X-Auth-Request-User`, the header
+  Gafaelfawr sets. The gate read `X-Auth-User`, which nothing sets, so
+  every admin write through the ingress 403'd, even on BTS's open
+  `admin_for: ["*"]`; a client-sent `X-Auth-User` is no longer honoured
 
 ### 41. CI, licensing and tooling
 Safe to skim.

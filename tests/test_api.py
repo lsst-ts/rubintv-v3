@@ -173,7 +173,7 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     assert body["redis_enabled"] is False
     assert body["cache_enabled"] is False
     assert body["witness_detector_key"]
-    # No X-Auth-User header -> not an admin (the frontend hides admin
+    # No X-Auth-Request-User header -> not an admin (the frontend hides admin
     # controls).
     assert body["is_admin"] is False
 
@@ -238,15 +238,32 @@ def test_admin_status_reports_is_admin_for_authed_user(
     # The test site's admin_for is "*", so any authenticated user is a site
     # admin; is_admin should flip true once the reverse-proxy header is
     # present.
-    resp = seeded_client.get("/api/admin/status", headers={"X-Auth-User": "tester"})
+    resp = seeded_client.get(
+        "/api/admin/status", headers={"X-Auth-Request-User": "tester"}
+    )
     assert resp.status_code == 200
     assert resp.json()["is_admin"] is True
 
 
 def test_admin_write_requires_auth(seeded_client: TestClient) -> None:
-    # No X-Auth-User header -> 403, regardless of Redis state.
+    # No X-Auth-Request-User header -> 403, regardless of Redis state.
     resp = seeded_client.post(
         "/api/admin/controls/set", json={"key": "K", "value": "V"}
+    )
+    assert resp.status_code == 403
+
+
+def test_admin_gate_ignores_x_auth_user(seeded_client: TestClient) -> None:
+    # Gafaelfawr names the user in X-Auth-Request-User. Nothing in the
+    # deployment sets or vouches for X-Auth-User, so it must not count as a
+    # login.
+    headers = {"X-Auth-User": "tester"}
+    resp = seeded_client.get("/api/admin/status", headers=headers)
+    assert resp.json()["is_admin"] is False
+    resp = seeded_client.post(
+        "/api/admin/controls/set",
+        json={"key": "RUBINTV_CONTROL_AOS_PIPELINE", "value": "V"},
+        headers=headers,
     )
     assert resp.status_code == 403
 
@@ -256,7 +273,7 @@ def test_admin_control_set_503_without_redis(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
         "/api/admin/controls/set",
         json={"key": "RUBINTV_CONTROL_AOS_PIPELINE", "value": "V"},
-        headers={"X-Auth-User": "tester"},
+        headers={"X-Auth-Request-User": "tester"},
     )
     assert resp.status_code == 503
 
@@ -267,28 +284,28 @@ def test_admin_control_set_rejects_unknown_key(seeded_client: TestClient) -> Non
     resp = seeded_client.post(
         "/api/admin/controls/set",
         json={"key": "RUBINTV_CONTROL_ARBITRARY_INJECTED", "value": "x"},
-        headers={"X-Auth-User": "tester"},
+        headers={"X-Auth-Request-User": "tester"},
     )
     assert resp.status_code == 400
 
 
 def test_admin_reset_head_node_503_without_redis(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
-        "/api/admin/reset-head-node", headers={"X-Auth-User": "tester"}
+        "/api/admin/reset-head-node", headers={"X-Auth-Request-User": "tester"}
     )
     assert resp.status_code == 503
 
 
 def test_admin_flush_redis_503_without_redis(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
-        "/api/admin/flush-redis", headers={"X-Auth-User": "tester"}
+        "/api/admin/flush-redis", headers={"X-Auth-Request-User": "tester"}
     )
     assert resp.status_code == 503
 
 
 def test_restart_workers_unknown_set_404(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
-        "/api/detectors/nope/restart", headers={"X-Auth-User": "tester"}
+        "/api/detectors/nope/restart", headers={"X-Auth-Request-User": "tester"}
     )
     assert resp.status_code == 404
 
@@ -301,7 +318,7 @@ def test_restart_workers_requires_auth(seeded_client: TestClient) -> None:
 def test_restart_workers_503_without_redis(seeded_client: TestClient) -> None:
     # Known set (from config), authed, but no Redis -> 503 from the write.
     resp = seeded_client.post(
-        "/api/detectors/sfmSet0/restart", headers={"X-Auth-User": "tester"}
+        "/api/detectors/sfmSet0/restart", headers={"X-Auth-Request-User": "tester"}
     )
     assert resp.status_code == 503
 
@@ -312,7 +329,7 @@ def test_admin_flush_historical_succeeds(seeded_client: TestClient) -> None:
     assert DATE in cal["dates"]
 
     resp = seeded_client.post(
-        "/api/admin/flush-historical", headers={"X-Auth-User": "tester"}
+        "/api/admin/flush-historical", headers={"X-Auth-Request-User": "tester"}
     )
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
@@ -526,7 +543,7 @@ def test_event_by_key(seeded_client: TestClient) -> None:
 
 
 def test_admin_requires_user(seeded_client: TestClient) -> None:
-    # No X-Auth-User header -> forbidden.
+    # No X-Auth-Request-User header -> forbidden.
     resp = seeded_client.post(
         "/api/locations/test/admin/controls",
         json={"key": "AOS_PIPELINE", "value": "default"},
@@ -540,7 +557,7 @@ def test_admin_set_and_get(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
         "/api/locations/test/admin/controls",
         json={"key": key, "value": "default"},
-        headers={"X-Auth-User": "testadmin"},
+        headers={"X-Auth-Request-User": "testadmin"},
     )
     assert resp.status_code == 200
     got = seeded_client.get("/api/locations/test/admin/controls").json()
@@ -554,7 +571,7 @@ def test_admin_set_rejects_unlisted_key(seeded_client: TestClient) -> None:
     resp = seeded_client.post(
         "/api/locations/test/admin/controls",
         json={"key": "AOS_PIPELINE", "value": "default"},
-        headers={"X-Auth-User": "testadmin"},
+        headers={"X-Auth-Request-User": "testadmin"},
     )
     assert resp.status_code == 400
 
@@ -939,9 +956,9 @@ def test_admin_gate_rejects_unlisted_user() -> None:
     from lsst.ts.rubintv.config.models import Location
 
     loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
-    assert require_admin(location=loc, x_auth_user="alice") == "alice"
+    assert require_admin(location=loc, x_auth_request_user="alice") == "alice"
     with pytest.raises(HTTPException) as excinfo:
-        require_admin(location=loc, x_auth_user="bob")
+        require_admin(location=loc, x_auth_request_user="bob")
     assert excinfo.value.status_code == 403
 
 
@@ -956,9 +973,9 @@ def test_site_admin_gate_rejects_unlisted_user() -> None:
 
     loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
     state = cast("AppState", SimpleNamespace(models=SimpleNamespace(locations=[loc])))
-    assert require_site_admin(state=state, x_auth_user="alice") == "alice"
+    assert require_site_admin(state=state, x_auth_request_user="alice") == "alice"
     with pytest.raises(HTTPException) as excinfo:
-        require_site_admin(state=state, x_auth_user="bob")
+        require_site_admin(state=state, x_auth_request_user="bob")
     assert excinfo.value.status_code == 403
     # The non-raising helper backing /admin/status agrees with the gate.
     assert is_site_admin(state, "alice") is True
@@ -989,7 +1006,7 @@ def test_admin_actions_write_through_redis(seeded_client: TestClient) -> None:
     state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
     fake = _FakeAdminRedis()
     state.redis._redis = fake  # noqa: SLF001 - test injection
-    headers = {"X-Auth-User": "testadmin"}
+    headers = {"X-Auth-Request-User": "testadmin"}
 
     resp = seeded_client.post(
         "/api/admin/controls/set",
@@ -1027,7 +1044,7 @@ def test_admin_action_503_when_redis_drops_mid_request(
     resp = seeded_client.post(
         "/api/admin/controls/set",
         json={"key": "RUBINTV_CONTROL_AOS_PIPELINE", "value": "V"},
-        headers={"X-Auth-User": "testadmin"},
+        headers={"X-Auth-Request-User": "testadmin"},
     )
     assert resp.status_code == 503
 
@@ -1192,6 +1209,6 @@ def test_admin_flush_redis_503_when_redis_drops_mid_request(
 
     monkeypatch.setattr(state.redis, "flushdb", _gone)
     resp = seeded_client.post(
-        "/api/admin/flush-redis", headers={"X-Auth-User": "testadmin"}
+        "/api/admin/flush-redis", headers={"X-Auth-Request-User": "testadmin"}
     )
     assert resp.status_code == 503
