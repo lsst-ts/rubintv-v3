@@ -44,6 +44,7 @@ const cam = (over: Partial<StatusResponse["cameras"][number]>) => ({
   camera: "cam",
   recent_ready: false,
   full_complete: false,
+  image_count: 0,
   ...over,
 });
 
@@ -56,6 +57,17 @@ test("shows each camera's stage label", async () => {
   expect(await screen.findByText("Loading…")).toBeDefined();
   expect(screen.getByText("Recent ready")).toBeDefined();
   expect(screen.getByText("Complete")).toBeDefined();
+});
+
+test("shows how many images each camera's scan has found", async () => {
+  renderWith([
+    cam({ camera: "a", image_count: 12345 }),
+    cam({ camera: "b", image_count: 1 }),
+    cam({ camera: "c", image_count: 0 }),
+  ]);
+  expect(await screen.findByText(/^12.345 images$/)).toBeDefined();
+  expect(screen.getByText("1 image")).toBeDefined();
+  expect(screen.getByText("0 images")).toBeDefined();
 });
 
 test("summarises how many cameras remain", async () => {

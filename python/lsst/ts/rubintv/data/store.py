@@ -455,6 +455,20 @@ class EventStore:
                 per_day.setdefault(channel, []).append(date)
         return per_day
 
+    def image_count(self, location: str, camera: str) -> int:
+        """Total channel images indexed for a camera, across every date.
+
+        Each (channel, seq) frame counts once, as does each per-day artifact
+        (a night's movie or still); night-report plots and metadata don't.
+        Shown per camera on the Status page as the scan's running tally.
+        Single in-memory pass that sums set sizes — no per-seq walk.
+        """
+        dates = self._dates.get((location, camera), {})
+        return sum(
+            sum(map(len, idx.channels.values())) + len(idx.per_day)
+            for idx in dates.values()
+        )
+
     def latest_channel_image(
         self, location: str, camera: str, channel: str
     ) -> tuple[str, int, str] | None:

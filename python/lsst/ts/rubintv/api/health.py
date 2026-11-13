@@ -55,6 +55,10 @@ class CameraStatus(BaseModel):
     are viewable even while the full back-catalogue is still loading."""
     full_complete: bool
     """The camera's whole back-catalogue has been scanned at least once."""
+    image_count: int
+    """Channel images indexed so far for this camera, across every date: one
+    per (channel, seq) frame plus one per per-day artifact. Climbs while the
+    scans run, so the Status page shows how much each one has found."""
 
 
 class StatusResponse(BaseModel):
@@ -105,14 +109,17 @@ def ready(
 
 
 @router.get("/status", response_model=StatusResponse)
-def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse:
+async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse:
     """Detailed status: readiness plus per-camera history-loading progress."""
+    # ``async`` for loop confinement: image_count iterates live index dicts
+    # the pollers mutate, so it must not run on a threadpool worker.
     cameras = [
         CameraStatus(
             location=location,
             camera=camera,
             recent_ready=st.recent_ready,
             full_complete=st.full_complete,
+            image_count=state.store.image_count(location, camera),
         )
         for (location, camera), st in state.camera_status().items()
     ]
