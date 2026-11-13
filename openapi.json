@@ -1824,6 +1824,10 @@
           "full_complete": {
             "type": "boolean",
             "title": "Full Complete"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
           }
         },
         "type": "object",
@@ -1831,7 +1835,8 @@
           "location",
           "camera",
           "recent_ready",
-          "full_complete"
+          "full_complete",
+          "image_count"
         ],
         "title": "CameraStatus"
       },

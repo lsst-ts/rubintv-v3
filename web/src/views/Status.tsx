@@ -130,6 +130,12 @@ export function Status() {
                           <Link to={`/${c.location}/${c.camera}`}>
                             {c.camera}
                           </Link>
+                          {/* Running tally of what the scans have found,
+                              so a sweep that's progressing reads as such
+                              (and a camera stuck at 0 stands out). */}
+                          <span className="scan-images">
+                            {`${c.image_count.toLocaleString()} image${c.image_count === 1 ? "" : "s"}`}
+                          </span>
                           <span className={`scan-stage scan-stage--${stage}`}>
                             {STAGE_LABEL[stage]}
                           </span>

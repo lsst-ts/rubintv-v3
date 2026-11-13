@@ -121,7 +121,30 @@ def test_status_endpoint_reports_loading() -> None:
         # Per-camera readiness is present and well-formed for each camera.
         assert isinstance(body["cameras"], list)
         for cam in body["cameras"]:
-            assert {"location", "camera", "recent_ready", "full_complete"} <= set(cam)
+            assert {
+                "location",
+                "camera",
+                "recent_ready",
+                "full_complete",
+                "image_count",
+            } <= set(cam)
+
+
+def test_status_counts_each_cameras_found_images() -> None:
+    # The full sweep's finds show up as a per-camera image tally: two frames
+    # and a per-day movie for lsstcam; metadata isn't an image.
+    objects = {
+        "lsstcam/2025-01-01/witness_detector/000001/a.png": b"x",
+        "lsstcam/2025-01-01/witness_detector/000002/b.png": b"x",
+        "lsstcam/2025-01-01/movies/final/m.mp4": b"x",
+        "lsstcam/2025-01-01/metadata.json": b"{}",
+    }
+    with run_app(objects) as client:
+        assert wait_until(lambda: historical_idle(client))
+        cameras = client.get("/api/health/status").json()["cameras"]
+    counts = {(c["location"], c["camera"]): c["image_count"] for c in cameras}
+    assert counts[("test", "lsstcam")] == 3
+    assert sum(counts.values()) == 3
 
 
 def test_status_reports_cold_start_when_cache_disabled() -> None:

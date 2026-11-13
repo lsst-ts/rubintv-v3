@@ -674,6 +674,8 @@ export interface components {
             recent_ready: boolean;
             /** Full Complete */
             full_complete: boolean;
+            /** Image Count */
+            image_count: number;
         };
         /**
          * CameraSummary

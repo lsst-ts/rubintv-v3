@@ -36,6 +36,7 @@ const cam = (over: Partial<StatusResponse["cameras"][number]>) => ({
   camera: "cam",
   recent_ready: false,
   full_complete: false,
+  image_count: 0,
   ...over,
 });
 

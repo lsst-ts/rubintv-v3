@@ -651,6 +651,15 @@ h1, h2 {
 }
 .scan-cams a:hover { text-decoration: underline; }
 .scan-cams .scan-stage { white-space: nowrap; }
+/* Pushed right to sit beside the stage pill, the name keeping the left. */
+.scan-images {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* ── Small action buttons (copy / download) ────────────────────────────── */
 /* Toolbar action buttons (download metadata) — framed like .tb-btn, with a

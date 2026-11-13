@@ -85,6 +85,28 @@ async def test_calendar_counts_and_max_seq() -> None:
     assert store.calendar_max_seq("local", "lsstcam") == {"2026-04-10": 5}
 
 
+async def test_image_count_totals_frames_and_per_day_artifacts() -> None:
+    store = EventStore()
+    assert store.image_count("local", "lsstcam") == 0
+    await store.apply(
+        [
+            created("lsstcam/2026-04-09/witness_detector/000001/a.png"),
+            created("lsstcam/2026-04-10/witness_detector/000001/b.png"),
+            created("lsstcam/2026-04-10/witness_detector/000002/c.png"),
+            # Same seq on another channel is another image.
+            created("lsstcam/2026-04-10/focal_plane/000002/d.png"),
+            # A re-listed (or renamed) frame fills the same slot: not counted.
+            created("lsstcam/2026-04-10/focal_plane/000002/d2.png"),
+            created("lsstcam/2026-04-10/movies/final/m.mp4"),
+            # Metadata and night reports aren't images.
+            created("lsstcam/2026-04-10/metadata.json"),
+            created("lsstcam/2026-04-10/night_report/group/plot.png"),
+        ]
+    )
+    assert store.image_count("local", "lsstcam") == 5
+    assert store.image_count("local", "nope") == 0
+
+
 async def test_calendar_channel_latest_picks_newest_date_per_channel() -> None:
     store = EventStore()
     await store.apply(
