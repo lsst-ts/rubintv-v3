@@ -560,7 +560,7 @@
             }
           },
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -572,7 +572,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -682,7 +682,7 @@
         "operationId": "get_admin_status_api_admin_status_get",
         "parameters": [
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -694,7 +694,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -732,7 +732,7 @@
         "operationId": "set_site_control_api_admin_controls_set_post",
         "parameters": [
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -744,7 +744,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -792,7 +792,7 @@
         "operationId": "set_witness_detector_api_admin_witness_detector_post",
         "parameters": [
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -804,7 +804,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -852,7 +852,7 @@
         "operationId": "reset_head_node_api_admin_reset_head_node_post",
         "parameters": [
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -864,7 +864,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -911,7 +911,7 @@
             }
           },
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -923,7 +923,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -961,7 +961,7 @@
         "operationId": "flush_historical_api_admin_flush_historical_post",
         "parameters": [
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -973,7 +973,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],
@@ -1011,7 +1011,7 @@
         "operationId": "flush_redis_api_admin_flush_redis_post",
         "parameters": [
           {
-            "name": "x-auth-user",
+            "name": "x-auth-request-user",
             "in": "header",
             "required": false,
             "schema": {
@@ -1023,7 +1023,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Auth-User"
+              "title": "X-Auth-Request-User"
             }
           }
         ],

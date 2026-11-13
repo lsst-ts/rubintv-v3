@@ -105,8 +105,9 @@ closes S3 clients. `kubectl rollout` drains cleanly.
 
 Control writes (`POST /api/locations/{loc}/admin/controls`) require the
 caller to be in the location's `admin_users` list, identified by the
-reverse-proxy header `X-Auth-User`. The app is embargoed and not publicly
-reachable; there is no other auth layer.
+`X-Auth-Request-User` header that Gafaelfawr's ingress sets from the login
+session. A request without that header is never an admin. The app is
+embargoed and not publicly reachable; there is no other auth layer.
 
 ## Running
 
