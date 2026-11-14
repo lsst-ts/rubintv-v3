@@ -293,8 +293,12 @@ is logged.
   menu), `/api/admin/witness-detector`, `/api/admin/reset-head-node`,
   `/api/admin/flush-historical`, `/api/admin/flush-redis` and
   `/api/detectors/{set}/restart`. `GET /api/admin/status` reports
-  `is_admin` so the frontend can hide these controls; the endpoints are
-  gated regardless.
+  `is_admin` and the `user` so the frontend can disable or hide these
+  controls and say why; the endpoints are gated regardless.
+
+A refused request logs `admin.denied` with the `user` and a `reason`:
+`no_user` means no login reached the app (look at the ingress),
+`not_admin` means the user isn't in `admin_for`.
 
 The header is trusted because the only route in from outside is the
 chart's GafaelfawrIngress, which requires a login over the whole path

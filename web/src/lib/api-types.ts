@@ -631,6 +631,8 @@ export interface components {
             witness_detector_key: string;
             /** Is Admin */
             is_admin: boolean;
+            /** User */
+            user: string | null;
         };
         /**
          * BlockOut

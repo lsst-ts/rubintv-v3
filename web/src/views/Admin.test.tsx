@@ -16,7 +16,13 @@ import { Admin } from "./Admin";
 // Records POST bodies so we can assert what each control box sends.
 let posts: { url: string; body: unknown }[] = [];
 
-function stub(redisEnabled = true, isRelease = true) {
+// `access` is what /admin/status says about the caller: a site admin signed
+// in as "tester" unless overridden (user null: no login reached the app).
+function stub(
+  redisEnabled = true,
+  isRelease = true,
+  access: { isAdmin?: boolean; user?: string | null } = {},
+) {
   posts = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -37,6 +43,8 @@ function stub(redisEnabled = true, isRelease = true) {
         redis_enabled: redisEnabled,
         cache_enabled: true,
         witness_detector_key: "RUBINTV_CONTROL_WITNESS_DETECTOR",
+        is_admin: access.isAdmin ?? true,
+        user: access.user === undefined ? "tester" : access.user,
       };
     } else if (url.endsWith("/admin/menus")) {
       body = {
@@ -162,6 +170,43 @@ test("all redis-writing actions are disabled when redis is not configured", asyn
 
   // Flush historical cache does NOT touch Redis, so it stays clickable.
   expect(isDisabled("Flush historical cache")).toBe(false);
+});
+
+test("the header says who is signed in", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderAdmin(qc);
+  expect(await screen.findByText("· signed in as tester")).toBeDefined();
+  // An admin needs no explanation.
+  expect(screen.queryByRole("note")).toBeNull();
+});
+
+test("a non-admin is told why up front and every action is disabled", async () => {
+  stub(true, true, { isAdmin: false, user: "bob" });
+  const qc = createQueryClient();
+  renderAdmin(qc);
+
+  expect((await screen.findByRole("note")).textContent).toBe(
+    "Signed in as bob, who isn't an admin for this site, so the controls below are disabled.",
+  );
+  // Every action button, including the one that doesn't need Redis.
+  const buttons = screen.getAllByRole("button") as HTMLButtonElement[];
+  expect(buttons.length).toBeGreaterThan(0);
+  expect(buttons.every((b) => b.disabled)).toBe(true);
+  expect(
+    (screen.getByRole("button", { name: "Flush historical cache" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+});
+
+test("with no login at all, the note points at the deployment", async () => {
+  stub(true, true, { isAdmin: false, user: null });
+  const qc = createQueryClient();
+  renderAdmin(qc);
+  expect((await screen.findByRole("note")).textContent).toMatch(
+    /^No login reached the app, so the controls below are disabled\./,
+  );
+  expect(screen.queryByText(/signed in as/)).toBeNull();
 });
 
 // Make every POST fail: with a JSON detail (an HTTP error the server

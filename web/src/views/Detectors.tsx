@@ -4,6 +4,7 @@ import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { AdminAccessNote } from "../components/AdminAccessNote";
 import { ConfirmButton } from "../components/ConfirmButton";
 import {
   createPlaceholders,
@@ -88,6 +89,12 @@ export function Detectors() {
   return (
     <section className="cluster-status">
       <h1>Cluster Status</h1>
+      {adminStatus && !admin && (
+        <AdminAccessNote
+          user={adminStatus.user ?? null}
+          consequence="the worker restart buttons are hidden"
+        />
+      )}
       {!hasAny && (
         <p className="skeleton">
           Awaiting cluster status. (Requires Redis streams configured for this

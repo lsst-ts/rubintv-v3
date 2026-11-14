@@ -174,8 +174,9 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     assert body["cache_enabled"] is False
     assert body["witness_detector_key"]
     # No X-Auth-Request-User header -> not an admin (the frontend hides admin
-    # controls).
+    # controls) and nobody signed in.
     assert body["is_admin"] is False
+    assert body["user"] is None
 
 
 def test_is_release_tracks_baked_in_git_sha(
@@ -243,6 +244,8 @@ def test_admin_status_reports_is_admin_for_authed_user(
     )
     assert resp.status_code == 200
     assert resp.json()["is_admin"] is True
+    # The login is echoed back so the Admin page can say who is signed in.
+    assert resp.json()["user"] == "tester"
 
 
 def test_admin_write_requires_auth(seeded_client: TestClient) -> None:
@@ -948,21 +951,59 @@ def test_proxy_404_when_listed_key_vanishes(
     assert resp.status_code == 404
 
 
-def test_admin_gate_rejects_unlisted_user() -> None:
+def _gate_request(path: str) -> Any:
+    """A bare request for calling the admin gates directly."""
+    from starlette.requests import Request
+
+    return Request({"type": "http", "method": "POST", "path": path, "headers": []})
+
+
+def _record_admin_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Capture the admin module's log calls as (event, fields)."""
+    from lsst.ts.rubintv.api import admin
+
+    logged: list[tuple[str, dict[str, Any]]] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: logged.append((event, fields))
+
+    monkeypatch.setattr(admin, "log", Recorder())
+    return logged
+
+
+def test_admin_gate_rejects_unlisted_user(monkeypatch: pytest.MonkeyPatch) -> None:
     # Direct dependency check: the seeded test site uses the "*" wildcard, so
     # the named-user branch is exercised against a hand-built location.
     from fastapi import HTTPException
     from lsst.ts.rubintv.api.admin import require_admin
     from lsst.ts.rubintv.config.models import Location
 
+    logged = _record_admin_log(monkeypatch)
+    req = _gate_request("/api/locations/x/admin/controls")
     loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
-    assert require_admin(location=loc, x_auth_request_user="alice") == "alice"
-    with pytest.raises(HTTPException) as excinfo:
-        require_admin(location=loc, x_auth_request_user="bob")
-    assert excinfo.value.status_code == 403
+    assert require_admin(req, location=loc, x_auth_request_user="alice") == "alice"
+    assert logged == []
+    for header, user, reason in (("bob", "bob", "not_admin"), ("", None, "no_user")):
+        with pytest.raises(HTTPException) as excinfo:
+            require_admin(req, location=loc, x_auth_request_user=header)
+        assert excinfo.value.status_code == 403
+        assert logged.pop() == (
+            "admin.denied",
+            {
+                "user": user,
+                "reason": reason,
+                "path": "/api/locations/x/admin/controls",
+                "location": "x",
+            },
+        )
 
 
-def test_site_admin_gate_rejects_unlisted_user() -> None:
+def test_site_admin_gate_rejects_unlisted_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from types import SimpleNamespace
     from typing import cast
 
@@ -971,16 +1012,43 @@ def test_site_admin_gate_rejects_unlisted_user() -> None:
     from lsst.ts.rubintv.config.models import Location
     from lsst.ts.rubintv.state import AppState
 
+    logged = _record_admin_log(monkeypatch)
+    req = _gate_request("/api/admin/flush-redis")
     loc = Location(name="x", title="X", bucket="b", admin_users=["alice"])
     state = cast("AppState", SimpleNamespace(models=SimpleNamespace(locations=[loc])))
-    assert require_site_admin(state=state, x_auth_request_user="alice") == "alice"
+    assert require_site_admin(req, state=state, x_auth_request_user="alice") == "alice"
     with pytest.raises(HTTPException) as excinfo:
-        require_site_admin(state=state, x_auth_request_user="bob")
+        require_site_admin(req, state=state, x_auth_request_user="bob")
     assert excinfo.value.status_code == 403
+    assert logged == [
+        (
+            "admin.denied",
+            {"user": "bob", "reason": "not_admin", "path": "/api/admin/flush-redis"},
+        )
+    ]
     # The non-raising helper backing /admin/status agrees with the gate.
     assert is_site_admin(state, "alice") is True
     assert is_site_admin(state, "bob") is False
     assert is_site_admin(state, None) is False
+
+
+def test_admin_gates_treat_an_empty_header_as_no_user(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The test site's admin_for is "*" (any authenticated user). An empty
+    # header is not an authenticated user, so it must not ride the wildcard.
+    logged = _record_admin_log(monkeypatch)
+    headers = {"X-Auth-Request-User": ""}
+    status = seeded_client.get("/api/admin/status", headers=headers).json()
+    assert status["is_admin"] is False
+    assert status["user"] is None
+    resp = seeded_client.post("/api/admin/flush-redis", headers=headers)
+    assert resp.status_code == 403
+    ((event, fields),) = logged
+    assert event == "admin.denied"
+    assert fields["user"] is None
+    assert fields["reason"] == "no_user"
+    assert fields["path"].endswith("/api/admin/flush-redis")
 
 
 class _FakeAdminRedis:

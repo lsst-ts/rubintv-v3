@@ -127,7 +127,9 @@ analysis worker is attached; `ddv.job.dropped` and `ddv.worker.lost_job`
 are requests that were lost.
 
 **Who did what.** Every admin action logs an `admin.*` event with the
-`user` who made it.
+`user` who made it. A refused one logs `admin.denied`; if every refusal
+has `reason: no_user`, no login is reaching the app at all, which points at
+the ingress rather than the admin list.
 
 ## Catalogue
 
@@ -284,7 +286,7 @@ admin controls answer 503.
 
 ### Admin actions
 
-Each logs the authenticated `user`.
+Each logs the authenticated `user` (`admin.denied`: whoever asked).
 
 | Event | Level | Meaning |
 |---|---|---|
@@ -296,6 +298,7 @@ Each logs the authenticated `user`.
 | `admin.flush_historical.request` | warning | A flush of the cache and index was requested. |
 | `admin.flush_historical` | warning | The flush happened (`slices_removed`); a full rescan follows. |
 | `admin.flush_redis.request` | warning | A flush of the whole Redis database was requested. |
+| `admin.denied` | warning | An admin request was refused (403). `reason` is `no_user` (no `X-Auth-Request-User` reached the app; `user` is `null`) or `not_admin` (signed in, but not on the site's `admin_for` list); also the `path`, and the `location` for a per-location control write. |
 
 ### Night report
 
