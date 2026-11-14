@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 383 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 385 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -399,7 +399,8 @@ Safe to skim.
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
-  `460e78f`, and the commit that noted the Admin page's rows.
+  `460e78f`, `c25ba26`, and the commit that noted the Admin version
+  line.
 
 ---
 
@@ -613,6 +614,9 @@ final `ColumnOrderList` and `useColumnPrefs`.
   two columns at medium widths and one on phones; the free-form box's
   "Sets ..." line spaced and always shown; no orange borders inside the
   danger zone. CSS and markup only
+- `e8ecc7f` (later) The Admin version line drops setuptools-scm's
+  `+g<sha>` local part, which repeated the sha beside it
+  (`v0.1.dev400 · 9dff062`, not `v0.1.dev400+g9dff062da · 9dff062`)
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
