@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 373 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 376 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -308,7 +308,7 @@ api-types regenerated in the same commit).
 - `b638da2` Bump CI actions off the deprecated Node 20 runtime
 - `da213b1` Bump setup-uv off the deprecated Node 20 runtime
 - `16d1f94` Inject X-Auth-User in the Vite dev proxy for local admin
-  access
+  access (header renamed to `X-Auth-Request-User` by `f318e5c`)
 
 ### 27. Version 3.0.0 + build provenance + image-build CI
 Stamps the release: version 3.0.0 everywhere, git sha + commit date on
@@ -398,8 +398,8 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  `da6cb7f`, `6604211`, `1c16cfa`, and the commit that noted the Status
-  page's image counts.
+  `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, and the commit that noted
+  the admin header fix.
 
 ---
 
@@ -623,6 +623,13 @@ Facts learned from the real phalanx/USDF deployment, each small.
   (`spa.py`) fits `index.html` to `RUBINTV_PATH_PREFIX` as it is served
   (summit dev runs at `/rubintv-dev`); `RUBINTV_INSTANCE_ENV` replaces
   the "-dev"-in-the-URL guess for the dev strip and `{dev}` links
+- `f318e5c` Read the admin user from `X-Auth-Request-User`, the header
+  Gafaelfawr sets. The gate read `X-Auth-User`, which nothing sets, so
+  every admin write through the ingress 403'd, even on BTS's open
+  `admin_for: ["*"]`; a client-sent `X-Auth-User` is no longer honoured
+- `654423c` Operator guide: say who is an admin (both gates, `admin_for`
+  and the wildcard flag) and why the header is trusted (the chart's only
+  ingress is an authenticated GafaelfawrIngress)
 
 ### 41. CI, licensing and tooling
 Safe to skim.
