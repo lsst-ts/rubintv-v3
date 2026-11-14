@@ -265,7 +265,9 @@ If neither `RUBINTV_REDIS_URL` nor `RA_REDIS_HOST` is set, or the server is unre
 status and admin control-readback live updates are disabled with a logged
 warning. The rest of the app serves S3 data normally — there is no silent,
 total degradation. Keyspace notifications must be enabled on the Redis
-server for `*_READBACK` updates (`notify-keyspace-events KEA`).
+server for `*_READBACK` updates (`notify-keyspace-events KEA`). The Admin
+page's current values don't depend on them at load: on each (re)connect the
+app reads `K_READBACK` for every menu key and the witness-detector key.
 
 ## Graceful shutdown
 

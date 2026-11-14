@@ -18,10 +18,12 @@ let posts: { url: string; body: unknown }[] = [];
 
 // `access` is what /admin/status says about the caller: a site admin signed
 // in as "tester" unless overridden (user null: no login reached the app).
+// `readbacks` is what /admin/controls returns: full *_READBACK key -> value.
 function stub(
   redisEnabled = true,
   isRelease = true,
   access: { isAdmin?: boolean; user?: string | null } = {},
+  readbacks: Record<string, string> = {},
 ) {
   posts = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -57,7 +59,7 @@ function stub(
         ],
       };
     } else if (url.endsWith("/admin/controls")) {
-      body = { values: {} };
+      body = { values: readbacks };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
@@ -115,16 +117,34 @@ test("live readback updates the menu's current value", async () => {
   stub();
   const qc = createQueryClient();
   renderAdmin(qc);
-  await screen.findByText("AOS Pipeline");
+  expect(await currentIn("AOS Pipeline")).toBe("—");
 
+  // The backend keys readbacks by their full *_READBACK name. AI_DONUT isn't
+  // one of this menu's options, so only the readback line can show it.
   act(() =>
     applyLiveMessage(qc, {
       type: "controlReadback",
-      data: { controls: { RUBINTV_CONTROL_AOS_PIPELINE: "TIE" } },
+      data: { controls: { RUBINTV_CONTROL_AOS_PIPELINE_READBACK: "AI_DONUT" } },
     }),
   );
 
-  expect(await screen.findByText("TIE")).toBeDefined();
+  await waitFor(async () =>
+    expect(await currentIn("AOS Pipeline")).toBe("AI_DONUT"),
+  );
+});
+
+test("current values show on load, from the readbacks the server holds", async () => {
+  stub(true, true, {}, {
+    RUBINTV_CONTROL_AOS_PIPELINE_READBACK: "AI_DONUT",
+    RUBINTV_CONTROL_WITNESS_DETECTOR_READBACK: "203",
+    // A readback stored under the bare control key is not a readback.
+    RUBINTV_CONTROL_AOS_PIPELINE: "TIE",
+  });
+  renderAdmin(createQueryClient());
+  await waitFor(async () =>
+    expect(await currentIn("AOS Pipeline")).toBe("AI_DONUT"),
+  );
+  expect(await currentIn("Witness Detector")).toBe("203");
 });
 
 test("flush redis requires a confirm click before firing", async () => {
@@ -232,6 +252,10 @@ const boxFor = async (title: string) =>
   (await screen.findByRole("heading", { name: title })).closest(
     ".admin-box",
   ) as HTMLElement;
+
+// The "Current:" value shown in a control's box.
+const currentIn = async (title: string) =>
+  (await boxFor(title)).querySelector(".admin-readback strong")!.textContent;
 
 test("a menu sends whichever option is picked", async () => {
   stub();

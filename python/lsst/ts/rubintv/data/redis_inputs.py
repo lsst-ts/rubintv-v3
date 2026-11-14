@@ -162,8 +162,17 @@ def _to_int(value: str) -> int | None:
         return None
 
 
+# The analysis side acknowledges a control key ``K`` by writing ``K_READBACK``.
+READBACK_SUFFIX = "_READBACK"
+
+
 class RedisInputs:
-    """Manages the optional Redis connection and its background readers."""
+    """Manages the optional Redis connection and its background readers.
+
+    ``control_keys`` are the control keys whose readbacks are read straight
+    from Redis on each (re)connect, so the Admin page shows current values
+    without waiting for the next change (keyspace events only carry changes).
+    """
 
     def __init__(
         self,
@@ -172,12 +181,14 @@ class RedisInputs:
         controls: ControlStore,
         detectors: DetectorStore,
         detector_streams: list[RedisDetector],
+        control_keys: list[str] | None = None,
     ) -> None:
         self._url = redis_url
         self._bus = bus
         self._controls = controls
         self._detectors = detectors
         self._detector_streams = detector_streams
+        self._readback_keys = [k + READBACK_SUFFIX for k in control_keys or []]
         self._redis: Redis | None = None
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
@@ -308,7 +319,31 @@ class RedisInputs:
         """
         assert self._redis is not None
         db = self._redis.connection_pool.connection_kwargs.get("db", 0)
-        return f"__keyspace@{db}__:*_READBACK"
+        return f"__keyspace@{db}__:*{READBACK_SUFFIX}"
+
+    async def _seed_readback(self) -> None:
+        """Read the configured controls' current readbacks into the store.
+
+        Keyspace events only carry changes, so without this a control that
+        hasn't changed since the pod started (or since a reconnect) shows no
+        value. Runs after subscribing, so a change landing in between is
+        still delivered as an event.
+        """
+        assert self._redis is not None
+        if not self._readback_keys:
+            return
+        values = await self._redis.mget(self._readback_keys)
+        found = {
+            key: str(value)
+            for key, value in zip(self._readback_keys, values, strict=True)
+            if value is not None
+        }
+        log.info("redis.readback.seed", found=len(found), keys=len(values))
+        if not found:
+            return
+        for key, value in found.items():
+            self._controls.set("*", key, value)
+        self._bus.publish(StoreChange("controlReadback", "*", ""))
 
     async def _readback_loop(self) -> None:
         """Subscribe to keyspace events for *_READBACK keys and republish.
@@ -324,6 +359,7 @@ class RedisInputs:
         # connection's DB (not just DB 0).
         await pubsub.psubscribe(self._keyspace_pattern())
         try:
+            await self._seed_readback()
             async for message in pubsub.listen():
                 if message.get("type") != "pmessage":
                     continue

@@ -227,6 +227,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         controls,
         detectors,
         models.redis_detectors,
+        control_keys=[
+            *(menu.key for menu in models.admin_redis_menus),
+            settings.witness_detector_key,
+        ],
     )
 
     # Cache writes are blocking file I/O (json.dumps + write per slice). The
