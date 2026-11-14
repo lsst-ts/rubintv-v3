@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
@@ -139,7 +139,12 @@ export function Admin() {
         </p>
       )}
 
-      <div className="admin-boxes">
+      {/* Two rows, by kind: the configured menus, then the free-form
+          writes and the head-node reset. Each row fills the width. */}
+      <div
+        className="admin-boxes"
+        style={{ "--cols": Math.max(menus?.menus.length ?? 0, 1) } as CSSProperties}
+      >
         {(menus?.menus ?? []).map((menu) => (
           <MenuBox
             key={menu.key}
@@ -151,7 +156,9 @@ export function Admin() {
             }
           />
         ))}
+      </div>
 
+      <div className="admin-boxes admin-boxes-commands">
         <ArbitraryBox
           disabled={redisDown || locked}
           onSend={(key, value) =>
@@ -267,7 +274,7 @@ function ArbitraryBox({
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
   return (
-    <div className="admin-box">
+    <div className="admin-box admin-box-wide">
       <h2>Set key / value</h2>
       <div className="admin-row">
         <input
@@ -290,9 +297,11 @@ function ArbitraryBox({
           Send
         </button>
       </div>
-      {key.trim() !== "" && (
-        <p className="admin-note">Sets {controlKey(key)}</p>
-      )}
+      {/* Always present, so the box doesn't grow on the first keystroke;
+          before a key is typed it shows the prefix that will be added. */}
+      <p className="admin-note admin-sets">
+        Sets {key.trim() === "" ? `${CONTROL_PREFIX}…` : controlKey(key)}
+      </p>
     </div>
   );
 }

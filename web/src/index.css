@@ -3019,11 +3019,32 @@ a.seq-arrow:hover { background: var(--line-soft); }
 }
 .admin-feedback.ok { background: var(--accent-soft); color: var(--good); }
 .admin-feedback.err { background: var(--paper-3); color: var(--warn); }
+/* Each row of boxes is a grid, so its boxes share the width evenly and wrap
+   as a whole: the menus row has one column per menu (--cols, set from the
+   config), the commands row a double column for the free-form box. Medium
+   widths go to two columns (the free-form box then spans both), phones to
+   one. */
 .admin-boxes {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   gap: 0.75rem;
   margin: 1rem 0;
+}
+.admin-boxes-commands {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 1100px) {
+  .admin-boxes,
+  .admin-boxes-commands {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-boxes-commands > .admin-box-wide { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .admin-boxes,
+  .admin-boxes-commands {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .admin-box {
   background: var(--paper-2);
@@ -3033,6 +3054,7 @@ a.seq-arrow:hover { background: var(--line-soft); }
   min-width: 16rem;
   box-shadow: var(--shadow-card);
 }
+.admin-boxes > .admin-box { min-width: 0; }
 .admin-box h2,
 .admin-box h3 {
   font-size: 1rem;
@@ -3049,6 +3071,12 @@ a.seq-arrow:hover { background: var(--line-soft); }
   color: var(--ink-soft);
   margin: 0 0 0.5rem;
 }
+/* The key the free-form box will set, under its inputs. */
+.admin-sets {
+  font-family: var(--mono);
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+}
 .admin-row {
   display: flex;
   flex-wrap: wrap;
@@ -3057,6 +3085,9 @@ a.seq-arrow:hover { background: var(--line-soft); }
 }
 .admin-row input,
 .admin-row select {
+  /* Grow with the box, leaving its Send button at the end of the row. */
+  flex: 1 1 8rem;
+  min-width: 0;
   background: var(--paper);
   color: inherit;
   border: 1.25px solid var(--line-mid);
@@ -3074,7 +3105,7 @@ a.seq-arrow:hover { background: var(--line-soft); }
   color: var(--warn);
   margin-top: 0;
 }
-.admin-danger-zone .admin-box { border-color: var(--warn); margin-bottom: 0.75rem; }
+.admin-danger-zone .admin-box { margin-bottom: 0.75rem; }
 
 /* ── Confirm button (destructive actions) ──────────────────────────────── */
 /* Confirm/Cancel share ONE box model so they line up regardless of card width:

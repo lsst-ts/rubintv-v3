@@ -284,9 +284,14 @@ test("the free-form box writes under the control namespace, as V2 did", async ()
       target: { value },
     });
 
+  // Before a key is typed, the line under the inputs shows the prefix that
+  // will be added.
+  expect(within(box).getByText("Sets RUBINTV_CONTROL_…")).toBeDefined();
+
   // Whitespace isn't a key.
   typeKey("   ");
   expect((send as HTMLButtonElement).disabled).toBe(true);
+  expect(within(box).getByText("Sets RUBINTV_CONTROL_…")).toBeDefined();
 
   // The key is prefixed and uppercased, odd characters becoming _, and the
   // key it will set is shown as it's typed.
