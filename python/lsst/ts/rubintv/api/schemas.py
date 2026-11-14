@@ -246,8 +246,9 @@ class AdminStatusOut(BaseModel):
     unavailable)."""
     is_release: bool
     """Whether the running code is a built/deployed image (True) rather than a
-    live local checkout (False). The frontend shows the full setuptools-scm
-    ``version`` only when True; locally it shows just the sha and date."""
+    live local checkout (False). The frontend shows the setuptools-scm
+    ``version`` (less its ``+g<sha>`` local part, which repeats the sha) only
+    when True; locally it shows just the sha and date."""
     redis_enabled: bool
     cache_enabled: bool
     witness_detector_key: str
