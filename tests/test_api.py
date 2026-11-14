@@ -282,14 +282,41 @@ def test_admin_control_set_503_without_redis(seeded_client: TestClient) -> None:
 
 
 def test_admin_control_set_rejects_unknown_key(seeded_client: TestClient) -> None:
-    # An arbitrary (non-config) control key is rejected 400 before any Redis
-    # write, so the endpoint can't set keys outside the configured namespace.
+    # A key outside the RUBINTV_CONTROL_ namespace (here one of the cluster's
+    # status streams) is rejected 400 before any Redis write.
     resp = seeded_client.post(
         "/api/admin/controls/set",
-        json={"key": "RUBINTV_CONTROL_ARBITRARY_INJECTED", "value": "x"},
+        json={"key": "CLUSTER_STATUS_INJECTED", "value": "x"},
         headers={"X-Auth-Request-User": "tester"},
     )
     assert resp.status_code == 400
+
+
+def test_control_key_allowed_covers_the_namespace_and_configured_keys() -> None:
+    from types import SimpleNamespace
+    from typing import cast
+
+    from lsst.ts.rubintv.api.admin import control_key_allowed
+    from lsst.ts.rubintv.state import AppState
+
+    state = cast(
+        "AppState",
+        SimpleNamespace(
+            models=SimpleNamespace(
+                admin_redis_menus=[SimpleNamespace(key="SITE_AOS")],
+                redis_detectors=[],
+            ),
+            settings=SimpleNamespace(
+                witness_detector_key="RUBINTV_CONTROL_WITNESS_DETECTOR",
+                reset_head_node_key="RUBINTV_CONTROL_RESET_HEAD_NODE",
+            ),
+        ),
+    )
+    # Anything under the namespace, as V2's free-form box allowed.
+    assert control_key_allowed(state, "RUBINTV_CONTROL_ANYTHING") is True
+    # A configured key outside it stays writable.
+    assert control_key_allowed(state, "SITE_AOS") is True
+    assert control_key_allowed(state, "CLUSTER_STATUS_SFMSET0") is False
 
 
 def test_admin_reset_head_node_503_without_redis(seeded_client: TestClient) -> None:
@@ -1083,6 +1110,16 @@ def test_admin_actions_write_through_redis(seeded_client: TestClient) -> None:
     )
     assert resp.status_code == 200
     assert fake.store["RUBINTV_CONTROL_AOS_PIPELINE"] == "danish"
+
+    # The free-form box's keys: anything in the control namespace, not just
+    # the menus'.
+    resp = seeded_client.post(
+        "/api/admin/controls/set",
+        json={"key": "RUBINTV_CONTROL_NEW_THING", "value": "ON"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert fake.store["RUBINTV_CONTROL_NEW_THING"] == "ON"
 
     resp = seeded_client.post(
         "/api/admin/witness-detector",

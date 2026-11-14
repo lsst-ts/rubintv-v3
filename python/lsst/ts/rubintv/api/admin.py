@@ -60,6 +60,9 @@ router = APIRouter()
 # app).
 _STATUS_PREFIX = "CLUSTER_STATUS_"
 _RESET_PREFIX = "RUBINTV_CONTROL_RESET_"
+# The control namespace. The Admin page's free-form box writes under it, as
+# V2's did, so any key here may be set.
+_CONTROL_PREFIX = "RUBINTV_CONTROL_"
 
 
 class ControlValue(BaseModel):
@@ -131,7 +134,7 @@ def set_control(
     # store is served to any client, so an unconstrained key would let an
     # admin (or anything past the auth proxy) park arbitrary key/values in a
     # publicly readable namespace.
-    if body.key not in allowed_control_keys(state):
+    if not control_key_allowed(state, body.key):
         log.warning(
             "admin.control.rejected",
             user=user or "?",
@@ -230,16 +233,13 @@ def require_site_admin(
 
 
 def allowed_control_keys(state: AppState) -> set[str]:
-    """The exact Redis keys the admin UI is allowed to write.
+    """The Redis keys the config defines for the admin UI to write.
 
-    The ``controls/set`` endpoint accepts a caller-supplied key; without a
-    bound, an admin (or anything that reached the pod past the auth proxy)
-    could ``SET`` any key the analysis cluster consumes, turning the control
-    channel into an arbitrary command surface. Constrain writes to the keys
-    the config actually defines: the admin menu keys, the witness-detector
-    key, the head-node reset key, and the per-set cluster reset keys derived
-    from the ``redis_detectors`` status keys (the same derivation
-    ``restart_workers`` uses).
+    The admin menu keys, the witness-detector key, the head-node reset key,
+    and the per-set cluster reset keys derived from the ``redis_detectors``
+    status keys (the same derivation ``restart_workers`` uses). With the
+    default settings they all sit under ``RUBINTV_CONTROL_``; listing them
+    keeps an overridden key writable.
     """
     keys = {menu.key for menu in state.models.admin_redis_menus}
     keys.add(state.settings.witness_detector_key)
@@ -247,6 +247,18 @@ def allowed_control_keys(state: AppState) -> set[str]:
     for detector in state.models.redis_detectors:
         keys.add(detector.key.replace(_STATUS_PREFIX, _RESET_PREFIX, 1))
     return keys
+
+
+def control_key_allowed(state: AppState, key: str) -> bool:
+    """Whether the admin endpoints may ``SET`` this key.
+
+    The key is caller-supplied; without a bound, an admin (or anything that
+    reached the pod past the auth proxy) could ``SET`` any key the analysis
+    cluster consumes, such as its stream or status keys. Writes are confined
+    to the ``RUBINTV_CONTROL_`` namespace (where V2's free-form box wrote,
+    by prefixing what was typed) plus any configured key outside it.
+    """
+    return key.startswith(_CONTROL_PREFIX) or key in allowed_control_keys(state)
 
 
 async def _set_redis(state: AppState, key: str, value: str) -> AdminActionOut:
@@ -286,14 +298,13 @@ async def set_site_control(
     state: AppState = Depends(get_app_state),
     user: str = Depends(require_site_admin),
 ) -> AdminActionOut:
-    """Write a control key/value from the admin menu boxes.
+    """Write a control key/value from the menus or the free-form box.
 
-    The key must be one the config defines (see ``allowed_control_keys``): an
-    unknown key is rejected 400 rather than blindly SET, so this endpoint can't
-    be used to write arbitrary keys into the cluster's control namespace.
+    A key outside the control namespace (see ``control_key_allowed``) is
+    rejected 400 rather than blindly SET, so this endpoint can't be used to
+    write the analysis cluster's other keys.
     """
-    allowed = allowed_control_keys(state)
-    if body.key not in allowed:
+    if not control_key_allowed(state, body.key):
         log.warning("admin.control.rejected", user=user or "?", key=body.key)
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, f"control key not permitted: {body.key}"

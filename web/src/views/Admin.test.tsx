@@ -273,25 +273,38 @@ test("a menu sends whichever option is picked", async () => {
   expect((await feedback()).textContent).toBe("AOS Pipeline: done");
 });
 
-test("any key/value pair can be set once a key is given", async () => {
+test("the free-form box writes under the control namespace, as V2 did", async () => {
   stub();
   renderAdmin(createQueryClient());
   const box = await boxFor("Set key / value");
   const send = within(box).getByRole("button", { name: "Send" });
   expect((send as HTMLButtonElement).disabled).toBe(true);
+  const typeKey = (value: string) =>
+    fireEvent.change(within(box).getByLabelText("control key"), {
+      target: { value },
+    });
 
-  fireEvent.change(within(box).getByLabelText("control key"), {
-    target: { value: "RUBINTV_X" },
-  });
+  // Whitespace isn't a key.
+  typeKey("   ");
+  expect((send as HTMLButtonElement).disabled).toBe(true);
+
+  // The key is prefixed and uppercased, odd characters becoming _, and the
+  // key it will set is shown as it's typed.
+  typeKey(" new-thing ");
+  expect(within(box).getByText("Sets RUBINTV_CONTROL_NEW_THING")).toBeDefined();
+  // The value is uppercased, runs of spaces and underscores collapsing to one.
   fireEvent.change(within(box).getByLabelText("control value"), {
-    target: { value: "on" },
+    target: { value: " on  air__now\t" },
   });
   fireEvent.click(send);
   await waitFor(() => expect(posts).toHaveLength(1));
   expect(posts[0].url).toContain("/admin/controls/set");
-  expect(posts[0].body).toEqual({ key: "RUBINTV_X", value: "on" });
+  expect(posts[0].body).toEqual({
+    key: "RUBINTV_CONTROL_NEW_THING",
+    value: "ON_AIR_NOW",
+  });
   const msg = await feedback();
-  expect(msg.textContent).toBe("set RUBINTV_X: done");
+  expect(msg.textContent).toBe("set RUBINTV_CONTROL_NEW_THING: done");
   expect(msg.className).toContain("ok");
 });
 
