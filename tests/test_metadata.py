@@ -1,0 +1,341 @@
+# This file is part of rubintv-v3.
+#
+# Developed for the Vera C. Rubin Observatory Telescope and Site Systems.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+"""MetadataCache.stream: incremental batching, cache-hit fast path, dedupe."""
+
+from __future__ import annotations
+
+import json
+import threading
+from collections.abc import Iterator
+
+import boto3
+import pytest
+from lsst.ts.rubintv.data import metadata as metadata_mod
+from lsst.ts.rubintv.data.metadata import Metadata, MetadataCache
+from moto import mock_aws
+
+from tests.conftest import TEST_BUCKET
+
+DATE = "2026-04-10"
+
+
+class _FakePool:
+    """Minimal S3ClientPool stand-in: one shared moto client for all locs."""
+
+    def __init__(self, client: object) -> None:
+        self._client = client
+
+    def client_for(self, _location: str) -> object:
+        return self._client
+
+
+@pytest.fixture
+def cache() -> Iterator[MetadataCache]:
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=TEST_BUCKET)
+        rows = {str(n): {"Exposure time": float(n)} for n in range(1, 6)}
+        s3.put_object(
+            Bucket=TEST_BUCKET,
+            Key=f"lsstcam/{DATE}/metadata.json",
+            Body=json.dumps(rows).encode(),
+        )
+        pool = _FakePool(s3)
+        yield MetadataCache(pool, {"test": TEST_BUCKET})  # type: ignore[arg-type]
+
+
+async def _collect(cache: MetadataCache) -> tuple[list[Metadata], object]:
+    chunks: list[Metadata] = []
+    etag: object = None
+    async for batch in cache.stream("test", "lsstcam", DATE):
+        if batch.done:
+            etag = batch.etag
+        elif batch.rows:
+            chunks.append(batch.rows)
+    return chunks, etag
+
+
+async def test_stream_batches_and_assembles(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    chunks, etag = await _collect(cache)
+    # 5 rows @ batch 2 -> 3 chunks (2, 2, 1).
+    assert [len(c) for c in chunks] == [2, 2, 1]
+    merged: Metadata = {}
+    for c in chunks:
+        merged.update(c)
+    assert merged == {str(n): {"Exposure time": float(n)} for n in range(1, 6)}
+    assert etag is not None
+
+
+async def test_stream_cache_hit_skips_download(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Prime the cache.
+    await _collect(cache)
+    # A second stream with the same ETag must not call get_object.
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise AssertionError("get_object should not be called on a cache hit")
+
+    monkeypatch.setattr(client, "get_object", _boom)
+    chunks, etag = await _collect(cache)
+    merged: Metadata = {}
+    for c in chunks:
+        merged.update(c)
+    assert len(merged) == 5
+    assert etag is not None
+
+
+async def test_get_fetches_then_serves_from_cache(cache: MetadataCache) -> None:
+    data = await cache.get("test", "lsstcam", DATE)
+    assert len(data) == 5
+    # Second call: head-only ETag check, same data back from the cache.
+    etag, again = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag is not None
+    assert again == data
+
+
+async def test_get_missing_object_returns_empty(cache: MetadataCache) -> None:
+    etag, data = await cache.get_with_etag("test", "lsstcam", "2026-01-01")
+    assert etag is None
+    assert data == {}
+
+
+async def test_get_serves_cached_copy_when_object_deleted(
+    cache: MetadataCache,
+) -> None:
+    # Prime, then delete the object: the cached copy (with its etag) survives.
+    data = await cache.get("test", "lsstcam", DATE)
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+    client.delete_object(Bucket=TEST_BUCKET, Key=f"lsstcam/{DATE}/metadata.json")
+    etag, again = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag is not None
+    assert again == data
+
+
+async def test_stream_missing_object_yields_done_only(
+    cache: MetadataCache,
+) -> None:
+    batches = [b async for b in cache.stream("test", "lsstcam", "2026-01-01")]
+    assert len(batches) == 1
+    assert batches[0].done is True
+    assert batches[0].etag is None
+    assert batches[0].rows == {}
+
+
+async def test_stream_missing_object_serves_cached_copy(
+    cache: MetadataCache,
+) -> None:
+    chunks, etag = await _collect(cache)
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+    client.delete_object(Bucket=TEST_BUCKET, Key=f"lsstcam/{DATE}/metadata.json")
+    chunks, again = await _collect(cache)
+    assert again == etag
+    assert sum(len(c) for c in chunks) == 5
+
+
+async def test_stream_propagates_worker_errors(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(client, "head_object", _boom)
+    with pytest.raises(RuntimeError, match="network down"):
+        async for _ in cache.stream("test", "lsstcam", DATE):
+            pass
+
+
+async def test_get_degrades_to_empty_when_get_object_fails_after_head(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # TOCTOU / corrupt JSON: the HEAD succeeds but the GET then fails (object
+    # deleted between HEAD and GET, or partial/invalid JSON uploaded). The REST
+    # path must degrade to an empty payload, never 500.
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("gone between head and get")
+
+    monkeypatch.setattr(client, "get_object", _boom)
+    etag, data = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert data == {}
+    assert etag is None
+
+
+async def test_get_serves_cached_when_get_object_fails_after_head(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # If a good copy is cached, a later failed refresh serves the cached data
+    # rather than an empty payload or a 500.
+    first_etag, first = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert len(first) == 5
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+    # Change the object so the ETag differs (forces a refresh), then break GET.
+    client.put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps({"1": {"Exposure time": 1.0}, "2": {"Exposure time": 2.0}}),
+    )
+
+    def _boom(*_a: object, **_k: object) -> None:
+        raise RuntimeError("refresh failed")
+
+    monkeypatch.setattr(client, "get_object", _boom)
+    etag, data = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert data == first
+    assert etag == first_etag
+
+
+async def test_cache_evicts_oldest_entries(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_MAX_ENTRIES", 1)
+    other_date = "2026-04-11"
+    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
+    client.put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{other_date}/metadata.json",
+        Body=json.dumps({"9": {"Exposure time": 9.0}}).encode(),
+    )
+    await cache.get("test", "lsstcam", DATE)
+    # Fetching a second date through the streaming path evicts the first.
+    async for _ in cache.stream("test", "lsstcam", other_date):
+        pass
+    assert list(cache._entries) == [  # noqa: SLF001 - test introspection
+        ("test", "lsstcam", other_date)
+    ]
+
+
+async def _rewrite(cache: MetadataCache, rows: Metadata) -> None:
+    # The producer rewrites the whole file; only the content differs.
+    client = cache._pool.client_for("test")  # noqa: SLF001
+    client.put_object(  # type: ignore[attr-defined]
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps(rows).encode(),
+    )
+
+
+async def test_delta_since_the_replaced_version_is_the_difference(
+    cache: MetadataCache,
+) -> None:
+    etag1, rows = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag1 is not None
+    # One row added, one altered, one removed: the usual per-exposure shape
+    # plus the rarer reprocessing cases.
+    rewritten = {**rows, "6": {"Exposure time": 6.0}}
+    rewritten["3"] = {"Exposure time": 3.5}
+    del rewritten["1"]
+    await _rewrite(cache, rewritten)
+
+    delta = await cache.delta_since("test", "lsstcam", DATE, etag1)
+    assert delta is not None
+    assert delta.since == etag1 and delta.etag not in (None, etag1)
+    assert delta.rows == {"6": {"Exposure time": 6.0}, "3": {"Exposure time": 3.5}}
+    assert delta.removed == ["1"]
+    # The cache is current as a side effect, so the next reader is cheap.
+    etag2, data = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag2 == delta.etag and data == rewritten
+
+
+async def test_delta_since_the_current_version_is_empty(
+    cache: MetadataCache,
+) -> None:
+    etag, _ = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag is not None
+    delta = await cache.delta_since("test", "lsstcam", DATE, etag)
+    assert delta is not None
+    assert delta.rows == {} and delta.removed == [] and delta.etag == etag
+
+
+async def test_delta_since_an_unknown_version_is_none(
+    cache: MetadataCache,
+) -> None:
+    # Two rewrites between refreshes: the client's version is not the one
+    # just replaced, so the caller must send the whole document.
+    etag1, rows = await cache.get_with_etag("test", "lsstcam", DATE)
+    assert etag1 is not None
+    await _rewrite(cache, {**rows, "6": {"Exposure time": 6.0}})
+    await cache.get_with_etag("test", "lsstcam", DATE)
+    await _rewrite(cache, {**rows, "7": {"Exposure time": 7.0}})
+    assert await cache.delta_since("test", "lsstcam", DATE, etag1) is None
+    assert await cache.delta_since("test", "lsstcam", DATE, "never-seen") is None
+
+
+async def _rows(cache: MetadataCache, n: int) -> None:
+    await _rewrite(
+        cache, {str(i): {"Exposure time": float(i)} for i in range(1, n + 1)}
+    )
+
+
+@pytest.mark.parametrize("rows", [5, 3], ids=["mid-document", "at-the-end"])
+async def test_an_aborted_stream_stops_and_never_seeds_the_cache(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch, rows: int
+) -> None:
+    # A subscriber leaving mid-transfer sets the abort flag; the worker
+    # stops at its next batch boundary (or before storing, if the document
+    # ran out first), and the partial dict must not be cached as the date's
+    # metadata.
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    await _rows(cache, rows)
+    abort = threading.Event()
+    batches = cache._stream_blocking("test", "lsstcam", DATE, abort)
+    assert len(next(batches).rows) == 2
+    abort.set()
+    assert list(batches) == []
+    assert cache._entries == {}
+
+
+async def test_an_aborted_stream_of_a_cached_copy_stops_too(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    await cache.get_with_etag("test", "lsstcam", DATE)  # cached, 5 rows
+    abort = threading.Event()
+    batches = cache._stream_blocking("test", "lsstcam", DATE, abort)
+    assert len(next(batches).rows) == 2
+    abort.set()
+    # No more rows go out; only the terminal marker, which nobody reads.
+    assert [b.rows for b in batches if not b.done] == []
+
+
+async def test_stream_of_whole_batches_has_no_trailing_chunk(
+    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
+    await _rows(cache, 4)
+    chunks, etag = await _collect(cache)
+    assert [len(c) for c in chunks] == [2, 2]
+    assert etag is not None
+
+
+async def test_delta_since_for_a_date_without_metadata_is_none(
+    cache: MetadataCache,
+) -> None:
+    # Nothing to diff against: the caller falls back to the full stream.
+    assert await cache.delta_since("test", "lsstcam", "2026-04-11", "x") is None

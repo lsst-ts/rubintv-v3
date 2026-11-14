@@ -1,0 +1,25 @@
+# Keep the build context lean and avoid copying host-built artifacts that would
+# shadow the clean in-image installs.
+.git
+.venv
+**/__pycache__
+**/*.pyc
+htmlcov
+.coverage
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Frontend: the image rebuilds these from package-lock in the web stage.
+web/node_modules
+web/dist
+node_modules
+
+# Generated version file (setuptools_scm writes it inside the image).
+python/lsst/ts/rubintv/_version.py
+
+# Local/editor cruft.
+.claude
+docs
+design
+cache

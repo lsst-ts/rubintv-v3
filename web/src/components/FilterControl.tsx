@@ -1,0 +1,450 @@
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type { Metadata } from "../lib/types";
+import {
+  OPS_BY_TYPE,
+  inferType,
+  opLabel,
+  sampleValues,
+  type Filter,
+  type FilterType,
+} from "../lib/filters";
+import { useDismiss } from "../lib/useDismiss";
+import { ariaKeys, keyHint, pageKeysPaused, pressed } from "../lib/shortcuts";
+import { ChevronDownIcon } from "./Icons";
+
+// Highlight the matched substring of a column label.
+function highlight(label: string, q: string) {
+  if (!q) return label;
+  const i = label.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return label;
+  return (
+    <>
+      {label.slice(0, i)}
+      <mark>{label.slice(i, i + q.length)}</mark>
+      {label.slice(i + q.length)}
+    </>
+  );
+}
+
+// Fuzzy-ish column combobox: substring match on the label, keyboard navigable.
+function ColumnCombo({
+  columns,
+  typeOf,
+  value,
+  onChange,
+  inputRef,
+}: {
+  columns: string[];
+  typeOf: (c: string) => FilterType;
+  value: string;
+  onChange: (col: string) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [kbdIdx, setKbdIdx] = useState(0);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(open, rootRef, () => {
+    setOpen(false);
+    setQuery("");
+  });
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return columns;
+    return columns.filter((c) => c.toLowerCase().includes(q));
+  }, [query, columns]);
+
+  // A new search highlights its first match, so show the list from the top.
+  useEffect(() => {
+    setKbdIdx(0);
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [query]);
+
+  // Move the highlight by key, scrolling the list just enough to keep it in
+  // view below the sticky count line; the list shows only seven or so rows.
+  // Only keys scroll: a hovered row is already in view, and scrolling under a
+  // still pointer would move the hover on again.
+  const moveTo = (i: number) => {
+    setKbdIdx(i);
+    const list = listRef.current;
+    const item = list?.querySelectorAll<HTMLElement>(".item")[i];
+    if (!list || !item) return;
+    const head = list.querySelector<HTMLElement>(".count")?.offsetHeight ?? 0;
+    const top = item.offsetTop;
+    const bottom = top + item.offsetHeight;
+    if (top - head < list.scrollTop) {
+      list.scrollTop = top - head;
+    } else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = bottom - list.clientHeight;
+    }
+  };
+
+  const pick = (col: string) => {
+    onChange(col);
+    setOpen(false);
+    setQuery("");
+  };
+
+  const display = open ? query : value;
+
+  return (
+    <span className="filter-combo" ref={rootRef}>
+      <input
+        ref={inputRef}
+        value={display}
+        placeholder="search columns…"
+        aria-label="Filter column"
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            moveTo(Math.min(matches.length - 1, kbdIdx + 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            moveTo(Math.max(0, kbdIdx - 1));
+          } else if (e.key === "Enter" && matches[kbdIdx]) {
+            e.preventDefault();
+            pick(matches[kbdIdx]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+            setQuery("");
+          }
+        }}
+      />
+      {open && (
+        <div
+          className="list"
+          ref={listRef}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <div className="count">
+            {matches.length} of {columns.length} columns
+          </div>
+          {matches.length === 0 && (
+            <div className="empty">no columns match “{query}”</div>
+          )}
+          {matches.map((c, i) => (
+            <div
+              key={c}
+              className={"item" + (i === kbdIdx ? " kbd-active" : "")}
+              onMouseEnter={() => setKbdIdx(i)}
+              onClick={() => pick(c)}
+            >
+              <span className="name">{highlight(c, query)}</span>
+              <span className="type-pill">{typeOf(c)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// The add/edit form shown inside a filter popover. Seeded from `initial` when
+// editing an existing filter; otherwise the column defaults to the first one
+// offered (by the time a popover opens, the async metadata columns have loaded).
+function FilterForm({
+  columns,
+  metadata,
+  initial,
+  title,
+  submitLabel,
+  onSubmit,
+  columnRef,
+}: {
+  columns: string[];
+  metadata: Metadata;
+  initial?: Filter;
+  title: string;
+  submitLabel: string;
+  onSubmit: (f: Filter) => void;
+  columnRef?: RefObject<HTMLInputElement | null>;
+}) {
+  const [draftCol, setDraftCol] = useState(initial?.col ?? "");
+  const [draftOp, setDraftOp] = useState(initial?.op ?? "=");
+  const [draftVal, setDraftVal] = useState(initial?.value ?? "");
+
+  const typeOf = useMemo(
+    () => (c: string) => inferType(metadata, c),
+    [metadata],
+  );
+
+  // Re-default the draft column if it is unset or no longer offered.
+  useEffect(() => {
+    if (columns.length === 0) return;
+    if (!draftCol || !columns.includes(draftCol)) setDraftCol(columns[0]);
+  }, [columns, draftCol]);
+
+  const draftType = draftCol ? typeOf(draftCol) : "string";
+  const availableOps = OPS_BY_TYPE[draftType];
+
+  // Snap the op to a valid one for the column type.
+  useEffect(() => {
+    if (!availableOps.some(([op]) => op === draftOp)) {
+      setDraftOp(availableOps[0][0]);
+    }
+  }, [draftType, availableOps, draftOp]);
+
+  const suggestions = useMemo(
+    () => (draftCol ? sampleValues(metadata, draftCol) : []),
+    [metadata, draftCol],
+  );
+
+  const submit = () => {
+    if (!draftCol || !draftVal.trim()) return;
+    onSubmit({ col: draftCol, op: draftOp, value: draftVal.trim() });
+  };
+
+  const placeholder =
+    draftOp === "between"
+      ? "lo, hi"
+      : draftOp === "in"
+        ? "a, b, c"
+        : (suggestions[0] ?? "value");
+
+  return (
+    <div className="filter-pop" role="dialog" aria-label={title}>
+      <h4>{title}</h4>
+      <div className="col-row">
+        <label>column</label>
+        <ColumnCombo
+          columns={columns}
+          typeOf={typeOf}
+          inputRef={columnRef}
+          value={draftCol}
+          onChange={(k) => {
+            setDraftCol(k);
+            setDraftVal("");
+          }}
+        />
+      </div>
+      <div className="row">
+        <label>op</label>
+        <select
+          className="op"
+          aria-label="Operator"
+          value={draftOp}
+          onChange={(e) => setDraftOp(e.target.value)}
+        >
+          {availableOps.map(([op, lbl]) => (
+            <option key={op} value={op}>
+              {lbl}
+            </option>
+          ))}
+        </select>
+        <input
+          placeholder={placeholder}
+          value={draftVal}
+          aria-label="Filter value"
+          onChange={(e) => setDraftVal(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+      </div>
+      {suggestions.length > 0 && draftOp !== "between" && (
+        <>
+          <div className="hint">common values:</div>
+          <div className="suggestions">
+            {suggestions.map((s) => (
+              <span
+                key={s}
+                className="suggestion"
+                onClick={() =>
+                  setDraftVal((prev) =>
+                    draftOp === "in" && prev ? `${prev}, ${s}` : s,
+                  )
+                }
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        className="apply"
+        disabled={!draftVal.trim()}
+        onClick={submit}
+      >
+        {submitLabel}
+      </button>
+    </div>
+  );
+}
+
+// The "filter" button + add-filter popover.
+export function FilterControl({
+  columns,
+  metadata,
+  filters,
+  setFilters,
+}: {
+  columns: string[];
+  metadata: Metadata;
+  filters: Filter[];
+  setFilters: (f: Filter[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  useDismiss(open, rootRef, () => setOpen(false));
+
+  // / opens the form with its column search in focus, so a filter can be made
+  // without the mouse: type to find the column, Enter, Tab to the value.
+  const columnRef = useRef<HTMLInputElement | null>(null);
+  const [focusAsks, setFocusAsks] = useState(0);
+  useEffect(() => {
+    if (focusAsks) columnRef.current?.focus();
+  }, [focusAsks]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !pressed(e, "addFilter") || pageKeysPaused()) {
+        return;
+      }
+      e.preventDefault();
+      setOpen(true);
+      setFocusAsks((n) => n + 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <span className="filter-cluster" ref={rootRef}>
+      <button
+        type="button"
+        className={"filter-btn" + (filters.length ? " active" : "")}
+        aria-expanded={open}
+        aria-label="Add or edit filters"
+        aria-keyshortcuts={ariaKeys("addFilter")}
+        onClick={() => setOpen((v) => !v)}
+        title={`Add or edit filters (${keyHint("addFilter")})`}
+      >
+        <span>filter</span>
+        {filters.length > 0 && <span className="count">{filters.length}</span>}
+        <ChevronDownIcon />
+      </button>
+
+      {open && (
+        <FilterForm
+          columns={columns}
+          metadata={metadata}
+          title="Add filter"
+          submitLabel="add filter"
+          columnRef={columnRef}
+          onSubmit={(f) => {
+            setFilters([...filters, f]);
+            setOpen(false);
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+// One active filter as a chip. Clicking its body opens the same form, seeded
+// with the filter, to edit it in place; the × removes it.
+function FilterChip({
+  filter,
+  columns,
+  metadata,
+  onChange,
+  onRemove,
+}: {
+  filter: Filter;
+  columns: string[];
+  metadata: Metadata;
+  onChange: (f: Filter) => void;
+  onRemove: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  useDismiss(editing, rootRef, () => setEditing(false));
+
+  return (
+    <span className="filter-cluster" ref={rootRef}>
+      <span className={"filter-chip" + (editing ? " editing" : "")}>
+        <button
+          type="button"
+          className="edit"
+          title="Edit filter"
+          aria-expanded={editing}
+          onClick={() => setEditing((v) => !v)}
+        >
+          <span className="col">{filter.col}</span>
+          <span className="op">
+            {opLabel(inferType(metadata, filter.col), filter.op)}
+          </span>
+          <span className="val">{filter.value}</span>
+        </button>
+        <span className="x" role="button" title="Remove filter" onClick={onRemove}>
+          ×
+        </span>
+      </span>
+      {editing && (
+        <FilterForm
+          columns={columns}
+          metadata={metadata}
+          initial={filter}
+          title="Edit filter"
+          submitLabel="update filter"
+          onSubmit={(f) => {
+            onChange(f);
+            setEditing(false);
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+// The active-filter chip strip, with a count of the rows the filters let
+// through.
+export function FilterBar({
+  columns,
+  metadata,
+  filters,
+  setFilters,
+  shown,
+  total,
+}: {
+  columns: string[];
+  metadata: Metadata;
+  filters: Filter[];
+  setFilters: (f: Filter[]) => void;
+  shown: number;
+  total: number;
+}) {
+  if (filters.length === 0) return null;
+  return (
+    <div className="filter-bar">
+      <span className="label">filters</span>
+      {filters.map((f, i) => (
+        <FilterChip
+          key={i}
+          filter={f}
+          columns={columns}
+          metadata={metadata}
+          onChange={(nf) => setFilters(filters.map((g, j) => (j === i ? nf : g)))}
+          onRemove={() => setFilters(filters.filter((_, j) => j !== i))}
+        />
+      ))}
+      {filters.length > 1 && (
+        <span className="filter-clear" role="button" onClick={() => setFilters([])}>
+          clear all
+        </span>
+      )}
+      <span className="filter-count" role="status">
+        {shown} of {total} row{total === 1 ? "" : "s"}
+      </span>
+    </div>
+  );
+}
