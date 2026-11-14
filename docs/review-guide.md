@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 376 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 378 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -398,8 +398,8 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, and the commit that noted
-  the admin header fix.
+  `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, and the commit
+  that noted the admin access notes.
 
 ---
 
@@ -591,6 +591,12 @@ final `ColumnOrderList` and `useColumnPrefs`.
   finding nothing: `image_count` per camera on `/status`, summed from
   the in-memory index by `EventStore.image_count` (frames plus per-day
   artifacts; no S3). `app_status` turns `async` for loop confinement
+- `1162723` (later) Log refused admin requests and tell non-admins why
+  controls are off: both gates log `admin.denied` (`user`, `reason`
+  `no_user`/`not_admin`, `path`); `/admin/status` echoes the `user`, and
+  the Admin page shows who is signed in and, for a non-admin, an
+  `AdminAccessNote` and every action disabled (the Detectors page gets
+  the note too). An empty header no longer rides the `"*"` wildcard
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
