@@ -275,11 +275,33 @@ closes S3 clients. `kubectl rollout` drains cleanly.
 
 ## Admin access
 
-Control writes (`POST /api/locations/{loc}/admin/controls`) require the
-caller to be in the location's `admin_users` list, identified by the
-`X-Auth-Request-User` header that Gafaelfawr's ingress sets from the login
-session. A request without that header is never an admin. The app is
-embargoed and not publicly reachable; there is no other auth layer.
+The caller is identified by the `X-Auth-Request-User` header that
+Gafaelfawr's ingress sets from the login session. A request without that
+header is never an admin.
+
+Who is an admin comes from `admin_for` in `models_data.yaml`: the entry
+for the site that `RAPID_ANALYSIS_LOCATION` names is copied into every
+location's `admin_users`. `"*"` means any authenticated user, but only
+with `RUBINTV_ALLOW_ADMIN_WILDCARD=true`; without it the wildcard is
+dropped (named admins still apply) and `config.admin_wildcard_disabled`
+is logged.
+
+- Per-location control writes (`POST /api/locations/{loc}/admin/controls`)
+  need the caller in that location's `admin_users`.
+- The Admin and Detectors pages' actions need a site admin (in any
+  location's list): `POST /api/admin/controls/set` (e.g. the AOS Pipeline
+  menu), `/api/admin/witness-detector`, `/api/admin/reset-head-node`,
+  `/api/admin/flush-historical`, `/api/admin/flush-redis` and
+  `/api/detectors/{set}/restart`. `GET /api/admin/status` reports
+  `is_admin` so the frontend can hide these controls; the endpoints are
+  gated regardless.
+
+The header is trusted because the only route in from outside is the
+chart's GafaelfawrIngress, which requires a login over the whole path
+prefix and overwrites any `X-Auth-Request-User` a client sends. Anything
+that reaches the pod's Service directly from inside the cluster bypasses
+Gafaelfawr and could set the header itself. The app is embargoed and not
+publicly reachable; there is no other auth layer.
 
 ## Running
 
