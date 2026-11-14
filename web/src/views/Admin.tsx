@@ -9,6 +9,10 @@ import { AdminAccessNote } from "../components/AdminAccessNote";
 import { ConfirmButton } from "../components/ConfirmButton";
 import type { AdminActionOut, AdminMenuOut, ControlsOut } from "../lib/types";
 
+// The analysis side acknowledges a control key K by writing K_READBACK, and
+// the readback map is keyed by those full names.
+const READBACK_SUFFIX = "_READBACK";
+
 // Global admin/ops panel (one per deployment). Shows the app version, control
 // boxes that send plain-SET values to Redis (with live readback), an arbitrary
 // key/value sender, witness-detector and reset-head-node actions, and a danger
@@ -62,6 +66,7 @@ export function Admin() {
     staleTime: STALE.config,
   });
   const readback = controls ?? {};
+  const readbackOf = (key: string) => readback[key + READBACK_SUFFIX];
 
   // Run an admin action and surface its result/error in the status line.
   const run = async (label: string, fn: () => Promise<AdminActionOut>) => {
@@ -118,7 +123,7 @@ export function Admin() {
           <MenuBox
             key={menu.key}
             menu={menu}
-            value={readback[menu.key]}
+            value={readbackOf(menu.key)}
             disabled={redisDown || locked}
             onSend={(value) =>
               run(menu.title, () => api.setControl(menu.key, value))
@@ -134,9 +139,7 @@ export function Admin() {
         />
 
         <WitnessBox
-          value={
-            status ? readback[status.witness_detector_key] : undefined
-          }
+          value={status ? readbackOf(status.witness_detector_key) : undefined}
           disabled={redisDown || locked}
           onSend={(value) =>
             run("Witness Detector", () => api.setWitnessDetector(value))

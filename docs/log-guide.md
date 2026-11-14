@@ -271,6 +271,7 @@ admin controls answer 503.
 | `redis.config_set.failed` | warning | Keyspace notifications couldn't be turned on (a managed Redis may forbid it), so control values aren't read back live. |
 | `redis.reader.error` | error | A reader (`readback` or `detectors`) failed; traceback attached. |
 | `redis.reader.reconnect` | warning | That reader restarts after `backoff_seconds`. |
+| `redis.readback.seed` | info | On each (re)connect, the configured controls' current `*_READBACK` values were read: `found` of `keys` had one. `found: 0` with controls set means the analysis side isn't writing readbacks. |
 | `redis.detector.seed_failed` | warning | Reading a detector status stream's latest entry at startup failed; it fills in with the next live entry. |
 | `redis.detector.bad_payload` | warning | A detector status entry wasn't valid JSON and was ignored. |
 | `redis.set` | info | A control value was written (`key`). |

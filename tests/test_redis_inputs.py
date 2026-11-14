@@ -192,6 +192,8 @@ class _LoopFakeRedis:
     ) -> None:
         self.store: dict[str, str] = {}
         self.pubsubs: list[_FakePubSub] = []
+        self.mget_calls: list[list[str]] = []
+        self.seeded = asyncio.Event()
         self.closed = False
         # Mirror redis-py's connection_pool.connection_kwargs["db"] so the
         # reader can derive the keyspace-notification DB.
@@ -217,6 +219,11 @@ class _LoopFakeRedis:
 
     async def get(self, key: str) -> str | None:
         return self.store.get(key)
+
+    async def mget(self, keys: list[str]) -> list[str | None]:
+        self.mget_calls.append(list(keys))
+        self.seeded.set()
+        return [self.store.get(key) for key in keys]
 
     async def xread(self, last_ids: dict[str, str], block: int = 0) -> _StreamBatch:
         if self._batches:
@@ -288,6 +295,59 @@ async def test_readback_loop_publishes_control_changes(
 
     await inputs.stop()
     assert fake.closed is True
+
+
+async def test_readback_seeds_the_configured_controls_on_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keyspace events only carry changes, so a control set before the pod
+    # started would show no value until it next changed. The current
+    # readbacks are read on connect instead, and browsers told.
+    bus = EventBus()
+    controls = ControlStore()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        controls,
+        DetectorStore(),
+        [],
+        control_keys=["RUBINTV_CONTROL_AOS", "RUBINTV_CONTROL_UNSET"],
+    )
+    fake = _LoopFakeRedis()
+    fake.store["RUBINTV_CONTROL_AOS_READBACK"] = "DANISH"
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        change = await asyncio.wait_for(anext(stream), timeout=2)
+    assert change.type == "controlReadback"
+    assert fake.mget_calls == [
+        ["RUBINTV_CONTROL_AOS_READBACK", "RUBINTV_CONTROL_UNSET_READBACK"]
+    ]
+    # Only readbacks that exist are stored, under their full key.
+    assert controls.all("*") == {"RUBINTV_CONTROL_AOS_READBACK": "DANISH"}
+    await inputs.stop()
+
+
+async def test_readback_seed_with_nothing_set_publishes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = EventBus()
+    controls = ControlStore()
+    inputs = RedisInputs(
+        "redis://x", bus, controls, DetectorStore(), [], control_keys=["K"]
+    )
+    fake = _LoopFakeRedis()
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        await asyncio.wait_for(fake.seeded.wait(), timeout=2)
+        # Nothing was found, so nothing is published or stored.
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(anext(stream), timeout=0.05)
+    assert controls.all("*") == {}
+    await inputs.stop()
 
 
 async def test_readback_loop_reconnects_after_error(
