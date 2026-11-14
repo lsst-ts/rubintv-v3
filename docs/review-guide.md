@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 381 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 383 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -398,8 +398,8 @@ Safe to skim.
   `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
-  `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`, and
-  the commit that noted the Admin readback and free-form box fixes.
+  `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
+  `460e78f`, and the commit that noted the Admin page's rows.
 
 ---
 
@@ -608,6 +608,11 @@ final `ColumnOrderList` and `useColumnPrefs`.
   value. The server now accepts the whole `RUBINTV_CONTROL_` namespace
   rather than only configured keys (`control_key_allowed`), still
   refusing the cluster's other keys
+- `2ba8518` (later) Admin page: the controls in two grid rows by kind (the
+  menus, one column each; then the free-form box, witness and reset),
+  two columns at medium widths and one on phones; the free-form box's
+  "Sets ..." line spaced and always shown; no orange borders inside the
+  danger zone. CSS and markup only
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
