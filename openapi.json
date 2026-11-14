@@ -1543,6 +1543,17 @@
           "is_admin": {
             "type": "boolean",
             "title": "Is Admin"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
           }
         },
         "type": "object",
@@ -1554,7 +1565,8 @@
           "redis_enabled",
           "cache_enabled",
           "witness_detector_key",
-          "is_admin"
+          "is_admin",
+          "user"
         ],
         "title": "AdminStatusOut",
         "description": "Site-wide admin panel header info."

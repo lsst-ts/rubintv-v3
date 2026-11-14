@@ -30,7 +30,9 @@ Gafaelfawr's ingress sets from the login session.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from typing import NoReturn
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from lsst.ts.rubintv import __version__
 from lsst.ts.rubintv.api.deps import get_app_state, get_location
 from lsst.ts.rubintv.api.schemas import (
@@ -69,7 +71,25 @@ class ControlsOut(BaseModel):
     values: dict[str, str]
 
 
+def _deny(request: Request, user: str | None, detail: str, **fields: str) -> NoReturn:
+    """Log a refused admin request, then refuse it (403).
+
+    ``user`` is ``None`` when no login reached the app (no header), which is
+    what a broken ingress looks like; otherwise a logged-in user who isn't on
+    the list.
+    """
+    log.warning(
+        "admin.denied",
+        user=user,
+        reason="no_user" if user is None else "not_admin",
+        path=request.url.path,
+        **fields,
+    )
+    raise HTTPException(status.HTTP_403_FORBIDDEN, detail)
+
+
 def require_admin(
+    request: Request,
     location: Location = Depends(get_location),
     x_auth_request_user: str | None = Header(default=None),
 ) -> str:
@@ -77,16 +97,18 @@ def require_admin(
 
     ``"*"`` in ``admin_users`` means *any authenticated user*. This is the
     convention used by open deployments (base/tucson/local) where there is
-    no per-user gating.
+    no per-user gating. An empty header is no user.
     """
-    if x_auth_request_user is None:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "admin access required for this location"
-        )
-    if "*" in location.admin_users or x_auth_request_user in location.admin_users:
-        return x_auth_request_user
-    raise HTTPException(
-        status.HTTP_403_FORBIDDEN, "admin access required for this location"
+    user = x_auth_request_user or None
+    if user is not None and (
+        "*" in location.admin_users or user in location.admin_users
+    ):
+        return user
+    _deny(
+        request,
+        user,
+        "admin access required for this location",
+        location=location.name,
     )
 
 
@@ -184,9 +206,10 @@ def is_site_admin(state: AppState, x_auth_request_user: str | None) -> bool:
 
     ``admin_users`` is the same site-wide list on every location (the loader
     copies the site's ``admin_for`` entry), so 'admin for any location' is
-    equivalent to 'site admin'. ``"*"`` means any authenticated user.
+    equivalent to 'site admin'. ``"*"`` means any authenticated user. An
+    empty header is no user.
     """
-    if x_auth_request_user is None:
+    if not x_auth_request_user:
         return False
     return any(
         "*" in loc.admin_users or x_auth_request_user in loc.admin_users
@@ -195,13 +218,15 @@ def is_site_admin(state: AppState, x_auth_request_user: str | None) -> bool:
 
 
 def require_site_admin(
+    request: Request,
     state: AppState = Depends(get_app_state),
     x_auth_request_user: str | None = Header(default=None),
 ) -> str:
     """Ensure the caller is an admin for *any* location in this deployment."""
-    if not is_site_admin(state, x_auth_request_user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin access required")
-    return x_auth_request_user or ""
+    user = x_auth_request_user or None
+    if user is None or not is_site_admin(state, user):
+        _deny(request, user, "admin access required")
+    return user
 
 
 def allowed_control_keys(state: AppState) -> set[str]:
@@ -251,6 +276,7 @@ def get_admin_status(
         cache_enabled=state.cache_enabled,
         witness_detector_key=state.settings.witness_detector_key,
         is_admin=is_site_admin(state, x_auth_request_user),
+        user=x_auth_request_user or None,
     )
 
 

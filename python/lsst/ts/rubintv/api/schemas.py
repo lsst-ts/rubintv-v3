@@ -256,6 +256,10 @@ class AdminStatusOut(BaseModel):
     the deployment's ``admin_users`` list). The frontend uses this to hide
     admin-only controls; the endpoints themselves stay server-gated
     regardless."""
+    user: str | None
+    """The login the request arrived with (``X-Auth-Request-User``), or
+    ``None`` when no login reached the app. The Admin page shows it, so a
+    refused user can see who they are signed in as."""
 
 
 class AdminActionOut(BaseModel):

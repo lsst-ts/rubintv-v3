@@ -3005,6 +3005,13 @@ a.seq-arrow:hover { background: var(--line-soft); }
   font-size: 0.85rem;
 }
 .admin-warn { color: var(--warn); }
+.admin-locked {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+  background: var(--paper-3);
+  color: var(--ink);
+}
 .admin-feedback {
   font-size: 0.85rem;
   padding: 0.4rem 0.75rem;

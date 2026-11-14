@@ -5,6 +5,7 @@ import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { AdminAccessNote } from "../components/AdminAccessNote";
 import { ConfirmButton } from "../components/ConfirmButton";
 import type { AdminActionOut, AdminMenuOut, ControlsOut } from "../lib/types";
 
@@ -37,6 +38,9 @@ export function Admin() {
   // not configured" warning says why they're greyed. Until /admin/status
   // resolves we optimistically leave them enabled.
   const redisDown = status ? !status.redis_enabled : false;
+  // A non-admin's writes would only 403, so disable every action and say why
+  // up front rather than after a click. Same optimism until status resolves.
+  const locked = status ? !status.is_admin : false;
 
   const { data: menus } = useQuery({
     queryKey: ["adminMenus"],
@@ -83,6 +87,7 @@ export function Admin() {
               ? `v${status.version} · ${status.git_sha} · ${status.commit_date}`
               : `${status.git_sha} · ${status.commit_date}`
             : ""}
+          {status?.user && <span> · signed in as {status.user}</span>}
           {status && !status.redis_enabled && (
             <span className="admin-warn" role="alert">
               {" "}
@@ -91,6 +96,13 @@ export function Admin() {
           )}
         </span>
       </header>
+
+      {status && locked && (
+        <AdminAccessNote
+          user={status.user ?? null}
+          consequence="the controls below are disabled"
+        />
+      )}
 
       {feedback && (
         <p
@@ -107,7 +119,7 @@ export function Admin() {
             key={menu.key}
             menu={menu}
             value={readback[menu.key]}
-            disabled={redisDown}
+            disabled={redisDown || locked}
             onSend={(value) =>
               run(menu.title, () => api.setControl(menu.key, value))
             }
@@ -115,7 +127,7 @@ export function Admin() {
         ))}
 
         <ArbitraryBox
-          disabled={redisDown}
+          disabled={redisDown || locked}
           onSend={(key, value) =>
             run(`set ${key}`, () => api.setControl(key, value))
           }
@@ -125,7 +137,7 @@ export function Admin() {
           value={
             status ? readback[status.witness_detector_key] : undefined
           }
-          disabled={redisDown}
+          disabled={redisDown || locked}
           onSend={(value) =>
             run("Witness Detector", () => api.setWitnessDetector(value))
           }
@@ -137,7 +149,7 @@ export function Admin() {
             label="Reset Head Node"
             confirmLabel="Reset — confirm?"
             danger
-            disabled={redisDown}
+            disabled={redisDown || locked}
             onConfirm={() => run("Reset Head Node", api.resetHeadNode)}
           />
         </div>
@@ -155,6 +167,7 @@ export function Admin() {
             label="Flush historical cache"
             confirmLabel="Flush cache — confirm?"
             danger
+            disabled={locked}
             onConfirm={() =>
               run("Flush historical cache", api.flushHistorical)
             }
@@ -169,7 +182,7 @@ export function Admin() {
             label="Flush Redis"
             confirmLabel="Flush Redis — confirm?"
             danger
-            disabled={redisDown}
+            disabled={redisDown || locked}
             onConfirm={() => run("Flush Redis", api.flushRedis)}
           />
         </div>

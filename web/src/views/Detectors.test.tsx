@@ -9,8 +9,12 @@ import { Detectors } from "./Detectors";
 let posts: string[] = [];
 
 // `admin` controls what /admin/status reports for is_admin — the Restart
-// controls are hidden unless the user is a site admin.
-function stub({ admin = true }: { admin?: boolean } = {}) {
+// controls are hidden unless the user is a site admin — and `user` the login
+// it echoes back (null: none reached the app).
+function stub({
+  admin = true,
+  user = "tester",
+}: { admin?: boolean; user?: string | null } = {}) {
   posts = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -24,7 +28,7 @@ function stub({ admin = true }: { admin?: boolean } = {}) {
     if (url.includes("/admin/status")) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ is_admin: admin }),
+        json: () => Promise.resolve({ is_admin: admin, user }),
       });
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -157,14 +161,35 @@ test("restart requires a confirm click, then POSTs the set's restart", async () 
 });
 
 test("non-admins get no restart controls (server-gated action is hidden)", async () => {
-  stub({ admin: false });
+  stub({ admin: false, user: "bob" });
   const qc = createQueryClient();
   renderDetectors(qc);
-  // The page renders fully; only the admin-only Restart buttons are absent.
+  // The page renders fully; only the admin-only Restart buttons are absent,
+  // and a note says why.
   await screen.findByText("Imaging Worker Set 1");
-  await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "Restart Workers" })).toBeNull(),
+  expect(
+    (await screen.findByRole("note")).textContent,
+  ).toBe(
+    "Signed in as bob, who isn't an admin for this site, so the worker restart buttons are hidden.",
   );
+  expect(screen.queryByRole("button", { name: "Restart Workers" })).toBeNull();
+});
+
+test("with no login, the note blames the deployment, not the admin list", async () => {
+  stub({ admin: false, user: null });
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  expect((await screen.findByRole("note")).textContent).toMatch(
+    /^No login reached the app, so the worker restart buttons are hidden\./,
+  );
+});
+
+test("admins see no access note", async () => {
+  stub();
+  const qc = createQueryClient();
+  renderDetectors(qc);
+  await screen.findAllByRole("button", { name: "Restart Workers" });
+  expect(screen.queryByRole("note")).toBeNull();
 });
 
 const SET1 = "Imaging Worker Set 1";
