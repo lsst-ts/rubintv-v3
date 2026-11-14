@@ -113,6 +113,26 @@ test("local dev drops the version, showing just sha and date", async () => {
   expect(screen.queryByText(/v3\.0\.0/)).toBeNull();
 });
 
+test("a deployed dev build drops the version's +g<sha>, which repeats the sha", async () => {
+  stub();
+  // A build between tags: setuptools-scm's version carries the commit as a
+  // local part, the same commit the sha beside it names.
+  const inner = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const resp = await inner(input, init);
+    if (!String(input).endsWith("/admin/status")) return resp;
+    const body = (await resp.json()) as Record<string, unknown>;
+    return {
+      ok: true,
+      json: () => Promise.resolve({ ...body, version: "0.1.dev400+gabc1234de" }),
+    };
+  }) as typeof fetch;
+  renderAdmin(createQueryClient());
+  expect(
+    await screen.findByText("v0.1.dev400 · abc1234 · 2026-07-02"),
+  ).toBeDefined();
+});
+
 test("live readback updates the menu's current value", async () => {
   stub();
   const qc = createQueryClient();

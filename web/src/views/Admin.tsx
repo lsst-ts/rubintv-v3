@@ -105,12 +105,14 @@ export function Admin() {
       <header className="admin-header">
         <h1>Admin</h1>
         <span className="admin-version">
-          {/* Deployed images show the full setuptools-scm version; a local
-              checkout drops the noisy `dev+g<sha>` string and shows just the
-              sha and date. */}
+          {/* Deployed images show the setuptools-scm version without its
+              local part (`+g<sha>`, plus `.d<date>` if dirty), which only
+              repeats the sha beside it: `0.1.dev400+g9dff062da` reads
+              `v0.1.dev400 · 9dff062`. A local checkout shows just the sha
+              and date. */}
           {status
             ? status.is_release
-              ? `v${status.version} · ${status.git_sha} · ${status.commit_date}`
+              ? `v${status.version.split("+")[0]} · ${status.git_sha} · ${status.commit_date}`
               : `${status.git_sha} · ${status.commit_date}`
             : ""}
           {status?.user && <span> · signed in as {status.user}</span>}
