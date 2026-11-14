@@ -269,6 +269,11 @@ server for `*_READBACK` updates (`notify-keyspace-events KEA`). The Admin
 page's current values don't depend on them at load: on each (re)connect the
 app reads `K_READBACK` for every menu key and the witness-detector key.
 
+Admin writes are confined to the `RUBINTV_CONTROL_` namespace (plus any
+configured key outside it). The Admin page's free-form box writes there as
+V2's did: the typed key is prefixed and uppercased, and the value
+uppercased with spaces collapsed to `_`.
+
 ## Graceful shutdown
 
 On SIGTERM the app stops Redis readers, closes WebSocket connections,

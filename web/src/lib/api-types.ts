@@ -351,11 +351,11 @@ export interface paths {
         put?: never;
         /**
          * Set Site Control
-         * @description Write a control key/value from the admin menu boxes.
+         * @description Write a control key/value from the menus or the free-form box.
          *
-         *     The key must be one the config defines (see ``allowed_control_keys``): an
-         *     unknown key is rejected 400 rather than blindly SET, so this endpoint can't
-         *     be used to write arbitrary keys into the cluster's control namespace.
+         *     A key outside the control namespace (see ``control_key_allowed``) is
+         *     rejected 400 rather than blindly SET, so this endpoint can't be used to
+         *     write the analysis cluster's other keys.
          */
         post: operations["set_site_control_api_admin_controls_set_post"];
         delete?: never;

@@ -13,6 +13,27 @@ import type { AdminActionOut, AdminMenuOut, ControlsOut } from "../lib/types";
 // the readback map is keyed by those full names.
 const READBACK_SUFFIX = "_READBACK";
 
+// The free-form box writes under the control namespace, as V2's did: the
+// typed key is prefixed and uppercased (anything but letters, digits and _
+// becomes _), and the value is uppercased with spaces and control characters
+// collapsed to single underscores.
+const CONTROL_PREFIX = "RUBINTV_CONTROL_";
+
+function controlKey(typed: string): string {
+  return CONTROL_PREFIX + typed.trim().replace(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
+}
+
+function controlValue(typed: string): string {
+  return (
+    typed
+      .trim()
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x1F\x7F ]+/g, "_")
+      .replace(/_+/g, "_")
+      .toUpperCase()
+  );
+}
+
 // Global admin/ops panel (one per deployment). Shows the app version, control
 // boxes that send plain-SET values to Redis (with live readback), an arbitrary
 // key/value sender, witness-detector and reset-head-node actions, and a danger
@@ -234,7 +255,8 @@ function MenuBox({
   );
 }
 
-// Send any control key/value pair.
+// Send any key/value pair in the control namespace (see controlKey and
+// controlValue); the key it will write is shown as it's typed.
 function ArbitraryBox({
   onSend,
   disabled = false,
@@ -262,12 +284,15 @@ function ArbitraryBox({
         />
         <button
           type="button"
-          onClick={() => onSend(key, value)}
-          disabled={disabled || key === ""}
+          onClick={() => onSend(controlKey(key), controlValue(value))}
+          disabled={disabled || key.trim() === ""}
         >
           Send
         </button>
       </div>
+      {key.trim() !== "" && (
+        <p className="admin-note">Sets {controlKey(key)}</p>
+      )}
     </div>
   );
 }

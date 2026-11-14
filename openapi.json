@@ -812,7 +812,7 @@
           "admin"
         ],
         "summary": "Set Site Control",
-        "description": "Write a control key/value from the admin menu boxes.\n\nThe key must be one the config defines (see ``allowed_control_keys``): an\nunknown key is rejected 400 rather than blindly SET, so this endpoint can't\nbe used to write arbitrary keys into the cluster's control namespace.",
+        "description": "Write a control key/value from the menus or the free-form box.\n\nA key outside the control namespace (see ``control_key_allowed``) is\nrejected 400 rather than blindly SET, so this endpoint can't be used to\nwrite the analysis cluster's other keys.",
         "operationId": "set_site_control_api_admin_controls_set_post",
         "parameters": [
           {
