@@ -1,10 +1,11 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { useDismiss } from "../lib/useDismiss";
 import { AdminAccessNote } from "../components/AdminAccessNote";
 import { ConfirmButton } from "../components/ConfirmButton";
 import type { AdminActionOut, AdminMenuOut, ControlsOut } from "../lib/types";
@@ -16,11 +17,13 @@ const READBACK_SUFFIX = "_READBACK";
 // The free-form box writes under the control namespace, as V2's did: the
 // typed key is prefixed and uppercased (anything but letters, digits and _
 // becomes _), and the value is uppercased with spaces and control characters
-// collapsed to single underscores.
+// collapsed to single underscores. Unlike V2, a key typed in full doesn't get
+// the prefix twice.
 const CONTROL_PREFIX = "RUBINTV_CONTROL_";
 
 function controlKey(typed: string): string {
-  return CONTROL_PREFIX + typed.trim().replace(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
+  const key = typed.trim().replace(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
+  return key.startsWith(CONTROL_PREFIX) ? key : CONTROL_PREFIX + key;
 }
 
 function controlValue(typed: string): string {
@@ -34,20 +37,48 @@ function controlValue(typed: string): string {
   );
 }
 
+type Outcome = { state: "pending" | "ok" | "err"; text: string };
+
+// The time an outcome is shown at, so sending the same value twice still
+// visibly changes the box.
+const now = () => new Date().toTimeString().slice(0, 8);
+
+// One box's action and its outcome. Each box reports in itself, next to the
+// control that was used, so a send (or a 503 "redis not configured", or a 403
+// from the admin gate) can't go unnoticed at the other end of the page.
+function useAction() {
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const run = async (fn: () => Promise<AdminActionOut>, okText?: string) => {
+    setOutcome({ state: "pending", text: "Sending…" });
+    try {
+      const res = await fn();
+      const text = okText ?? (res.detail || "Done");
+      setOutcome({ state: res.ok ? "ok" : "err", text: `${text} · ${now()}` });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      setOutcome({ state: "err", text: `Failed — ${msg} · ${now()}` });
+    }
+  };
+  return { outcome, run };
+}
+
+function ActionStatus({ outcome }: { outcome: Outcome | null }) {
+  if (!outcome) return null;
+  return (
+    <p role="status" className={`admin-status ${outcome.state}`}>
+      {outcome.text}
+    </p>
+  );
+}
+
 // Global admin/ops panel (one per deployment). Shows the app version, control
 // boxes that send plain-SET values to Redis (with live readback), an arbitrary
 // key/value sender, witness-detector and reset-head-node actions, and a danger
 // zone (flush historical cache, flush redis). Control readback updates live via
 // the admin WS topic.
-//
-// Every action reports its outcome in a shared status line so a 503 ("redis not
-// configured") or a 403 (admin gate) is visible rather than silent.
 export function Admin() {
   usePageTitle("Admin");
   const qc = useQueryClient();
-  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
   // Site-wide subscription (empty location keys the admin|| topic).
   useLiveTopic({ topic: "admin", location: "" });
 
@@ -89,17 +120,6 @@ export function Admin() {
   const readback = controls ?? {};
   const readbackOf = (key: string) => readback[key + READBACK_SUFFIX];
 
-  // Run an admin action and surface its result/error in the status line.
-  const run = async (label: string, fn: () => Promise<AdminActionOut>) => {
-    try {
-      const res = await fn();
-      setFeedback({ ok: res.ok, text: `${label}: ${res.detail || "done"}` });
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : String(err);
-      setFeedback({ ok: false, text: `${label} failed — ${msg}` });
-    }
-  };
-
   return (
     <section className="admin">
       <header className="admin-header">
@@ -132,15 +152,6 @@ export function Admin() {
         />
       )}
 
-      {feedback && (
-        <p
-          role="status"
-          className={feedback.ok ? "admin-feedback ok" : "admin-feedback err"}
-        >
-          {feedback.text}
-        </p>
-      )}
-
       {/* Two rows, by kind: the configured menus, then the free-form
           writes and the head-node reset. Each row fills the width. */}
       <div
@@ -153,9 +164,7 @@ export function Admin() {
             menu={menu}
             value={readbackOf(menu.key)}
             disabled={redisDown || locked}
-            onSend={(value) =>
-              run(menu.title, () => api.setControl(menu.key, value))
-            }
+            send={(value) => api.setControl(menu.key, value)}
           />
         ))}
       </div>
@@ -163,103 +172,112 @@ export function Admin() {
       <div className="admin-boxes admin-boxes-commands">
         <ArbitraryBox
           disabled={redisDown || locked}
-          onSend={(key, value) =>
-            run(`set ${key}`, () => api.setControl(key, value))
-          }
+          send={(key, value) => api.setControl(key, value)}
         />
 
         <WitnessBox
           value={status ? readbackOf(status.witness_detector_key) : undefined}
           disabled={redisDown || locked}
-          onSend={(value) =>
-            run("Witness Detector", () => api.setWitnessDetector(value))
-          }
+          send={(value) => api.setWitnessDetector(value)}
         />
 
-        <div className="admin-box">
-          <h2>Reset Head Node</h2>
-          <ConfirmButton
-            label="Reset Head Node"
-            confirmLabel="Reset — confirm?"
-            danger
-            disabled={redisDown || locked}
-            onConfirm={() => run("Reset Head Node", api.resetHeadNode)}
-          />
-        </div>
+        <ConfirmBox
+          title="Reset Head Node"
+          confirmLabel="Reset — confirm?"
+          okText="Reset requested"
+          disabled={redisDown || locked}
+          action={api.resetHeadNode}
+        />
       </div>
 
       <div className="admin-danger-zone">
         <h2>Danger zone</h2>
-        <div className="admin-box">
-          <h3>Flush historical cache</h3>
-          <p className="admin-note">
-            Clears the cached history and rescans from S3. The site reloads
-            history in the background.
-          </p>
-          <ConfirmButton
-            label="Flush historical cache"
-            confirmLabel="Flush cache — confirm?"
-            danger
-            disabled={locked}
-            onConfirm={() =>
-              run("Flush historical cache", api.flushHistorical)
-            }
-          />
-        </div>
-        <div className="admin-box">
-          <h3>Flush Redis</h3>
-          <p className="admin-note">
-            Wipes the entire Redis database. This cannot be undone.
-          </p>
-          <ConfirmButton
-            label="Flush Redis"
-            confirmLabel="Flush Redis — confirm?"
-            danger
-            disabled={redisDown || locked}
-            onConfirm={() => run("Flush Redis", api.flushRedis)}
-          />
-        </div>
+        <ConfirmBox
+          title="Flush historical cache"
+          note="Clears the cached history and rescans from S3. The site reloads history in the background."
+          confirmLabel="Flush cache — confirm?"
+          disabled={locked}
+          action={api.flushHistorical}
+          minor
+        />
+        <ConfirmBox
+          title="Flush Redis"
+          note="Wipes the entire Redis database. This cannot be undone."
+          confirmLabel="Flush Redis — confirm?"
+          disabled={redisDown || locked}
+          action={api.flushRedis}
+          minor
+        />
       </div>
     </section>
   );
 }
 
-// A configured control menu: shows the current readback (or a placeholder) and
-// a dropdown of the menu's options that sends the chosen value on click.
+// A configured control menu: the current readback (or a placeholder), and a
+// list of the menu's values that sends one as soon as it's picked, as V2's
+// did. Not a <select>: on Windows and Linux arrowing through a closed select
+// fires a change per step, which would send every value passed over.
 function MenuBox({
   menu,
   value,
-  onSend,
+  send,
   disabled = false,
 }: {
   menu: AdminMenuOut;
   value: string | undefined;
-  onSend: (value: string) => void;
+  send: (value: string) => Promise<AdminActionOut>;
   disabled?: boolean;
 }) {
-  const [choice, setChoice] = useState(menu.items[0]?.label ?? "");
+  const { outcome, run } = useAction();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(open, ref, () => setOpen(false));
+  const pick = (item: string) => {
+    setOpen(false);
+    void run(() => send(item), `Sent ${item}`);
+  };
+  // The analysis side's readback may differ in case from the menu's value
+  // (it has written "Danish" for DANISH).
+  const isCurrent = (item: string) =>
+    value !== undefined && item.toUpperCase() === value.toUpperCase();
   return (
     <div className="admin-box">
       <h2>{menu.title}</h2>
       <p className="admin-readback">
         Current: <strong>{value ?? "—"}</strong>
       </p>
-      <div className="admin-row">
-        <select value={choice} onChange={(e) => setChoice(e.target.value)}>
-          {menu.items.map((item) => (
-            <option key={item.label} value={item.label}>
-              {item.label}
-            </option>
-          ))}
-        </select>
+      <div className="admin-picker" ref={ref}>
         <button
           type="button"
-          onClick={() => onSend(choice)}
-          disabled={disabled || !choice}
+          className="admin-picker-trigger"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={() => setOpen((o) => !o)}
         >
-          Send
+          Send a value <span aria-hidden="true">▾</span>
         </button>
+        {open && (
+          <div className="admin-picker-pop" role="menu" aria-label={menu.title}>
+            {menu.items.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className={
+                  isCurrent(item.label)
+                    ? "admin-picker-item current"
+                    : "admin-picker-item"
+                }
+                onClick={() => pick(item.label)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      <ActionStatus outcome={outcome} />
     </div>
   );
 }
@@ -267,14 +285,22 @@ function MenuBox({
 // Send any key/value pair in the control namespace (see controlKey and
 // controlValue); the key it will write is shown as it's typed.
 function ArbitraryBox({
-  onSend,
+  send,
   disabled = false,
 }: {
-  onSend: (key: string, value: string) => void;
+  send: (key: string, value: string) => Promise<AdminActionOut>;
   disabled?: boolean;
 }) {
+  const { outcome, run } = useAction();
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
+  // Nothing typed (or only the prefix itself) names no key.
+  const full = controlKey(key);
+  const noKey = full === CONTROL_PREFIX;
+  const onSend = () => {
+    const v = controlValue(value);
+    void run(() => send(full, v), `Sent ${v} to ${full}`);
+  };
   return (
     <div className="admin-box admin-box-wide">
       <h2>Set key / value</h2>
@@ -291,19 +317,16 @@ function ArbitraryBox({
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
-        <button
-          type="button"
-          onClick={() => onSend(controlKey(key), controlValue(value))}
-          disabled={disabled || key.trim() === ""}
-        >
+        <button type="button" onClick={onSend} disabled={disabled || noKey}>
           Send
         </button>
       </div>
       {/* Always present, so the box doesn't grow on the first keystroke;
           before a key is typed it shows the prefix that will be added. */}
       <p className="admin-note admin-sets">
-        Sets {key.trim() === "" ? `${CONTROL_PREFIX}…` : controlKey(key)}
+        Sets {noKey ? `${CONTROL_PREFIX}…` : full}
       </p>
+      <ActionStatus outcome={outcome} />
     </div>
   );
 }
@@ -311,13 +334,14 @@ function ArbitraryBox({
 // Send a value to the witness-detector control key.
 function WitnessBox({
   value,
-  onSend,
+  send,
   disabled = false,
 }: {
   value: string | undefined;
-  onSend: (value: string) => void;
+  send: (value: string) => Promise<AdminActionOut>;
   disabled?: boolean;
 }) {
+  const { outcome, run } = useAction();
   const [v, setV] = useState("");
   return (
     <div className="admin-box">
@@ -334,12 +358,50 @@ function WitnessBox({
         />
         <button
           type="button"
-          onClick={() => onSend(v)}
+          onClick={() => void run(() => send(v), `Sent ${v}`)}
           disabled={disabled || v === ""}
         >
           Send
         </button>
       </div>
+      <ActionStatus outcome={outcome} />
+    </div>
+  );
+}
+
+// A one-button action behind a confirm click (head-node reset, the danger
+// zone's flushes). `minor` boxes sit inside a section with its own heading.
+function ConfirmBox({
+  title,
+  note,
+  confirmLabel,
+  okText,
+  disabled = false,
+  action,
+  minor = false,
+}: {
+  title: string;
+  note?: string;
+  confirmLabel: string;
+  okText?: string;
+  disabled?: boolean;
+  action: () => Promise<AdminActionOut>;
+  minor?: boolean;
+}) {
+  const { outcome, run } = useAction();
+  const Heading = minor ? "h3" : "h2";
+  return (
+    <div className="admin-box">
+      <Heading>{title}</Heading>
+      {note && <p className="admin-note">{note}</p>}
+      <ConfirmButton
+        label={title}
+        confirmLabel={confirmLabel}
+        danger
+        disabled={disabled}
+        onConfirm={() => run(action, okText)}
+      />
+      <ActionStatus outcome={outcome} />
     </div>
   );
 }

@@ -271,8 +271,12 @@ app reads `K_READBACK` for every menu key and the witness-detector key.
 
 Admin writes are confined to the `RUBINTV_CONTROL_` namespace (plus any
 configured key outside it). The Admin page's free-form box writes there as
-V2's did: the typed key is prefixed and uppercased, and the value
-uppercased with spaces collapsed to `_`.
+V2's did: the typed key is prefixed (unless typed in full) and uppercased,
+and the value uppercased with spaces collapsed to `_`. Its menus send a
+value as soon as it's picked, also as V2's did, and every box reports its
+own send. A send the analysis side never acknowledges shows in the log as
+an `admin.control.set` with no `redis.readback.change` for that key after
+it.
 
 ## Graceful shutdown
 
