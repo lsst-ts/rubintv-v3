@@ -27,6 +27,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from lsst.ts.rubintv.config.models import RedisDetector
@@ -36,6 +37,7 @@ from lsst.ts.rubintv.data.redis_inputs import (
     RedisInputs,
     RedisUnavailable,
     apply_detector_entry,
+    redacted,
 )
 
 
@@ -327,6 +329,100 @@ async def test_readback_seeds_the_configured_controls_on_connect(
     # Only readbacks that exist are stored, under their full key.
     assert controls.all("*") == {"RUBINTV_CONTROL_AOS_READBACK": "DANISH"}
     await inputs.stop()
+
+
+def _record_log(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
+    """Capture redis_inputs' log calls as (event, fields)."""
+    logged: list[tuple[str, dict[str, Any]]] = []
+
+    class Recorder:
+        def __getattr__(self, level: str) -> object:
+            return lambda event, **fields: logged.append((event, fields))
+
+    monkeypatch.setattr("lsst.ts.rubintv.data.redis_inputs.log", Recorder())
+    return logged
+
+
+@pytest.mark.parametrize(
+    ("url", "logged"),
+    [
+        ("redis://:s3cret@redis.example:6379", "redis://:***@redis.example:6379"),
+        (
+            "redis://ra:s3cret@redis.example:6379/2",
+            "redis://ra:***@redis.example:6379/2",
+        ),
+        ("redis://redis.example:6379", "redis://redis.example:6379"),
+        ("redis://ra@redis.example:6379", "redis://ra@redis.example:6379"),
+    ],
+)
+def test_redacted_masks_only_the_password(url: str, logged: str) -> None:
+    assert redacted(url) == logged
+
+
+async def test_connect_log_keeps_the_password_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The RA_REDIS_* URL carries the password; it was logged whole at every
+    # startup.
+    logged = _record_log(monkeypatch)
+    inputs = RedisInputs(
+        "redis://:s3cret@redis.example:6379",
+        EventBus(),
+        ControlStore(),
+        DetectorStore(),
+        [],
+    )
+    _patch_from_url(monkeypatch, _LoopFakeRedis())
+    await inputs.start()
+    await inputs.stop()
+    assert ("redis.connected", {"url": "redis://:***@redis.example:6379"}) in logged
+    assert "s3cret" not in repr(logged)
+
+
+async def test_readback_seed_and_changes_are_logged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Whether the analysis side answered a send is otherwise invisible: the
+    # seed lists what it found, and each later readback is logged with its
+    # value.
+    logged = _record_log(monkeypatch)
+    bus = EventBus()
+    inputs = RedisInputs(
+        "redis://x",
+        bus,
+        ControlStore(),
+        DetectorStore(),
+        [],
+        control_keys=["RUBINTV_CONTROL_AOS", "RUBINTV_CONTROL_UNSET"],
+    )
+    fake = _LoopFakeRedis(
+        messages=[
+            {
+                "type": "pmessage",
+                "channel": "__keyspace@0__:RUBINTV_CONTROL_AOS_READBACK",
+            }
+        ]
+    )
+    fake.store["RUBINTV_CONTROL_AOS_READBACK"] = "Danish"
+    _patch_from_url(monkeypatch, fake)
+
+    async with bus.subscribe() as stream:
+        await inputs.start()
+        await asyncio.wait_for(anext(stream), timeout=2)  # the seed
+        await asyncio.wait_for(anext(stream), timeout=2)  # the change
+    await inputs.stop()
+    assert (
+        "redis.readback.seed",
+        {
+            "found": 1,
+            "keys": 2,
+            "readbacks": {"RUBINTV_CONTROL_AOS_READBACK": "Danish"},
+        },
+    ) in logged
+    assert (
+        "redis.readback.change",
+        {"key": "RUBINTV_CONTROL_AOS_READBACK", "value": "Danish"},
+    ) in logged
 
 
 async def test_readback_seed_with_nothing_set_publishes_nothing(
