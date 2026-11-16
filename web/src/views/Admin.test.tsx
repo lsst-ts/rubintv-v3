@@ -88,11 +88,8 @@ test("shows version, renders menu box, and sends the chosen value", async () => 
   ).toBeDefined();
   expect(await screen.findByText("AOS Pipeline")).toBeDefined();
 
-  // The menu's first option (DANISH) sends on click.
-  (await screen.findByText("AOS Pipeline"))
-    .closest(".admin-box")!
-    .querySelector("button")!
-    .click();
+  // Picking a menu value sends it.
+  await pickIn("AOS Pipeline", "DANISH");
 
   await waitFor(() => expect(posts.length).toBe(1));
   expect(posts[0].url).toContain("/admin/controls/set");
@@ -201,10 +198,13 @@ test("all redis-writing actions are disabled when redis is not configured", asyn
     // Redis; Reset Head Node and the control Send buttons too.
     expect(isDisabled("Flush Redis")).toBe(true);
     expect(isDisabled("Reset Head Node")).toBe(true);
-    // The AOS Pipeline menu's Send, the arbitrary key/value Send, and the
-    // witness Send are all disabled (there are several "Send" buttons).
-    const sends = screen.getAllByRole("button", { name: "Send" });
-    expect(sends.length).toBeGreaterThan(0);
+    // The menus' pickers, the arbitrary key/value Send and the witness Send
+    // are all disabled (there are several of each).
+    const sends = [
+      ...screen.getAllByRole("button", { name: "Send" }),
+      ...screen.getAllByRole("button", { name: /Send a value/ }),
+    ];
+    expect(sends.length).toBeGreaterThan(2);
     expect(sends.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   });
 
@@ -267,30 +267,84 @@ function failPosts(kind: "detail" | "bare" | "network") {
   }) as unknown as typeof fetch;
 }
 
-const feedback = () => screen.findByRole("status");
 const boxFor = async (title: string) =>
   (await screen.findByRole("heading", { name: title })).closest(
     ".admin-box",
   ) as HTMLElement;
 
+// The outcome line in a box: the action's result, stamped with the time.
+const statusIn = async (title: string) =>
+  within(await boxFor(title)).findByRole("status");
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const stamped = (text: string) =>
+  new RegExp(`^${escapeRe(text)} · \\d\\d:\\d\\d:\\d\\d$`);
+
+// Open a menu box's list of values and pick one.
+async function pickIn(title: string, value: string) {
+  const box = await boxFor(title);
+  fireEvent.click(within(box).getByRole("button", { name: /Send a value/ }));
+  fireEvent.click(within(box).getByRole("menuitem", { name: value }));
+}
+
 // The "Current:" value shown in a control's box.
 const currentIn = async (title: string) =>
   (await boxFor(title)).querySelector(".admin-readback strong")!.textContent;
 
-test("a menu sends whichever option is picked", async () => {
+test("a menu sends a value as soon as it's picked, and says so in its box", async () => {
   stub();
   renderAdmin(createQueryClient());
   const box = await boxFor("AOS Pipeline");
-  fireEvent.change(within(box).getByRole("combobox"), {
-    target: { value: "TIE" },
-  });
-  fireEvent.click(within(box).getByRole("button", { name: "Send" }));
+  // Nothing is offered, let alone sent, until the list is opened.
+  expect(within(box).queryByRole("menu")).toBeNull();
+  await pickIn("AOS Pipeline", "TIE");
   await waitFor(() => expect(posts).toHaveLength(1));
   expect(posts[0].body).toEqual({
     key: "RUBINTV_CONTROL_AOS_PIPELINE",
     value: "TIE",
   });
-  expect((await feedback()).textContent).toBe("AOS Pipeline: done");
+  // The list closes, and the box itself confirms what was sent, and when.
+  expect(within(box).queryByRole("menu")).toBeNull();
+  const msg = await statusIn("AOS Pipeline");
+  expect(msg.textContent).toMatch(stamped("Sent TIE"));
+  expect(msg.className).toContain("ok");
+});
+
+test("a menu's list closes on Escape or a click elsewhere, sending nothing", async () => {
+  stub();
+  renderAdmin(createQueryClient());
+  const box = await boxFor("AOS Pipeline");
+  const trigger = within(box).getByRole("button", { name: /Send a value/ });
+
+  fireEvent.click(trigger);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() => expect(within(box).queryByRole("menu")).toBeNull());
+
+  fireEvent.click(trigger);
+  expect(within(box).getByRole("menu")).toBeDefined();
+  fireEvent.pointerDown(document.body);
+  await waitFor(() => expect(within(box).queryByRole("menu")).toBeNull());
+  // A second click on the trigger closes it too.
+  fireEvent.click(trigger);
+  fireEvent.click(trigger);
+  expect(within(box).queryByRole("menu")).toBeNull();
+
+  expect(posts).toHaveLength(0);
+});
+
+test("a menu's list ticks the value the readback says is current", async () => {
+  // The analysis side has written "Danish" for the menu's DANISH.
+  stub(true, true, {}, { RUBINTV_CONTROL_AOS_PIPELINE_READBACK: "Danish" });
+  renderAdmin(createQueryClient());
+  await waitFor(async () => expect(await currentIn("AOS Pipeline")).toBe("Danish"));
+  const box = await boxFor("AOS Pipeline");
+  fireEvent.click(within(box).getByRole("button", { name: /Send a value/ }));
+  expect(within(box).getByRole("menuitem", { name: "DANISH" }).className).toContain(
+    "current",
+  );
+  expect(
+    within(box).getByRole("menuitem", { name: "TIE" }).className,
+  ).not.toContain("current");
 });
 
 test("the free-form box writes under the control namespace, as V2 did", async () => {
@@ -308,10 +362,18 @@ test("the free-form box writes under the control namespace, as V2 did", async ()
   // will be added.
   expect(within(box).getByText("Sets RUBINTV_CONTROL_…")).toBeDefined();
 
-  // Whitespace isn't a key.
+  // Whitespace isn't a key, and nor is the prefix alone.
   typeKey("   ");
   expect((send as HTMLButtonElement).disabled).toBe(true);
   expect(within(box).getByText("Sets RUBINTV_CONTROL_…")).toBeDefined();
+  typeKey("rubintv_control_");
+  expect((send as HTMLButtonElement).disabled).toBe(true);
+
+  // A key typed in full doesn't get the prefix twice (V2 doubled it).
+  typeKey("rubintv_control_aos_pipeline");
+  expect(
+    within(box).getByText("Sets RUBINTV_CONTROL_AOS_PIPELINE"),
+  ).toBeDefined();
 
   // The key is prefixed and uppercased, odd characters becoming _, and the
   // key it will set is shown as it's typed.
@@ -328,8 +390,10 @@ test("the free-form box writes under the control namespace, as V2 did", async ()
     key: "RUBINTV_CONTROL_NEW_THING",
     value: "ON_AIR_NOW",
   });
-  const msg = await feedback();
-  expect(msg.textContent).toBe("set RUBINTV_CONTROL_NEW_THING: done");
+  const msg = await statusIn("Set key / value");
+  expect(msg.textContent).toMatch(
+    stamped("Sent ON_AIR_NOW to RUBINTV_CONTROL_NEW_THING"),
+  );
   expect(msg.className).toContain("ok");
 });
 
@@ -344,6 +408,9 @@ test("the witness detector is set from its own box", async () => {
   await waitFor(() => expect(posts).toHaveLength(1));
   expect(posts[0].url).toContain("/admin/witness-detector");
   expect(posts[0].body).toEqual({ key: "", value: "R22_S11" });
+  expect((await statusIn("Witness Detector")).textContent).toMatch(
+    stamped("Sent R22_S11"),
+  );
 });
 
 test("reset head node and flush historical each fire after a confirm", async () => {
@@ -355,6 +422,9 @@ test("reset head node and flush historical each fire after a confirm", async () 
   );
   await waitFor(() => expect(posts).toHaveLength(1));
   expect(posts[0].url).toContain("/admin/reset-head-node");
+  expect((await statusIn("Reset Head Node")).textContent).toMatch(
+    stamped("Reset requested"),
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "Flush historical cache" }));
   fireEvent.click(
@@ -362,7 +432,10 @@ test("reset head node and flush historical each fire after a confirm", async () 
   );
   await waitFor(() => expect(posts).toHaveLength(2));
   expect(posts[1].url).toContain("/admin/flush-historical");
-  expect((await feedback()).textContent).toBe("Flush historical cache: done");
+  // Without okText, the server's own detail is shown.
+  expect((await statusIn("Flush historical cache")).textContent).toMatch(
+    stamped("done"),
+  );
 });
 
 test.each([
@@ -374,11 +447,10 @@ test.each([
     stub();
     failPosts(kind);
     renderAdmin(createQueryClient());
-    const box = await boxFor("AOS Pipeline");
-    fireEvent.click(within(box).getByRole("button", { name: "Send" }));
-    const msg = await feedback();
-    expect(msg.textContent).toBe(
-      `AOS Pipeline failed — POST /admin/controls/set -> ${why}`,
+    await pickIn("AOS Pipeline", "DANISH");
+    const msg = await statusIn("AOS Pipeline");
+    expect(msg.textContent).toMatch(
+      stamped(`Failed — POST /admin/controls/set -> ${why}`),
     );
     expect(msg.className).toContain("err");
   },
@@ -392,7 +464,52 @@ test("an action that never reaches the server reports the error", async () => {
   fireEvent.click(
     await screen.findByRole("button", { name: /Flush cache — confirm/ }),
   );
-  expect((await feedback()).textContent).toBe(
-    "Flush historical cache failed — TypeError: offline",
+  expect((await statusIn("Flush historical cache")).textContent).toMatch(
+    stamped("Failed — TypeError: offline"),
   );
+});
+
+test("a reply that says it didn't work reads as a failure", async () => {
+  stub();
+  // The server answered, but with ok: false and no detail.
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method !== "POST") return inner(input, init);
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: false, detail: "" }),
+    });
+  }) as typeof fetch;
+  renderAdmin(createQueryClient());
+  fireEvent.click(await screen.findByRole("button", { name: "Flush Redis" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Flush Redis — confirm/ }),
+  );
+  const msg = await statusIn("Flush Redis");
+  expect(msg.textContent).toMatch(stamped("Done"));
+  expect(msg.className).toContain("err");
+});
+
+test("a box shows that a send is under way until the reply comes", async () => {
+  stub();
+  let answer: (reply: Response) => void = () => {};
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method !== "POST") return inner(input, init);
+    return new Promise<Response>((resolve) => {
+      answer = resolve;
+    });
+  }) as typeof fetch;
+  renderAdmin(createQueryClient());
+  await pickIn("AOS Pipeline", "TIE");
+  const msg = await statusIn("AOS Pipeline");
+  expect(msg.textContent).toBe("Sending…");
+  expect(msg.className).toContain("pending");
+  await act(async () =>
+    answer({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, detail: "x" }),
+    } as Response),
+  );
+  expect((await statusIn("AOS Pipeline")).textContent).toMatch(stamped("Sent TIE"));
 });
