@@ -265,13 +265,14 @@ admin controls answer 503.
 
 | Event | Level | Meaning |
 |---|---|---|
-| `redis.connected` | info | Connected to Redis at `url`. |
+| `redis.connected` | info | Connected to Redis at `url` (any password masked as `***`). |
 | `redis.disabled` | warning | No Redis configured (`RUBINTV_REDIS_URL` or `RA_REDIS_HOST`). |
 | `redis.unavailable` | warning | Redis is configured but didn't answer at startup; carrying on without it. |
 | `redis.config_set.failed` | warning | Keyspace notifications couldn't be turned on (a managed Redis may forbid it), so control values aren't read back live. |
 | `redis.reader.error` | error | A reader (`readback` or `detectors`) failed; traceback attached. |
 | `redis.reader.reconnect` | warning | That reader restarts after `backoff_seconds`. |
-| `redis.readback.seed` | info | On each (re)connect, the configured controls' current `*_READBACK` values were read: `found` of `keys` had one. `found: 0` with controls set means the analysis side isn't writing readbacks. |
+| `redis.readback.seed` | info | On each (re)connect, the configured controls' current `*_READBACK` values were read: `found` of `keys` had one, and `readbacks` maps each found key to its value. `found: 0` with controls set means the analysis side isn't writing readbacks. |
+| `redis.readback.change` | info | The analysis side wrote a readback: `key` (a `*_READBACK`) now holds `value`. A control sent from the Admin page (`admin.control.set`) with no matching change after it was never acknowledged. |
 | `redis.detector.seed_failed` | warning | Reading a detector status stream's latest entry at startup failed; it fills in with the next live entry. |
 | `redis.detector.bad_payload` | warning | A detector status entry wasn't valid JSON and was ignored. |
 | `redis.set` | info | A control value was written (`key`). |

@@ -38,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import TYPE_CHECKING, cast
+from urllib.parse import urlsplit, urlunsplit
 
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.events import StoreChange
@@ -51,6 +52,21 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 log = get_logger(__name__)
+
+
+def redacted(url: str) -> str:
+    """The Redis URL with any password masked, for logs.
+
+    The URL built from ``RA_REDIS_*`` carries the password
+    (``redis://:<password>@host:port``); logging it whole put the password
+    in every pod's startup log.
+    """
+    parts = urlsplit(url)
+    if parts.password is None:
+        return url
+    host = parts.netloc.rsplit("@", 1)[1]
+    return urlunsplit(parts._replace(netloc=f"{parts.username or ''}:***@{host}"))
+
 
 # The cluster-status producer writes to streams named ``stream:{key}`` where
 # ``key`` is the ``redis_detectors`` config key (e.g.
@@ -249,7 +265,7 @@ class RedisInputs:
             log.warning("redis.unavailable", error=str(exc))
             self._redis = None
             return
-        log.info("redis.connected", url=self._url)
+        log.info("redis.connected", url=redacted(self._url))
         # Enable keyspace notifications so the readback loop receives
         # key-change events (matches the original app's startup).
         # Best-effort: a managed Redis may forbid CONFIG SET, in which case
@@ -338,7 +354,9 @@ class RedisInputs:
             for key, value in zip(self._readback_keys, values, strict=True)
             if value is not None
         }
-        log.info("redis.readback.seed", found=len(found), keys=len(values))
+        log.info(
+            "redis.readback.seed", found=len(found), keys=len(values), readbacks=found
+        )
         if not found:
             return
         for key, value in found.items():
@@ -370,6 +388,9 @@ class RedisInputs:
                     continue
                 # Location is encoded in deployment config; readback is global
                 # to the site here, so publish without a camera scope.
+                # Rare (one per acknowledged control change), and the only
+                # record of whether the analysis side answered a send.
+                log.info("redis.readback.change", key=key, value=str(value))
                 self._controls.set("*", key, str(value))
                 self._bus.publish(StoreChange("controlReadback", "*", ""))
         finally:
