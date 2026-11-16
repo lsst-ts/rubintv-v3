@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 385 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 388 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -399,8 +399,8 @@ Safe to skim.
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
-  `460e78f`, `c25ba26`, and the commit that noted the Admin version
-  line.
+  `460e78f`, `c25ba26`, `1d1dc6a`, and the commit that noted the Redis
+  password and the Admin menus.
 
 ---
 
@@ -617,6 +617,12 @@ final `ColumnOrderList` and `useColumnPrefs`.
 - `e8ecc7f` (later) The Admin version line drops setuptools-scm's
   `+g<sha>` local part, which repeated the sha beside it
   (`v0.1.dev400 · 9dff062`, not `v0.1.dev400+g9dff062da · 9dff062`)
+- `f3d6544` (later) Admin menus send a value as soon as it's picked, as
+  V2's did (Merlin picked values at BTS and nothing was sent): a list,
+  not a `<select>`, which on Windows/Linux would send every value
+  arrowed past. Each box reports its own outcome, time-stamped; the
+  free-form box no longer doubles a prefix typed in full; fields stand
+  3px proud of the text column
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
@@ -950,6 +956,11 @@ saying nothing had changed. Review `_routine` and the level choice in
   nothing isn't logged (`poll.current.cycle` sums them), `store.apply`
   only when it changed something, and websockets' frame and keepalive
   lines are filtered off `uvicorn.error` unless the level is `trace`
+- `d3f46e4` (later) Keep the Redis password out of the logs:
+  `redis.connected` logged the whole `RA_REDIS_*` URL, password and all,
+  at every startup; it's masked now (`redacted`). Readbacks are logged
+  as they arrive (`redis.readback.change`) and the startup seed lists
+  what it found, so an unacknowledged control send shows in the log
 
 ### 53. Camera table, third pass: the whole window for rows
 The table scrolled in a box under the topbar, toolbar and a 150px
