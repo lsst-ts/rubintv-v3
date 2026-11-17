@@ -667,13 +667,15 @@ admin_redis_menus:
   - title: "AOS Pipeline"
     key: RUBINTV_CONTROL_AOS_PIPELINE
     items:
+      - DANISH
+      - UNPAIRED_DANISH
       - WCS_DANISH_BIN_2
       - WCS_DANISH_BIN_1
-      - DANISH
       - TIE
-      - AI_DONUT
-      - UNPAIRED_DANISH
+      - AI_DONUT_BINNED2
+      - AI_DONUT_UNBINNED
       - TARTS_UNPAIRED
+      - REFIT_WCS
 
   - title: "AOS FAM Pipeline"
     key: RUBINTV_CONTROL_AOS_FAM_PIPELINE
