@@ -34,6 +34,18 @@ locations:
       Main: [lsstcam, auxtel]
       Auxiliary: [allsky]
 
+  - name: summit-usdf
+    title: Summit
+    profile_name: rubin-rubintv-data-summit-embargo
+    bucket_name: rubin-rubintv-data-summit
+    endpoint_url: https://sdfembs3.sdf.slac.stanford.edu
+    logo: Summit.jpg
+    text_colour: "#fff"
+    text_shadow: true
+    camera_groups:
+      Simonyi Telescope: [lsstcam, lsstcam_aos, lsstcam_guider, tma]
+      Environment and Performance: [auxtel, allsky, dream, ra_performance]
+
   - name: usdf
     title: USDF
     profile_name: rubin-rubintv-data-usdf-embargo
@@ -70,18 +82,6 @@ locations:
       Telescope Mounted: [auxtel]
       Cameras: [fake_auxtel, comcam, comcam_aos]
       Telescopes: [tma]
-
-  - name: summit-usdf
-    title: Summit
-    profile_name: rubin-rubintv-data-summit-embargo
-    bucket_name: rubin-rubintv-data-summit
-    endpoint_url: https://sdfembs3.sdf.slac.stanford.edu
-    logo: Summit.jpg
-    text_colour: "#fff"
-    text_shadow: true
-    camera_groups:
-      Simonyi Telescope: [lsstcam, lsstcam_aos, lsstcam_guider, tma]
-      Environment and Performance: [auxtel, allsky, dream, ra_performance]
 
   - name: base
     title: Base
