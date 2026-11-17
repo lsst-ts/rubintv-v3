@@ -34,6 +34,8 @@ function renderWith(
 const cam = (over: Partial<StatusResponse["cameras"][number]>) => ({
   location: "loc",
   camera: "cam",
+  location_title: "Loc",
+  camera_title: "Cam",
   recent_ready: false,
   full_complete: false,
   image_count: 0,

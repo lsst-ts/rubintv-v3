@@ -71,6 +71,28 @@
         }
       }
     },
+    "/api/health/cache": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Cache Usage",
+        "description": "Disk cache locations and sizes, for the Status page.\n\nSeparate from ``/status`` because it stats every cached file (thousands\non the PVC) and every page polls that one. Sync, so the walk runs on the\nthreadpool rather than stalling the event loop.",
+        "operationId": "cache_usage_api_health_cache_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheUsageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/locations": {
       "get": {
         "tags": [
@@ -1712,6 +1734,96 @@
         "title": "BlockOut",
         "description": "One observing block: a run of exposures of one science program."
       },
+      "CacheEntry": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "use": {
+            "type": "string",
+            "enum": [
+              "index",
+              "guide",
+              "unused"
+            ],
+            "title": "Use"
+          },
+          "files": {
+            "type": "integer",
+            "title": "Files"
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "use",
+          "files",
+          "bytes"
+        ],
+        "title": "CacheEntry"
+      },
+      "CacheUsageResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dir"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CacheEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "volume_total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Total Bytes"
+          },
+          "volume_free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Free Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "dir",
+          "entries",
+          "volume_total_bytes",
+          "volume_free_bytes"
+        ],
+        "title": "CacheUsageResponse"
+      },
       "CalendarOut": {
         "properties": {
           "dates": {
@@ -1970,6 +2082,14 @@
             "type": "string",
             "title": "Camera"
           },
+          "location_title": {
+            "type": "string",
+            "title": "Location Title"
+          },
+          "camera_title": {
+            "type": "string",
+            "title": "Camera Title"
+          },
           "recent_ready": {
             "type": "boolean",
             "title": "Recent Ready"
@@ -1987,6 +2107,8 @@
         "required": [
           "location",
           "camera",
+          "location_title",
+          "camera_title",
           "recent_ready",
           "full_complete",
           "image_count"

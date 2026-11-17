@@ -24,7 +24,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -127,6 +129,8 @@ def test_status_endpoint_reports_loading() -> None:
                 "recent_ready",
                 "full_complete",
                 "image_count",
+                "location_title",
+                "camera_title",
             } <= set(cam)
 
 
@@ -145,6 +149,17 @@ def test_status_counts_each_cameras_found_images() -> None:
     counts = {(c["location"], c["camera"]): c["image_count"] for c in cameras}
     assert counts[("test", "lsstcam")] == 3
     assert sum(counts.values()) == 3
+
+
+def test_status_carries_each_cameras_display_titles() -> None:
+    # The Status page labels its cards with the models' titles, not names.
+    with run_app() as client:
+        cameras = client.get("/api/health/status").json()["cameras"]
+    titles = {
+        (c["location"], c["camera"]): (c["location_title"], c["camera_title"])
+        for c in cameras
+    }
+    assert titles[("test", "lsstcam")] == ("TEST", "LSSTCam")
 
 
 def test_status_reports_cold_start_when_cache_disabled() -> None:
@@ -177,6 +192,58 @@ def test_status_reports_cold_start_with_empty_cache_dir(tmp_path: Path) -> None:
         body = client.get("/api/health/status").json()
         assert body["cache_enabled"] is True
         assert body["warm_start"] is False
+
+
+def test_cache_usage_is_empty_when_cache_disabled() -> None:
+    with run_app() as client:
+        body = client.get("/api/health/cache").json()
+    assert body == {
+        "enabled": False,
+        "dir": None,
+        "entries": [],
+        "volume_total_bytes": None,
+        "volume_free_bytes": None,
+    }
+
+
+def test_cache_usage_lists_each_entry_and_what_uses_it(tmp_path: Path) -> None:
+    # The scan index and the guide are in use; an older cache version's
+    # slices are not (so they can be reclaimed). In-use entries come first,
+    # and an empty stray dir (like a PVC's lost+found) is left out.
+    (tmp_path / "guide").mkdir()
+    (tmp_path / "guide" / "latiss.json").write_bytes(os.urandom(8192))
+    old = tmp_path / "v1" / "test" / "auxtel"
+    old.mkdir(parents=True)
+    for date in ("2024-01-01", "2024-01-02"):
+        (old / f"{date}.json").write_bytes(os.urandom(8192))
+    (tmp_path / "lost+found").mkdir()
+    with run_app(cache_dir=tmp_path) as client:
+        body = client.get("/api/health/cache").json()
+    assert body["enabled"] is True
+    assert body["dir"] == str(tmp_path)
+    entries = [(Path(e["path"]).name, e["use"], e["files"]) for e in body["entries"]]
+    assert entries == [
+        ("guide", "guide", 1),
+        (CACHE_VERSION, "index", 0),
+        ("v1", "unused", 2),
+    ]
+    assert all(e["path"].startswith(str(tmp_path)) for e in body["entries"])
+    assert body["entries"][2]["bytes"] >= 2 * 8192
+    assert 0 <= body["volume_free_bytes"] <= body["volume_total_bytes"]
+
+
+def test_cache_usage_survives_an_unreadable_volume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def disk_usage(path: object) -> None:
+        raise PermissionError(path)
+
+    monkeypatch.setattr(shutil, "disk_usage", disk_usage)
+    with run_app(cache_dir=tmp_path) as client:
+        body = client.get("/api/health/cache").json()
+    assert body["enabled"] is True
+    assert body["volume_total_bytes"] is None
+    assert body["volume_free_bytes"] is None
 
 
 def test_models_path_defaults_to_the_packaged_copy(tmp_path: Path) -> None:
