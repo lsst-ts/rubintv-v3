@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 388 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 392 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -399,8 +399,8 @@ Safe to skim.
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
-  `460e78f`, `c25ba26`, `1d1dc6a`, and the commit that noted the Redis
-  password and the Admin menus.
+  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, and the commit that noted
+  the Status page's disk cache and layout.
 
 ---
 
@@ -541,6 +541,10 @@ out.
 - `c33ff61` Show event-page metadata floats to 3dp like the table
   (formatCell moves from CameraDataTable into lib/metaCells; its test
   moves with it)
+- `fedae15` (later) List Summit first among the USDF locations: Home and
+  the Status page follow the models' `locations` order, while a site's
+  `bucket_configurations` list only filters (the loader reads it as a
+  set). Config only
 
 ### 36. Camera table and column picker, second pass
 `32e9549` → `22cdffb` → `481035f` is an arc (pick order, then drag to
@@ -623,6 +627,23 @@ final `ColumnOrderList` and `useColumnPrefs`.
   arrowed past. Each box reports its own outcome, time-stamped; the
   free-form box no longer doubles a prefix typed in full; fields stand
   3px proud of the text column
+- `57531c3` (later) The AOS Pipeline menu offers `AI_DONUT_BINNED2` and
+  `AI_DONUT_UNBINNED` in place of `AI_DONUT`, and adds `REFIT_WCS`.
+  Config only
+- `e832d00` (later) Status page: where the disk cache lives and its
+  sizes, and a tidier layout. `/api/health/cache` sizes each top-level
+  entry of the cache dir in allocated blocks (as `du` does) and says
+  what reads it: `index`, `guide` (the observing-block guide's
+  subdirectory, where deployed) or `unused` (old cache versions' slices,
+  to reclaim), plus the volume's used/free/total. It is a sync handler
+  (the walk runs on the threadpool) and separate from `/status`, which
+  every page polls. `/status` gains each camera's `location_title` and
+  `camera_title`. On the page: WebSocket, S3 and start-up (warm, cold or
+  cache off) pills to the right of the title, described by tooltips
+  (help cursor); titles on the cards; bare image counts; one pill width
+  ("Recent ready" is now "Recent"); cards in a row share a height; a key
+  below the cards; the cache table set apart beneath. The "N cameras
+  still loading" headline is gone
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
