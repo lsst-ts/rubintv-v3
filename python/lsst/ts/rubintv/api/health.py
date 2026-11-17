@@ -25,13 +25,20 @@
 - ``/api/health/ready`` — the data layer has loaded enough to serve
   traffic (readiness). Phase 1 reports ready once the app is assembled;
   Phase 2 gates this on the first completed poll.
+
+Plus ``/status`` (scan progress, polled by every page) and ``/cache`` (disk
+cache usage, for the Status page alone).
 """
 
 from __future__ import annotations
 
+import shutil
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Response, status
 from lsst.ts.rubintv import __version__
 from lsst.ts.rubintv.api.deps import get_app_state
+from lsst.ts.rubintv.data.cache import CACHE_VERSION, dir_usage
 from lsst.ts.rubintv.state import AppState
 from pydantic import BaseModel
 
@@ -50,6 +57,10 @@ class ReadyResponse(BaseModel):
 class CameraStatus(BaseModel):
     location: str
     camera: str
+    location_title: str
+    camera_title: str
+    """Display titles from the models, so the Status page needn't fetch
+    every location's detail just to label its cards."""
     recent_ready: bool
     """The recent-window scan for this camera has been applied; recent dates
     are viewable even while the full back-catalogue is still loading."""
@@ -92,6 +103,37 @@ class StatusResponse(BaseModel):
     'loading' affordance to the camera being viewed."""
 
 
+CacheUse = Literal["index", "guide", "unused"]
+
+
+class CacheEntry(BaseModel):
+    path: str
+    """Absolute path of a top-level entry of the cache dir."""
+    use: CacheUse
+    """What reads it: the S3 scan index (warm starts), the observing-block
+    guide, or nothing in this version (an older cache version's slices, or
+    anything else left on the volume), so its space can be reclaimed."""
+    files: int
+    bytes: int
+    """Allocated on disk, as ``du`` reports, not the files' apparent size."""
+
+
+class CacheUsageResponse(BaseModel):
+    enabled: bool
+    """Whether the disk cache is in use. When false, the rest is empty."""
+    dir: str | None
+    """Absolute path of the cache dir."""
+    entries: list[CacheEntry]
+    """What the cache dir holds: in-use entries first, then unused ones,
+    largest first."""
+    volume_total_bytes: int | None
+    volume_free_bytes: int | None
+    """Size and free space of the volume holding the cache dir (the PVC in
+    deployments; a laptop's whole disk in dev); ``None`` if they can't be
+    read. The volume holds more than the cache (other files, filesystem
+    overhead, root-reserved blocks), so cache + free needn't equal total."""
+
+
 @router.get("/live", response_model=LiveResponse)
 def live() -> LiveResponse:
     """Liveness: the process is running."""
@@ -113,16 +155,27 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
     """Detailed status: readiness plus per-camera history-loading progress."""
     # ``async`` for loop confinement: image_count iterates live index dicts
     # the pollers mutate, so it must not run on a threadpool worker.
-    cameras = [
-        CameraStatus(
-            location=location,
-            camera=camera,
-            recent_ready=st.recent_ready,
-            full_complete=st.full_complete,
-            image_count=state.store.image_count(location, camera),
+    titles = {
+        (loc.name, cam.name): (loc.title, cam.title)
+        for loc in state.models.locations
+        for cam in loc.cameras
+    }
+    cameras = []
+    for (location, camera), st in state.camera_status().items():
+        # Every scanned camera comes from the models; the names stand in
+        # should one ever not.
+        loc_title, cam_title = titles.get((location, camera), (location, camera))
+        cameras.append(
+            CameraStatus(
+                location=location,
+                camera=camera,
+                location_title=loc_title,
+                camera_title=cam_title,
+                recent_ready=st.recent_ready,
+                full_complete=st.full_complete,
+                image_count=state.store.image_count(location, camera),
+            )
         )
-        for (location, camera), st in state.camera_status().items()
-    ]
     return StatusResponse(
         ready=state.ready,
         cache_enabled=state.cache_enabled,
@@ -132,4 +185,53 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
         s3_slow=state.s3_slow(),
         s3_last_cycle_seconds=state.s3_last_cycle_seconds(),
         cameras=cameras,
+    )
+
+
+@router.get("/cache", response_model=CacheUsageResponse)
+def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageResponse:
+    """Disk cache locations and sizes, for the Status page.
+
+    Separate from ``/status`` because it stats every cached file (thousands
+    on the PVC) and every page polls that one. Sync, so the walk runs on the
+    threadpool rather than stalling the event loop.
+    """
+    root = state.settings.cache_dir
+    if not state.cache_enabled or root is None:
+        return CacheUsageResponse(
+            enabled=False,
+            dir=None,
+            entries=[],
+            volume_total_bytes=None,
+            volume_free_bytes=None,
+        )
+    root = root.absolute()
+    # The observing-block guide, where deployed, keeps its own cache in a
+    # ``guide`` subdirectory of the same dir.
+    uses: dict[str, CacheUse] = {CACHE_VERSION: "index", "guide": "guide"}
+    entries = [
+        CacheEntry(
+            path=str(e.path),
+            use=uses.get(e.path.name, "unused"),
+            files=e.files,
+            bytes=e.bytes,
+        )
+        for e in dir_usage(root)
+    ]
+    # An empty stray (e.g. the volume's lost+found) is noise, not something
+    # to reclaim; in-use entries show even when empty (a cold first run).
+    entries = [e for e in entries if e.use != "unused" or e.files]
+    entries.sort(key=lambda e: (e.use == "unused", -e.bytes))
+    try:
+        volume = shutil.disk_usage(root)
+    except OSError:
+        total = free = None
+    else:
+        total, free = volume.total, volume.free
+    return CacheUsageResponse(
+        enabled=True,
+        dir=str(root),
+        entries=entries,
+        volume_total_bytes=total,
+        volume_free_bytes=free,
     )

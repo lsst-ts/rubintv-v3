@@ -33,6 +33,8 @@ from S3. Missing cache dir disables caching silently.
 from __future__ import annotations
 
 import json
+import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -138,6 +140,47 @@ class DiskCache:
                 continue
             result.setdefault((location, camera), {})[date] = index
         return result
+
+
+@dataclass(frozen=True)
+class EntryUsage:
+    """Disk taken by one top-level entry of the cache dir."""
+
+    path: Path
+    files: int
+    bytes: int
+
+
+def dir_usage(root: Path) -> list[EntryUsage]:
+    """Size up each top-level entry of ``root`` (sorted by name).
+
+    Bytes are allocated blocks — what ``du`` reports and what fills the PVC —
+    not apparent sizes: thousands of small slices each round up to whole
+    blocks. Unreadable parts (e.g. a root-owned ``lost+found``) are skipped,
+    not fatal. Blocking I/O over every cached file: call it off the loop.
+    """
+    try:
+        children = sorted(root.iterdir())
+    except OSError:
+        return []
+    return [EntryUsage(child, *_tree_usage(child)) for child in children]
+
+
+def _tree_usage(path: Path) -> tuple[int, int]:
+    """(file count, allocated bytes) under ``path``, a file or a directory."""
+    if path.is_dir():
+        paths = [os.path.join(d, n) for d, _, names in os.walk(path) for n in names]
+    else:
+        paths = [str(path)]
+    files = size = 0
+    for p in paths:
+        try:
+            st = os.lstat(p)
+        except OSError:
+            continue
+        files += 1
+        size += st.st_blocks * 512
+    return files, size
 
 
 def _encode(index: DateIndex) -> dict[str, object]:

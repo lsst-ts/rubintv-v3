@@ -6,6 +6,7 @@ import type {
   AdminActionOut,
   AdminMenusOut,
   AdminStatusOut,
+  CacheUsageResponse,
   CalendarOut,
   CameraOut,
   ControlsOut,
@@ -74,6 +75,9 @@ export const api = {
   subapps: () => getJson<{ mounted: string[] }>("/subapps"),
 
   status: () => getJson<StatusResponse>("/health/status"),
+  // Disk cache locations and sizes (stats every cached file, so the Status
+  // page alone fetches it).
+  cacheUsage: () => getJson<CacheUsageResponse>("/health/cache"),
 
   location: (loc: string) => getJson<LocationOut>(`/locations/${enc(loc)}`),
 

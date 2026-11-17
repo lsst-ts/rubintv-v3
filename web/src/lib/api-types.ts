@@ -64,6 +64,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/health/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cache Usage
+         * @description Disk cache locations and sizes, for the Status page.
+         *
+         *     Separate from ``/status`` because it stats every cached file (thousands
+         *     on the PVC) and every page polls that one. Sync, so the walk runs on the
+         *     threadpool rather than stalling the event loop.
+         */
+        get: operations["cache_usage_api_health_cache_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/locations": {
         parameters: {
             query?: never;
@@ -583,6 +607,33 @@ export interface components {
             /** User */
             user: string | null;
         };
+        /** CacheEntry */
+        CacheEntry: {
+            /** Path */
+            path: string;
+            /**
+             * Use
+             * @enum {string}
+             */
+            use: "index" | "guide" | "unused";
+            /** Files */
+            files: number;
+            /** Bytes */
+            bytes: number;
+        };
+        /** CacheUsageResponse */
+        CacheUsageResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Dir */
+            dir: string | null;
+            /** Entries */
+            entries: components["schemas"]["CacheEntry"][];
+            /** Volume Total Bytes */
+            volume_total_bytes: number | null;
+            /** Volume Free Bytes */
+            volume_free_bytes: number | null;
+        };
         /** CalendarOut */
         CalendarOut: {
             /** Dates */
@@ -672,6 +723,10 @@ export interface components {
             location: string;
             /** Camera */
             camera: string;
+            /** Location Title */
+            location_title: string;
+            /** Camera Title */
+            camera_title: string;
             /** Recent Ready */
             recent_ready: boolean;
             /** Full Complete */
@@ -1065,6 +1120,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+        };
+    };
+    cache_usage_api_health_cache_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheUsageResponse"];
                 };
             };
         };

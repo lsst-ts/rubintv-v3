@@ -24,9 +24,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
+import pytest
+from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache, dir_usage
 from lsst.ts.rubintv.data.index import DateIndex, ExtInfo, PerDayRef
 
 
@@ -181,3 +183,48 @@ def test_failed_deletes_are_not_fatal(tmp_path: Path) -> None:
     assert cache.clear() == 1
     assert stuck.is_dir()
     assert cache.load_all() == {}
+
+
+def test_dir_usage_sizes_each_top_level_entry(tmp_path: Path) -> None:
+    # Files in nested dirs count toward their top-level entry; a loose file
+    # is an entry of its own. Random bytes, so no filesystem stores them
+    # inline or compressed: each allocates at least its own length.
+    (tmp_path / "v3" / "local" / "lsstcam").mkdir(parents=True)
+    (tmp_path / "v3" / "local" / "lsstcam" / "a.json").write_bytes(os.urandom(8192))
+    (tmp_path / "v3" / "local" / "b.json").write_bytes(os.urandom(8192))
+    (tmp_path / "stray.tmp").write_bytes(os.urandom(8192))
+    (tmp_path / "empty").mkdir()
+    usage = {e.path.name: (e.files, e.bytes) for e in dir_usage(tmp_path)}
+    assert {name: files for name, (files, _) in usage.items()} == {
+        "empty": 0,
+        "stray.tmp": 1,
+        "v3": 2,
+    }
+    assert usage["empty"][1] == 0
+    assert usage["stray.tmp"][1] >= 8192
+    assert usage["v3"][1] >= 2 * 8192
+    assert [e.path for e in dir_usage(tmp_path)][0] == tmp_path / "empty"
+
+
+def test_dir_usage_of_a_missing_dir_is_empty(tmp_path: Path) -> None:
+    assert dir_usage(tmp_path / "absent") == []
+
+
+def test_dir_usage_skips_files_it_cannot_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A slice deleted between the walk listing it and the stat (the scan
+    # evicting a date) is skipped, not fatal.
+    (tmp_path / "v3").mkdir()
+    (tmp_path / "v3" / "kept.json").write_text("{}")
+    (tmp_path / "v3" / "gone.json").write_text("{}")
+    real_lstat = os.lstat
+
+    def lstat(path: str) -> os.stat_result:
+        if path.endswith("gone.json"):
+            raise FileNotFoundError(path)
+        return real_lstat(path)
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    [entry] = dir_usage(tmp_path)
+    assert entry.files == 1
