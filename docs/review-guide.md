@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 392 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 396 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -16,7 +16,8 @@ PR. Because `main`/`develop` are stubs (the whole project lands in this one
 merge), these fixes could not be split into a separate earlier PR: the code
 they fix exists only inside this branch. They are folded in here
 deliberately, not by oversight. Part VI is the design polish and deployment
-hardening that followed, as the app ran on phalanx.
+hardening that followed, as the app ran on phalanx. Part VII holds the
+fixes from a third, repo-wide review.
 
 Groups 10–25 are carried over from the retired stacked-PR plan
 (`docs/pr-plan.md`, deleted in `5c42eb9`; this document preserves its
@@ -66,7 +67,8 @@ Driven by benchmarking against the real USDF endpoint.
 
 ### 4. HTTP caching
 - `e3d4e67` Serve metadata with ETags and 304 handling
-- `7b2e412` Gzip large HTTP responses
+- `7b2e412` Gzip large HTTP responses (group 55 replaces its
+  middleware)
 
 ### 5. Streamed metadata and progressive loading
 Large-day metadata streamed to the browser instead of blocking the grid.
@@ -399,8 +401,8 @@ Safe to skim.
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
-  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, and the commit that noted
-  the Status page's disk cache and layout.
+  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, and the commit
+  that noted the third review round's first fixes.
 
 ---
 
@@ -1014,6 +1016,34 @@ Esc in `useDismiss` and the NavMenu.
   add-filter form with the column search in focus. Controls name their
   keys in tooltips and aria-keyshortcuts. The channel arrows now stand
   down while typing or under a modal, and ignore ⌘/Ctrl/Alt
+
+---
+
+## Part VII — Third review round
+
+### 55. The three to fix first: test isolation, gzip, proxy chunks
+A repo-wide review of the branch in November 2026 put three small
+changes ahead of everything else it found. Review the `no_settings_env`
+fixture in `tests/conftest.py`; then `CompressionMiddleware` in
+`middleware.py` with its tests in `tests/test_ops.py` (the ASGI-level
+ones show what is held back, compressed and passed through); then
+`_CHUNK_BYTES` in `api/proxy.py`.
+- `7ae2bbb` Keep the test suite off the developer's environment. The
+  fixtures switched off `.env` but not exported variables, and Settings
+  builds a Redis URL from `RA_REDIS_HOST` even when a test passes
+  `redis_url=None`: with it exported, the admin tests sent `FLUSHDB` and
+  the head-node reset to that Redis. A session-wide fixture now removes
+  every variable Settings reads
+- `0e9c5d5` Gzip only text responses, and large ones off the event
+  loop. Starlette's middleware (from `7b2e412`, group 4) compressed
+  everything at level 9 on the loop, proxied media and 206 ranges
+  included; a 16 MiB metadata response stalled the loop for about 2 s.
+  The replacement compresses text types only, never a 206, at level 6,
+  and bodies of 64 KiB or more on its own two-thread pool: the stall
+  falls to 1–3 ms for a body 5% larger
+- `d254984` Stream proxied S3 objects in 64 KiB chunks, not botocore's
+  default 1 KiB, each of which cost a thread hop and a send: a 50 MiB
+  movie took about 4 s to stream in-process, now 0.1 s
 
 ---
 
