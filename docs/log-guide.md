@@ -150,7 +150,7 @@ Grouped by area. Where an event is logged at two levels, both are given.
 | `shutdown.complete` | info | Shutdown finished; the cache was written. |
 | `config.admin_wildcard_disabled` | warning | The site's `admin_for` contains `*` but `RUBINTV_ALLOW_ADMIN_WILDCARD` isn't set, so the wildcard is ignored. Usually a pod started with the wrong `RUBINTV_SITE`. |
 | `logging.level.unknown` | warning | `RUBINTV_LOG_LEVEL` isn't a level name; logging at `INFO` instead. |
-| `http.request` | info / debug | One HTTP request: `method`, `path`, `status`, `duration_ms` (to the response headers) and `bytes`, and who sent it: `client` (the peer: in the cluster, the ingress or an in-cluster caller), `forwarded_for` (the `X-Forwarded-For` header, `null` without one) and `user_agent`. The access log; uvicorn's own is switched off. `debug` for routine traffic that succeeded: the kubelet's probes (user agent `kube-probe/`) and `/api/health/status`, which each open camera page polls every 5 s. Anything else, and any response of 400 or above, is `info`. |
+| `http.request` | info / debug | One HTTP request: `method`, `path`, `status`, `duration_ms` (to the response headers) and `bytes` (before compression, except for a whole metadata document from `/metadata/{date}/changes`, which is kept compressed), and who sent it: `client` (the peer: in the cluster, the ingress or an in-cluster caller), `forwarded_for` (the `X-Forwarded-For` header, `null` without one) and `user_agent`. The access log; uvicorn's own is switched off. `debug` for routine traffic that succeeded: the kubelet's probes (user agent `kube-probe/`) and `/api/health/status`, which each open camera page polls every 5 s. Anything else, and any response of 400 or above, is `info`. |
 
 ### S3 clients
 

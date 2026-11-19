@@ -317,6 +317,9 @@ def test_full_sweep_preloads_recent_metadata(preload_days: int) -> None:
         objects, recent_window_days=0, metadata_preload_days=preload_days
     ) as client:
         assert wait_until(lambda: historical_idle(client))
+        # Compressed too, ready for the first page that opens the date.
+        cache = client.app.state.app_state.metadata  # type: ignore[attr-defined]
+        assert [key[2] for key in cache._gzipped] == [date] * bool(preload_days)
         boto3.client("s3", region_name="us-east-1").delete_object(
             Bucket=TEST_BUCKET, Key=f"lsstcam/{date}/metadata.json"
         )

@@ -32,6 +32,7 @@ readers share one fetch.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import time
 from collections import OrderedDict
@@ -57,7 +58,8 @@ _Key = tuple[str, str, str]
 # How much document text the cache holds, process-wide, before the least
 # recently read dates are dropped. A count would not bound memory: a busy
 # LSSTCam night is over 10 MB and a quiet camera's a few kB. Each entry is
-# held twice, as the text to serve and the rows to diff against, so the
+# held twice, as the text to serve and the rows to diff against, and once
+# more, a tenth the size, compressed (if it has been asked for whole): the
 # resident cost is about 2.5 times this.
 _MAX_BYTES = 256 * 1024 * 1024
 
@@ -73,6 +75,11 @@ _FETCH_MAX_CONCURRENCY = 4
 _RANGED_MIN_BYTES = 4 * 1024 * 1024
 _RANGE_BYTES = 2 * 1024 * 1024
 _RANGE_WORKERS = 8
+
+# The level a whole document is compressed at, once per version: the same as
+# CompressionMiddleware's, which did it afresh for every response (0.15 s
+# for a 12 MB night).
+_GZIP_LEVEL = 6
 
 # A fetch that took this long is logged at info, not debug: long enough for
 # the page to have noticed, and rare (today's file, re-read at each
@@ -138,6 +145,16 @@ class MetadataDoc:
             return self.delta
         return None
 
+    def whole(self) -> bytes:
+        """The document as a change from nothing, as JSON text.
+
+        What a reader holding no usable version is sent: a
+        ``MetadataDelta`` whose ``rows`` are every row and whose ``since``
+        is null, with the stored text spliced in rather than serialised.
+        """
+        rest = json.dumps({"etag": self.etag, "since": None, "removed": []})
+        return b'{"rows":' + self.body + b"," + rest[1:].encode()
+
 
 _EMPTY = MetadataDoc(etag=None, data={}, body=b"{}")
 
@@ -160,14 +177,18 @@ class MetadataCache:
         self._bytes = 0
         self._inflight: dict[_Key, asyncio.Task[MetadataDoc]] = {}
         self._fetch_sem = asyncio.Semaphore(_FETCH_MAX_CONCURRENCY)
-        # Reads the ranges of large files, for whichever fetches need them.
-        self._rangers = ThreadPoolExecutor(
+        # Each cached version's whole() gzipped, once someone has asked for
+        # it; dropped with the version.
+        self._gzipped: dict[_Key, tuple[MetadataDoc, asyncio.Future[bytes]]] = {}
+        # Reads the ranges of large files and compresses whole documents,
+        # for whichever requests need them.
+        self._workers = ThreadPoolExecutor(
             max_workers=_RANGE_WORKERS, thread_name_prefix="metadata"
         )
 
     def close(self) -> None:
-        """Stop the range-reading threads."""
-        self._rangers.shutdown(wait=False, cancel_futures=True)
+        """Stop the worker threads."""
+        self._workers.shutdown(wait=False, cancel_futures=True)
 
     async def get(self, location: str, camera: str, date: str) -> MetadataDoc:
         """Return a date's current metadata, fetching it if it has changed.
@@ -187,6 +208,27 @@ class MetadataCache:
             self._inflight[key] = task
             task.add_done_callback(lambda done: self._landed(key, done))
         return await asyncio.shield(task)
+
+    async def gzipped(
+        self, location: str, camera: str, date: str, doc: MetadataDoc
+    ) -> bytes:
+        """``doc.whole()``, gzipped: compressed once per version, then kept.
+
+        ``doc`` is what :meth:`get` just returned for the date. Every page
+        that opens a night asks for it whole, and compressing a large one
+        costs more than fetching it; here only the first to ask waits for
+        that, on a worker thread, and those that ask meanwhile share it.
+        """
+        key = (location, camera, date)
+        held = self._gzipped.get(key)
+        if held is None or held[0] is not doc:
+            loop = asyncio.get_running_loop()
+            held = (doc, loop.run_in_executor(self._workers, _gzip_whole, doc))
+            # Kept only for the version the cache holds: a reader overtaken
+            # by a rewrite gets its copy, but it isn't worth keeping.
+            if self._entries.get(key) is doc:
+                self._gzipped[key] = held
+        return await asyncio.shield(held[1])
 
     def _landed(self, key: _Key, task: asyncio.Task[MetadataDoc]) -> None:
         self._inflight.pop(key, None)
@@ -228,12 +270,15 @@ class MetadataCache:
         previous = self._entries.pop(key, None)
         if previous is not None:
             self._bytes -= len(previous.body)
+            if previous is not doc:
+                self._gzipped.pop(key, None)
         self._entries[key] = doc
         self._bytes += len(doc.body)
         # The newest always stays, however large: it is about to be served.
         while self._bytes > self._max_bytes and len(self._entries) > 1:
-            _, dropped = self._entries.popitem(last=False)
+            oldest, dropped = self._entries.popitem(last=False)
             self._bytes -= len(dropped.body)
+            self._gzipped.pop(oldest, None)
 
     def _fetch(self, key: _Key, cached: MetadataDoc | None) -> MetadataDoc:
         """HEAD, then GET and parse if the version isn't ``cached`` (blocking).
@@ -314,8 +359,12 @@ class MetadataCache:
             with closing(obj["Body"]) as stream:
                 return stream.read()
 
-        parts = list(self._rangers.map(read_range, range(0, size, _RANGE_BYTES)))
+        parts = list(self._workers.map(read_range, range(0, size, _RANGE_BYTES)))
         return b"".join(parts), etag, len(parts)
+
+
+def _gzip_whole(doc: MetadataDoc) -> bytes:
+    return gzip.compress(doc.whole(), _GZIP_LEVEL)
 
 
 def _parse(raw: bytes) -> tuple[Metadata, bytes]:

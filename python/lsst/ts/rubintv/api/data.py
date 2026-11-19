@@ -29,9 +29,7 @@ deps (unknown -> 404).
 
 from __future__ import annotations
 
-import json
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from lsst.ts.rubintv.api.deps import (
     get_app_state,
     get_camera,
@@ -59,6 +57,7 @@ from lsst.ts.rubintv.api.schemas import (
 from lsst.ts.rubintv.config.models import Camera, Location, Models
 from lsst.ts.rubintv.data.metadata import MetadataDoc, MetadataUnavailable
 from lsst.ts.rubintv.data.parser import parse_channel_event
+from lsst.ts.rubintv.middleware import accepts_gzip
 from lsst.ts.rubintv.state import AppState
 
 router = APIRouter()
@@ -312,6 +311,7 @@ async def get_metadata(
     response_model=MetadataChangesOut,
 )
 async def get_metadata_changes(
+    request: Request,
     since: str | None = None,
     date: str = Depends(valid_date),
     location: Location = Depends(get_location),
@@ -331,12 +331,17 @@ async def get_metadata_changes(
         return MetadataChangesOut(
             etag=delta.etag, since=delta.since, rows=delta.rows, removed=delta.removed
         )
-    # Wrapped around the cached text, for the reason given in get_metadata.
-    rest = json.dumps({"etag": doc.etag, "since": None, "removed": []})
-    return Response(
-        b'{"rows":' + doc.body + b"," + rest[1:].encode(),
-        media_type="application/json",
-    )
+    # Built around the cached text, for the reason given in get_metadata,
+    # and sent from a compressed copy kept with it: every page that opens a
+    # night gets this reply, and compressing a large one afresh each time
+    # cost more than fetching it.
+    if doc.etag is not None and accepts_gzip(request.headers):
+        return Response(
+            await state.metadata.gzipped(location.name, camera.name, date, doc),
+            media_type="application/json",
+            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
+    return Response(doc.whole(), media_type="application/json")
 
 
 @router.get("/locations/{location}/cameras/{camera}/events", response_model=EventOut)

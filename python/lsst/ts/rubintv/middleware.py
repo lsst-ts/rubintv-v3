@@ -79,8 +79,10 @@ def response_bytes(headers: Headers) -> int | None:
     """The response body size from its headers, or ``None`` without one.
 
     Read inside ``CompressionMiddleware`` (which wraps this one), so it is
-    the uncompressed size. A streamed body (the S3 proxy) is chunked, has no
-    ``Content-Length``, and reports ``None``.
+    the uncompressed size, unless the handler sent the body compressed
+    itself (a whole metadata document, from its stored compressed copy). A
+    streamed body (the S3 proxy) is chunked, has no ``Content-Length``, and
+    reports ``None``.
     """
     raw = headers.get("content-length")
     return int(raw) if raw is not None and raw.isdigit() else None
@@ -177,6 +179,11 @@ _OFFLOAD_BYTES = 64 * 1024
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gzip")
 
 
+def accepts_gzip(headers: Headers) -> bool:
+    """Whether a request's sender takes a gzipped response."""
+    return "gzip" in headers.get("accept-encoding", "")
+
+
 def _compressible(message: Message) -> bool:
     """Whether a response (by its start message) is one to compress.
 
@@ -222,7 +229,7 @@ class CompressionMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        accepts_gzip = "gzip" in Headers(scope=scope).get("accept-encoding", "")
+        gzip_accepted = accepts_gzip(Headers(scope=scope))
         # A compressible response's start message is held until its first
         # body message, which decides the headers.
         start: Message | None = None
@@ -247,7 +254,7 @@ class CompressionMiddleware:
                 if more_body or len(body) >= self.minimum_size:
                     headers = MutableHeaders(scope=held)
                     headers.add_vary_header("Accept-Encoding")
-                    if accepts_gzip:
+                    if gzip_accepted:
                         headers["Content-Encoding"] = "gzip"
                         if more_body:
                             # A stream: compressed chunk by chunk below.
