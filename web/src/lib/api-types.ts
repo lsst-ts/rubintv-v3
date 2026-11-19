@@ -180,8 +180,39 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Metadata */
+        /**
+         * Get Metadata
+         * @description The whole metadata document for a date (seq_num -> row).
+         *
+         *     The page itself reads ``/changes`` below, which can send just what
+         *     changed; this is the plain document for anything else.
+         */
         get: operations["get_metadata_api_locations__location__cameras__camera__metadata__date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/locations/{location}/cameras/{camera}/metadata/{date}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Metadata Changes
+         * @description A date's metadata as the changes since version ``since``.
+         *
+         *     The one way the page loads metadata: with no ``since`` (or one the
+         *     server can't diff from) the reply is the whole document, otherwise the
+         *     rows that changed. A WebSocket ``metadata`` message says when to ask
+         *     again.
+         */
+        get: operations["get_metadata_changes_api_locations__location__cameras__camera__metadata__date__changes_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -960,6 +991,27 @@ export interface components {
              */
             has_cluster_status: boolean;
         };
+        /**
+         * MetadataChangesOut
+         * @description A date's metadata, as what changed since a version the reader holds.
+         *
+         *     The producer rewrites metadata.json as each exposure's rows land, so a
+         *     page that has the document needs only the difference, usually one row.
+         */
+        MetadataChangesOut: {
+            /** Etag */
+            etag: string | null;
+            /** Since */
+            since: string | null;
+            /** Rows */
+            rows: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Removed */
+            removed: string[];
+        };
         /** MosaicViewEntryOut */
         MosaicViewEntryOut: {
             /** Channel */
@@ -1318,6 +1370,41 @@ export interface operations {
                             [key: string]: unknown;
                         };
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_changes_api_locations__location__cameras__camera__metadata__date__changes_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+            };
+            header?: never;
+            path: {
+                date: string;
+                location: string;
+                camera: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataChangesOut"];
                 };
             };
             /** @description Validation Error */

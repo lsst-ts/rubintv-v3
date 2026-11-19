@@ -2,7 +2,7 @@ import { useLive } from "../lib/LiveContext";
 
 // Status of this tab's live WebSocket, read from the shared LiveProvider (one
 // connection per tab). Lives on the Status page, where it reports whether the
-// browser↔app-server connection that streams new images and metadata is up.
+// browser↔app-server connection that announces new images and metadata is up.
 export function ConnectionStatus() {
   const { status } = useLive();
   const label =

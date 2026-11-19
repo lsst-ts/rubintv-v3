@@ -19,23 +19,31 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-"""MetadataCache.stream: incremental batching, cache-hit fast path, dedupe."""
+"""MetadataCache: one fetch path, shared fetches, deltas, a bounded LRU."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 from collections.abc import Iterator
+from typing import Any
 
 import boto3
 import pytest
-from lsst.ts.rubintv.data import metadata as metadata_mod
-from lsst.ts.rubintv.data.metadata import Metadata, MetadataCache
+from botocore.exceptions import ClientError, EndpointConnectionError
+from lsst.ts.rubintv.data.metadata import (
+    Metadata,
+    MetadataCache,
+    MetadataUnavailable,
+)
 from moto import mock_aws
 
 from tests.conftest import TEST_BUCKET
 
 DATE = "2026-04-10"
+KEY = f"lsstcam/{DATE}/metadata.json"
+ROWS: Metadata = {str(n): {"Exposure time": float(n)} for n in range(1, 6)}
 
 
 class _FakePool:
@@ -49,293 +57,303 @@ class _FakePool:
 
 
 @pytest.fixture
-def cache() -> Iterator[MetadataCache]:
+def s3() -> Iterator[Any]:
     with mock_aws():
-        s3 = boto3.client("s3", region_name="us-east-1")
-        s3.create_bucket(Bucket=TEST_BUCKET)
-        rows = {str(n): {"Exposure time": float(n)} for n in range(1, 6)}
-        s3.put_object(
-            Bucket=TEST_BUCKET,
-            Key=f"lsstcam/{DATE}/metadata.json",
-            Body=json.dumps(rows).encode(),
-        )
-        pool = _FakePool(s3)
-        yield MetadataCache(pool, {"test": TEST_BUCKET})  # type: ignore[arg-type]
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket=TEST_BUCKET)
+        client.put_object(Bucket=TEST_BUCKET, Key=KEY, Body=json.dumps(ROWS).encode())
+        yield client
 
 
-async def _collect(cache: MetadataCache) -> tuple[list[Metadata], object]:
-    chunks: list[Metadata] = []
-    etag: object = None
-    async for batch in cache.stream("test", "lsstcam", DATE):
-        if batch.done:
-            etag = batch.etag
-        elif batch.rows:
-            chunks.append(batch.rows)
-    return chunks, etag
+@pytest.fixture
+def cache(s3: Any) -> MetadataCache:
+    return MetadataCache(_FakePool(s3), {"test": TEST_BUCKET})  # type: ignore[arg-type]
 
 
-async def test_stream_batches_and_assembles(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
-    chunks, etag = await _collect(cache)
-    # 5 rows @ batch 2 -> 3 chunks (2, 2, 1).
-    assert [len(c) for c in chunks] == [2, 2, 1]
-    merged: Metadata = {}
-    for c in chunks:
-        merged.update(c)
-    assert merged == {str(n): {"Exposure time": float(n)} for n in range(1, 6)}
-    assert etag is not None
-
-
-async def test_stream_cache_hit_skips_download(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Prime the cache.
-    await _collect(cache)
-    # A second stream with the same ETag must not call get_object.
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-
-    def _boom(*_a: object, **_k: object) -> None:
-        raise AssertionError("get_object should not be called on a cache hit")
-
-    monkeypatch.setattr(client, "get_object", _boom)
-    chunks, etag = await _collect(cache)
-    merged: Metadata = {}
-    for c in chunks:
-        merged.update(c)
-    assert len(merged) == 5
-    assert etag is not None
-
-
-async def test_get_fetches_then_serves_from_cache(cache: MetadataCache) -> None:
-    data = await cache.get("test", "lsstcam", DATE)
-    assert len(data) == 5
-    # Second call: head-only ETag check, same data back from the cache.
-    etag, again = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert etag is not None
-    assert again == data
-
-
-async def test_get_missing_object_returns_empty(cache: MetadataCache) -> None:
-    etag, data = await cache.get_with_etag("test", "lsstcam", "2026-01-01")
-    assert etag is None
-    assert data == {}
-
-
-async def test_get_serves_cached_copy_when_object_deleted(
-    cache: MetadataCache,
-) -> None:
-    # Prime, then delete the object: the cached copy (with its etag) survives.
-    data = await cache.get("test", "lsstcam", DATE)
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-    client.delete_object(Bucket=TEST_BUCKET, Key=f"lsstcam/{DATE}/metadata.json")
-    etag, again = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert etag is not None
-    assert again == data
-
-
-async def test_stream_missing_object_yields_done_only(
-    cache: MetadataCache,
-) -> None:
-    batches = [b async for b in cache.stream("test", "lsstcam", "2026-01-01")]
-    assert len(batches) == 1
-    assert batches[0].done is True
-    assert batches[0].etag is None
-    assert batches[0].rows == {}
-
-
-async def test_stream_missing_object_serves_cached_copy(
-    cache: MetadataCache,
-) -> None:
-    chunks, etag = await _collect(cache)
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-    client.delete_object(Bucket=TEST_BUCKET, Key=f"lsstcam/{DATE}/metadata.json")
-    chunks, again = await _collect(cache)
-    assert again == etag
-    assert sum(len(c) for c in chunks) == 5
-
-
-async def test_stream_propagates_worker_errors(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-
-    def _boom(*_a: object, **_k: object) -> None:
-        raise RuntimeError("network down")
-
-    monkeypatch.setattr(client, "head_object", _boom)
-    with pytest.raises(RuntimeError, match="network down"):
-        async for _ in cache.stream("test", "lsstcam", DATE):
-            pass
-
-
-async def test_get_degrades_to_empty_when_get_object_fails_after_head(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # TOCTOU / corrupt JSON: the HEAD succeeds but the GET then fails (object
-    # deleted between HEAD and GET, or partial/invalid JSON uploaded). The REST
-    # path must degrade to an empty payload, never 500.
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-
-    def _boom(*_a: object, **_k: object) -> None:
-        raise RuntimeError("gone between head and get")
-
-    monkeypatch.setattr(client, "get_object", _boom)
-    etag, data = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert data == {}
-    assert etag is None
-
-
-async def test_get_serves_cached_when_get_object_fails_after_head(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # If a good copy is cached, a later failed refresh serves the cached data
-    # rather than an empty payload or a 500.
-    first_etag, first = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert len(first) == 5
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-    # Change the object so the ETag differs (forces a refresh), then break GET.
-    client.put_object(
-        Bucket=TEST_BUCKET,
-        Key=f"lsstcam/{DATE}/metadata.json",
-        Body=json.dumps({"1": {"Exposure time": 1.0}, "2": {"Exposure time": 2.0}}),
-    )
-
-    def _boom(*_a: object, **_k: object) -> None:
-        raise RuntimeError("refresh failed")
-
-    monkeypatch.setattr(client, "get_object", _boom)
-    etag, data = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert data == first
-    assert etag == first_etag
-
-
-async def test_cache_evicts_oldest_entries(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(metadata_mod, "_MAX_ENTRIES", 1)
-    other_date = "2026-04-11"
-    client = cache._pool.client_for("test")  # noqa: SLF001 - test introspection
-    client.put_object(
-        Bucket=TEST_BUCKET,
-        Key=f"lsstcam/{other_date}/metadata.json",
-        Body=json.dumps({"9": {"Exposure time": 9.0}}).encode(),
-    )
-    await cache.get("test", "lsstcam", DATE)
-    # Fetching a second date through the streaming path evicts the first.
-    async for _ in cache.stream("test", "lsstcam", other_date):
-        pass
-    assert list(cache._entries) == [  # noqa: SLF001 - test introspection
-        ("test", "lsstcam", other_date)
-    ]
-
-
-async def _rewrite(cache: MetadataCache, rows: Metadata) -> None:
+def _put(s3: Any, body: bytes | Metadata, date: str = DATE) -> None:
     # The producer rewrites the whole file; only the content differs.
-    client = cache._pool.client_for("test")  # noqa: SLF001
-    client.put_object(  # type: ignore[attr-defined]
-        Bucket=TEST_BUCKET,
-        Key=f"lsstcam/{DATE}/metadata.json",
-        Body=json.dumps(rows).encode(),
-    )
+    raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+    s3.put_object(Bucket=TEST_BUCKET, Key=f"lsstcam/{date}/metadata.json", Body=raw)
 
 
-async def test_delta_since_the_replaced_version_is_the_difference(
-    cache: MetadataCache,
+def _count(s3: Any, monkeypatch: pytest.MonkeyPatch, method: str) -> list[None]:
+    """Count calls to an S3 client method, which still goes through."""
+    calls: list[None] = []
+    real = getattr(s3, method)
+
+    def counted(**kwargs: object) -> object:
+        calls.append(None)
+        return real(**kwargs)
+
+    monkeypatch.setattr(s3, method, counted)
+    return calls
+
+
+def _break(s3: Any, monkeypatch: pytest.MonkeyPatch, method: str) -> None:
+    def broken(**_kwargs: object) -> None:
+        raise EndpointConnectionError(endpoint_url="https://s3.example")
+
+    monkeypatch.setattr(s3, method, broken)
+
+
+async def test_get_fetches_then_serves_from_cache(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    etag1, rows = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert etag1 is not None
+    gets = _count(s3, monkeypatch, "get_object")
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert doc.data == ROWS and doc.etag is not None
+    # The text to serve is the object's own: nothing to re-serialise.
+    assert doc.body == json.dumps(ROWS).encode()
+    # Second read: a HEAD says it is current, and the same document is back.
+    assert await cache.get("test", "lsstcam", DATE) is doc
+    assert len(gets) == 1
+
+
+async def test_a_missing_object_is_an_empty_document(cache: MetadataCache) -> None:
+    doc = await cache.get("test", "lsstcam", "2026-01-01")
+    assert (doc.etag, doc.data, doc.body) == (None, {}, b"{}")
+    # Nothing to bring a reader forward from, whatever version it names.
+    assert doc.changes_since('"v1"') is None
+
+
+async def test_a_deleted_object_leaves_its_cached_copy(
+    cache: MetadataCache, s3: Any
+) -> None:
+    doc = await cache.get("test", "lsstcam", DATE)
+    s3.delete_object(Bucket=TEST_BUCKET, Key=KEY)
+    assert await cache.get("test", "lsstcam", DATE) is doc
+
+
+@pytest.mark.parametrize("method", ["head_object", "get_object"])
+async def test_a_failed_read_with_nothing_cached_is_unavailable(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    # Not an empty document: the page would show a night with no metadata
+    # and call it loaded.
+    _break(s3, monkeypatch, method)
+    with pytest.raises(MetadataUnavailable):
+        await cache.get("test", "lsstcam", DATE)
+    # Nothing is remembered of the failure: the next read tries again.
+    monkeypatch.undo()
+    assert (await cache.get("test", "lsstcam", DATE)).data == ROWS
+
+
+async def test_an_s3_error_that_is_not_a_404_is_a_failure(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A 503 from the gateway must not read as "this date has no metadata".
+    def slow_down(**_kwargs: object) -> None:
+        raise ClientError({"Error": {"Code": "SlowDown"}}, "HeadObject")
+
+    monkeypatch.setattr(s3, "head_object", slow_down)
+    with pytest.raises(MetadataUnavailable):
+        await cache.get("test", "lsstcam", DATE)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b'{"1": {"Exposure time": 1.0}, "2": {"Expo', b'[{"Exposure time": 1.0}]'],
+    ids=["cut-short", "not-an-object"],
+)
+async def test_a_failed_refresh_serves_the_cached_copy(
+    cache: MetadataCache, s3: Any, body: bytes
+) -> None:
+    # Today's file is rewritten continuously; a read can catch it broken.
+    doc = await cache.get("test", "lsstcam", DATE)
+    _put(s3, body)
+    assert await cache.get("test", "lsstcam", DATE) is doc
+    # Once the file is whole again the cache moves on, with a delta from the
+    # version it kept.
+    _put(s3, {**ROWS, "6": {"Exposure time": 6.0}})
+    fresh = await cache.get("test", "lsstcam", DATE)
+    delta = fresh.changes_since(doc.etag)
+    assert delta is not None and delta.rows == {"6": {"Exposure time": 6.0}}
+
+
+async def test_nan_and_infinity_are_read_as_null(cache: MetadataCache, s3: Any) -> None:
+    # Python's json.dump writes these; a browser's JSON.parse rejects them.
+    _put(s3, b'{"1": {"psf": NaN, "sky": Infinity, "bias": -Infinity, "exp": 30.0}}')
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert doc.data == {"1": {"psf": None, "sky": None, "bias": None, "exp": 30.0}}
+    # And the text served is rewritten to match, as strict JSON.
+    assert json.loads(doc.body, parse_constant=pytest.fail) == doc.data
+
+
+async def test_numbers_stay_numbers(cache: MetadataCache, s3: Any) -> None:
+    _put(s3, b'{"1": {"psf": 0.30000000000000004, "exp": 30.0, "n": 3}}')
+    row = (await cache.get("test", "lsstcam", DATE)).data["1"]
+    assert row == {"psf": 0.30000000000000004, "exp": 30.0, "n": 3}
+    assert [type(v) for v in row.values()] == [float, float, int]
+
+
+async def test_readers_arriving_together_share_one_fetch(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    heads = _count(s3, monkeypatch, "head_object")
+    gets = _count(s3, monkeypatch, "get_object")
+    docs = await asyncio.gather(*(cache.get("test", "lsstcam", DATE) for _ in range(5)))
+    assert all(doc is docs[0] for doc in docs)
+    assert (len(heads), len(gets)) == (1, 1)
+
+
+async def test_a_reader_leaving_does_not_stop_the_fetch_for_the_rest(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = threading.Event()
+    real = s3.get_object
+
+    def held(**kwargs: object) -> object:
+        release.wait(30)
+        return real(**kwargs)
+
+    monkeypatch.setattr(s3, "get_object", held)
+    first = asyncio.create_task(cache.get("test", "lsstcam", DATE))
+    second = asyncio.create_task(cache.get("test", "lsstcam", DATE))
+    await asyncio.sleep(0)
+    first.cancel()
+    release.set()
+    assert (await second).data == ROWS
+    assert first.cancelled()
+
+
+async def test_a_failure_nobody_waited_for_is_not_left_unretrieved(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The only reader leaves, then the shared fetch fails: asyncio would
+    # report "Task exception was never retrieved" at garbage collection.
+    release = threading.Event()
+
+    def held(**_kwargs: object) -> None:
+        release.wait(30)
+        raise EndpointConnectionError(endpoint_url="https://s3.example")
+
+    monkeypatch.setattr(s3, "head_object", held)
+    reader = asyncio.create_task(cache.get("test", "lsstcam", DATE))
+    await asyncio.sleep(0)
+    (fetch,) = cache._inflight.values()  # noqa: SLF001 - test introspection
+    reader.cancel()
+    release.set()
+    await asyncio.wait([fetch])
+    await asyncio.sleep(0)  # let its done callback run
+    assert fetch._log_traceback is False  # type: ignore[attr-defined]  # noqa: SLF001
+    assert cache._inflight == {}  # noqa: SLF001
+
+
+async def test_a_cancelled_fetch_is_forgotten(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # At shutdown the loop cancels what is in flight; the reader is cancelled
+    # with it, and nothing is left behind for the key.
+    release = threading.Event()
+    real = s3.head_object
+
+    def held(**kwargs: object) -> object:
+        release.wait(30)
+        return real(**kwargs)
+
+    monkeypatch.setattr(s3, "head_object", held)
+    reader = asyncio.create_task(cache.get("test", "lsstcam", DATE))
+    await asyncio.sleep(0)
+    (fetch,) = cache._inflight.values()  # noqa: SLF001 - test introspection
+    fetch.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await reader
+    release.set()
+    assert cache._inflight == {}  # noqa: SLF001
+    # The next reader starts afresh.
+    assert (await cache.get("test", "lsstcam", DATE)).data == ROWS
+
+
+async def test_the_cache_is_bounded_by_bytes_not_entries(s3: Any) -> None:
+    dates = ["2026-04-11", "2026-04-12", "2026-04-13"]
+    for date in dates:
+        _put(s3, {"1": {"note": "x" * 100}}, date)
+    size = len(json.dumps({"1": {"note": "x" * 100}}))
+    cache = MetadataCache(
+        _FakePool(s3),  # type: ignore[arg-type]
+        {"test": TEST_BUCKET},
+        max_bytes=2 * size,
+    )
+    for date in dates:
+        await cache.get("test", "lsstcam", date)
+    # Room for two: the least recently read went.
+    assert [key[2] for key in cache._entries] == dates[1:]  # noqa: SLF001
+    # Reading one makes it the most recent, so the other goes next.
+    await cache.get("test", "lsstcam", dates[1])
+    await cache.get("test", "lsstcam", dates[0])
+    assert [key[2] for key in cache._entries] == [dates[1], dates[0]]  # noqa: SLF001
+    assert cache._bytes == 2 * size  # noqa: SLF001
+
+
+async def test_a_document_larger_than_the_cap_is_still_cached(s3: Any) -> None:
+    # It is about to be served, and the next read of it should cost a HEAD.
+    cache = MetadataCache(_FakePool(s3), {"test": TEST_BUCKET}, max_bytes=1)  # type: ignore[arg-type]
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert await cache.get("test", "lsstcam", DATE) is doc
+    # A rewrite replaces it, and its size, rather than adding to it.
+    _put(s3, {"1": {}})
+    await cache.get("test", "lsstcam", DATE)
+    assert cache._bytes == len(json.dumps({"1": {}}))  # noqa: SLF001
+
+
+async def test_changes_since_the_replaced_version_are_the_difference(
+    cache: MetadataCache, s3: Any
+) -> None:
+    first = await cache.get("test", "lsstcam", DATE)
     # One row added, one altered, one removed: the usual per-exposure shape
     # plus the rarer reprocessing cases.
-    rewritten = {**rows, "6": {"Exposure time": 6.0}}
+    rewritten = {**ROWS, "6": {"Exposure time": 6.0}}
     rewritten["3"] = {"Exposure time": 3.5}
     del rewritten["1"]
-    await _rewrite(cache, rewritten)
+    _put(s3, rewritten)
 
-    delta = await cache.delta_since("test", "lsstcam", DATE, etag1)
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert doc.data == rewritten
+    delta = doc.changes_since(first.etag)
     assert delta is not None
-    assert delta.since == etag1 and delta.etag not in (None, etag1)
+    assert delta.since == first.etag and delta.etag == doc.etag != first.etag
     assert delta.rows == {"6": {"Exposure time": 6.0}, "3": {"Exposure time": 3.5}}
     assert delta.removed == ["1"]
-    # The cache is current as a side effect, so the next reader is cheap.
-    etag2, data = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert etag2 == delta.etag and data == rewritten
 
 
-async def test_delta_since_the_current_version_is_empty(
+async def test_changes_since_the_current_version_are_empty(
     cache: MetadataCache,
 ) -> None:
-    etag, _ = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert etag is not None
-    delta = await cache.delta_since("test", "lsstcam", DATE, etag)
+    doc = await cache.get("test", "lsstcam", DATE)
+    delta = doc.changes_since(doc.etag)
     assert delta is not None
-    assert delta.rows == {} and delta.removed == [] and delta.etag == etag
+    assert (delta.rows, delta.removed, delta.etag) == ({}, [], doc.etag)
 
 
-async def test_delta_since_an_unknown_version_is_none(
-    cache: MetadataCache,
+async def test_changes_since_an_unknown_version_are_not_known(
+    cache: MetadataCache, s3: Any
 ) -> None:
-    # Two rewrites between refreshes: the client's version is not the one
-    # just replaced, so the caller must send the whole document.
-    etag1, rows = await cache.get_with_etag("test", "lsstcam", DATE)
-    assert etag1 is not None
-    await _rewrite(cache, {**rows, "6": {"Exposure time": 6.0}})
-    await cache.get_with_etag("test", "lsstcam", DATE)
-    await _rewrite(cache, {**rows, "7": {"Exposure time": 7.0}})
-    assert await cache.delta_since("test", "lsstcam", DATE, etag1) is None
-    assert await cache.delta_since("test", "lsstcam", DATE, "never-seen") is None
+    # Two rewrites between reads: the reader's version is not the one just
+    # replaced, so it needs the whole document. So does a reader with none.
+    first = await cache.get("test", "lsstcam", DATE)
+    _put(s3, {**ROWS, "6": {"Exposure time": 6.0}})
+    await cache.get("test", "lsstcam", DATE)
+    _put(s3, {**ROWS, "7": {"Exposure time": 7.0}})
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert doc.changes_since(first.etag) is None
+    assert doc.changes_since("never-seen") is None
+    assert doc.changes_since(None) is None
 
 
-async def _rows(cache: MetadataCache, n: int) -> None:
-    await _rewrite(
-        cache, {str(i): {"Exposure time": float(i)} for i in range(1, n + 1)}
-    )
-
-
-@pytest.mark.parametrize("rows", [5, 3], ids=["mid-document", "at-the-end"])
-async def test_an_aborted_stream_stops_and_never_seeds_the_cache(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch, rows: int
+async def test_the_version_is_the_one_the_body_came_with(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A subscriber leaving mid-transfer sets the abort flag; the worker
-    # stops at its next batch boundary (or before storing, if the document
-    # ran out first), and the partial dict must not be cached as the date's
-    # metadata.
-    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
-    await _rows(cache, rows)
-    abort = threading.Event()
-    batches = cache._stream_blocking("test", "lsstcam", DATE, abort)
-    assert len(next(batches).rows) == 2
-    abort.set()
-    assert list(batches) == []
-    assert cache._entries == {}
+    # Rewritten between the HEAD and the GET: the etag kept must be the
+    # GET's, or the next HEAD would match a body the cache doesn't hold.
+    real = s3.head_object
 
+    def head_then_rewrite(**kwargs: object) -> object:
+        head = real(**kwargs)
+        _put(s3, {"9": {"Exposure time": 9.0}})
+        return head
 
-async def test_an_aborted_stream_of_a_cached_copy_stops_too(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
-    await cache.get_with_etag("test", "lsstcam", DATE)  # cached, 5 rows
-    abort = threading.Event()
-    batches = cache._stream_blocking("test", "lsstcam", DATE, abort)
-    assert len(next(batches).rows) == 2
-    abort.set()
-    # No more rows go out; only the terminal marker, which nobody reads.
-    assert [b.rows for b in batches if not b.done] == []
-
-
-async def test_stream_of_whole_batches_has_no_trailing_chunk(
-    cache: MetadataCache, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
-    await _rows(cache, 4)
-    chunks, etag = await _collect(cache)
-    assert [len(c) for c in chunks] == [2, 2]
-    assert etag is not None
-
-
-async def test_delta_since_for_a_date_without_metadata_is_none(
-    cache: MetadataCache,
-) -> None:
-    # Nothing to diff against: the caller falls back to the full stream.
-    assert await cache.delta_since("test", "lsstcam", "2026-04-11", "x") is None
+    monkeypatch.setattr(s3, "head_object", head_then_rewrite)
+    doc = await cache.get("test", "lsstcam", DATE)
+    monkeypatch.undo()
+    assert doc.data == {"9": {"Exposure time": 9.0}}
+    assert doc.etag == s3.head_object(Bucket=TEST_BUCKET, Key=KEY)["ETag"]

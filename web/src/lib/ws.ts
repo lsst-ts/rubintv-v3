@@ -16,9 +16,6 @@ export interface Subscription {
   topic: string;
   location?: string;
   camera?: string;
-  // When set on a camera subscription, the server streams that date's
-  // metadata to this tab as metadataChunk frames (progressive fill).
-  date?: string;
 }
 
 interface ServerMessage {
@@ -113,18 +110,6 @@ export function useWebSocket(
       sock.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data) as ServerMessage;
-          if (msg.type === "metadataChunk" || msg.type === "metadataComplete") {
-            debugLog("ws.recv", msg.type, {
-              camera: msg.camera,
-              date: msg.date,
-              seq: msg.seq,
-              total: msg.total,
-              rows:
-                msg.data && typeof msg.data === "object"
-                  ? Object.keys(msg.data as object).length
-                  : undefined,
-            });
-          }
           handlersRef.current.forEach((h) => h(msg));
         } catch {
           // Ignore non-JSON frames.
@@ -180,33 +165,6 @@ export function useWebSocket(
     [send],
   );
 
-  // Ask the server to bring a held camera/date subscription's metadata
-  // current (its metadata.json was rewritten). With the version this tab
-  // holds the server can answer with just the difference; without one it
-  // re-streams the document. Sends only for subscriptions actually held.
-  const refresh = useCallback(
-    (
-      match: { location?: string; camera?: string; date?: string },
-      sinceEtag: string | null,
-    ) => {
-      for (const { sub } of subscriptionsRef.current.values()) {
-        if (
-          sub.topic === "camera" &&
-          sub.location === match.location &&
-          sub.camera === match.camera &&
-          sub.date === match.date
-        ) {
-          send({
-            action: "refresh",
-            ...sub,
-            since_etag: sinceEtag ?? undefined,
-          });
-        }
-      }
-    },
-    [send],
-  );
-
   const onMessage = useCallback((handler: MessageHandler) => {
     handlersRef.current.add(handler);
     return () => {
@@ -214,5 +172,5 @@ export function useWebSocket(
     };
   }, []);
 
-  return { status, subscribe, refresh, onMessage };
+  return { status, subscribe, onMessage };
 }

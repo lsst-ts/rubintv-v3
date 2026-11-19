@@ -30,6 +30,9 @@ export type CacheEntry = Schemas["CacheEntry"];
 
 // A metadata payload is seq_num (string) -> { column -> value }.
 export type Metadata = Record<string, Record<string, unknown>>;
+// What changed in a date's metadata since a version the page holds, or the
+// whole document (`since: null`).
+export type MetadataChanges = Schemas["MetadataChangesOut"];
 
 // Live detector status: set name -> per-set payload (workers / numWorkers /
 // text). Carried in the detectorStatus WS message's `data.detectors` and read

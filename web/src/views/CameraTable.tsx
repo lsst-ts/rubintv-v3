@@ -77,17 +77,17 @@ export function CameraTable() {
     !cameraInfo?.live_view && date,
   );
 
-  // Live updates for this camera (drives table + calendar invalidation).
-  // Passing the resolved date also asks the server to stream that date's
-  // metadata as it loads, so cells fill progressively rather than after one
-  // big REST round-trip.
-  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+  // Live updates for this camera (drives table, metadata and calendar
+  // refetches).
+  useLiveTopic({ topic: "camera", location, camera });
 
-  // Streamed over the WebSocket with a REST backstop; see useMetadata.
+  // Loaded apart from the date payload, so the grid never waits on it; see
+  // useMetadata.
   const {
     metadata,
-    progress: metaProgress,
     loaded: metaLoaded,
+    loading: metaLoading,
+    failed: metaFailed,
   } = useMetadata(location, camera, date);
 
   const { data: payload, isPending } = useQuery({
@@ -295,8 +295,8 @@ export function CameraTable() {
   );
 
   // Union of seq_nums across channels and metadata, descending (newest
-  // first). Including metadata keys means streamed rows appear immediately,
-  // before the (slower) REST channel payload lands.
+  // first). Including metadata keys means a row appears with whichever of
+  // its metadata and its channel payload lands first.
   const allSeqNums = useMemo(() => {
     const s = new Set<number>();
     for (const seqs of Object.values(payload?.channels ?? {})) {
@@ -524,15 +524,18 @@ export function CameraTable() {
         <DownloadMetadata
           metadata={metadata}
           filename={`${camera}_${date}_metadata.json`}
-          // Enabled only once a full document has arrived (stream complete
-          // or REST resolved) AND no stream is still in flight (a non-null
-          // metaProgress means more chunks are coming). Downloading mid-load
-          // would save a partial file.
-          disabled={date === "" || !metaLoaded || metaProgress != null}
+          // Enabled once the document has arrived: before that there is
+          // nothing to save.
+          disabled={date === "" || !metaLoaded}
         />
-        {metaProgress && metaProgress.rows > 0 && (
+        {metaLoading && (
           <span className="metadata-progress" role="status">
-            loading metadata… {metaProgress.rows} rows
+            loading metadata…
+          </span>
+        )}
+        {metaFailed && (
+          <span className="metadata-progress" role="status">
+            metadata unavailable
           </span>
         )}
 

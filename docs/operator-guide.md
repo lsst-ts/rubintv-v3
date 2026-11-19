@@ -224,7 +224,8 @@ session can be measured without a profiler:
 | Event | Fields | What it measures |
 |---|---|---|
 | `http.request` | `method`, `path`, `status`, `duration_ms`, `bytes`, `client`, `forwarded_for`, `user_agent` | every REST/proxy request: time to response headers, uncompressed body size (`null` for a chunked stream) |
-| `ws.frame.sent` | `type`, `bytes`, `camera`, `date`, `seq` | every WebSocket frame put on the wire |
+| `ws.frame.sent` | `type`, `bytes`, `camera`, `date` | every WebSocket frame put on the wire |
+| `metadata.fetch` | `rows`, `bytes`, `duration_ms` | each metadata.json read from S3 (a new or rewritten file; an unchanged one costs a HEAD and logs nothing) |
 | `ws.disconnect` | `frames_sent`, `bytes_sent` | a connection's lifetime totals |
 | `poll.current.cycle` | `cycle_seconds`, `keys` | each 1s current-day cycle: wall time and keys listed |
 | `poll.scan` | `scope`, `prefix`, `keys`, `slices_touched` | each S3 listing; `info` only when it changed the index, `debug` when it was a silent re-listing, except the current-day poll's silent ones, which `poll.current.cycle` sums |

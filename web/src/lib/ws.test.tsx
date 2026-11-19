@@ -133,12 +133,12 @@ test("a non-JSON frame is skipped and later frames still arrive", () => {
   });
   act(() => {
     pushRawLiveFrame("not json");
-    pushLiveMessage({ type: "metadataChunk", camera: "c", data: { 1: {} } });
-    pushLiveMessage({ type: "metadataComplete", camera: "c" });
+    pushLiveMessage({ type: "channelData", camera: "c", data: { 1: {} } });
+    pushLiveMessage({ type: "metadata", camera: "c" });
   });
   expect(seen).toEqual([
-    { type: "metadataChunk", camera: "c", data: { 1: {} } },
-    { type: "metadataComplete", camera: "c" },
+    { type: "channelData", camera: "c", data: { 1: {} } },
+    { type: "metadata", camera: "c" },
   ]);
 });
 

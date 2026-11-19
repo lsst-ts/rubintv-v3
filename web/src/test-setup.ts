@@ -157,3 +157,9 @@ if (typeof URL.createObjectURL !== "function") {
   URL.createObjectURL = () => `blob:test/${++blobSeq}`;
   URL.revokeObjectURL = () => {};
 }
+
+/** What `/metadata/{date}/changes` answers a page that holds no version: the
+ *  whole document. For the tests' fetch stubs. */
+export function wholeMetadata(rows: Record<string, unknown>, etag = '"v1"') {
+  return { etag, since: null, rows, removed: [] };
+}

@@ -10,13 +10,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { LiveProvider } from "../lib/LiveContext";
-import { openLiveSockets, pushLiveMessage } from "../test-setup";
+import { wholeMetadata } from "../test-setup";
 import { setDensity } from "../lib/prefs";
 import { CameraTable } from "./CameraTable";
 
 // The camera table's toolbar and states, rendered on its own (no app shell):
 // row density (set in the NavMenu), the column picker's views (remembered per
-// browser), column toggles and sorting, the streamed-metadata progress note,
+// browser), column toggles and sorting, the metadata loading note,
 // the "since last image" clock, and the filtered-empty notice. Most table
 // flows run through the full router in routes.test.
 
@@ -44,7 +44,7 @@ function stub({
         ...camera,
       };
     } else if (/\/metadata\//.test(url)) {
-      body = metadata;
+      body = wholeMetadata(metadata);
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -158,25 +158,46 @@ test("clicking a column label sorts by it, then reverses", async () => {
   await waitFor(() => expect(seqOrder()).toEqual(["11", "10"]));
 });
 
-test("streamed metadata shows its progress until the stream completes", async () => {
+test("the table says metadata is loading until it arrives", async () => {
+  // The grid comes from the date payload and doesn't wait for the metadata.
+  let land!: (response: unknown) => void;
+  const fetchStub = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL) =>
+    /\/metadata\//.test(String(input))
+      ? new Promise<unknown>((resolve) => (land = resolve))
+      : fetchStub(input)) as typeof fetch;
   renderTable();
   await screen.findByText("10");
-  act(() => openLiveSockets());
-  const frame = { location: "local", camera: "auxtel", date: TODAY };
-  act(() =>
-    pushLiveMessage({
-      type: "metadataChunk",
-      ...frame,
-      seq: 0,
-      data: { "12": { Exposure: 5 }, "13": { Exposure: 6 } },
-    }),
-  );
+  expect(screen.getByText("loading metadata…").role).toBe("status");
   expect(
-    (await screen.findByText(/loading metadata/)).textContent,
-  ).toBe("loading metadata… 2 rows");
+    screen.getByRole("button", { name: /Download metadata/ }),
+  ).toHaveProperty("disabled", true);
 
-  act(() => pushLiveMessage({ type: "metadataComplete", ...frame, total: 2 }));
-  await waitFor(() => expect(screen.queryByText(/loading metadata/)).toBeNull());
+  const body = wholeMetadata({ "10": { Exposure: 30 } });
+  act(() => land({ ok: true, json: () => Promise.resolve(body) }));
+  await screen.findByText("30");
+  expect(screen.queryByText("loading metadata…")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: /Download metadata/ }),
+  ).toHaveProperty("disabled", false);
+});
+
+test("the table says so when its metadata can't be fetched", async () => {
+  const fetchStub = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL) =>
+    /\/metadata\//.test(String(input))
+      ? Promise.resolve({ ok: false, status: 503 })
+      : fetchStub(input)) as typeof fetch;
+  renderTable();
+  // Still a table: the rows are there, only their metadata is missing. The
+  // query retries once (after a second) before it reports the failure.
+  await screen.findByText("10");
+  const notice = await screen.findByText(
+    "metadata unavailable",
+    {},
+    { timeout: 4000 },
+  );
+  expect(notice.role).toBe("status");
 });
 
 test("today's table shows the camera's time-since-last-image clock", async () => {

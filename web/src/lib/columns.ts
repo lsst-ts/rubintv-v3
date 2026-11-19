@@ -132,7 +132,7 @@ export function useColumnPrefs(
   }, [key, okey]);
 
   // Until the user customises, keep hidden = (all − defaults) as both lists
-  // settle (config + streamed metadata arrive after mount).
+  // settle (config + metadata arrive after mount).
   useEffect(() => {
     if (hasSaved.current) return;
     setHidden(defaultHidden(all, defaults, locked));

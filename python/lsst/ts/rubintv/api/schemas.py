@@ -173,9 +173,31 @@ class DatePayload(BaseModel):
     has_night_report: bool
     # Metadata is deliberately NOT bundled here. It is a large, slow,
     # live-from-S3 fetch, whereas channels/per_day come from the warm-start
-    # cache and render instantly. The table loads metadata separately (the WS
-    # stream for progressive fill, the /metadata/{date} endpoint as backstop)
-    # so the grid never waits on it.
+    # cache and render instantly. The table loads metadata separately (the
+    # /metadata/{date}/changes endpoint) so the grid never waits on it.
+
+
+class MetadataChangesOut(BaseModel):
+    """A date's metadata, as what changed since a version the reader holds.
+
+    The producer rewrites metadata.json as each exposure's rows land, so a
+    page that has the document needs only the difference, usually one row.
+    """
+
+    etag: str | None
+    """The version this brings the reader up to: hand it back as ``since``
+    next time. ``None`` when the date has no metadata.json."""
+
+    since: str | None
+    """The version the changes apply on top of. ``None`` means ``rows`` is
+    the whole document: the reader had none, or the server can no longer
+    tell what changed since the one it had."""
+
+    rows: dict[str, dict[str, object]]
+    """seq_num -> row: the rows added or altered, or every row."""
+
+    removed: list[str]
+    """seq_nums no longer in the document. Empty for a whole document."""
 
 
 class CalendarOut(BaseModel):

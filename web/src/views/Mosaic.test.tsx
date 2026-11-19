@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { LiveProvider } from "../lib/LiveContext";
 import { Mosaic } from "./Mosaic";
+import { wholeMetadata } from "../test-setup";
 
 // The live mosaic grid on its own: a tile per configured channel at its newest
 // seq, the file each asks for (per-seq extension, channel default, png/mp4),
@@ -33,7 +34,7 @@ function stub({
         mosaic_view_meta: meta,
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "252": { Exposure: 30, Detail: { DISPLAY_VALUE: "x" } } };
+      body = wholeMetadata({ "252": { Exposure: 30, Detail: { DISPLAY_VALUE: "x" } } });
     } else if (/\/dates\//.test(url)) {
       body = { per_day: {}, metadata: {}, channels, extensions };
     }

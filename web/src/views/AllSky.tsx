@@ -52,8 +52,8 @@ export function AllSky() {
   const isCurrentDayObs = date !== "" && date === currentDayObs();
   usePageTitle(cameraInfo?.title ?? camera, date);
 
-  // Subscribe with the resolved date so channelData updates for today land live.
-  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+  // Live updates for this camera, so channelData for today lands live.
+  useLiveTopic({ topic: "camera", location, camera });
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),

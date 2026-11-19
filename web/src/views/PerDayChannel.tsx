@@ -54,7 +54,7 @@ export function PerDayChannel({ live }: { live: boolean }) {
     live ? "LIVE" : date || undefined,
   );
 
-  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+  useLiveTopic({ topic: "camera", location, camera });
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),

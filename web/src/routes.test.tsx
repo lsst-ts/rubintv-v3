@@ -10,7 +10,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
 import { LiveProvider } from "./lib/LiveContext";
-import { openLiveSockets, pushLiveMessage, sentLiveFrames } from "./test-setup";
+import { openLiveSockets, pushLiveMessage, sentLiveFrames, wholeMetadata } from "./test-setup";
 import { routes } from "./routes";
 
 // Views fetch on mount; in jsdom those calls fail, but headings still render
@@ -191,18 +191,17 @@ test("channel browser advances its cards on a live channelData message", async (
   // Open the connection so the view's queued subscribe frame flushes.
   act(() => openLiveSockets());
 
-  // The grid must subscribe to the camera topic for the resolved date — that
-  // subscription is what tells the server to stream this camera's updates to
-  // the tab. (A pushed message alone can't prove this: applyLiveMessage
-  // invalidates regardless of who subscribed, so the seq assertion below would
-  // pass even unsubscribed; this is the check that actually guards the fix.)
+  // The grid must subscribe to the camera topic — that subscription is what
+  // tells the server to send this camera's updates to the tab. (A pushed
+  // message alone can't prove this: applyLiveMessage invalidates regardless
+  // of who subscribed, so the seq assertion below would pass even
+  // unsubscribed; this is the check that actually guards the fix.)
   await waitFor(() =>
     expect(sentLiveFrames()).toContainEqual({
       action: "subscribe",
       topic: "camera",
       location: "local",
       camera: "lsstcam",
-      date: "2026-04-10",
     }),
   );
 
@@ -533,7 +532,7 @@ function mockPerRowLinkCamera() {
           'dataId = {"day_obs": {dayObs}, "seq_num": {seqNum:06}}',
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "252": { controller: "C" } };
+      body = wholeMetadata({ "252": { controller: "C" } });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -565,7 +564,7 @@ test("camera table shows per-row viewer, quicklook, and copy-row controls", asyn
 
   // Viewer link fills the row's controller ("C"), the 8-digit date, and the
   // zero-padded seq. The controller comes from metadata, which lands a beat
-  // after the grid (the stream backstop fetch), so wait for the filled href.
+  // after the grid (its own fetch), so wait for the filled href.
   const viewer = await screen.findByRole("link", { name: "Viewer" });
   await waitFor(() =>
     expect(viewer.getAttribute("href")).toBe(
@@ -646,7 +645,7 @@ function mockMosaicCamera() {
         ],
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "252": { Exposure: 30 } };
+      body = wholeMetadata({ "252": { Exposure: 30 } });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -699,7 +698,7 @@ test("column picker defaults to configured columns and reset restores them", asy
         metadata_columns: { Exposure: "Exposure time" },
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "1": { Exposure: "30", sky_mean: "9000" } };
+      body = wholeMetadata({ "1": { Exposure: "30", sky_mean: "9000" } });
     } else if (/\/dates\//.test(url)) {
       body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
     }
@@ -753,7 +752,7 @@ test("a metadata cell gets a colour class from its sibling _<col> indicator", as
       };
     } else if (/\/metadata\//.test(url)) {
       // The "_Filter" indicator names the colour class for the Filter cell.
-      body = { "7": { Filter: "z_20", _Filter: "bad" } };
+      body = wholeMetadata({ "7": { Filter: "z_20", _Filter: "bad" } });
     } else if (/\/dates\//.test(url)) {
       body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
     }
@@ -782,14 +781,14 @@ test("single-channel sidebar colours values, strips objects, and offers a downlo
         metadata_columns: {},
       };
     } else if (/\/metadata\//.test(url)) {
-      body = {
+      body = wholeMetadata({
         "7": {
           Filter: "z_20",
           _Filter: "bad", // colour indicator for the Filter value
           Exposure: 30, // plain scalar, no colour
           Detail: { DISPLAY_VALUE: "x", extra: 1 }, // object value, stripped
         },
-      };
+      });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -837,7 +836,7 @@ test("single-channel metadata folds away and remembers its state globally", asyn
         metadata_columns: {},
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "7": { Exposure: 30 } };
+      body = wholeMetadata({ "7": { Exposure: 30 } });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -892,7 +891,7 @@ test("single-channel view shows a strip linking sibling channels for the same ex
         metadata_columns: {},
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "7": { Exposure: 30 } };
+      body = wholeMetadata({ "7": { Exposure: 30 } });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -940,7 +939,7 @@ test("single-channel view shows a loading spinner until the image loads", async 
         metadata_columns: {},
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "7": { Exposure: 30 } };
+      body = wholeMetadata({ "7": { Exposure: 30 } });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -1236,11 +1235,11 @@ test("table filter narrows the rows and a chip clears it", async () => {
         metadata_columns: { Filter: "The filter" },
       };
     } else if (/\/metadata\//.test(url)) {
-      body = {
+      body = wholeMetadata({
         "10": { Filter: "z_20" },
         "11": { Filter: "r_03" },
         "12": { Filter: "z_20" },
-      };
+      });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -1289,11 +1288,11 @@ test("filter bar counts rows and a chip edits its filter in place", async () => 
         metadata_columns: { Filter: "The filter" },
       };
     } else if (/\/metadata\//.test(url)) {
-      body = {
+      body = wholeMetadata({
         "10": { Filter: "z_20" },
         "11": { Filter: "r_03" },
         "12": { Filter: "z_20" },
-      };
+      });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},
@@ -1410,7 +1409,7 @@ test("column picker dismisses on Escape and on an outside click", async () => {
         metadata_columns: {},
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "1": { exposure_time: "30" } };
+      body = wholeMetadata({ "1": { exposure_time: "30" } });
     } else if (/\/dates\//.test(url)) {
       body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
     }
@@ -1961,10 +1960,11 @@ test("a failed locations fetch does not 404 a real page", async () => {
   await waitFor(() => expect(screen.queryByText("404")).toBeNull());
 });
 
-test("a metadata change asks the server for a delta from the held version", async () => {
-  // The stream delivers the document and its version; when the server says
-  // metadata.json was rewritten, the tab refreshes citing that version so the
-  // server can answer with just the difference, and merges what comes back.
+test("a metadata change asks the server for the difference from the held version", async () => {
+  // The page loads the document and its version over REST; when the server
+  // says metadata.json was rewritten, the tab asks again citing that version
+  // so the server can answer with just the difference, and applies it.
+  const asked: (string | null)[] = [];
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
@@ -1979,6 +1979,18 @@ test("a metadata change asks the server for a delta from the held version", asyn
         ],
         metadata_columns: { Exposure: "Exposure time" },
       };
+    } else if (/\/metadata\/2026-04-10\/changes/.test(url)) {
+      const since = new URL(url, "http://x").searchParams.get("since");
+      asked.push(since);
+      body =
+        since === null
+          ? wholeMetadata({ "250": { Exposure: 30 } }, '"v1"')
+          : {
+              etag: '"v2"',
+              since,
+              rows: { "250": { Exposure: 31 } },
+              removed: [],
+            };
     } else if (/\/dates\//.test(url)) {
       body = {
         date: "2026-04-10",
@@ -1993,48 +2005,20 @@ test("a metadata change asks the server for a delta from the held version", asyn
 
   renderAt("/local/lsstcam?date=2026-04-10");
   await screen.findByRole("columnheader", { name: "Monitor" });
+  expect(await screen.findByText("30")).toBeDefined();
   act(() => openLiveSockets());
+  // The subscription is per camera: the date plays no part in it.
   await waitFor(() =>
-    expect(sentLiveFrames()).toContainEqual(
-      expect.objectContaining({ action: "subscribe", date: "2026-04-10" }),
-    ),
+    expect(sentLiveFrames()).toContainEqual({
+      action: "subscribe",
+      topic: "camera",
+      location: "local",
+      camera: "lsstcam",
+    }),
   );
 
   const frame = { location: "local", camera: "lsstcam", date: "2026-04-10" };
-  act(() => {
-    pushLiveMessage({
-      type: "metadataChunk",
-      ...frame,
-      seq: 0,
-      data: { "250": { Exposure: 30 } },
-    });
-    pushLiveMessage({
-      type: "metadataComplete",
-      ...frame,
-      total: 1,
-      etag: '"v1"',
-    });
-  });
-  expect(await screen.findByText("30")).toBeDefined();
-
   act(() => pushLiveMessage({ type: "metadata", ...frame }));
-  await waitFor(() =>
-    expect(sentLiveFrames()).toContainEqual(
-      expect.objectContaining({
-        action: "refresh",
-        date: "2026-04-10",
-        since_etag: '"v1"',
-      }),
-    ),
-  );
-
-  act(() =>
-    pushLiveMessage({
-      type: "metadataDelta",
-      ...frame,
-      data: { rows: { "250": { Exposure: 31 } }, removed: [] },
-      etag: '"v2"',
-    }),
-  );
   expect(await screen.findByText("31")).toBeDefined();
+  expect(asked).toEqual([null, '"v1"']);
 });
