@@ -449,7 +449,7 @@ async def test_a_fetch_logs_where_its_time_went(
     # file is re-read at every exposure.
     recorder = _LogRecorder()
     monkeypatch.setattr(metadata_mod, "log", recorder)
-    monkeypatch.setattr(metadata_mod, "_SLOW_FETCH_SECONDS", slow_after)
+    monkeypatch.setattr(metadata_mod, "_SLOW_SECONDS", slow_after)
     await cache.get("test", "lsstcam", DATE)
     ((logged_at, event, fields),) = recorder.calls
     assert (logged_at, event) == (level, "metadata.fetch")
@@ -458,6 +458,37 @@ async def test_a_fetch_logs_where_its_time_went(
     assert fields["s3_ms"] >= 0 and fields["parse_ms"] >= 0
     # An unchanged file is a HEAD, and not worth a line.
     await cache.get("test", "lsstcam", DATE)
+    assert len(recorder.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("slow_after", "level"), [(0.0, "info"), (3600.0, "debug")], ids=["slow", "quick"]
+)
+async def test_a_compression_logs_how_long_it_took(
+    cache: MetadataCache,
+    monkeypatch: pytest.MonkeyPatch,
+    slow_after: float,
+    level: str,
+) -> None:
+    # The first page to open a night waits for this, so its share of that
+    # wait should be readable from the log, not worked out by subtraction.
+    doc = await cache.get("test", "lsstcam", DATE)
+    recorder = _LogRecorder()
+    monkeypatch.setattr(metadata_mod, "log", recorder)
+    monkeypatch.setattr(metadata_mod, "_SLOW_SECONDS", slow_after)
+    gzipped = await cache.gzipped("test", "lsstcam", DATE, doc)
+    ((logged_at, event, fields),) = recorder.calls
+    assert (logged_at, event) == (level, "metadata.compress")
+    assert (fields["location"], fields["camera"], fields["date"]) == (
+        "test",
+        "lsstcam",
+        DATE,
+    )
+    assert fields["bytes"] == len(doc.whole())
+    assert fields["gzipped_bytes"] == len(gzipped)
+    assert fields["duration_ms"] >= 0
+    # Served again from the kept copy: nothing compressed, nothing logged.
+    await cache.gzipped("test", "lsstcam", DATE, doc)
     assert len(recorder.calls) == 1
 
 

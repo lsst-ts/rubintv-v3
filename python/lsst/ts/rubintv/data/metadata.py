@@ -76,15 +76,17 @@ _RANGED_MIN_BYTES = 4 * 1024 * 1024
 _RANGE_BYTES = 2 * 1024 * 1024
 _RANGE_WORKERS = 8
 
-# The level a whole document is compressed at, once per version: the same as
-# CompressionMiddleware's, which did it afresh for every response (0.15 s
-# for a 12 MB night).
-_GZIP_LEVEL = 6
+# The level a whole document is compressed at, once per version. The first
+# page to open a night waits for it: at level 6, on the usdf-dev pod, about
+# 0.2-0.3 s for a 10-20 MB night, as long as a good download. Level 1 does
+# a 12 MB night in under a third of level 6's time (44 ms against 150 on a
+# laptop) for a reply 40% larger (1.86 MB against 1.32).
+_GZIP_LEVEL = 1
 
-# A fetch that took this long is logged at info, not debug: long enough for
-# the page to have noticed, and rare (today's file, re-read at each
-# exposure, comes in well under it).
-_SLOW_FETCH_SECONDS = 1.0
+# A fetch or a compression that took this long is logged at info, not
+# debug: long enough for the page to have noticed, and rare (today's file,
+# re-read at each exposure, comes in well under it).
+_SLOW_SECONDS = 1.0
 
 # S3 error codes that mean the object isn't there (HEAD reports a bare 404).
 _NOT_FOUND = ("404", "NoSuchKey", "NotFound")
@@ -223,7 +225,7 @@ class MetadataCache:
         held = self._gzipped.get(key)
         if held is None or held[0] is not doc:
             loop = asyncio.get_running_loop()
-            held = (doc, loop.run_in_executor(self._workers, _gzip_whole, doc))
+            held = (doc, loop.run_in_executor(self._workers, _gzip_whole, key, doc))
             # Kept only for the version the cache holds: a reader overtaken
             # by a rewrite gets its copy, but it isn't worth keeping.
             if self._entries.get(key) is doc:
@@ -315,7 +317,7 @@ class MetadataCache:
             delta=_diff(cached, etag, data) if cached is not None else None,
         )
         done = time.perf_counter()
-        emit = log.info if done - started >= _SLOW_FETCH_SECONDS else log.debug
+        emit = log.info if done - started >= _SLOW_SECONDS else log.debug
         emit(
             "metadata.fetch",
             location=location,
@@ -363,8 +365,24 @@ class MetadataCache:
         return b"".join(parts), etag, len(parts)
 
 
-def _gzip_whole(doc: MetadataDoc) -> bytes:
-    return gzip.compress(doc.whole(), _GZIP_LEVEL)
+def _gzip_whole(key: _Key, doc: MetadataDoc) -> bytes:
+    """Compress a document's whole reply (blocking; on a worker thread)."""
+    location, camera, date = key
+    started = time.perf_counter()
+    whole = doc.whole()
+    gzipped = gzip.compress(whole, _GZIP_LEVEL)
+    took = time.perf_counter() - started
+    emit = log.info if took >= _SLOW_SECONDS else log.debug
+    emit(
+        "metadata.compress",
+        location=location,
+        camera=camera,
+        date=date,
+        bytes=len(whole),
+        gzipped_bytes=len(gzipped),
+        duration_ms=round(took * 1000, 1),
+    )
+    return gzipped
 
 
 def _parse(raw: bytes) -> tuple[Metadata, bytes]:
