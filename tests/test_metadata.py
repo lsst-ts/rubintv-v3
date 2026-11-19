@@ -32,6 +32,7 @@ from typing import Any
 import boto3
 import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError
+from lsst.ts.rubintv.data import metadata as metadata_mod
 from lsst.ts.rubintv.data.metadata import (
     Metadata,
     MetadataCache,
@@ -76,13 +77,15 @@ def _put(s3: Any, body: bytes | Metadata, date: str = DATE) -> None:
     s3.put_object(Bucket=TEST_BUCKET, Key=f"lsstcam/{date}/metadata.json", Body=raw)
 
 
-def _count(s3: Any, monkeypatch: pytest.MonkeyPatch, method: str) -> list[None]:
-    """Count calls to an S3 client method, which still goes through."""
-    calls: list[None] = []
+def _count(
+    s3: Any, monkeypatch: pytest.MonkeyPatch, method: str
+) -> list[dict[str, object]]:
+    """Record calls to an S3 client method, which still goes through."""
+    calls: list[dict[str, object]] = []
     real = getattr(s3, method)
 
     def counted(**kwargs: object) -> object:
-        calls.append(None)
+        calls.append(kwargs)
         return real(**kwargs)
 
     monkeypatch.setattr(s3, method, counted)
@@ -357,3 +360,107 @@ async def test_the_version_is_the_one_the_body_came_with(
     monkeypatch.undo()
     assert doc.data == {"9": {"Exposure time": 9.0}}
     assert doc.etag == s3.head_object(Bucket=TEST_BUCKET, Key=KEY)["ETag"]
+
+
+@pytest.fixture
+def small_ranges(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shrink the ranged-read sizes so the fixture's file counts as large."""
+    monkeypatch.setattr(metadata_mod, "_RANGED_MIN_BYTES", 50)
+    monkeypatch.setattr(metadata_mod, "_RANGE_BYTES", 40)
+
+
+@pytest.mark.usefixtures("small_ranges")
+@pytest.mark.parametrize("size", [130, 160], ids=["short-last-range", "whole-ranges"])
+async def test_a_large_file_is_read_as_ranges_at_once(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    # One connection carried a 20 MB night at about 6 MB/s on the pod.
+    rows = {"1": {"note": "x" * (size - len(json.dumps({"1": {"note": ""}})))}}
+    _put(s3, rows)
+    gets = _count(s3, monkeypatch, "get_object")
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert doc.data == rows and len(doc.body) == size
+    etag = s3.head_object(Bucket=TEST_BUCKET, Key=KEY)["ETag"]
+    assert doc.etag == etag
+    # Every byte once, each range pinned to the version the HEAD saw.
+    assert sorted(str(get["Range"]) for get in gets) == sorted(
+        f"bytes={first}-{min(first + 40, size) - 1}" for first in range(0, size, 40)
+    )
+    assert {get["IfMatch"] for get in gets} == {etag}
+
+
+async def test_a_small_file_is_read_in_one_request(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gets = _count(s3, monkeypatch, "get_object")
+    await cache.get("test", "lsstcam", DATE)
+    assert gets == [{"Bucket": TEST_BUCKET, "Key": KEY}]
+
+
+@pytest.mark.usefixtures("small_ranges")
+async def test_a_rewrite_between_ranges_fails_the_read_not_the_document(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Ranges of two versions joined would be nonsense. The read fails
+    # instead (the cached copy stands in), and the next one is whole.
+    first = {"1": {"note": "a" * 100}}
+    second = {"1": {"note": "b" * 100}, "2": {"note": "c" * 100}}
+    third = {"3": {"note": "d" * 100}}
+    _put(s3, first)
+    doc = await cache.get("test", "lsstcam", DATE)
+    _put(s3, second)
+    real = s3.head_object
+
+    def head_then_rewrite(**kwargs: object) -> object:
+        head = real(**kwargs)
+        _put(s3, third)
+        return head
+
+    monkeypatch.setattr(s3, "head_object", head_then_rewrite)
+    assert await cache.get("test", "lsstcam", DATE) is doc
+    monkeypatch.undo()
+    assert (await cache.get("test", "lsstcam", DATE)).data == third
+
+
+class _LogRecorder:
+    """Stands in for the module's logger: records (level, event, fields)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def __getattr__(self, level: str) -> Any:
+        def record(event: str, **fields: Any) -> None:
+            self.calls.append((level, event, fields))
+
+        return record
+
+
+@pytest.mark.parametrize(
+    ("slow_after", "level"), [(0.0, "info"), (3600.0, "debug")], ids=["slow", "quick"]
+)
+async def test_a_fetch_logs_where_its_time_went(
+    cache: MetadataCache,
+    monkeypatch: pytest.MonkeyPatch,
+    slow_after: float,
+    level: str,
+) -> None:
+    # At info only when it was slow enough for the page to notice: today's
+    # file is re-read at every exposure.
+    recorder = _LogRecorder()
+    monkeypatch.setattr(metadata_mod, "log", recorder)
+    monkeypatch.setattr(metadata_mod, "_SLOW_FETCH_SECONDS", slow_after)
+    await cache.get("test", "lsstcam", DATE)
+    ((logged_at, event, fields),) = recorder.calls
+    assert (logged_at, event) == (level, "metadata.fetch")
+    assert fields["rows"] == 5 and fields["requests"] == 1
+    assert fields["bytes"] == len(json.dumps(ROWS))
+    assert fields["s3_ms"] >= 0 and fields["parse_ms"] >= 0
+    # An unchanged file is a HEAD, and not worth a line.
+    await cache.get("test", "lsstcam", DATE)
+    assert len(recorder.calls) == 1
+
+
+async def test_close_stops_the_range_threads(cache: MetadataCache) -> None:
+    cache.close()
+    with pytest.raises(RuntimeError):
+        cache._rangers.submit(print)  # noqa: SLF001 - test introspection
