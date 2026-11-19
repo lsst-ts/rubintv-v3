@@ -30,8 +30,6 @@ httptools==0.8.0
     # via uvicorn
 idna==3.16
     # via anyio
-ijson==3.5.0
-    # via rubintv
 jmespath==1.1.0
     # via
     #   boto3
