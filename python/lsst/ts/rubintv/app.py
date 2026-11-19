@@ -354,6 +354,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.stop()
         await write_cache()
         state.thumbs.close()
+        metadata.close()
         s3.close()
         log.info("shutdown.complete")
 

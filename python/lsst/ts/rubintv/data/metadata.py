@@ -35,6 +35,7 @@ import asyncio
 import json
 import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -44,6 +45,7 @@ from lsst.ts.rubintv.logging import get_logger
 
 if TYPE_CHECKING:
     from lsst.ts.rubintv.s3.client import S3ClientPool
+    from mypy_boto3_s3.client import S3Client
 
 log = get_logger(__name__)
 
@@ -64,6 +66,18 @@ _MAX_BYTES = 256 * 1024 * 1024
 # scan calls: unbounded, a crowd of dates on a slow endpoint could occupy
 # every thread and starve the 1s poll loop.
 _FETCH_MAX_CONCURRENCY = 4
+
+# A file this large is read as several ranges at once. One connection to
+# the USDF gateway carried a 20 MB night at about 6 MB/s (3.6 s, on the
+# usdf-dev pod); smaller files are done in under a second as they are.
+_RANGED_MIN_BYTES = 4 * 1024 * 1024
+_RANGE_BYTES = 2 * 1024 * 1024
+_RANGE_WORKERS = 8
+
+# A fetch that took this long is logged at info, not debug: long enough for
+# the page to have noticed, and rare (today's file, re-read at each
+# exposure, comes in well under it).
+_SLOW_FETCH_SECONDS = 1.0
 
 # S3 error codes that mean the object isn't there (HEAD reports a bare 404).
 _NOT_FOUND = ("404", "NoSuchKey", "NotFound")
@@ -146,6 +160,14 @@ class MetadataCache:
         self._bytes = 0
         self._inflight: dict[_Key, asyncio.Task[MetadataDoc]] = {}
         self._fetch_sem = asyncio.Semaphore(_FETCH_MAX_CONCURRENCY)
+        # Reads the ranges of large files, for whichever fetches need them.
+        self._rangers = ThreadPoolExecutor(
+            max_workers=_RANGE_WORKERS, thread_name_prefix="metadata"
+        )
+
+    def close(self) -> None:
+        """Stop the range-reading threads."""
+        self._rangers.shutdown(wait=False, cancel_futures=True)
 
     async def get(self, location: str, camera: str, date: str) -> MetadataDoc:
         """Return a date's current metadata, fetching it if it has changed.
@@ -175,7 +197,6 @@ class MetadataCache:
     async def _refresh(self, key: _Key) -> MetadataDoc:
         location, camera, date = key
         cached = self._entries.get(key)
-        started = time.perf_counter()
         try:
             async with self._fetch_sem:
                 doc = await asyncio.to_thread(self._fetch, key, cached)
@@ -197,16 +218,6 @@ class MetadataCache:
             if cached is None:
                 raise MetadataUnavailable(f"{camera}/{date}") from exc
             return cached
-        if doc is not cached:
-            log.debug(
-                "metadata.fetch",
-                location=location,
-                camera=camera,
-                date=date,
-                rows=len(doc.data),
-                bytes=len(doc.body),
-                duration_ms=round((time.perf_counter() - started) * 1000, 1),
-            )
         # Also when unchanged: it is now the most recently read, and may
         # have been dropped for another date while we asked.
         self._store(key, doc)
@@ -238,6 +249,7 @@ class MetadataCache:
         s3_key = f"{camera}/{date}/metadata.json"
         bucket = self._buckets[location]
         client = self._pool.client_for(location)
+        started = time.perf_counter()
         try:
             head = client.head_object(Bucket=bucket, Key=s3_key)
         except ClientError as exc:
@@ -246,18 +258,64 @@ class MetadataCache:
             raise
         if cached is not None and head.get("ETag") == cached.etag:
             return cached
-        obj = client.get_object(Bucket=bucket, Key=s3_key)
-        with closing(obj["Body"]) as stream:
-            raw: bytes = stream.read()
+        raw, etag, requests = self._read(
+            client, bucket, s3_key, head.get("ContentLength", 0), head.get("ETag")
+        )
+        read = time.perf_counter()
         data, body = _parse(raw)
-        # The GET's own ETag: the file may have been rewritten since the HEAD.
-        etag = obj.get("ETag")
-        return MetadataDoc(
+        doc = MetadataDoc(
             etag=etag,
             data=data,
             body=body,
             delta=_diff(cached, etag, data) if cached is not None else None,
         )
+        done = time.perf_counter()
+        emit = log.info if done - started >= _SLOW_FETCH_SECONDS else log.debug
+        emit(
+            "metadata.fetch",
+            location=location,
+            camera=camera,
+            date=date,
+            rows=len(data),
+            bytes=len(raw),
+            requests=requests,
+            s3_ms=round((read - started) * 1000, 1),
+            parse_ms=round((done - read) * 1000, 1),
+        )
+        return doc
+
+    def _read(
+        self, client: S3Client, bucket: str, s3_key: str, size: int, etag: str | None
+    ) -> tuple[bytes, str | None, int]:
+        """Download the object a HEAD just described (blocking).
+
+        Returns its bytes, the ETag they are, and how many GETs it took: one
+        for a small file, one per range of a large one.
+        """
+        if size < _RANGED_MIN_BYTES or etag is None:
+            obj = client.get_object(Bucket=bucket, Key=s3_key)
+            with closing(obj["Body"]) as stream:
+                # The GET's own ETag: the file may have been rewritten since
+                # the HEAD.
+                return stream.read(), obj.get("ETag"), 1
+
+        def read_range(first: int) -> bytes:
+            last = min(first + _RANGE_BYTES, size) - 1
+            # IfMatch pins every range to the version the HEAD saw. A
+            # rewrite part way through fails the read (412), which the next
+            # one puts right, where two versions spliced together would not
+            # even parse.
+            obj = client.get_object(
+                Bucket=bucket,
+                Key=s3_key,
+                Range=f"bytes={first}-{last}",
+                IfMatch=etag,
+            )
+            with closing(obj["Body"]) as stream:
+                return stream.read()
+
+        parts = list(self._rangers.map(read_range, range(0, size, _RANGE_BYTES)))
+        return b"".join(parts), etag, len(parts)
 
 
 def _parse(raw: bytes) -> tuple[Metadata, bytes]:
