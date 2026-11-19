@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 396 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 402 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -72,6 +72,8 @@ Driven by benchmarking against the real USDF endpoint.
 
 ### 5. Streamed metadata and progressive loading
 Large-day metadata streamed to the browser instead of blocking the grid.
+(Group 56 replaces the stream with one REST path; the grid still doesn't
+wait on metadata.)
 - `8296c36` Persist cache slices incrementally as history is scanned
 - `5b731b8` Stream date metadata to clients over the WebSocket
 - `5c0d44f` Show a banner while historical data is still loading
@@ -401,8 +403,8 @@ Safe to skim.
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
-  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, and the commit
-  that noted the third review round's first fixes.
+  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`, and
+  the commit that noted the single metadata path.
 
 ---
 
@@ -776,7 +778,9 @@ per-date lock, queued 18–28s behind the stream's download on a slow
 link; the calendar was refetched on every exposure. Review
 `web/src/lib/useMetadata.ts` (the backstop rule), the chunk accounting in
 `liveQuery.ts`, the `refresh` action in `ws/handler.py`, and
-`calendarUpdate` on a new date in `EventStore.apply`.
+`calendarUpdate` on a new date in `EventStore.apply`. (Group 56 removes
+the stream, the backstop rule and `refresh`; the delta and the calendar
+change stand.)
 - `40d1220` Deliver metadata by the stream alone; refresh the calendar only
   on a new date
 - `252a73c` Send a metadata delta on refresh when the client's version
@@ -1044,6 +1048,47 @@ ones show what is held back, compressed and passed through); then
 - `d254984` Stream proxied S3 objects in 64 KiB chunks, not botocore's
   default 1 KiB, each of which cost a thread hop and a send: a 50 MiB
   movie took about 4 s to stream in-process, now 0.1 s
+
+### 56. Metadata by one REST path
+The same review found the metadata path the weakest part of the app: a
+WebSocket stream (ijson), a delta, and a REST snapshot (json.loads) that
+the page merged across six cache slots, and which disagreed with one
+another. This group replaces all three with one path and supersedes
+groups 5 and 45. Review `MetadataCache` in `data/metadata.py` end to end
+(`get`, `_fetch`, `_read`, `gzipped`, and `MetadataDoc.changes_since`),
+then `get_metadata_changes` in `api/data.py`; on the page,
+`web/src/lib/metadata.ts` and `useMetadata.ts`, and the `metadata` case
+in `liveQuery.ts`. `ws/handler.py` and `ws/protocol.py` only lose code.
+The three commits after the first tune it against timings from the
+usdf-dev pod.
+- `5c3ac87` Load metadata over one REST path, not a stream merged with a
+  snapshot. The page reads `/metadata/{date}/changes?since=<etag>`: the
+  whole document, or the rows that changed since the version it holds,
+  kept in one query slot; the WebSocket's `metadata` message only says
+  when to ask again, and a rewrite during a fetch is asked about when it
+  lands instead of restarting it. The server parses once with
+  json.loads (NaN and Infinity read as null, numbers stay numbers),
+  shares one fetch among readers that arrive together, bounds the cache
+  by bytes and touches it from the event loop only. A file that can't
+  be read is a 503 and "metadata unavailable", not a table that loads
+  for ever. Gone: the stream, its chunk, complete and delta messages,
+  `refresh`, and the `date` on a subscription. What is lost is the table
+  filling while the server is still downloading
+- `aef0a2b` Drop the ijson dependency
+- `0b97905` Read large metadata files as ranges at once, and log where a
+  fetch's time goes: a file of 4 MiB or more is read as 2 MiB ranges, up
+  to eight at a time, each pinned with IfMatch to the version the HEAD
+  saw. A 20 MB night that took 3.6 s in one request downloads in about
+  0.07 s on an idle pod. `metadata.fetch` logs `s3_ms`, `parse_ms` and
+  `requests`
+- `f96502e` Send a whole metadata document from a compressed copy kept
+  with it: compressed once per version, on a worker thread, and by the
+  preload for the nights it loads. A repeat open of a 13.5 MB night is
+  answered in about 50 ms
+- `3ec0d2b` Compress whole metadata documents at level 1, and log how
+  long it takes (`metadata.compress`): compression had become half of a
+  first open, and level 1 takes under a third of level 6's time for a
+  reply 40% larger
 
 ---
 
