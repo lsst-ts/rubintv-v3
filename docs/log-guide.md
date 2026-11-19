@@ -102,7 +102,8 @@ its request is answered 503 and it says the metadata is unavailable. The
 page loads metadata from `/metadata/{date}/changes`, so those `http.request`
 lines show whether it asked, and how long the answer took. A slow answer
 is a file being read from S3 for the first time: `metadata.fetch` gives its
-size and how long the download and the parse each took.
+size and how long the download and the parse each took, and
+`metadata.compress` how long it then took to compress.
 
 **Images don't load, or stop part way.** `proxy.miss` is an image
 requested that isn't in the bucket; `proxy.stream.broken` is a download that
@@ -231,6 +232,7 @@ default) so a restart is warm.
 | Event | Level | Meaning |
 |---|---|---|
 | `metadata.fetch` | info / debug | A metadata file (`location`, `camera`, `date`) was read from S3 because it is new or was rewritten: its `rows` and `bytes`, the `requests` it took (a file over 4 MiB is read as 2 MiB ranges, several at once), and where the time went: `s3_ms` to download it, `parse_ms` to parse it and work out what changed. `info` when it took a second or more, `debug` otherwise. A file that hasn't changed costs one HEAD and logs nothing. |
+| `metadata.compress` | info / debug | A metadata document was gzipped to be sent whole (`location`, `camera`, `date`): `bytes` in, `gzipped_bytes` out, `duration_ms`. Once per version of a file, the first time a page opens that night (or as it is preloaded); later pages are sent the kept copy and nothing is logged. `info` when it took a second or more. |
 | `metadata.fetch.failed` | warning | A metadata file (`location`, `camera`, `date`) couldn't be read from S3 or parsed (`error`). With `cached: true` the last good version is served instead; otherwise the request is answered 503. Either way the next request tries again. |
 
 ### Image proxy
