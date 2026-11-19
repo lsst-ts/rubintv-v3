@@ -138,6 +138,32 @@ def no_dotenv() -> Iterator[None]:
         yield
 
 
+# Every environment variable Settings reads: its ``RUBINTV_`` prefix and the
+# unprefixed names it takes from the Rapid Analysis environment.
+_SETTINGS_ENV_PREFIXES = ("RUBINTV_", "RA_REDIS_")
+_SETTINGS_ENV_NAMES = ("RAPID_ANALYSIS_LOCATION", "S3_ENDPOINT_URL")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def no_settings_env() -> Iterator[None]:
+    """Keep every Settings in the suite off the developer's environment.
+
+    ``no_dotenv`` covers the ``.env`` file; this covers the same variables
+    when they are exported. Settings assembles a Redis URL from
+    ``RA_REDIS_HOST`` even when a test passes ``redis_url=None``, and the
+    ``settings`` fixture makes every user an admin, so a run in a shell (or a
+    pod) set up for Rapid Analysis sent ``FLUSHDB`` to that Redis from the
+    admin tests. Exported ConsDB, Zephyr and Jira settings likewise sent real
+    queries, with their tokens, from every app the suite started. A test that
+    wants one of these variables sets it itself with ``monkeypatch.setenv``.
+    """
+    with pytest.MonkeyPatch.context() as mp:
+        for var in list(os.environ):
+            if var.startswith(_SETTINGS_ENV_PREFIXES) or var in _SETTINGS_ENV_NAMES:
+                mp.delenv(var)
+        yield
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Settings pointed at the repo's sample config, no Redis, no cache.
