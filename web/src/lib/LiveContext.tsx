@@ -11,11 +11,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWebSocket, type Subscription } from "./ws";
-import {
-  applyLiveMessage,
-  metadataEtag,
-  type ServerMessage,
-} from "./liveQuery";
+import { applyLiveMessage, type ServerMessage } from "./liveQuery";
 
 interface LiveValue {
   subscribe: (sub: Subscription) => () => void;
@@ -34,26 +30,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const onReconnect = useCallback(() => {
     qc.invalidateQueries();
   }, [qc]);
-  const { status, subscribe, refresh, onMessage } = useWebSocket(undefined, {
+  const { status, subscribe, onMessage } = useWebSocket(undefined, {
     onReconnect,
   });
 
   useEffect(
-    () =>
-      onMessage((raw) => {
-        const msg = raw as ServerMessage;
-        // metadata.json was rewritten: the stream is the delivery path, so
-        // re-run it for any held subscription on that date. applyLiveMessage
-        // still invalidates the REST query for the case where REST is active.
-        if (msg.type === "metadata" && msg.location && msg.camera && msg.date) {
-          refresh(
-            { location: msg.location, camera: msg.camera, date: msg.date },
-            metadataEtag(qc, msg.location, msg.camera, msg.date),
-          );
-        }
-        applyLiveMessage(qc, msg);
-      }),
-    [onMessage, refresh, qc],
+    () => onMessage((raw) => applyLiveMessage(qc, raw as ServerMessage)),
+    [onMessage, qc],
   );
 
   return (

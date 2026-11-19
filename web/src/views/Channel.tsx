@@ -76,10 +76,8 @@ function SeqChannel({ live }: { live: boolean }) {
     ? (calendar?.dates[0] ?? "")
     : (params.get("date") ?? "");
 
-  // Subscribe with the resolved date so the server streams this date's metadata
-  // (metadataChunk frames) — subscribing without a date starts no stream, so
-  // new seqs' rows would never arrive live.
-  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+  // Live updates for this camera: new frames, and new seqs' metadata rows.
+  useLiveTopic({ topic: "camera", location, camera });
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -88,8 +86,8 @@ function SeqChannel({ live }: { live: boolean }) {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  // Metadata for the sidebar: streamed over the WebSocket with a REST
-  // backstop, exactly as the table does; see useMetadata.
+  // Metadata for the sidebar, loaded exactly as the table does; see
+  // useMetadata.
   const { metadata } = useMetadata(location, camera, date);
 
   const seqs = useMemo(() => {

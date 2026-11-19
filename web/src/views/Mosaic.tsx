@@ -38,8 +38,8 @@ export function Mosaic() {
   // Always the newest date with data — the mosaic is live-only.
   const date = calendar?.dates[0] ?? "";
 
-  // Subscribe with the live date so channelData updates land in place.
-  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+  // Live updates for this camera, so channelData lands in place.
+  useLiveTopic({ topic: "camera", location, camera });
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -48,8 +48,8 @@ export function Mosaic() {
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
 
-  // Metadata for the chosen columns: streamed over the WebSocket with a
-  // REST backstop, exactly as the table does; see useMetadata.
+  // Metadata for the chosen columns, loaded exactly as the table does; see
+  // useMetadata.
   const { metadata } = useMetadata(location, camera, date);
 
   // Channel title lookup, so a tile can label itself from config.

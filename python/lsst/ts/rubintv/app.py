@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -56,7 +56,7 @@ from lsst.ts.rubintv.data.cache import DiskCache
 from lsst.ts.rubintv.data.consdb import ConsDbClient, read_token
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.guide import GuideService
-from lsst.ts.rubintv.data.metadata import MetadataCache
+from lsst.ts.rubintv.data.metadata import MetadataCache, MetadataUnavailable
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.redis_inputs import RedisInputs
 from lsst.ts.rubintv.data.source import S3Poller
@@ -200,7 +200,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     metadata = MetadataCache(s3, buckets)
     controls = ControlStore()
     detectors = DetectorStore()
-    ws_service = WsService(store, metadata, controls, detectors)
+    ws_service = WsService(store, controls, detectors)
     block_names, guide = _build_guide(settings)
     state = AppState(
         settings=settings,
@@ -276,13 +276,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Pre-fetch the most recent dates' metadata into the LRU after the
         # recent scan, so the first table view of a recent date is a warm hit.
         # Capped by the configured window and by the dates actually present;
-        # get_with_etag populates the cache as a side effect.
+        # reading a date caches it. One that can't be read is left for the
+        # first page that asks.
         n = settings.metadata_preload_days
         if n <= 0:
             return
         dates = store.calendar(location, camera)[:n]
         for date in dates:
-            await metadata.get_with_etag(location, camera, date)
+            with suppress(MetadataUnavailable):
+                await metadata.get(location, camera, date)
         if dates:
             log.info(
                 "metadata.preloaded",

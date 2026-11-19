@@ -200,7 +200,7 @@ export function ChannelBrowser() {
   // views use. A channelData message invalidates the date payload below, which
   // re-resolves each card's latest frame. Without this the grid froze on its
   // first fetch while the table (which does subscribe) kept updating.
-  useLiveTopic(date ? { topic: "camera", location, camera, date } : null);
+  useLiveTopic({ topic: "camera", location, camera });
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),

@@ -29,6 +29,9 @@ subscribe/unsubscribe frames, and drain its send queue concurrently.
 On (re)subscribe to a camera/nightReport topic, the server immediately sends
 the current snapshot for that topic so a freshly opened tab is correct
 without waiting for the next change.
+
+Messages for a camera are hints, not data: they name what changed (a date's
+channel data, its metadata.json) and the client fetches it over REST.
 """
 
 from __future__ import annotations
@@ -38,7 +41,6 @@ import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.events import StoreChange
-from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.logging import get_logger
 from lsst.ts.rubintv.ws.manager import Connection, ConnectionManager
@@ -66,12 +68,10 @@ class WsService:
     def __init__(
         self,
         store: EventStore,
-        metadata: MetadataCache,
         controls: ControlStore,
         detectors: DetectorStore,
     ) -> None:
         self._store = store
-        self._metadata = metadata
         self._controls = controls
         self._detectors = detectors
         self.manager = ConnectionManager()
@@ -134,9 +134,8 @@ class WsService:
     async def handle(self, socket: WebSocket) -> None:
         conn = await self.manager.connect(socket)
         sender = asyncio.create_task(self._send_loop(conn))
-        streams: dict[str, asyncio.Task[None]] = {}
         try:
-            await self._recv_loop(conn, streams)
+            await self._recv_loop(conn)
         except WebSocketDisconnect:
             pass
         finally:
@@ -147,14 +146,9 @@ class WsService:
             # ws.disconnect log line.
             self.manager.disconnect(conn)
             sender.cancel()
-            stream_tasks = list(streams.values())
-            for task in stream_tasks:
-                task.cancel()
-            await asyncio.gather(sender, *stream_tasks, return_exceptions=True)
+            await asyncio.gather(sender, return_exceptions=True)
 
-    async def _recv_loop(
-        self, conn: Connection, streams: dict[str, asyncio.Task[None]]
-    ) -> None:
+    async def _recv_loop(self, conn: Connection) -> None:
         while True:
             raw = await conn.socket.receive_text()
             try:
@@ -171,180 +165,12 @@ class WsService:
                 topic=req.topic,
                 location=req.location,
                 camera=req.camera,
-                date=req.date,
             )
-            if req.action == "refresh":
-                # The client learned the date's metadata.json was rewritten.
-                # With the version it holds we can usually send just the
-                # difference; otherwise stream the whole document again. A
-                # refresh for anything else is a no-op.
-                if req.topic == "camera" and req.camera and req.date:
-                    self._start_metadata_stream(conn, req, streams)
-                continue
             if req.action == "subscribe":
                 self.manager.subscribe(conn, req.topic_key())
                 self._send_snapshot(conn, req)
-                if req.topic == "camera" and req.camera and req.date:
-                    log.debug(
-                        "ws.metadata.stream.start",
-                        conn=conn.id,
-                        camera=req.camera,
-                        date=req.date,
-                    )
-                    self._start_metadata_stream(conn, req, streams)
-                elif req.topic == "camera" and req.camera and not req.date:
-                    log.debug(
-                        "ws.metadata.stream.skip",
-                        conn=conn.id,
-                        reason="no_date_on_subscribe",
-                        camera=req.camera,
-                    )
             else:
                 self.manager.unsubscribe(conn, req.topic_key())
-                # A leaving subscriber's in-flight metadata stream would
-                # otherwise run its whole (possibly minutes-long) transfer
-                # for nobody, holding an executor slot the whole time.
-                self._cancel_stream(streams, req.topic_key())
-
-    def _start_metadata_stream(
-        self,
-        conn: Connection,
-        req: SubscribeRequest,
-        streams: dict[str, asyncio.Task[None]],
-    ) -> None:
-        """Launch a background task streaming a date's metadata to one client.
-
-        One stream per topic key per connection: a re-subscribe (the client
-        flipped to another date) supersedes the previous stream, so flipping
-        through dates can't pile up transfers.
-        """
-        key = req.topic_key()
-        self._cancel_stream(streams, key)
-        task = asyncio.create_task(
-            self._deliver_metadata(
-                conn, req.location, req.camera or "", req.date or "", req.since_etag
-            )
-        )
-        streams[key] = task
-
-        def _cleanup(t: asyncio.Task[None]) -> None:
-            if streams.get(key) is t:
-                del streams[key]
-
-        task.add_done_callback(_cleanup)
-
-    @staticmethod
-    def _cancel_stream(streams: dict[str, asyncio.Task[None]], key: str) -> None:
-        task = streams.pop(key, None)
-        if task is not None:
-            task.cancel()
-
-    async def _deliver_metadata(
-        self,
-        conn: Connection,
-        location: str,
-        camera: str,
-        date: str,
-        since_etag: str | None,
-    ) -> None:
-        """Send a date's metadata: as a delta when the client's version
-        allows, else as a stream of the whole document."""
-        if since_etag is not None:
-            try:
-                delta = await self._metadata.delta_since(
-                    location, camera, date, since_etag
-                )
-            except Exception:  # noqa: BLE001 - fall back to the full stream
-                log.exception("ws.metadata.delta.error", camera=camera, date=date)
-                delta = None
-            if delta is not None:
-                self.manager.send_to(
-                    conn,
-                    ServerMessage(
-                        type="metadataDelta",
-                        location=location,
-                        camera=camera,
-                        date=date,
-                        data={"rows": delta.rows, "removed": delta.removed},
-                        etag=delta.etag,
-                    ),
-                )
-                log.debug(
-                    "ws.metadata.delta",
-                    conn=conn.id,
-                    camera=camera,
-                    date=date,
-                    rows=len(delta.rows),
-                    removed=len(delta.removed),
-                )
-                return
-        await self._stream_metadata(conn, location, camera, date)
-
-    async def _stream_metadata(
-        self, conn: Connection, location: str, camera: str, date: str
-    ) -> None:
-        """Stream a date's metadata to one client as it parses off S3.
-
-        Consumes ``MetadataCache.stream`` so the table fills progressively on
-        slow links rather than after the whole transfer. The total chunk count
-        isn't known until the end (it's a stream), so chunks carry a running
-        row count and the final ``metadataComplete`` carries the totals + etag.
-        A dropped chunk for a slow client is tolerated — the REST date payload
-        remains the authoritative metadata source.
-        """
-        seq = 0
-        rows_sent = 0
-        try:
-            async for batch in self._metadata.stream(location, camera, date):
-                if not batch.done:
-                    rows_sent += len(batch.rows)
-                    self.manager.send_to(
-                        conn,
-                        ServerMessage(
-                            type="metadataChunk",
-                            location=location,
-                            camera=camera,
-                            date=date,
-                            seq=seq,
-                            data=batch.rows,
-                        ),
-                    )
-                    log.debug(
-                        "ws.metadata.chunk.enqueued",
-                        conn=conn.id,
-                        camera=camera,
-                        date=date,
-                        seq=seq,
-                        rows_in_chunk=len(batch.rows),
-                        rows_sent=rows_sent,
-                    )
-                    seq += 1
-                    # Yield so a slow stream doesn't hold the loop between
-                    # batches and other connections stay responsive.
-                    await asyncio.sleep(0)
-                else:
-                    self.manager.send_to(
-                        conn,
-                        ServerMessage(
-                            type="metadataComplete",
-                            location=location,
-                            camera=camera,
-                            date=date,
-                            seq=seq,
-                            total=seq,
-                            etag=batch.etag,
-                        ),
-                    )
-                    log.debug(
-                        "ws.metadata.complete",
-                        conn=conn.id,
-                        camera=camera,
-                        date=date,
-                        chunks=seq,
-                        rows=rows_sent,
-                    )
-        except Exception:  # noqa: BLE001 - never let one stream kill the socket
-            log.exception("ws.metadata.stream.error", camera=camera, date=date)
 
     async def _send_loop(self, conn: Connection) -> None:
         while True:
@@ -361,8 +187,6 @@ class WsService:
                 bytes=size,
                 camera=msg.camera,
                 date=msg.date,
-                seq=msg.seq,
-                total=msg.total,
             )
 
     def _send_snapshot(self, conn: Connection, req: SubscribeRequest) -> None:

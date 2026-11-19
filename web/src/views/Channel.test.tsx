@@ -4,6 +4,7 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { LiveProvider } from "../lib/LiveContext";
 import { routes } from "../routes";
+import { wholeMetadata } from "../test-setup";
 
 // The single-channel viewer's own interactions: arrow keys step through the
 // night's exposures and Shift+arrows through the channels that share one,
@@ -34,7 +35,7 @@ function stub() {
         metadata_columns: {},
       };
     } else if (/\/metadata\//.test(url)) {
-      body = { "7": { Exposure: 30 } };
+      body = wholeMetadata({ "7": { Exposure: 30 } });
     } else if (/\/dates\//.test(url)) {
       body = {
         per_day: {},

@@ -29,6 +29,8 @@ deps (unknown -> 404).
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from lsst.ts.rubintv.api.deps import (
     get_app_state,
@@ -49,11 +51,13 @@ from lsst.ts.rubintv.api.schemas import (
     ExtraButtonOut,
     LocationOut,
     LocationSummary,
+    MetadataChangesOut,
     MosaicViewEntryOut,
     PerDayOut,
     TimeSinceClockOut,
 )
 from lsst.ts.rubintv.config.models import Camera, Location, Models
+from lsst.ts.rubintv.data.metadata import MetadataDoc, MetadataUnavailable
 from lsst.ts.rubintv.data.parser import parse_channel_event
 from lsst.ts.rubintv.state import AppState
 
@@ -225,8 +229,8 @@ async def get_date_payload(
     state: AppState = Depends(get_app_state),
 ) -> DatePayload:
     # Reads the in-memory store (warm-start cached), so the grid renders
-    # immediately. Metadata is fetched separately by the client (WS stream +
-    # /metadata/{date} backstop).
+    # immediately. Metadata is fetched separately by the client (from
+    # /metadata/{date}/changes).
     idx = state.store.date_index(location.name, camera.name, date)
     if idx is None and state.backfill_date is not None:
         # A deep-linked date can be real but unindexed (cold start before the
@@ -264,24 +268,75 @@ async def get_date_payload(
     )
 
 
+async def _metadata(
+    state: AppState, location: Location, camera: Camera, date: str
+) -> MetadataDoc:
+    """The date's current metadata, or a 503 while it can't be read."""
+    try:
+        return await state.metadata.get(location.name, camera.name, date)
+    except MetadataUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"metadata for {camera.name} {date} is unavailable",
+        ) from exc
+
+
 @router.get(
     "/locations/{location}/cameras/{camera}/metadata/{date}",
     response_model=dict[str, dict[str, object]],
 )
 async def get_metadata(
-    response: Response,
     date: str = Depends(valid_date),
     location: Location = Depends(get_location),
     camera: Camera = Depends(get_camera),
     state: AppState = Depends(get_app_state),
     if_none_match: str | None = Header(default=None),
-) -> Response | dict[str, dict[str, object]]:
-    etag, data = await state.metadata.get_with_etag(location.name, camera.name, date)
-    if etag is not None:
-        response.headers["ETag"] = etag
-        if if_none_match == etag:
-            return Response(status_code=status.HTTP_304_NOT_MODIFIED)
-    return data
+) -> Response:
+    """The whole metadata document for a date (seq_num -> row).
+
+    The page itself reads ``/changes`` below, which can send just what
+    changed; this is the plain document for anything else.
+    """
+    doc = await _metadata(state, location, camera, date)
+    headers = {"ETag": doc.etag} if doc.etag is not None else {}
+    if doc.etag is not None and if_none_match == doc.etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    # The cached text as it is: a Response skips the validation and
+    # serialisation of the response model, which for a 17 MiB night held the
+    # event loop for about 0.1 s.
+    return Response(doc.body, media_type="application/json", headers=headers)
+
+
+@router.get(
+    "/locations/{location}/cameras/{camera}/metadata/{date}/changes",
+    response_model=MetadataChangesOut,
+)
+async def get_metadata_changes(
+    since: str | None = None,
+    date: str = Depends(valid_date),
+    location: Location = Depends(get_location),
+    camera: Camera = Depends(get_camera),
+    state: AppState = Depends(get_app_state),
+) -> Response | MetadataChangesOut:
+    """A date's metadata as the changes since version ``since``.
+
+    The one way the page loads metadata: with no ``since`` (or one the
+    server can't diff from) the reply is the whole document, otherwise the
+    rows that changed. A WebSocket ``metadata`` message says when to ask
+    again.
+    """
+    doc = await _metadata(state, location, camera, date)
+    delta = doc.changes_since(since)
+    if delta is not None:
+        return MetadataChangesOut(
+            etag=delta.etag, since=delta.since, rows=delta.rows, removed=delta.removed
+        )
+    # Wrapped around the cached text, for the reason given in get_metadata.
+    rest = json.dumps({"etag": doc.etag, "since": None, "removed": []})
+    return Response(
+        b'{"rows":' + doc.body + b"," + rest[1:].encode(),
+        media_type="application/json",
+    )
 
 
 @router.get("/locations/{location}/cameras/{camera}/events", response_model=EventOut)

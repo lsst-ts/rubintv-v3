@@ -95,9 +95,12 @@ fails.
 because a re-listing no longer found them in the bucket.
 `admin.flush_historical` records an admin clearing the cache and index.
 
-**A metadata table is empty or incomplete.** Look for
-`metadata.fetch.failed` (the file couldn't be read from S3),
-`ws.metadata.stream.error` and `ws.metadata.delta.error`.
+**A metadata table is empty or out of date.** Look for
+`metadata.fetch.failed` (the file couldn't be read from S3, or isn't valid
+JSON): with `cached: true` the page keeps the last good version, otherwise
+its request is answered 503 and it says the metadata is unavailable. The
+page loads metadata from `/metadata/{date}/changes`, so those `http.request`
+lines show whether it asked, and how long the answer took.
 
 **Images don't load, or stop part way.** `proxy.miss` is an image
 requested that isn't in the bucket; `proxy.stream.broken` is a download that
@@ -225,7 +228,8 @@ default) so a restart is warm.
 
 | Event | Level | Meaning |
 |---|---|---|
-| `metadata.fetch.failed` | warning | A metadata file (`location`, `camera`, `date`) couldn't be read from S3 or parsed; the table stays empty until the next fetch or WebSocket update fills it. |
+| `metadata.fetch` | debug | A metadata file (`location`, `camera`, `date`) was read from S3 because it is new or was rewritten: its `rows`, `bytes` and `duration_ms`. A file that hasn't changed costs one HEAD and logs nothing. |
+| `metadata.fetch.failed` | warning | A metadata file (`location`, `camera`, `date`) couldn't be read from S3 or parsed (`error`). With `cached: true` the last good version is served instead; otherwise the request is answered 503. Either way the next request tries again. |
 
 ### Image proxy
 
@@ -247,15 +251,8 @@ default) so a restart is warm.
 | `ws.disconnect` | info | A browser disconnected; `total`, and the connection's `frames_sent` and `bytes_sent`. |
 | `ws.client.slow` | warning | A browser's send queue was full, so a message to it was dropped. A slow or stalled client. |
 | `ws.pump.fan_out.error` | error | A change couldn't be sent to subscribers; the pump carries on with the next. |
-| `ws.frame.recv` | debug | A request from a browser: `subscribe`, `unsubscribe` or `refresh`. |
+| `ws.frame.recv` | debug | A request from a browser: `subscribe` or `unsubscribe`. |
 | `ws.frame.sent` | debug | A frame sent: `type`, `bytes`. |
-| `ws.metadata.stream.start` | debug | Streaming a date's metadata to a browser. |
-| `ws.metadata.stream.skip` | debug | A camera subscription without a date, so no metadata to stream. |
-| `ws.metadata.chunk.enqueued` | debug | One chunk of a metadata stream queued. |
-| `ws.metadata.complete` | debug | A metadata stream finished: `chunks`, `rows`. |
-| `ws.metadata.stream.error` | error | A metadata stream failed; the connection stays up. |
-| `ws.metadata.delta` | debug | A browser that already had a date's metadata was sent only what changed. |
-| `ws.metadata.delta.error` | error | Working out the changes failed; the full stream is sent instead. |
 | `bus.subscriber.slow` | warning | An internal subscriber's queue was full, so a change was dropped for it. |
 
 ### Redis (cluster status and controls)

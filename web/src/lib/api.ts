@@ -15,7 +15,7 @@ import type {
   GuideConfigOut,
   LocationOut,
   LocationSummary,
-  Metadata,
+  MetadataChanges,
   NightReportOut,
   ProgramNamesOut,
   StatusResponse,
@@ -101,12 +101,18 @@ export const api = {
       `/locations/${enc(loc)}/cameras/${enc(cam)}/dates/${enc(date)}`,
     ),
 
-  // Backstop for the WS metadata stream: the full metadata.json for a date.
-  // The grid renders without this (from datePayload); cells fill from the
-  // stream, with this REST query covering clients whose stream drops.
-  metadata: (loc: string, cam: string, date: string) =>
-    getJson<Metadata>(
-      `/locations/${enc(loc)}/cameras/${enc(cam)}/metadata/${enc(date)}`,
+  // A date's metadata, as what changed since the version (`since`, an ETag)
+  // the page holds; the whole document when it holds none. The grid renders
+  // without this (from datePayload) and its cells fill when it lands.
+  metadataChanges: (
+    loc: string,
+    cam: string,
+    date: string,
+    since: string | null,
+  ) =>
+    getJson<MetadataChanges>(
+      `/locations/${enc(loc)}/cameras/${enc(cam)}/metadata/${enc(date)}/changes` +
+        (since === null ? "" : `?since=${enc(since)}`),
     ),
 
   nightReport: (loc: string, cam: string, date: string) =>

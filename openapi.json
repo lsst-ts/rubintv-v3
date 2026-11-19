@@ -328,6 +328,7 @@
           "data"
         ],
         "summary": "Get Metadata",
+        "description": "The whole metadata document for a date (seq_num -> row).\n\nThe page itself reads ``/changes`` below, which can send just what\nchanged; this is the plain document for anything else.",
         "operationId": "get_metadata_api_locations__location__cameras__camera__metadata__date__get",
         "parameters": [
           {
@@ -386,6 +387,83 @@
                     "additionalProperties": true
                   },
                   "title": "Response Get Metadata Api Locations  Location  Cameras  Camera  Metadata  Date  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations/{location}/cameras/{camera}/metadata/{date}/changes": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Metadata Changes",
+        "description": "A date's metadata as the changes since version ``since``.\n\nThe one way the page loads metadata: with no ``since`` (or one the\nserver can't diff from) the reply is the whole document, otherwise the\nrows that changed. A WebSocket ``metadata`` message says when to ask\nagain.",
+        "operationId": "get_metadata_changes_api_locations__location__cameras__camera__metadata__date__changes_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataChangesOut"
                 }
               }
             }
@@ -2898,6 +2976,56 @@
           "title"
         ],
         "title": "LocationSummary"
+      },
+      "MetadataChangesOut": {
+        "properties": {
+          "etag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Etag"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "rows": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Rows"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "etag",
+          "since",
+          "rows",
+          "removed"
+        ],
+        "title": "MetadataChangesOut",
+        "description": "A date's metadata, as what changed since a version the reader holds.\n\nThe producer rewrites metadata.json as each exposure's rows land, so a\npage that has the document needs only the difference, usually one row."
       },
       "MosaicViewEntryOut": {
         "properties": {

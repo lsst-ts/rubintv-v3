@@ -24,9 +24,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import threading
-from collections.abc import AsyncIterator
 from typing import Any
 
 import boto3
@@ -35,7 +32,6 @@ from fastapi.testclient import TestClient
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.events import StoreChange
-from lsst.ts.rubintv.data.metadata import MetadataBatch
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.ws import handler as handler_mod
 from lsst.ts.rubintv.ws.handler import WsService
@@ -242,47 +238,6 @@ def test_ws_bad_frame_gets_error(ws_client) -> None:  # type: ignore[no-untyped-
         assert msg["type"] == "error"
 
 
-def test_ws_streams_metadata_in_chunks(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import json
-
-    from lsst.ts.rubintv.data import metadata as metadata_mod
-
-    client, s3 = ws_client
-    # 3 rows with a batch size of 2 -> two metadataChunk frames + complete.
-    rows = {str(n): {"exp_time": n} for n in range(1, 4)}
-    s3.put_object(
-        Bucket=TEST_BUCKET,
-        Key=f"lsstcam/{DATE}/metadata.json",
-        Body=json.dumps(rows).encode(),
-    )
-
-    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json(
-            {
-                "action": "subscribe",
-                "topic": "camera",
-                "location": "test",
-                "camera": "lsstcam",
-                "date": DATE,
-            }
-        )
-        # First frame is the camera snapshot (channelData); then metadata.
-        assert ws.receive_json()["type"] == "channelData"
-        received: dict[str, dict[str, object]] = {}
-        chunks = 0
-        while True:
-            msg = ws.receive_json()
-            if msg["type"] == "metadataComplete":
-                # Streamed total == number of chunks sent (2 for 3 rows @ 2).
-                assert msg["total"] == chunks == 2
-                break
-            assert msg["type"] == "metadataChunk"
-            chunks += 1
-            received.update(msg["data"])
-        assert received == rows
-
-
 async def test_send_loop_counts_frames_and_bytes() -> None:
     # The send loop records what it put on the wire so ws.disconnect can
     # report a connection's total cost.
@@ -341,82 +296,6 @@ def test_connection_deregistered_when_handler_is_cancelled() -> None:
             assert manager.connection_count == 0
 
 
-def test_ws_refresh_restreams(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import json
-
-    from lsst.ts.rubintv.data import metadata as metadata_mod
-
-    client, s3 = ws_client
-    rows = {str(n): {"exp_time": n} for n in range(1, 4)}
-    s3.put_object(
-        Bucket=TEST_BUCKET,
-        Key=f"lsstcam/{DATE}/metadata.json",
-        Body=json.dumps(rows).encode(),
-    )
-    monkeypatch.setattr(metadata_mod, "_STREAM_BATCH_ROWS", 2)
-    sub = {"topic": "camera", "location": "test", "camera": "lsstcam", "date": DATE}
-
-    def drain_stream(ws) -> list[str]:  # type: ignore[no-untyped-def]
-        types: list[str] = []
-        while True:
-            msg = ws.receive_json()
-            types.append(msg["type"])
-            if msg["type"] == "metadataComplete":
-                return types
-
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"action": "subscribe", **sub})
-        assert ws.receive_json()["type"] == "channelData"  # the snapshot
-        assert drain_stream(ws) == [
-            "metadataChunk",
-            "metadataChunk",
-            "metadataComplete",
-        ]
-        # The client heard the file was rewritten: refresh re-runs just the
-        # stream — no second snapshot, no registry churn.
-        ws.send_json({"action": "refresh", **sub})
-        assert drain_stream(ws) == [
-            "metadataChunk",
-            "metadataChunk",
-            "metadataComplete",
-        ]
-
-
-def test_ws_refresh_sends_a_delta(ws_client, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import json
-
-    client, s3 = ws_client
-    rows = {str(n): {"exp_time": n} for n in range(1, 4)}
-    key = f"lsstcam/{DATE}/metadata.json"
-    s3.put_object(Bucket=TEST_BUCKET, Key=key, Body=json.dumps(rows).encode())
-    sub = {"topic": "camera", "location": "test", "camera": "lsstcam", "date": DATE}
-
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"action": "subscribe", **sub})
-        assert ws.receive_json()["type"] == "channelData"
-        while (msg := ws.receive_json())["type"] != "metadataComplete":
-            pass
-        etag = msg["etag"]
-        assert etag
-        # The producer appends a row and rewrites the file.
-        s3.put_object(
-            Bucket=TEST_BUCKET,
-            Key=key,
-            Body=json.dumps({**rows, "4": {"exp_time": 4}}).encode(),
-        )
-        ws.send_json({"action": "refresh", **sub, "since_etag": etag})
-        msg = ws.receive_json()
-        assert msg["type"] == "metadataDelta"
-        assert msg["data"] == {"rows": {"4": {"exp_time": 4}}, "removed": []}
-        assert msg["etag"] and msg["etag"] != etag
-        # A version the server can't diff from falls back to the full stream.
-        ws.send_json({"action": "refresh", **sub, "since_etag": "stale"})
-        types = []
-        while (msg := ws.receive_json())["type"] != "metadataComplete":
-            types.append(msg["type"])
-        assert types and set(types) == {"metadataChunk"}
-
-
 CAMERA_SUB = {"topic": "camera", "location": "test", "camera": "lsstcam"}
 
 
@@ -438,29 +317,6 @@ def handler_log(monkeypatch: pytest.MonkeyPatch) -> _LogRecorder:
     recorder = _LogRecorder()
     monkeypatch.setattr(handler_mod, "log", recorder)
     return recorder
-
-
-class _HangingStream:
-    """Stands in for ``MetadataCache.stream``: blocks until cancelled, and
-    flags (from the app's thread) that it started and that it was cancelled.
-    """
-
-    def __init__(self) -> None:
-        self.started = threading.Event()
-        self.cancelled = threading.Event()
-        self.dates: list[str] = []
-
-    async def __call__(
-        self, location: str, camera: str, date: str
-    ) -> AsyncIterator[MetadataBatch]:
-        self.dates.append(date)
-        self.started.set()
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            self.cancelled.set()
-            raise
-        yield MetadataBatch(rows={}, done=True)  # makes this an async generator
 
 
 def test_ws_pump_survives_changes_it_cannot_deliver(
@@ -533,129 +389,59 @@ def test_ws_night_report_topic_signals_without_a_snapshot(
         assert msg["date"] == DATE
 
 
-def test_ws_refresh_of_anything_but_a_camera_date_is_ignored(
-    ws_client: tuple[TestClient, Any],
-) -> None:
-    client, _ = ws_client
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"action": "refresh", **CAMERA_SUB})  # no date
-        ws.send_json({"action": "refresh", "topic": "detectors", "location": ""})
-        # Nothing was queued for either: the next frame answers this.
-        ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
-        assert ws.receive_json()["type"] == "controlReadback"
-
-
-def test_ws_unsubscribe_stops_updates_and_the_metadata_stream(
-    ws_client: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # A leaving subscriber's metadata transfer would otherwise run to the end
-    # for nobody, holding an executor slot the whole time.
+def test_ws_unsubscribe_stops_updates(ws_client: tuple[TestClient, Any]) -> None:
     client, _ = ws_client
     state = client.app.state.app_state  # type: ignore[attr-defined]
-    stream = _HangingStream()
-    monkeypatch.setattr(state.metadata, "stream", stream)
     with client.websocket_connect("/ws") as ws:
-        ws.send_json({"action": "subscribe", **CAMERA_SUB, "date": DATE})
+        ws.send_json({"action": "subscribe", **CAMERA_SUB})
         assert ws.receive_json()["type"] == "channelData"
-        assert stream.started.wait(30)
         ws.send_json({"action": "unsubscribe", **CAMERA_SUB})
-        assert stream.cancelled.wait(30)
+        ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
+        assert ws.receive_json()["type"] == "controlReadback"
         state.store.bus.publish(StoreChange("dayChange", "test", "lsstcam", DATE))
-        ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
-        # The camera change went nowhere: the admin snapshot is next.
+        state.store.bus.publish(StoreChange("controlReadback", "*", ""))
+        # The camera change went nowhere: the admin one is next.
         assert ws.receive_json()["type"] == "controlReadback"
 
 
-def test_ws_resubscribe_supersedes_the_previous_stream(
-    ws_client: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Flipping through dates must not pile up transfers: a new date's
-    # subscribe cancels the stream for the date the client left.
-    client, _ = ws_client
-    state = client.app.state.app_state  # type: ignore[attr-defined]
-    stream = _HangingStream()
-    monkeypatch.setattr(state.metadata, "stream", stream)
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"action": "subscribe", **CAMERA_SUB, "date": DATE})
-        assert ws.receive_json()["type"] == "channelData"
-        assert stream.started.wait(30)
-        stream.started.clear()
-        ws.send_json({"action": "subscribe", **CAMERA_SUB, "date": "2026-04-11"})
-        assert ws.receive_json()["type"] == "channelData"
-        assert stream.cancelled.wait(30)
-        assert stream.started.wait(30)
-        assert stream.dates == [DATE, "2026-04-11"]
-
-
-def test_ws_disconnect_cancels_an_in_flight_stream(
-    ws_client: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    client, _ = ws_client
-    state = client.app.state.app_state  # type: ignore[attr-defined]
-    stream = _HangingStream()
-    monkeypatch.setattr(state.metadata, "stream", stream)
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"action": "subscribe", **CAMERA_SUB, "date": DATE})
-        assert ws.receive_json()["type"] == "channelData"
-        assert stream.started.wait(30)
-    assert stream.cancelled.wait(30)
-
-
-def test_ws_failed_stream_is_logged_and_the_socket_lives_on(
+def test_ws_metadata_change_is_a_hint_that_carries_no_rows(
     ws_client: tuple[TestClient, Any],
-    monkeypatch: pytest.MonkeyPatch,
-    handler_log: _LogRecorder,
 ) -> None:
+    # The rows travel over REST (/metadata/{date}/changes); the message only
+    # says which date to ask about.
     client, _ = ws_client
     state = client.app.state.app_state  # type: ignore[attr-defined]
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe", **CAMERA_SUB})
+        assert ws.receive_json()["type"] == "channelData"
+        state.store.bus.publish(StoreChange("metadata", "test", "lsstcam", DATE))
+        assert ws.receive_json() == {
+            "type": "metadata",
+            "location": "test",
+            "camera": "lsstcam",
+            "date": DATE,
+            "data": None,
+            "message": None,
+        }
 
-    async def failing(
-        location: str, camera: str, date: str
-    ) -> AsyncIterator[MetadataBatch]:
-        raise RuntimeError("S3 went away mid-transfer")
-        yield MetadataBatch(rows={}, done=True)  # makes this an async generator
 
-    monkeypatch.setattr(state.metadata, "stream", failing)
+def test_ws_frames_from_a_page_loaded_before_the_stream_went_are_harmless(
+    ws_client: tuple[TestClient, Any],
+) -> None:
+    # A tab still running the previous build subscribes with a date (once
+    # the cue to stream that date's metadata) and sends "refresh" on every
+    # rewrite. The first still subscribes it; the second is refused politely.
+    client, _ = ws_client
     with client.websocket_connect("/ws") as ws:
         ws.send_json({"action": "subscribe", **CAMERA_SUB, "date": DATE})
         assert ws.receive_json()["type"] == "channelData"
+        ws.send_json({"action": "refresh", **CAMERA_SUB, "date": DATE})
+        assert ws.receive_json()["type"] == "error"
         ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
         assert ws.receive_json()["type"] == "controlReadback"
-    assert ("exception", "ws.metadata.stream.error") in handler_log.events
-
-
-def test_ws_refresh_streams_in_full_when_the_delta_fails(
-    ws_client: tuple[TestClient, Any],
-    monkeypatch: pytest.MonkeyPatch,
-    handler_log: _LogRecorder,
-) -> None:
-    # A delta that can't be worked out is no reason to leave the client
-    # stale: it gets the whole document instead.
-    client, s3 = ws_client
-    state = client.app.state.app_state  # type: ignore[attr-defined]
-    rows = {"1": {"exp_time": 1}}
-    s3.put_object(
-        Bucket=TEST_BUCKET,
-        Key=f"lsstcam/{DATE}/metadata.json",
-        Body=json.dumps(rows).encode(),
-    )
-
-    async def broken_delta(*args: object) -> None:
-        raise RuntimeError("diff failed")
-
-    monkeypatch.setattr(state.metadata, "delta_since", broken_delta)
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json(
-            {"action": "refresh", **CAMERA_SUB, "date": DATE, "since_etag": "x"}
-        )
-        chunk = ws.receive_json()
-        assert chunk["type"] == "metadataChunk"
-        assert chunk["data"] == rows
-        assert ws.receive_json()["type"] == "metadataComplete"
-    assert ("exception", "ws.metadata.delta.error") in handler_log.events
 
 
 async def test_ws_service_stop_before_start_is_a_no_op() -> None:
     # Shutdown can run after a startup that failed before the pump began.
-    service = WsService(EventStore(), None, None, None)  # type: ignore[arg-type]
+    service = WsService(EventStore(), None, None)  # type: ignore[arg-type]
     await service.stop()

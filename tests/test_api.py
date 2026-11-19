@@ -32,6 +32,7 @@ from typing import Any
 
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from fastapi.testclient import TestClient
 from lsst.ts.rubintv.app import create_app
 from lsst.ts.rubintv.config.settings import Settings
@@ -447,6 +448,111 @@ def test_metadata_endpoint(seeded_client: TestClient) -> None:
     assert resp.json()["1"]["Exposure time"] == 30.0
 
 
+CHANGES = f"/api/locations/test/cameras/lsstcam/metadata/{DATE}/changes"
+
+
+def _rewrite_metadata(rows: dict[str, dict[str, object]]) -> None:
+    boto3.client("s3", region_name="us-east-1").put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=json.dumps(rows).encode(),
+    )
+
+
+def test_metadata_changes_without_a_version_are_the_whole_document(
+    seeded_client: TestClient,
+) -> None:
+    resp = seeded_client.get(CHANGES)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    body = resp.json()
+    assert body == {
+        "etag": body["etag"],
+        "since": None,
+        "rows": {"1": {"Exposure time": 30.0}},
+        "removed": [],
+    }
+    # The version is the one the plain document carries in its header.
+    plain = seeded_client.get(f"/api/locations/test/cameras/lsstcam/metadata/{DATE}")
+    assert body["etag"] == plain.headers["ETag"]
+
+
+def test_metadata_changes_since_a_version_are_the_difference(
+    seeded_client: TestClient,
+) -> None:
+    v1 = seeded_client.get(CHANGES).json()["etag"]
+    # Nothing has changed: an empty delta, not the document again.
+    assert seeded_client.get(CHANGES, params={"since": v1}).json() == {
+        "etag": v1,
+        "since": v1,
+        "rows": {},
+        "removed": [],
+    }
+    # The producer rewrites the file with the next exposure's row.
+    _rewrite_metadata({"2": {"Exposure time": 15.0}, "3": {"Exposure time": 30.0}})
+    body = seeded_client.get(CHANGES, params={"since": v1}).json()
+    assert body["since"] == v1 and body["etag"] != v1
+    assert body["rows"] == {
+        "2": {"Exposure time": 15.0},
+        "3": {"Exposure time": 30.0},
+    }
+    assert body["removed"] == ["1"]
+
+
+def test_metadata_changes_since_an_unknown_version_are_the_whole_document(
+    seeded_client: TestClient,
+) -> None:
+    body = seeded_client.get(CHANGES, params={"since": '"never-seen"'}).json()
+    assert body["since"] is None
+    assert body["rows"] == {"1": {"Exposure time": 30.0}}
+
+
+def test_metadata_changes_for_a_date_without_metadata_are_empty(
+    seeded_client: TestClient,
+) -> None:
+    resp = seeded_client.get(
+        "/api/locations/test/cameras/lsstcam/metadata/2026-03-03/changes",
+        params={"since": '"v1"'},
+    )
+    assert resp.json() == {"etag": None, "since": None, "rows": {}, "removed": []}
+
+
+def test_metadata_with_nan_reaches_the_page_as_strict_json(
+    seeded_client: TestClient,
+) -> None:
+    # Python's json.dump writes NaN and Infinity; JSON.parse in a browser
+    # throws on either, and the whole table's metadata would be lost.
+    boto3.client("s3", region_name="us-east-1").put_object(
+        Bucket=TEST_BUCKET,
+        Key=f"lsstcam/{DATE}/metadata.json",
+        Body=b'{"1": {"psf": NaN, "sky": Infinity, "exp": 30.0}}',
+    )
+    for url in (CHANGES, CHANGES.removesuffix("/changes")):
+        text = seeded_client.get(url).text
+        assert "NaN" not in text and "Infinity" not in text
+        rows = json.loads(text)
+        assert rows.get("rows", rows) == {"1": {"psf": None, "sky": None, "exp": 30.0}}
+
+
+@pytest.mark.parametrize("suffix", ["", "/changes"])
+def test_metadata_that_cannot_be_read_is_a_503(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    # Not an empty 200: the page would show a night without metadata and
+    # call it loaded. A 503 is retried, and reported if it persists.
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+
+    def unreachable(*_args: object) -> None:
+        raise EndpointConnectionError(endpoint_url="https://s3.example")
+
+    monkeypatch.setattr(state.metadata, "_fetch", unreachable)
+    resp = seeded_client.get(
+        f"/api/locations/test/cameras/lsstcam/metadata/{DATE}{suffix}"
+    )
+    assert resp.status_code == 503
+    assert "unavailable" in resp.json()["detail"]
+
+
 def test_bad_date_422(seeded_client: TestClient) -> None:
     resp = seeded_client.get("/api/locations/test/cameras/lsstcam/dates/2026-13")
     assert resp.status_code == 422
@@ -481,6 +587,7 @@ def test_page_data_needs_no_worker_thread(
         f"{base}/calendar",
         f"{base}/dates/{DATE}",
         f"{base}/metadata/{DATE}",
+        f"{base}/metadata/{DATE}/changes",
     ]:
         assert seeded_client.get(path).status_code == 200, path
 

@@ -2,8 +2,8 @@ import type { Metadata } from "../lib/types";
 import { DownloadIcon } from "./Icons";
 
 // Download the currently-loaded day's metadata as a JSON file. Operates on the
-// metadata already in memory (the merged streamed + REST payload the table
-// renders), so it reflects exactly what's on screen and needs no extra fetch.
+// metadata already in memory (the document the table renders), so it
+// reflects exactly what's on screen and needs no extra fetch.
 // Disabled until there's something to save.
 export function DownloadMetadata({
   metadata,

@@ -324,6 +324,26 @@ def test_full_sweep_preloads_recent_metadata(preload_days: int) -> None:
     assert got.json() == (rows if preload_days else {})
 
 
+def test_preload_carries_on_past_a_date_it_cannot_read() -> None:
+    # The newest date's file is cut short (caught mid-rewrite, say). The
+    # preload must still reach the date after it, proven as above.
+    rows = {"1": {"Exposure time": 30.0}}
+    objects = {
+        "lsstcam/2026-04-11/witness_detector/000001/a.png": b"x",
+        "lsstcam/2026-04-11/metadata.json": b'{"1": {"Exposure ti',
+        "lsstcam/2026-04-10/witness_detector/000001/a.png": b"x",
+        "lsstcam/2026-04-10/metadata.json": json.dumps(rows).encode(),
+    }
+    with run_app(objects, recent_window_days=0) as client:
+        assert wait_until(lambda: historical_idle(client))
+        boto3.client("s3", region_name="us-east-1").delete_object(
+            Bucket=TEST_BUCKET, Key="lsstcam/2026-04-10/metadata.json"
+        )
+        base = "/api/locations/test/cameras/lsstcam/metadata"
+        assert client.get(f"{base}/2026-04-10").json() == rows
+        assert client.get(f"{base}/2026-04-11").status_code == 503
+
+
 def test_correlation_header_echoed() -> None:
     with run_app() as client:
         resp = client.get("/api/health/live", headers={"X-Request-ID": "abc-123"})

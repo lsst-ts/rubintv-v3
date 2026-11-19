@@ -57,7 +57,7 @@ SAMPLE = [
         "bytes": None,
     },
     {"event": "ws.frame.sent", "type": "channelData", "bytes": 120},
-    {"event": "ws.frame.sent", "type": "metadataChunk", "bytes": 50000},
+    {"event": "ws.frame.sent", "type": "detectorStatus", "bytes": 50000},
     {"event": "ws.disconnect", "frames_sent": 2, "bytes_sent": 50120},
     {"event": "poll.current.cycle", "cycle_seconds": 0.8, "keys": 6000},
     {"event": "poll.current.cycle", "cycle_seconds": 1.2, "keys": 6002},
@@ -79,7 +79,7 @@ def test_summary_folds_paths_and_reports_each_flow() -> None:
     assert "/proxy/usdf/lsstcam/{date}/monitor/{n}" in text
     assert "streamed  GET /rubintv/api/proxy" in text
     assert "6144" in text  # 2048 + 4096 bytes on the dates row
-    assert "metadataChunk" in text and "50000" in text
+    assert "detectorStatus" in text and "50000" in text
     assert "1 connection(s) closed: 2 frames, 50120 bytes" in text
     assert "2 cycles" in text and "max 1.200" in text
     assert "6002 events -> 2 changes" in text
