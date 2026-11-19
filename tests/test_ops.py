@@ -23,10 +23,12 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
 import shutil
+import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -43,6 +45,7 @@ from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
 from lsst.ts.rubintv.data.dayobs import get_current_day_obs
 from lsst.ts.rubintv.data.index import DateIndex
 from lsst.ts.rubintv.middleware import (
+    CompressionMiddleware,
     CorrelationMiddleware,
     ResponseAborted,
     response_bytes,
@@ -52,11 +55,10 @@ from moto import mock_aws
 from starlette.applications import Starlette
 from starlette.datastructures import Headers
 from starlette.middleware import Middleware
-from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
-from starlette.responses import StreamingResponse
+from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
-from starlette.types import Message
+from starlette.types import ASGIApp, Message
 
 from tests.conftest import CONFIG_PATH, TEST_BUCKET, PrefixedTestClient
 
@@ -482,7 +484,7 @@ def test_response_bytes_reads_content_length_or_none() -> None:
 
 def _stream_app(fail: Exception | None, before_headers: bool = False) -> Starlette:
     """A one-route app streaming b"ab" and then raising ``fail`` (if any),
-    behind the real app's middleware in its order: gzip outermost, then
+    behind the real app's middleware in its order: compression outermost, then
     correlation (Starlette's error middleware sits outside both)."""
 
     async def endpoint(request: Request) -> StreamingResponse:
@@ -499,13 +501,13 @@ def _stream_app(fail: Exception | None, before_headers: bool = False) -> Starlet
     return Starlette(
         routes=[Route("/", endpoint)],
         middleware=[
-            Middleware(GZipMiddleware, minimum_size=1024),
+            Middleware(CompressionMiddleware),
             Middleware(CorrelationMiddleware),
         ],
     )
 
 
-async def _drive(app: Starlette) -> list[Message]:
+async def _drive(app: ASGIApp, accept_encoding: str = "identity") -> list[Message]:
     """Run one GET through ``app`` at the ASGI level; return what it sent.
 
     A test client can't tell a finished response from one left unfinished,
@@ -522,7 +524,7 @@ async def _drive(app: Starlette) -> list[Message]:
         "raw_path": b"/",
         "root_path": "",
         "query_string": b"",
-        "headers": [(b"accept-encoding", b"identity")],
+        "headers": [(b"accept-encoding", accept_encoding.encode())],
         "client": ("test", 1),
         "server": ("test", 80),
     }
@@ -570,6 +572,178 @@ async def test_an_abort_before_the_headers_is_an_ordinary_error() -> None:
     with pytest.raises(ResponseAborted):
         sent = await _drive(app)
     assert not sent or sent[0]["status"] == 500
+
+
+def _compressing_app(response: Callable[[], Response]) -> Starlette:
+    """A one-route app answering with ``response()`` behind the compression
+    middleware."""
+
+    async def endpoint(request: Request) -> Response:
+        return response()
+
+    return Starlette(
+        routes=[Route("/", endpoint)],
+        middleware=[Middleware(CompressionMiddleware)],
+    )
+
+
+# Past the size where a body is compressed on a worker thread; and one
+# compressed where it is.
+_LARGE = b'{"seq": 1234, "airmass": 1.05}' * 5000
+_MEDIUM = _LARGE[:3000]
+
+
+def _json_app(body: bytes) -> Starlette:
+    return _compressing_app(lambda: Response(body, media_type="application/json"))
+
+
+@pytest.mark.parametrize("body", [_MEDIUM, _LARGE], ids=["medium", "large"])
+def test_json_is_gzipped(body: bytes) -> None:
+    with TestClient(_json_app(body)) as client:
+        resp = client.get("/")
+    assert resp.headers["content-encoding"] == "gzip"
+    assert resp.headers["vary"] == "Accept-Encoding"
+    # The length is the compressed body's, and it decodes to the original.
+    assert int(resp.headers["content-length"]) < len(body) // 5
+    assert resp.content == body
+
+
+def test_only_a_large_body_is_compressed_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    threads: dict[int, str] = {}
+    real = gzip.compress
+
+    def compress(data: bytes, level: int) -> bytes:
+        threads[len(data)] = threading.current_thread().name
+        return real(data, level)
+
+    monkeypatch.setattr(gzip, "compress", compress)
+    for body in (_MEDIUM, _LARGE):
+        with TestClient(_json_app(body)) as client:
+            assert client.get("/").content == body
+    assert threads[len(_LARGE)].startswith("gzip")
+    assert not threads[len(_MEDIUM)].startswith("gzip")
+
+
+@pytest.mark.parametrize(
+    ("response", "body"),
+    [
+        pytest.param(
+            lambda: Response(b"{}", media_type="application/json"),
+            b"{}",
+            id="too-short-to-be-worth-it",
+        ),
+        pytest.param(
+            lambda: Response(_LARGE, media_type="image/png"),
+            _LARGE,
+            id="image",
+        ),
+        pytest.param(
+            lambda: StreamingResponse(iter([_LARGE]), media_type="video/mp4"),
+            _LARGE,
+            id="streamed-video",
+        ),
+        # A range's Content-Range counts the uncompressed bytes.
+        pytest.param(
+            lambda: Response(_LARGE, status_code=206, media_type="text/plain"),
+            _LARGE,
+            id="range",
+        ),
+        pytest.param(
+            lambda: Response(
+                _LARGE, media_type="text/plain", headers={"Content-Encoding": "br"}
+            ),
+            _LARGE,
+            id="encoded-by-the-handler",
+        ),
+        # An event stream must not sit in a compressor's buffer.
+        pytest.param(
+            lambda: StreamingResponse(iter([_LARGE]), media_type="text/event-stream"),
+            _LARGE,
+            id="event-stream",
+        ),
+    ],
+)
+async def test_what_is_not_text_worth_compressing_passes_untouched(
+    response: Callable[[], Response], body: bytes
+) -> None:
+    sent = await _drive(_compressing_app(response), accept_encoding="gzip")
+    headers = Headers(raw=sent[0]["headers"])
+    assert headers.get("content-encoding") in (None, "br")
+    assert "vary" not in headers
+    assert b"".join(m.get("body", b"") for m in sent[1:]) == body
+
+
+def test_a_client_that_does_not_take_gzip_gets_the_body_as_is() -> None:
+    with TestClient(_json_app(_LARGE)) as client:
+        resp = client.get("/", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in resp.headers
+    assert resp.content == _LARGE
+    # Still marked as varying, so a cache can't hand it to one that does.
+    assert resp.headers["vary"] == "Accept-Encoding"
+
+
+async def test_a_text_stream_is_gzipped_chunk_by_chunk() -> None:
+    chunks = [_LARGE, b"", _MEDIUM]
+    app = _compressing_app(
+        lambda: StreamingResponse(
+            iter(chunks),
+            media_type="text/javascript",
+            headers={"Content-Length": str(len(_LARGE) + len(_MEDIUM))},
+        )
+    )
+    sent = await _drive(app, accept_encoding="gzip")
+    headers = Headers(raw=sent[0]["headers"])
+    assert headers["content-encoding"] == "gzip"
+    # The length it was given was the uncompressed one.
+    assert "content-length" not in headers
+    assert _finished(sent)
+    body = b"".join(m.get("body", b"") for m in sent[1:])
+    assert gzip.decompress(body) == _LARGE + _MEDIUM
+
+
+async def test_a_file_sent_by_path_goes_as_it_is() -> None:
+    # Where the server takes a file by path (http.response.pathsend), there
+    # is no body to compress: the held start message must still go first.
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/css")],
+            }
+        )
+        await send({"type": "http.response.pathsend", "path": "/site.css"})
+
+    sent = await _drive(CompressionMiddleware(app), accept_encoding="gzip")
+    assert [m["type"] for m in sent] == [
+        "http.response.start",
+        "http.response.pathsend",
+    ]
+    assert "content-encoding" not in Headers(raw=sent[0]["headers"])
+
+
+def test_the_app_gzips_its_json_and_leaves_proxied_media_alone() -> None:
+    date = "2026-01-01"
+    key = (
+        f"lsstcam/{date}/witness_detector/000001/"
+        f"lsstcam_witness_detector_{date}_000001.png"
+    )
+    url = (
+        f"/api/locations/test/cameras/lsstcam/channels/witness_detector/"
+        f"{date}/000001/image.png"
+    )
+    with run_app({key: b"\x89PNG" * 1000}) as client:
+        spec = client.get("http://testserver/openapi.json")
+        assert spec.headers["content-encoding"] == "gzip"
+        image = client.get(url)
+        assert image.status_code == 200
+        assert "content-encoding" not in image.headers
+        part = client.get(url, headers={"Range": "bytes=0-2047"})
+        assert part.status_code == 206
+        assert "content-encoding" not in part.headers
+        assert len(part.content) == 2048
 
 
 def test_requests_still_carry_the_correlation_id_when_timed() -> None:

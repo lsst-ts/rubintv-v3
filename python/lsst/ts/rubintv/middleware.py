@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-"""Request correlation and timing middleware.
+"""Request correlation, timing and compression middleware.
 
 Binds a per-request id into structlog's contextvars so every log line
 emitted while handling a request carries it. Honours an inbound
@@ -39,11 +39,18 @@ of its own, which it ends normally even when the app raises mid-stream, so
 a proxied S3 object whose read broke reached the client as a short body
 that looked whole (and was cacheable). Here an unfinished response stays
 unfinished and the server closes the connection; see ``ResponseAborted``.
+
+``CompressionMiddleware`` gzips the text responses (JSON, the SPA's assets)
+and leaves media alone.
 """
 
 from __future__ import annotations
 
+import asyncio
+import gzip
 import time
+import zlib
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import structlog
@@ -71,8 +78,8 @@ class ResponseAborted(Exception):
 def response_bytes(headers: Headers) -> int | None:
     """The response body size from its headers, or ``None`` without one.
 
-    Read inside the gzip middleware (which wraps this one), so it is the
-    uncompressed size. A streamed body (the S3 proxy) is chunked, has no
+    Read inside ``CompressionMiddleware`` (which wraps this one), so it is
+    the uncompressed size. A streamed body (the S3 proxy) is chunked, has no
     ``Content-Length``, and reports ``None``.
     """
     raw = headers.get("content-length")
@@ -147,3 +154,125 @@ class CorrelationMiddleware:
                 raise
         finally:
             structlog.contextvars.clear_contextvars()
+
+
+# What is worth compressing: the JSON API and the SPA's text assets. The
+# rest of what the app serves is media that is compressed already (the S3
+# proxy's PNGs, JPEGs and MP4s, the thumbnails), where gzip costs CPU and
+# saves nothing.
+_COMPRESSIBLE_TYPES = (
+    "text/",
+    "application/json",
+    "application/javascript",
+    "image/svg+xml",
+)
+
+# A whole body this large is compressed on a worker thread, not the event
+# loop: a 16 MiB metadata response takes about 0.4 s at level 6, during
+# which nothing else would be served. zlib releases the GIL while it works.
+_OFFLOAD_BYTES = 64 * 1024
+
+# The pool is this module's own, so a default executor full of slow S3 calls
+# can't hold responses up behind it.
+_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gzip")
+
+
+def _compressible(message: Message) -> bool:
+    """Whether a response (by its start message) is one to compress.
+
+    Never a 206: its ``Content-Range`` counts the uncompressed bytes, so a
+    compressed part can't be put back together by the client.
+    """
+    if message["status"] == 206:
+        return False
+    headers = Headers(scope=message)
+    content_type = headers.get("content-type", "")
+    return (
+        "content-encoding" not in headers
+        and content_type.startswith(_COMPRESSIBLE_TYPES)
+        # A compressor holds bytes back; an event stream must not wait.
+        and not content_type.startswith("text/event-stream")
+    )
+
+
+class CompressionMiddleware:
+    """Gzip text responses, large ones off the event loop.
+
+    Stands in for Starlette's ``GZipMiddleware``, which compresses every
+    response whatever its type (media and 206 ranges included), at level 9,
+    on the event loop: a 16 MiB metadata response stalled every other
+    request and the WebSocket fan-out for about two seconds.
+
+    Args:
+        app: The app to wrap.
+        minimum_size: Whole bodies shorter than this are sent as they are;
+            the overhead outweighs the gain.
+        compresslevel: zlib level. On metadata JSON, 6 comes out about 5%
+            larger than 9 in a fifth of the time.
+    """
+
+    def __init__(
+        self, app: ASGIApp, minimum_size: int = 1024, compresslevel: int = 6
+    ) -> None:
+        self.app = app
+        self.minimum_size = minimum_size
+        self.compresslevel = compresslevel
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        accepts_gzip = "gzip" in Headers(scope=scope).get("accept-encoding", "")
+        # A compressible response's start message is held until its first
+        # body message, which decides the headers.
+        start: Message | None = None
+        deflate: zlib._Compress | None = None
+
+        async def send_compressed(message: Message) -> None:
+            nonlocal start, deflate
+            if message["type"] == "http.response.start" and _compressible(message):
+                start = message
+                return
+            if message["type"] != "http.response.body":
+                # Anything else (a file sent by path, trailers) goes as is.
+                if start is not None:
+                    await send(start)
+                    start = None
+                await send(message)
+                return
+            body = message.get("body", b"")
+            more_body = message.get("more_body", False)
+            if start is not None:
+                held, start = start, None
+                if more_body or len(body) >= self.minimum_size:
+                    headers = MutableHeaders(scope=held)
+                    headers.add_vary_header("Accept-Encoding")
+                    if accepts_gzip:
+                        headers["Content-Encoding"] = "gzip"
+                        if more_body:
+                            # A stream: compressed chunk by chunk below.
+                            del headers["Content-Length"]
+                            deflate = zlib.compressobj(
+                                self.compresslevel, zlib.DEFLATED, 31
+                            )
+                        else:
+                            body = await self._compress(body)
+                            headers["Content-Length"] = str(len(body))
+                            message = {**message, "body": body}
+                await send(held)
+            if deflate is not None:
+                body = deflate.compress(body)
+                if not more_body:
+                    body += deflate.flush()
+                message = {**message, "body": body}
+            await send(message)
+
+        await self.app(scope, receive, send_compressed)
+
+    async def _compress(self, body: bytes) -> bytes:
+        if len(body) < _OFFLOAD_BYTES:
+            return gzip.compress(body, self.compresslevel)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _pool, gzip.compress, body, self.compresslevel
+        )

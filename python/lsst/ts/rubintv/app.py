@@ -36,7 +36,6 @@ from pathlib import Path
 
 import lsst.ts.rubintv.api.guide as guide_api
 from fastapi import FastAPI, WebSocket
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 from lsst.ts.rubintv import __version__, legacy_redirects
 from lsst.ts.rubintv.api import (
@@ -65,7 +64,7 @@ from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.data.tasks import PollEngine
 from lsst.ts.rubintv.data.thumbs import ThumbnailCache
 from lsst.ts.rubintv.logging import configure_logging, get_logger
-from lsst.ts.rubintv.middleware import CorrelationMiddleware
+from lsst.ts.rubintv.middleware import CompressionMiddleware, CorrelationMiddleware
 from lsst.ts.rubintv.s3.client import S3ClientPool
 from lsst.ts.rubintv.spa import mount_spa
 from lsst.ts.rubintv.state import AppState
@@ -373,10 +372,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.router.lifespan_context = lifespan
 
     app.add_middleware(CorrelationMiddleware)
-    # metadata.json responses can exceed 10 MB; gzip drops that ~10–20x for
-    # the wire. minimum_size skips short responses where compression overhead
-    # outweighs the gain.
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # metadata.json responses can exceed 10 MB; gzip drops that several
+    # times over for the wire. Text only: media passes through untouched.
+    app.add_middleware(CompressionMiddleware)
 
     # The whole app is served under this prefix (default /rubintv), so external
     # deep links from the previous app resolve. The prefix carries no trailing
