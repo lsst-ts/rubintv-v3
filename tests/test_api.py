@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import gzip
 import io
 import json
 import subprocess
@@ -475,6 +476,33 @@ def test_metadata_changes_without_a_version_are_the_whole_document(
     # The version is the one the plain document carries in its header.
     plain = seeded_client.get(f"/api/locations/test/cameras/lsstcam/metadata/{DATE}")
     assert body["etag"] == plain.headers["ETag"]
+
+
+def test_a_whole_metadata_document_is_sent_from_its_compressed_copy(
+    seeded_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every page that opens a night asks for it whole. Compressed afresh for
+    # each one, a 12 MB night cost 0.15 s a time, more than fetching it.
+    compressed: list[int] = []
+    real = gzip.compress
+
+    def counted(data: bytes, level: int) -> bytes:
+        compressed.append(len(data))
+        return real(data, level)
+
+    monkeypatch.setattr(gzip, "compress", counted)
+    replies = [seeded_client.get(CHANGES) for _ in range(3)]
+    for reply in replies:
+        assert reply.headers["content-encoding"] == "gzip"
+        assert reply.headers["vary"] == "Accept-Encoding"
+        assert reply.json()["rows"] == {"1": {"Exposure time": 30.0}}
+    assert len(compressed) == 1
+
+    # A client that doesn't take gzip gets the same document as it is.
+    plain = seeded_client.get(CHANGES, headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers
+    assert plain.json() == replies[0].json()
+    assert len(compressed) == 1
 
 
 def test_metadata_changes_since_a_version_are_the_difference(

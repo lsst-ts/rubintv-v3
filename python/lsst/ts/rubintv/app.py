@@ -276,15 +276,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Pre-fetch the most recent dates' metadata into the LRU after the
         # recent scan, so the first table view of a recent date is a warm hit.
         # Capped by the configured window and by the dates actually present;
-        # reading a date caches it. One that can't be read is left for the
-        # first page that asks.
+        # reading a date caches it, and it is compressed here too, as the
+        # first page to open it will want it. One that can't be read is left
+        # for the first page that asks.
         n = settings.metadata_preload_days
         if n <= 0:
             return
         dates = store.calendar(location, camera)[:n]
         for date in dates:
             with suppress(MetadataUnavailable):
-                await metadata.get(location, camera, date)
+                doc = await metadata.get(location, camera, date)
+                await metadata.gzipped(location, camera, date, doc)
         if dates:
             log.info(
                 "metadata.preloaded",

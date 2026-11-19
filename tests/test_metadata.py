@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import threading
 from collections.abc import Iterator
@@ -460,7 +461,73 @@ async def test_a_fetch_logs_where_its_time_went(
     assert len(recorder.calls) == 1
 
 
-async def test_close_stops_the_range_threads(cache: MetadataCache) -> None:
+async def test_close_stops_the_worker_threads(cache: MetadataCache) -> None:
     cache.close()
     with pytest.raises(RuntimeError):
-        cache._rangers.submit(print)  # noqa: SLF001 - test introspection
+        cache._workers.submit(print)  # noqa: SLF001 - test introspection
+
+
+def _count_compressions(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Record the size of everything gzipped, which still goes through."""
+    sizes: list[int] = []
+    real = gzip.compress
+
+    def counted(data: bytes, level: int) -> bytes:
+        sizes.append(len(data))
+        return real(data, level)
+
+    monkeypatch.setattr(gzip, "compress", counted)
+    return sizes
+
+
+async def test_a_whole_document_is_compressed_once_per_version(
+    cache: MetadataCache, s3: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    compressions = _count_compressions(monkeypatch)
+    doc = await cache.get("test", "lsstcam", DATE)
+    assert json.loads(doc.whole()) == {
+        "rows": ROWS,
+        "etag": doc.etag,
+        "since": None,
+        "removed": [],
+    }
+    # Readers arriving together share the one compression...
+    first, second = await asyncio.gather(
+        cache.gzipped("test", "lsstcam", DATE, doc),
+        cache.gzipped("test", "lsstcam", DATE, doc),
+    )
+    assert gzip.decompress(first) == doc.whole()
+    # ...and one arriving later is handed the same bytes.
+    assert await cache.gzipped("test", "lsstcam", DATE, doc) is first is second
+    assert compressions == [len(doc.whole())]
+
+    # A rewrite is a new version: compressed afresh, the old copy dropped.
+    _put(s3, {**ROWS, "6": {"Exposure time": 6.0}})
+    rewritten = await cache.get("test", "lsstcam", DATE)
+    again = await cache.gzipped("test", "lsstcam", DATE, rewritten)
+    assert gzip.decompress(again) == rewritten.whole()
+    assert len(compressions) == 2
+    assert [held for held, _ in cache._gzipped.values()] == [rewritten]  # noqa: SLF001
+
+
+async def test_a_reader_overtaken_by_a_rewrite_gets_its_version_compressed(
+    cache: MetadataCache, s3: Any
+) -> None:
+    # Its copy isn't kept: the cache has moved on, and holds the newer one.
+    doc = await cache.get("test", "lsstcam", DATE)
+    _put(s3, {"9": {"Exposure time": 9.0}})
+    newer = await cache.get("test", "lsstcam", DATE)
+    kept = await cache.gzipped("test", "lsstcam", DATE, newer)
+    assert gzip.decompress(await cache.gzipped("test", "lsstcam", DATE, doc)) == (
+        doc.whole()
+    )
+    assert await cache.gzipped("test", "lsstcam", DATE, newer) is kept
+
+
+async def test_a_dropped_document_takes_its_compressed_copy_with_it(s3: Any) -> None:
+    _put(s3, {"1": {"note": "x" * 100}}, "2026-04-11")
+    cache = MetadataCache(_FakePool(s3), {"test": TEST_BUCKET}, max_bytes=1)  # type: ignore[arg-type]
+    doc = await cache.get("test", "lsstcam", DATE)
+    await cache.gzipped("test", "lsstcam", DATE, doc)
+    await cache.get("test", "lsstcam", "2026-04-11")
+    assert cache._gzipped == {}  # noqa: SLF001 - test introspection

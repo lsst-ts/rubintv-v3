@@ -143,7 +143,9 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
 
     out: list[str] = []
 
-    out.append("HTTP requests (duration to headers, ms; bytes uncompressed)")
+    out.append(
+        "HTTP requests (duration to headers, ms; bytes as the handler sent them)"
+    )
     out.append(
         f"  {'count':>6} {'p50':>8} {'p95':>8} {'max':>8} {'bytes':>10}  endpoint"
     )
