@@ -317,6 +317,12 @@ def _stream_object(
 # it stopped before giving up.
 _MAX_RESUMES = 2
 
+# How much of a body is read from S3 and sent at a time. Each chunk costs a
+# hop to a worker thread and a send, so botocore's default of 1 KiB made a
+# 50 MiB movie some 51,000 of each: about 4 s to stream in-process, against
+# 0.1 s at this size.
+_CHUNK_BYTES = 64 * 1024
+
 
 def _iter_body(
     client: S3Client, bucket: str, key: str, obj: GetObjectResult
@@ -341,7 +347,7 @@ def _iter_body(
     try:
         while True:
             try:
-                for chunk in body.iter_chunks():
+                for chunk in body.iter_chunks(_CHUNK_BYTES):
                     sent += len(chunk)
                     yield chunk
                 return
