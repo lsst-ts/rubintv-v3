@@ -957,17 +957,32 @@ h1, h2 {
 /* Logo on the left, the Simon Krughoff memorial in the space to its right.
    Wraps to a stack on narrow screens. */
 .home-hero {
-  margin-bottom: 2px;
+  margin-bottom: 44px;
   display: flex; align-items: center; flex-wrap: wrap;
   justify-content: space-between;
   gap: 20px 32px;
 }
-/* The inline Rubin mark as the hero lockup — the one place the brand appears.
-   It follows the accent via currentColor, so it needs no dark-mode filter. */
-.brand-logo {
+/* The hero lockup (BrandIntro) — the one place the brand appears: the RubinTV
+   television with the name beside it, arriving as the Rubin mark the first
+   time. Colours come from the theme tokens, so it needs no dark-mode filter.
+   overflow is visible so the departing trails can fade out past the box
+   rather than being cut off at its edge. */
+.brand-intro {
   height: 104px; width: auto; display: block;
-  color: var(--accent-bright);
+  overflow: visible;
+  cursor: pointer;
 }
+.bi-trail { fill: var(--accent-bright); }
+.bi-trail .bi-branch {
+  fill: none; stroke: var(--accent-bright); stroke-width: 8;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.bi-line { stroke: var(--ink); stroke-linecap: round; }
+.bi-word {
+  font-family: var(--display); font-weight: 700; font-size: 90px;
+  letter-spacing: -0.02em; fill: var(--ink);
+}
+.bi-word-tv { fill: var(--accent); }
 /* In-memoriam card: a quiet bordered plaque beside the hero mark, linking to
    the community.lsst.org remembrance thread. */
 .memoriam {
@@ -987,16 +1002,6 @@ h1, h2 {
   letter-spacing: -0.01em;
 }
 .memoriam-text { font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
-
-.home-tagline {
-  display: flex; align-items: center; gap: 11px;
-  font-family: var(--mono); font-size: 13px; color: var(--ink-soft);
-  margin-top: 14px; margin-bottom: 34px;
-}
-.home-tagline b {
-  font-family: var(--display); font-weight: 700; font-size: 16px;
-  color: var(--ink); letter-spacing: -0.01em;
-}
 
 /* Section heads on the landing + location pages: uppercase mono-ish label. */
 .landing-h {

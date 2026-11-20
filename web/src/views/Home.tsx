@@ -7,12 +7,12 @@ import { usePageTitle } from "../lib/usePageTitle";
 import { useSubapps } from "../lib/useSubapps";
 import { useGuideConfig } from "../lib/useGuide";
 import { NavMenu } from "../components/NavMenu";
-import { RubinMark } from "../components/RubinMark";
+import { BrandIntro } from "../components/BrandIntro";
 import type { LocationSummary } from "../lib/types";
 
 // Home page: the full-bleed launcher and the ONLY place that carries the brand
-// (the mark + wordmark hero). The app-shell sidebar is gone, so the card grids
-// are the navigation — three grouped sections of text cards:
+// (the logo + name hero, see BrandIntro). The app-shell sidebar is gone, so
+// the card grids are the navigation — three grouped sections of text cards:
 //   1. Processing Locations  (real observing sites, is_teststand === false)
 //   2. Test-stand Locations  (is_teststand === true)
 //   3. Apps                  (Cluster status, if any location has it, +
@@ -73,7 +73,7 @@ export function Home() {
       </div>
       <div className="landing-inner">
         <div className="home-hero">
-          <RubinMark className="brand-logo" />
+          <BrandIntro />
           {/* In-memoriam card for Simon Krughoff, in the space beside the
               logo. Links out to the community.lsst.org remembrance thread. */}
           <a
@@ -90,9 +90,6 @@ export function Home() {
               RubinTV
             </span>
           </a>
-        </div>
-        <div className="home-tagline">
-          <b>RubinTV</b>
         </div>
 
         {isPending && <p className="skeleton">Loading locations…</p>}
