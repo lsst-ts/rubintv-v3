@@ -125,6 +125,43 @@ test("retries back off, doubling to a cap, and reset once connected", () => {
   expect(liveSockets()).toHaveLength(before + 1);
 });
 
+test("a waiting retry can be brought forward, and nothing else can", () => {
+  const { result, unmount } = renderHook(() => useWebSocket());
+  // A try under way, then an open socket: nothing to hurry.
+  act(() => result.current.retryNow());
+  openNewest();
+  act(() => result.current.retryNow());
+  expect(liveSockets()).toHaveLength(1);
+
+  // Down long enough for the retries to thin out to one every 10 s.
+  for (let i = 0; i < 6; i++) {
+    drop();
+    wait(10_000);
+  }
+  drop();
+  const before = liveSockets().length;
+  wait(1000);
+  expect(liveSockets()).toHaveLength(before);
+  act(() => result.current.retryNow());
+  expect(liveSockets()).toHaveLength(before + 1);
+  // The retry it replaced doesn't also fire.
+  wait(10_000);
+  expect(liveSockets()).toHaveLength(before + 1);
+
+  // A try that fails goes back to waiting, at the delay it had reached.
+  drop();
+  wait(9750);
+  expect(liveSockets()).toHaveLength(before + 1);
+  wait(250);
+  expect(liveSockets()).toHaveLength(before + 2);
+
+  // Nor after the tab has gone.
+  drop();
+  unmount();
+  act(() => result.current.retryNow());
+  expect(liveSockets()).toHaveLength(before + 2);
+});
+
 test("a reconnect replays each held topic once and asks for a refetch", () => {
   const onReconnect = vi.fn();
   const { result } = renderHook(() => useWebSocket(undefined, { onReconnect }));
@@ -299,4 +336,45 @@ test("after a reconnect the provider refetches the views' data", async () => {
   openNewest();
   await act(async () => {});
   expect(fetches).toBe(2);
+});
+
+test("a status poll that gets through brings the retry forward; other queries don't", async () => {
+  // Pages poll the server's status every 5 s, so they hear it is back before
+  // a retry that has backed off to every 10 s does.
+  globalThis.fetch = (() =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve({}) })) as unknown as typeof fetch;
+  const qc = createQueryClient();
+  render(
+    <QueryClientProvider client={qc}>
+      <LiveProvider>
+        <ConnectionStatus verbose />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  const load = (key: string) =>
+    act(() =>
+      qc.fetchQuery({
+        queryKey: [key],
+        queryFn: () => fetch(`/api/${key}`).then((r) => r.json()),
+        staleTime: 0,
+      }),
+    );
+  openNewest();
+  for (let i = 0; i < 6; i++) {
+    drop();
+    wait(10_000);
+  }
+  drop();
+  const before = liveSockets().length;
+
+  await load("locations");
+  expect(liveSockets()).toHaveLength(before);
+  await load("status");
+  expect(liveSockets()).toHaveLength(before + 1);
+  openNewest();
+  expect(screen.getByRole("status").textContent).toBe("WebSocket connected");
+
+  // Connected again: the poll carries on, and stirs nothing.
+  await load("status");
+  expect(liveSockets()).toHaveLength(before + 1);
 });

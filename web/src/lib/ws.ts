@@ -3,8 +3,9 @@
 // reconnection, and lets views subscribe to topics driven by the route.
 //
 // The server protocol is typed (ws/protocol.py); here we model the message
-// shapes and the connection lifecycle: connect, retry with backoff, give up
-// on a socket that has gone silent, and surface status.
+// shapes and the connection lifecycle: connect, retry with backoff (or at
+// once, when told the server is back), give up on a socket that has gone
+// silent, and surface status.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE } from "./basePath";
@@ -38,8 +39,9 @@ export const SILENCE_LIMIT_MS = 45_000;
  * Manage this tab's single WebSocket connection.
  *
  * Returns the connection status, a `subscribe` function (which sends a
- * subscribe frame and re-sends it after any reconnect), and an `onMessage`
- * registrar.
+ * subscribe frame and re-sends it after any reconnect), an `onMessage`
+ * registrar, and `retryNow`, which starts the retry a lost connection is
+ * waiting to make.
  */
 export interface WebSocketOptions {
   // Called when a socket opens after one was lost: a reconnect following a
@@ -76,6 +78,8 @@ export function useWebSocket(
   // (which would tear down and rebuild the socket whenever it changes).
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
+  // The connect effect's "retry now", for retryNow below.
+  const retryRef = useRef<() => void>(() => {});
 
   const send = useCallback((data: unknown) => {
     const sock = socketRef.current;
@@ -110,7 +114,10 @@ export function useWebSocket(
         setStatus("closed");
         const delay = Math.min(backoffRef.current, MAX_BACKOFF_MS);
         backoffRef.current = Math.min(delay * 2, MAX_BACKOFF_MS);
-        reconnectTimer = setTimeout(connect, delay);
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = undefined;
+          connect();
+        }, delay);
       };
       // Restart the silence clock: at creation (a connect that hangs is as
       // dead as a socket that stops talking), on open, and on every frame.
@@ -164,6 +171,16 @@ export function useWebSocket(
       sock.onclose = onLost;
     };
 
+    // Only a retry that is waiting out its delay can be brought forward:
+    // with a socket open, or a try under way, there is nothing to hurry.
+    retryRef.current = () => {
+      if (cancelled || reconnectTimer === undefined) return;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+      debugLog("ws.retry.now");
+      connect();
+    };
+
     connect();
 
     return () => {
@@ -212,5 +229,12 @@ export function useWebSocket(
     };
   }, []);
 
-  return { status, subscribe, onMessage };
+  // Retry now, not when the backoff delay runs out. The delays grow to
+  // MAX_BACKOFF_MS while a server is down, so a tab would otherwise learn it
+  // is back up to that long after it is. For a caller with other evidence
+  // that the server is reachable again; does nothing unless a retry is
+  // waiting. If the try fails, the backoff carries on from where it was.
+  const retryNow = useCallback(() => retryRef.current(), []);
+
+  return { status, subscribe, onMessage, retryNow };
 }

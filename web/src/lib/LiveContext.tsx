@@ -61,10 +61,30 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     qc.invalidateQueries();
     setReconnects((n) => n + 1);
   }, [qc]);
-  const { status, subscribe, onMessage } = useWebSocket(undefined, {
+  const { status, subscribe, onMessage, retryNow } = useWebSocket(undefined, {
     onReconnect,
   });
   const disconnected = useDisconnected(status);
+
+  // The status poll getting an answer says the server is reachable, so a
+  // socket waiting to retry tries at once. While a server is down the
+  // retries thin out to one every 10 s, and the pages that poll its status
+  // (every 5 s) would otherwise show it back before they are live again.
+  // Only that poll: its steady pace bounds the extra tries where the server
+  // answers HTTP but won't take a WebSocket.
+  useEffect(
+    () =>
+      qc.getQueryCache().subscribe((event) => {
+        if (
+          event.type === "updated" &&
+          event.action.type === "success" &&
+          event.query.queryKey[0] === "status"
+        ) {
+          retryNow();
+        }
+      }),
+    [qc, retryNow],
+  );
 
   useEffect(
     () => onMessage((raw) => applyLiveMessage(qc, raw as ServerMessage)),
