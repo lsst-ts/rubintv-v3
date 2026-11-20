@@ -11,6 +11,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
 import {
+  dropLiveSocket,
   liveSockets,
   loseLiveConnection,
   openLiveSockets,
@@ -285,6 +286,79 @@ test("with no table drawn, both jump buttons are off", async () => {
       screen.getByRole<HTMLButtonElement>("button", { name }).disabled,
     ).toBe(true);
   }
+});
+
+// A date picked from a calendar the page already has, with the server gone:
+// neither its rows nor its metadata can be fetched (`fail` says how the
+// requests end). Everything else the page asks for still answers, as it was
+// loaded before.
+function failDate(date: string, fail: () => Promise<unknown>) {
+  const answers = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL) =>
+    String(input).includes(`/${date}`) ? fail() : answers(input)) as typeof fetch;
+  return () => {
+    globalThis.fetch = answers;
+  };
+}
+
+test("a date that can't be fetched gives the server as the reason, not an empty night", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const restore = failDate("2026-04-10", () => Promise.reject(new TypeError("Failed to fetch")));
+    renderTable("/local/auxtel?date=2026-04-10");
+    act(() => openLiveSockets());
+    // With the tab's connection still up, all it knows is the request.
+    const notice = await screen.findByRole("alert", {}, { timeout: 5000 });
+    expect(notice.textContent).toBe(
+      "Can't load 2026-04-10: the server didn't answer. Reload the page to try again.",
+    );
+    expect(screen.queryByText(/No data for/)).toBeNull();
+
+    // The connection drops: the reason is the server, at once (the header
+    // waits out a grace before saying so), and it will mend itself.
+    act(() => dropLiveSocket());
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Can't load 2026-04-10: the server is unreachable. It will load when the connection is back.",
+    );
+
+    // The server returns: the retry connects, and fetches the date again.
+    restore();
+    act(() => vi.advanceTimersByTime(500));
+    act(() => liveSockets().at(-1)!.onopen?.());
+    expect(await screen.findByText("10")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a date the server answers with an error says which", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    failDate("2026-04-10", () => Promise.resolve({ ok: false, status: 502 }));
+    renderTable("/local/auxtel?date=2026-04-10");
+    act(() => openLiveSockets());
+    const notice = await screen.findByRole("alert", {}, { timeout: 5000 });
+    expect(notice.textContent).toBe(
+      "Can't load 2026-04-10: the server answered with an error (HTTP 502). Reload the page to try again.",
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a date that loads with no rows is still just empty", async () => {
+  stub({ metadata: {} });
+  const answers = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL) =>
+    String(input).includes("/dates/")
+      ? Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ per_day: {}, metadata: {}, channels: {}, extensions: {} }),
+        })
+      : answers(input)) as typeof fetch;
+  renderTable("/local/auxtel?date=2026-04-10");
+  expect((await screen.findByText("No data for 2026-04-10.")).getAttribute("role")).toBeNull();
 });
 
 test("a disconnected tab is flagged by a warning triangle beside the clock", async () => {
