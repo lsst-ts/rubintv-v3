@@ -7,6 +7,7 @@ import { STALE, cameraDataState } from "../lib/queryClient";
 import { useReconnects } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ProxiedImg } from "../components/ProxiedMedia";
+import { BrandHero } from "../components/BrandHero";
 
 // The camera-card thumbnail: the latest frame of the camera's primary channel
 // (CameraSummary.primary_image, resolved server-side), fetched as the server's
@@ -92,6 +93,10 @@ const STATUS_CLASS: Record<string, string> = {
 // placeholder latest-frame thumbnail and a fresh/stale/offline status; offline
 // cameras aren't navigable. Ported from the RubinTV Design System location view
 // (ui_kits/rubintv) — real title/freshness only, no camera photos.
+//
+// On a deployment with a single location (summit, base, tucson) this page is
+// where the app opens — Home redirects straight to it — so it carries the
+// brand band the launcher otherwise would, above the camera groups.
 export function Location() {
   const { location = "" } = useParams();
   const { data, isPending, isError } = useQuery({
@@ -100,12 +105,35 @@ export function Location() {
     staleTime: STALE.config,
   });
   usePageTitle(data?.title ?? location);
+  // Already fetched by the shell and the route guard, so this reads the cache.
+  const { data: locations } = useQuery({
+    queryKey: queryKeys.locations(),
+    queryFn: api.locations,
+    staleTime: STALE.config,
+  });
+  // The band is the first child of the <section> in all three states below.
+  // Anywhere else in one of them and React would remount it as the cameras
+  // arrive, cutting the logo's intro off part-way.
+  const hero = locations?.length === 1 ? <BrandHero /> : null;
 
-  if (isPending) return <p className="skeleton">Loading…</p>;
-  if (isError || !data) return <p role="alert">Could not load location.</p>;
+  if (isPending)
+    return (
+      <section>
+        {hero}
+        <p className="skeleton">Loading…</p>
+      </section>
+    );
+  if (isError || !data)
+    return (
+      <section>
+        {hero}
+        <p role="alert">Could not load location.</p>
+      </section>
+    );
 
   return (
     <section>
+      {hero}
       {data.camera_groups.map((group) => (
         <div key={group.label} className="cam-group">
           <div className="cam-group-h">{group.label}</div>

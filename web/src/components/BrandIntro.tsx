@@ -40,7 +40,11 @@ function reducedMotion(): boolean {
 // "shooting stars" mark, whose trails sweep off while its dots and sparkles
 // gather into the set — and after that it's simply there. Anyone who asks for
 // reduced motion gets the finished logo. Clicking it plays the intro again.
-export function BrandIntro() {
+//
+// `paused` holds a due intro on its first frame, the Rubin mark, without
+// starting it or counting it as played: for a page that may be about to hand
+// over to another one that shows the logo too.
+export function BrandIntro({ paused = false }: { paused?: boolean }) {
   // `run` counts plays; 0 means none is wanted and the logo stands finished.
   const [run, setRun] = useState(() =>
     reducedMotion() || alreadyPlayed() ? 0 : 1,
@@ -48,7 +52,7 @@ export function BrandIntro() {
   const [t, setT] = useState(run ? 0 : INTRO_END);
 
   useEffect(() => {
-    if (!run) return;
+    if (!run || paused) return;
     markPlayed();
     let raf = 0;
     let start: number | null = null;
@@ -60,7 +64,7 @@ export function BrandIntro() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [run]);
+  }, [run, paused]);
 
   const replay = useCallback(() => {
     setT(0);

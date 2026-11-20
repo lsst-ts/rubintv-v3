@@ -218,3 +218,57 @@ test("a location with cluster status offers it under Apps", async () => {
   expect(card.getAttribute("href")).toBe("/detectors");
   expect(screen.getByText("Apps")).toBeDefined();
 });
+
+// A fetch that answers `suffix` URLs with `body` (or, with `ok` false, a 403:
+// the query client doesn't retry those) and leaves the rest to the stub
+// already in place.
+function overrideFetch(suffix: string, body: () => Promise<unknown>, ok = true) {
+  const inner = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL) =>
+    String(input).endsWith(suffix)
+      ? Promise.resolve({ ok, status: ok ? 200 : 403, json: body })
+      : inner(input)) as unknown as typeof fetch;
+}
+
+test("a deployment's only location carries the brand band above its cameras", async () => {
+  // Hold the cameras back, to see the band while the page is still loading.
+  let release!: (payload: unknown) => void;
+  const cameras = new Promise((resolve) => (release = resolve));
+  overrideFetch("/api/locations/local", () => cameras);
+  renderAt("/local");
+
+  // The stubbed deployment has the one location, so this page is where it
+  // opens, and the logo and the memorial head it.
+  const logo = await screen.findByRole("img", { name: "RubinTV" });
+  expect(screen.getByText(/In memory of Simon Krughoff/)).toBeDefined();
+  expect(screen.queryByText("LSSTCam")).toBeNull();
+
+  await act(async () => release(locationPayload()));
+  const group = await screen.findByText("Main");
+  // The band is above the camera groups, and it is the very element that was
+  // there before they arrived: had it been remounted, an intro in progress
+  // would have been cut off.
+  expect(screen.getByRole("img", { name: "RubinTV" })).toBe(logo);
+  expect(
+    logo.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+
+test("where there are other locations the band stays on the launcher", async () => {
+  overrideFetch("/api/locations", () =>
+    Promise.resolve([
+      { name: "local", title: "Local" },
+      { name: "tts", title: "TTS" },
+    ]),
+  );
+  renderAt("/local");
+  await screen.findByText("LSSTCam");
+  expect(screen.queryByRole("img", { name: "RubinTV" })).toBeNull();
+});
+
+test("a location that can't be loaded says so, under the band", async () => {
+  overrideFetch("/api/locations/local", () => Promise.resolve({}), false);
+  renderAt("/local");
+  expect((await screen.findByText("Could not load location.")).role).toBe("alert");
+  expect(screen.getByRole("img", { name: "RubinTV" })).toBeDefined();
+});

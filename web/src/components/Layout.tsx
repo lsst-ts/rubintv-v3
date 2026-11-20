@@ -49,8 +49,8 @@ function useSite(): string | undefined {
 // wayfinding (breadcrumb + NavMenu drawer), the page title + per-camera view
 // tabs, and the date stepper. The old collapsible sidebar has been retired in
 // favour of the NavMenu drawer (RubinTV Design System, ui_kits/rubintv), so the
-// brand lockup now appears only on the Home hero. Breadcrumbs derive from the
-// URL params (Decision 7).
+// brand lockup appears only in the brand band (on Home, or on a lone
+// location's page). Breadcrumbs derive from the URL params (Decision 7).
 export function Layout() {
   const { location, camera, channel } = useParams();
   const { pathname, search } = useRouterLocation();
