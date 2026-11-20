@@ -1,15 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { utcClock } from "../lib/lastPoll";
 
 // S3-connectivity indicator beside the live (WebSocket) pill. The 'live' pill
 // shows the browser↔app-server WS; this shows whether the app server is
-// reaching the S3 bucket. It stays quiet when healthy and surfaces two
+// reaching the S3 bucket. It stays quiet when healthy and surfaces three
 // escalating states the operator would otherwise only find in the logs:
 //   - amber 'S3 slow'        — the last poll cycle was unusually slow, an
 //                              early warning of a degrading link;
 //   - red   'S3 unreachable' — the last cycle failed to reach S3 outright
-//                              (e.g. a botocore connect timeout).
+//                              (e.g. a botocore connect timeout);
+//   - red   'Poll stalled'   — the cycle now running has not finished, so
+//                              polling has stopped. The other two describe
+//                              the last cycle to finish and would go on
+//                              saying what it found, so this comes first.
 // 'unreachable' takes precedence over 'slow'.
 //
 // Both are the server's own report, so they are only as fresh as the page's
@@ -32,7 +37,7 @@ export function S3Status({
   linkToStatus?: boolean;
   verbose?: boolean;
 }) {
-  const { data, isError } = useQuery({
+  const { data, dataUpdatedAt, isError } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
     // Always poll: connectivity can drop after loading completes, so unlike
@@ -71,6 +76,20 @@ export function S3Status({
   }
 
   if (!data) return null; // nothing known yet
+
+  if (data.poll_stalled) {
+    const age = data.last_poll_age_seconds;
+    const last =
+      age == null
+        ? "It has not finished one since the server started."
+        : `It last finished one at ${utcClock(dataUpdatedAt - age * 1000)} UTC.`;
+    return pill(
+      "conn conn-closed s3-alert",
+      "alert",
+      `The server's poll of the S3 bucket has stopped: a check it began over a minute ago has not finished, so new data is not being picked up. ${last} Check the server logs.`,
+      "Poll stalled",
+    );
+  }
 
   if (data.s3_healthy === false) {
     return pill(

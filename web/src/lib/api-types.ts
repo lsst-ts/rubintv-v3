@@ -1086,6 +1086,10 @@ export interface components {
             s3_slow: boolean;
             /** S3 Last Cycle Seconds */
             s3_last_cycle_seconds: number;
+            /** Poll Stalled */
+            poll_stalled: boolean;
+            /** Last Poll Age Seconds */
+            last_poll_age_seconds: number | null;
             /** Cameras */
             cameras: components["schemas"]["CameraStatus"][];
         };

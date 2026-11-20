@@ -173,6 +173,38 @@ test("a tab whose connection is down says so, and stops calling the day live", a
   }
 });
 
+test("the current day says what time its data is as of; a past day doesn't", async () => {
+  // Only today's prefixes are polled every second, so only today's data has
+  // a moment it is current to.
+  const today = currentDayObs();
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (url.endsWith("/api/health/status")) {
+      body = { last_poll_age_seconds: 2, cameras: [] };
+    } else if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: [today, "2026-01-05"] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  const live = renderAt("/local/auxtel");
+  await screen.findByRole("button", { name: today });
+  const label = await screen.findByText(/^as of \d\d:\d\d:\d\d UTC$/);
+  expect(label.closest(".title-row")).not.toBeNull();
+  live.unmount();
+
+  renderAt("/local/auxtel?date=2026-01-05");
+  await screen.findByRole("button", { name: "2026-01-05" });
+  await waitFor(() => expect(document.querySelector(".is-past-day")).not.toBeNull());
+  expect(screen.queryByText(/^as of/)).toBeNull();
+});
+
 test("a headerless embed has no topbar, so a warning triangle stands for its notice", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   // The shell's own, pinned to the corner (the camera table carries another

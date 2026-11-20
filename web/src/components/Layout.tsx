@@ -14,6 +14,7 @@ import { ConnectionStatus, DisconnectedMark } from "./ConnectionStatus";
 import { InterruptedNotice } from "./ProxiedMedia";
 import { MediaInterruptionProvider } from "../lib/MediaInterruption";
 import { LoadingBanner } from "./LoadingBanner";
+import { DataAsOf } from "./DataAsOf";
 import { NavMenu } from "./NavMenu";
 import { DatePicker } from "./DatePicker";
 import { KeyboardHelp } from "./KeyboardHelp";
@@ -446,6 +447,9 @@ export function Layout() {
                       </button>
                     </span>
                   )}
+                  {/* Only the current day is polled every second, so only
+                      its data has a time it is "as of". */}
+                  {showDatePicker && nav.isCurrentDayObs && <DataAsOf />}
                   {banner && (
                     <span
                       className={`processing-banner site-${location}`}

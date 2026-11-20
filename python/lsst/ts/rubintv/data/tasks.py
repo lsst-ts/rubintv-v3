@@ -105,6 +105,16 @@ LocCam = tuple[str, str]
 # poller client now waits before a hung connection raises outright.
 SLOW_CYCLE_SECONDS = 5.0
 
+# A current-day cycle still running after this long is reported as stalled.
+# A cycle that can't reach S3 fails inside the poller client's timeouts
+# (about 20s) and reads as unreachable, so only one parked on something with
+# no timeout of its own gets this far.
+STALLED_CYCLE_SECONDS = 60.0
+
+# How often the watchdog looks for a stalled cycle. The cycle can't log its
+# own stall, and the status endpoint only works it out when asked.
+_WATCHDOG_SECONDS = 10.0
+
 # Ceiling on concurrent on-demand (deep-link) date scans. Deep-link backfill is
 # reachable from any authenticated request, so this caps its S3 fan-out well
 # below the ~4-worker endpoint ceiling to keep the live poller responsive.
@@ -218,6 +228,31 @@ class PollEngine:
         # toward SLOW_CYCLE_SECONDS) rather than just the slow/not-slow flag.
         # 0.0 until the first cycle completes; unchanged by a failed cycle.
         self.s3_last_cycle_seconds = 0.0
+        # When the current-day cycle now running began, None between cycles,
+        # and when one last succeeded, None until one has (both monotonic).
+        # The flags above are only written as a cycle ends, so a cycle that
+        # never ends leaves them saying what the last one found; these two
+        # are what show it.
+        self._cycle_started: float | None = None
+        self._last_poll: float | None = None
+        self._stall_logged = False
+
+    def poll_stalled(self) -> bool:
+        """Whether the current-day cycle now running has overrun
+        ``STALLED_CYCLE_SECONDS``: the live poll has stopped, whatever
+        ``s3_healthy`` still says of the cycle before it."""
+        return self._cycle_running_seconds() > STALLED_CYCLE_SECONDS
+
+    def _cycle_running_seconds(self) -> float:
+        started = self._cycle_started
+        return 0.0 if started is None else time.monotonic() - started
+
+    def last_poll_age_seconds(self) -> float | None:
+        """Seconds since a current-day cycle last succeeded: how far behind
+        the bucket today's index may be. ``None`` until one has."""
+        if self._last_poll is None:
+            return None
+        return time.monotonic() - self._last_poll
 
     def camera_status(self) -> dict[LocCam, CameraScanState]:
         """Snapshot of per-camera cold-start scan progress."""
@@ -228,6 +263,7 @@ class PollEngine:
         self._tasks = [
             asyncio.create_task(self._current_day_loop(), name="poll-current"),
             asyncio.create_task(self._historical_loop(), name="poll-historical"),
+            asyncio.create_task(self._watchdog_loop(), name="poll-watchdog"),
         ]
 
     async def stop(self) -> None:
@@ -252,11 +288,12 @@ class PollEngine:
             ],
         )
         while not self._stop.is_set():
+            started = self._cycle_started = time.monotonic()
             try:
-                started = time.monotonic()
                 await self._check_rollover()
                 total = await self._scan_day(self._current_day)
-                elapsed = time.monotonic() - started
+                self._last_poll = time.monotonic()
+                elapsed = self._last_poll - started
                 cycle += 1
                 # Heartbeat at info level every minute or so so operators can
                 # see polling is alive even when nothing is changing.
@@ -295,7 +332,33 @@ class PollEngine:
                 self.s3_healthy = False
                 self.s3_slow = False
                 log.exception("poll.current.error")
+            if self._stall_logged:
+                self._stall_logged = False
+                log.info(
+                    "poll.current.resumed",
+                    cycle_seconds=round(time.monotonic() - started, 1),
+                )
+            self._cycle_started = None
             await self._sleep(self._interval)
+
+    async def _watchdog_loop(self) -> None:
+        while not self._stop.is_set():
+            await self._sleep(_WATCHDOG_SECONDS)
+            self._check_stall()
+
+    def _check_stall(self) -> None:
+        """Log a current-day cycle that has stalled, once per stall."""
+        if self._stall_logged or not self.poll_stalled():
+            return
+        self._stall_logged = True
+        age = self.last_poll_age_seconds()
+        log.error(
+            "poll.current.stalled",
+            day=self._current_day,
+            running_seconds=round(self._cycle_running_seconds(), 1),
+            threshold_seconds=STALLED_CYCLE_SECONDS,
+            last_poll_age_seconds=None if age is None else round(age, 1),
+        )
 
     async def _historical_loop(self) -> None:
         # Recent-window-first, then a full sweep. The recent phase makes the

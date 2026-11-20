@@ -85,6 +85,14 @@ class AppState:
     current-day poll cycle (the poll engine owns it; this reads it). Lets the
     status view show the actual latency, not just the slow/not-slow flag; 0.0
     before the first cycle completes."""
+    poll_stalled: Callable[[], bool] = field(default=lambda: False)
+    """Callable returning whether the current-day poll cycle now running has
+    overrun (the poll engine works it out; this reads it). The flags above
+    describe the last cycle to finish, so they can't show one that hasn't."""
+    last_poll_age_seconds: Callable[[], float | None] = field(default=lambda: None)
+    """Callable returning the seconds since a current-day poll cycle last
+    succeeded (the poll engine owns the clock; this reads it); ``None`` until
+    one has."""
     camera_status: Callable[[], dict[tuple[str, str], CameraScanState]] = field(
         default=dict
     )

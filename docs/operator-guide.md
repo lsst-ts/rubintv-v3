@@ -74,6 +74,12 @@ comes up without the sub-app and logs why.
 - `GET /api/health/status` — `{ ready, historical_loading }`.
   `historical_loading` is true until the first full back-catalogue scan
   finishes; the SPA shows a non-blocking "still loading" affordance.
+  It also reports the current-day poll: `s3_healthy`, `s3_slow` and
+  `s3_last_cycle_seconds` describe the last cycle to finish, `poll_stalled`
+  is true when the cycle now running has gone over a minute without
+  finishing, and `last_poll_age_seconds` is how long ago a cycle last
+  succeeded. Pages show the last as "as of HH:MM:SS UTC" beside the current
+  day's date, amber once it is over 30 s old.
 
 ## Startup behaviour (cache warming)
 

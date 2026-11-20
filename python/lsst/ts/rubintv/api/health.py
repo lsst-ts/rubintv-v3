@@ -98,6 +98,16 @@ class StatusResponse(BaseModel):
     frontend shows this in the 'S3 slow' tooltip and the status view so the
     actual latency is visible (and can be watched trending toward the slow
     threshold). 0.0 before the first cycle completes."""
+    poll_stalled: bool
+    """Whether the current-day poll cycle now running has overrun, so the
+    live poll has stopped. The three ``s3_`` fields describe the last cycle
+    to finish and go on saying what it found; the frontend shows a 'Poll
+    stalled' alert ahead of them."""
+    last_poll_age_seconds: float | None
+    """Seconds, when this was answered, since a current-day poll cycle last
+    succeeded: how far behind the bucket today's data may be. An age, not a
+    time, so the frontend can place it on its own clock whatever the
+    server's says. ``None`` before the first cycle completes."""
     cameras: list[CameraStatus]
     """Per-camera cold-start scan progress, so the frontend can scope the
     'loading' affordance to the camera being viewed."""
@@ -184,6 +194,8 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
         s3_healthy=state.s3_healthy(),
         s3_slow=state.s3_slow(),
         s3_last_cycle_seconds=state.s3_last_cycle_seconds(),
+        poll_stalled=state.poll_stalled(),
+        last_poll_age_seconds=state.last_poll_age_seconds(),
         cameras=cameras,
     )
 

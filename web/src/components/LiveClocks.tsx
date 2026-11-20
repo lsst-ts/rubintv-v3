@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useNow, utcClock } from "../lib/lastPoll";
 
 // Header clocks: a live UTC wall clock, and — for cameras that have a
 // time_since_clock configured, on the current (live) date only — a "time since
@@ -6,11 +6,6 @@ import { useEffect, useState } from "react";
 // Both tick once a second. Mirrors the design's LiveStatusPill.
 
 const pad = (n: number) => String(n).padStart(2, "0");
-
-function utcNow(now: number): string {
-  const d = new Date(now);
-  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-}
 
 const DAY_S = 86400;
 
@@ -34,11 +29,7 @@ interface Props {
 }
 
 export function LiveClocks({ sinceLabel, lastImage }: Props) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
 
   // "Date begin" is an ISO-ish UTC timestamp (e.g. 2026-05-01T10:11:51.738).
   // Parse it as UTC; bare times with no date can't be anchored, so skip those.
@@ -56,7 +47,7 @@ export function LiveClocks({ sinceLabel, lastImage }: Props) {
     <span className="status-pill" role="status">
       <span className="clocks">
         <span className="clock-label">UTC</span>
-        <span className="clock-time">{utcNow(now)}</span>
+        <span className="clock-time">{utcClock(now)}</span>
         {sinceLabel && since !== null && (
           <>
             <span className="clock-label">{sinceLabel}</span>
