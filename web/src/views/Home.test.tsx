@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
@@ -81,4 +81,34 @@ test("a failed locations fetch says so instead of showing an empty launcher", as
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Could not load locations.",
   );
+});
+
+test("the logo's intro waits for the locations, in case they redirect", async () => {
+  // Motion allowed (test-setup's stub asks for reduced motion), and a clock
+  // that never ticks: the intro stays on its first frame once started.
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query) =>
+      ({
+        matches: false,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }) as unknown as MediaQueryList,
+  );
+  vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+  sessionStorage.clear();
+  try {
+    stub();
+    renderHome();
+    // Still loading: with a single location this page would redirect to it,
+    // and that page plays the intro, so it isn't started (or marked as
+    // played for this tab) here yet.
+    expect(sessionStorage.length).toBe(0);
+    await screen.findByText("Summit");
+    // Two locations, so the launcher stays and the intro is its own.
+    await waitFor(() => expect(sessionStorage.length).toBe(1));
+  } finally {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+  }
 });

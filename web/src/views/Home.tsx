@@ -7,12 +7,13 @@ import { usePageTitle } from "../lib/usePageTitle";
 import { useSubapps } from "../lib/useSubapps";
 import { useGuideConfig } from "../lib/useGuide";
 import { NavMenu } from "../components/NavMenu";
-import { BrandIntro } from "../components/BrandIntro";
+import { BrandHero } from "../components/BrandHero";
 import type { LocationSummary } from "../lib/types";
 
-// Home page: the full-bleed launcher and the ONLY place that carries the brand
-// (the logo + name hero, see BrandIntro). The app-shell sidebar is gone, so
-// the card grids are the navigation — three grouped sections of text cards:
+// Home page: the full-bleed launcher, headed by the brand band (the logo and
+// name, see BrandHero) — which otherwise appears only on a single-location
+// deployment's location page. The app-shell sidebar is gone, so the card
+// grids are the navigation — three grouped sections of text cards:
 //   1. Processing Locations  (real observing sites, is_teststand === false)
 //   2. Test-stand Locations  (is_teststand === true)
 //   3. Apps                  (Cluster status, if any location has it, +
@@ -67,30 +68,15 @@ export function Home() {
 
   return (
     <div className="landing" data-screen-label="home">
-      {/* The NavMenu drawer floats top-right; the brand hero carries the mark. */}
+      {/* The NavMenu drawer floats top-right; the brand band carries the logo. */}
       <div className="home-toggle">
         <NavMenu />
       </div>
       <div className="landing-inner">
-        <div className="home-hero">
-          <BrandIntro />
-          {/* In-memoriam card for Simon Krughoff, in the space beside the
-              logo. Links out to the community.lsst.org remembrance thread. */}
-          <a
-            className="memoriam"
-            href="https://community.lsst.org/t/remembering-simon-krughoff/7344"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span className="memoriam-name">
-              In memory of Simon Krughoff 1974&ndash;2023
-            </span>
-            <span className="memoriam-text">
-              Who, among his many contributions to the project, helped launch
-              RubinTV
-            </span>
-          </a>
-        </div>
+        {/* Until the locations are in, this page may be about to redirect to
+            a lone location, whose page plays the logo's intro itself; so the
+            intro waits for them rather than start here and be cut off. */}
+        <BrandHero paused={isPending} />
 
         {isPending && <p className="skeleton">Loading locations…</p>}
         {isError && <p role="alert">Could not load locations.</p>}

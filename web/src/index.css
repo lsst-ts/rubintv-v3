@@ -944,7 +944,7 @@ h1, h2 {
   .pref-switch, .pref-switch-thumb { transition: none; }
 }
 
-/* ── Home landing (the ONLY page that carries the brand) ────────────────── */
+/* ── Home landing ───────────────────────────────────────────────────────── */
 .landing {
   height: 100%;
   overflow: auto;
@@ -954,17 +954,21 @@ h1, h2 {
 .landing-inner { max-width: 1080px; margin: 0 auto; padding: 44px 48px 72px; }
 /* The NavMenu drawer floats over the hero, top-right. */
 .home-toggle { position: absolute; top: 22px; right: 26px; z-index: 5; }
-/* Logo on the left, the Simon Krughoff memorial in the space to its right.
-   Wraps to a stack on narrow screens. */
+/* The brand band (BrandHero): logo on the left, the Simon Krughoff memorial
+   in the space to its right. Wraps to a stack on narrow screens. It heads the
+   launcher and, on a single-location deployment, that location's page — the
+   only places the brand appears. */
 .home-hero {
   margin-bottom: 44px;
   display: flex; align-items: center; flex-wrap: wrap;
   justify-content: space-between;
   gap: 20px 32px;
 }
-/* The hero lockup (BrandIntro) — the one place the brand appears: the RubinTV
-   television with the name beside it, arriving as the Rubin mark the first
-   time. Colours come from the theme tokens, so it needs no dark-mode filter.
+/* Inside the app shell (a location page) it sits under the topbar, with less
+   room below than the launcher gives it. */
+.app-content .home-hero { margin: 12px 4px 30px; }
+/* The logo (BrandIntro): the RubinTV television with the name beside it,
+   arriving as the Rubin mark the first time. Colours come from the theme tokens, so it needs no dark-mode filter.
    overflow is visible so the departing trails can fade out past the box
    rather than being cut off at its edge. */
 .brand-intro {

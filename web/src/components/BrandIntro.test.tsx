@@ -121,3 +121,16 @@ test("a browser with no matchMedia gets the intro", () => {
     window.matchMedia = matchMedia;
   }
 });
+
+test("a paused intro waits on the Rubin mark until it's let go", () => {
+  allowMotion();
+  const view = render(<BrandIntro paused />);
+  expect(trails()).toBe(7);
+  expect(frames).toHaveLength(0);
+  // Nor does it count as played: the page that takes over may play it.
+  expect(sessionStorage.length).toBe(0);
+
+  view.rerender(<BrandIntro />);
+  expect(frames).toHaveLength(1);
+  expect(sessionStorage.length).toBe(1);
+});
