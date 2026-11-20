@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 402 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 405 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -403,8 +403,8 @@ Safe to skim.
   `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
-  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`, and
-  the commit that noted the single metadata path.
+  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
+  `121fbdd`, and the commit that noted the disconnected-tab notice.
 
 ---
 
@@ -849,6 +849,7 @@ Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
 `ResponseAborted` in `middleware.py` (the ASGI-level tests in
 `tests/test_ops.py` show the response left unfinished), then
 `web/src/components/ProxiedMedia.tsx` and the pill in `Layout.tsx`.
+(Group 57 fetches such media again when the tab's connection returns.)
 - `ac5c75d` Resume a broken proxy stream, and abort one that can't be
   resumed: the rest is fetched with a Range from the break, pinned to the
   ETag (`IfMatch`), up to twice; otherwise `ResponseAborted` leaves the
@@ -1089,6 +1090,33 @@ usdf-dev pod.
   long it takes (`metadata.compress`): compression had become half of a
   first open, and level 1 takes under a third of level 6's time for a
   reply 40% larger
+
+### 57. A tab that says when it's disconnected
+The same review found that no data page showed whether its WebSocket
+was connected: the date chip said "updates live" from the date alone,
+and a socket that died without closing was never noticed, so a page
+could sit on stale data looking current. Review `HEARTBEAT_SECONDS` and
+`_send_loop` in `ws/handler.py`; on the page, `web/src/lib/ws.ts` (the
+silence clock and `lostSinceOpenRef`), then `disconnected` and
+`reconnects` in `LiveContext.tsx`, which `ConnectionStatus.tsx`,
+`LiveBadge.tsx` and the views only read; last `ProxiedMedia.tsx` (from
+group 48) for what a reconnect fetches again. This heartbeat is a
+WebSocket message to the page, and has nothing to do with the Rapid
+Analysis endpoint that group 42 removed.
+- `b59f074` Send a heartbeat on a WebSocket with nothing else to carry:
+  a `heartbeat` message once the server has sent nothing for 20 s, so a
+  page can take silence to mean the socket is dead
+- `2aca315` Say when a tab has lost its live connection, and catch up
+  when it's back. The page replaces a socket it has heard nothing on
+  for 45 s, or a connect that hangs. Down for more than 5 s, the topbar
+  says "Disconnected", and the date chip, the channel views' badge and
+  tab title, All Sky's tag and the Channels cards stop reading as live;
+  a warning triangle stands in where the topbar is out of sight (the
+  camera table scrolled down, a headerless embed); a failed status poll
+  reads "Server unreachable". An open that follows a loss refetches
+  what the page shows, now also for a tab opened during the outage,
+  and fetches again any image or movie that failed, was cut short or
+  is still loading
 
 ---
 
