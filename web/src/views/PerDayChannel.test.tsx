@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
-import { LiveProvider } from "../lib/LiveContext";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
+import { loseLiveConnection, openLiveSockets } from "../test-setup";
 import { PerDayChannel } from "./PerDayChannel";
 
 // The night-by-night viewer on its own, for what routes.test doesn't reach: a
@@ -93,4 +94,20 @@ test("live, a channel that has never produced anything says so", async () => {
   renderAt("/local/auxtel/night_plot/current");
   expect(await screen.findByText("No Night Plot yet.")).toBeDefined();
   expect(screen.getByText("LIVE")).toBeDefined();
+});
+
+test("live, the badge and the tab's title follow the tab's connection", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    stub();
+    renderAt("/local/auxtel/night_plot/current");
+    act(() => openLiveSockets());
+    expect(await screen.findByText("LIVE")).toBeDefined();
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect(screen.queryByText("LIVE")).toBeNull();
+    expect(screen.getByText("DISCONNECTED")).toBeDefined();
+    expect(document.title).toContain("· DISCONNECTED ·");
+  } finally {
+    vi.useRealTimers();
+  }
 });

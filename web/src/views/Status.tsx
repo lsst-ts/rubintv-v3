@@ -210,7 +210,7 @@ export function Status() {
         <h1>Scan status</h1>
         <div className="status-sections">
           <section className="status-section" aria-label="WebSocket">
-            <ConnectionStatus />
+            <ConnectionStatus verbose />
           </section>
           <section className="status-section" aria-label="S3">
             <S3Status verbose />

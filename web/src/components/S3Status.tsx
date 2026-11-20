@@ -12,6 +12,11 @@ import { api } from "../lib/api";
 //                              (e.g. a botocore connect timeout).
 // 'unreachable' takes precedence over 'slow'.
 //
+// Both are the server's own report, so they are only as fresh as the page's
+// last successful status poll. When that poll fails the pill says so (red
+// 'Server unreachable') instead of repeating the last answer it got, which
+// for a server that has gone away is normally "healthy".
+//
 // `linkToStatus` makes the pill a link to the Status page (its ops deep-dive:
 // per-camera scan state and last-cycle latency). Enabled in the header, where
 // the pill is the natural jumping-off point; left off inside the Status page
@@ -27,15 +32,13 @@ export function S3Status({
   linkToStatus?: boolean;
   verbose?: boolean;
 }) {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
     // Always poll: connectivity can drop after loading completes, so unlike
     // the historical-loading banner this never stops watching.
     refetchInterval: 5000,
   });
-
-  if (!data) return null; // nothing known yet
 
   // Render the pill, optionally wrapped in a Link to the Status page. The
   // alert/status role and title stay on the visible element so screen readers
@@ -55,6 +58,19 @@ export function S3Status({
       inner
     );
   };
+
+  // The poll itself failed (after its retry). TanStack keeps the last good
+  // answer in `data`, so this has to come first.
+  if (isError) {
+    return pill(
+      "conn conn-closed s3-alert",
+      "alert",
+      "The page's last status check of the RubinTV server failed, so what it shows may be out of date.",
+      "Server unreachable",
+    );
+  }
+
+  if (!data) return null; // nothing known yet
 
   if (data.s3_healthy === false) {
     return pill(

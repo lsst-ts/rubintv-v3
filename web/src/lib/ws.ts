@@ -3,8 +3,8 @@
 // reconnection, and lets views subscribe to topics driven by the route.
 //
 // The server protocol is typed (ws/protocol.py); here we model the message
-// shapes and the connection lifecycle: connect, retry with backoff, and
-// surface status.
+// shapes and the connection lifecycle: connect, retry with backoff, give up
+// on a socket that has gone silent, and surface status.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE } from "./basePath";
@@ -26,6 +26,13 @@ interface ServerMessage {
 type MessageHandler = (msg: ServerMessage) => void;
 
 const MAX_BACKOFF_MS = 10_000;
+// The server sends a heartbeat on any connection it has had nothing else to
+// say on for 20 s (ws/handler.py), so a live socket is never silent for long.
+// One that is has died without closing (a laptop that slept, a proxy that
+// dropped the route) and the browser can take many minutes to notice, so past
+// this limit the tab gives up on it and reconnects. Two heartbeats and a
+// margin, so one late frame doesn't cost a reconnect.
+export const SILENCE_LIMIT_MS = 45_000;
 
 /**
  * Manage this tab's single WebSocket connection.
@@ -35,10 +42,13 @@ const MAX_BACKOFF_MS = 10_000;
  * registrar.
  */
 export interface WebSocketOptions {
-  // Called after the socket re-opens following a drop (NOT the first connect).
-  // The caller uses it to refetch data that may have changed while the socket
-  // was down — live updates are delta-driven, so anything missed during the
-  // outage would otherwise never appear until the next event for that topic.
+  // Called when a socket opens after one was lost: a reconnect following a
+  // drop, or the first connect of a tab if its earlier tries failed (it was
+  // opened while the server was unreachable). Not a first connect that just
+  // works. The caller uses it to refetch data that may have changed while the
+  // socket was down — live updates are delta-driven, so anything missed
+  // during the outage would otherwise never appear until the next event for
+  // that topic — and to retry what failed meanwhile.
   onReconnect?: () => void;
 }
 
@@ -58,10 +68,10 @@ export function useWebSocket(
   >(new Map());
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
   const backoffRef = useRef(500);
-  // True once the first connection has opened, so we can distinguish the
-  // initial open (no refetch needed — queries load themselves) from a
-  // reconnect after a drop (refetch what was missed).
-  const hasConnectedRef = useRef(false);
+  // True from a socket being lost until the next one opens, so we can tell an
+  // open that just works (no refetch needed — queries load themselves) from
+  // one that ends an outage (refetch what was missed, retry what failed).
+  const lostSinceOpenRef = useRef(false);
   // Keep the latest callback without making the connect effect depend on it
   // (which would tear down and rebuild the socket whenever it changes).
   const onReconnectRef = useRef(onReconnect);
@@ -80,6 +90,7 @@ export function useWebSocket(
   useEffect(() => {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let silenceTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
@@ -87,42 +98,70 @@ export function useWebSocket(
       socketRef.current = sock;
       setStatus("connecting");
 
+      // This socket is finished — the other end closed it, or it went silent —
+      // so retry on a new one. Once per socket: a socket given up on for
+      // silence still fires its own close later.
+      let lost = false;
+      const onLost = () => {
+        if (cancelled || lost) return;
+        lost = true;
+        lostSinceOpenRef.current = true;
+        clearTimeout(silenceTimer);
+        setStatus("closed");
+        const delay = Math.min(backoffRef.current, MAX_BACKOFF_MS);
+        backoffRef.current = Math.min(delay * 2, MAX_BACKOFF_MS);
+        reconnectTimer = setTimeout(connect, delay);
+      };
+      // Restart the silence clock: at creation (a connect that hangs is as
+      // dead as a socket that stops talking), on open, and on every frame.
+      // The clock is the current socket's: a late frame from one already
+      // given up on must not hold its replacement's back.
+      const heard = () => {
+        if (cancelled || lost) return;
+        clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+          debugLog("ws.silent", "no frame for", SILENCE_LIMIT_MS, "ms");
+          sock.close();
+          onLost();
+        }, SILENCE_LIMIT_MS);
+      };
+      heard();
+
       sock.onopen = () => {
         if (cancelled) {
           sock.close();
           return;
         }
         setStatus("open");
+        heard();
         backoffRef.current = 500;
         // Replay subscriptions after a reconnect — once per unique topic,
         // regardless of how many consumers hold it.
         for (const { sub } of subscriptionsRef.current.values()) {
           send({ action: "subscribe", ...sub });
         }
-        // On a *re*connect (not the first open), refetch: data may have
-        // changed while the socket was down and live deltas for it are gone.
-        if (hasConnectedRef.current) {
+        // An open that ends an outage: data may have changed while the socket
+        // was down and live deltas for it are gone, and requests made
+        // meanwhile failed.
+        if (lostSinceOpenRef.current) {
           onReconnectRef.current?.();
         }
-        hasConnectedRef.current = true;
+        lostSinceOpenRef.current = false;
       };
 
       sock.onmessage = (ev) => {
+        heard();
         try {
           const msg = JSON.parse(ev.data) as ServerMessage;
+          // A heartbeat only says the socket is alive, which `heard` noted.
+          if (msg.type === "heartbeat") return;
           handlersRef.current.forEach((h) => h(msg));
         } catch {
           // Ignore non-JSON frames.
         }
       };
 
-      sock.onclose = () => {
-        if (cancelled) return;
-        setStatus("closed");
-        const delay = Math.min(backoffRef.current, MAX_BACKOFF_MS);
-        backoffRef.current = Math.min(delay * 2, MAX_BACKOFF_MS);
-        reconnectTimer = setTimeout(connect, delay);
-      };
+      sock.onclose = onLost;
     };
 
     connect();
@@ -130,6 +169,7 @@ export function useWebSocket(
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearTimeout(silenceTimer);
       socketRef.current?.close();
     };
     // send is stable (useCallback with no deps); url is the real dependency.

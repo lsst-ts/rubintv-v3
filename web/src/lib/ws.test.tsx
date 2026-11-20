@@ -8,9 +8,9 @@ import {
   pushRawLiveFrame,
 } from "../test-setup";
 import { BASE } from "./basePath";
-import { LiveProvider } from "./LiveContext";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "./LiveContext";
 import { createQueryClient } from "./queryClient";
-import { useWebSocket } from "./ws";
+import { SILENCE_LIMIT_MS, useWebSocket } from "./ws";
 
 // The tab's one live connection: it reports its state, reconnects with
 // backoff after a drop, replays its subscriptions on the new socket, and asks
@@ -23,12 +23,13 @@ afterEach(() => vi.useRealTimers());
 const openNewest = () => act(() => liveSockets().at(-1)!.onopen?.());
 const drop = () => act(() => dropLiveSocket());
 const sentOn = (i: number) => liveSockets()[i].sent;
+const wait = (ms: number) => act(() => vi.advanceTimersByTime(ms));
 
 test("the status pill follows the connection through a drop and back", () => {
   render(
     <QueryClientProvider client={createQueryClient()}>
       <LiveProvider>
-        <ConnectionStatus />
+        <ConnectionStatus verbose />
       </LiveProvider>
     </QueryClientProvider>,
   );
@@ -51,6 +52,48 @@ test("the status pill follows the connection through a drop and back", () => {
   expect(pill.textContent).toBe("WebSocket connecting…");
   openNewest();
   expect(pill.textContent).toBe("WebSocket connected");
+});
+
+test("the header's notice shows only once the connection has been down a while", () => {
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <ConnectionStatus />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  const notice = () => screen.queryByRole("status");
+  // The first connect, and a drop the retry recovers from, pass unremarked.
+  expect(notice()).toBeNull();
+  openNewest();
+  drop();
+  wait(500);
+  openNewest();
+  wait(DISCONNECT_GRACE_MS);
+  expect(notice()).toBeNull();
+
+  // A connection that stays down through its retries is reported...
+  drop();
+  wait(DISCONNECT_GRACE_MS - 1);
+  expect(notice()).toBeNull();
+  wait(1);
+  expect(notice()!.textContent).toBe("Disconnected");
+  expect(notice()!.getAttribute("title")).toMatch(/not arriving/);
+  // ...until it is back.
+  openNewest();
+  expect(notice()).toBeNull();
+});
+
+test("a page whose first connect never succeeds says so too", () => {
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <ConnectionStatus />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  wait(DISCONNECT_GRACE_MS);
+  expect(screen.getByRole("status").textContent).toBe("Disconnected");
 });
 
 test("the socket connects to the app's /ws on the page's host", () => {
@@ -140,6 +183,62 @@ test("a non-JSON frame is skipped and later frames still arrive", () => {
     { type: "channelData", camera: "c", data: { 1: {} } },
     { type: "metadata", camera: "c" },
   ]);
+});
+
+test("a socket that goes silent is given up on and replaced", () => {
+  // The server sends a heartbeat on a quiet connection, so silence means the
+  // socket died without closing; the browser may not notice for minutes.
+  const onReconnect = vi.fn();
+  const { result } = renderHook(() => useWebSocket(undefined, { onReconnect }));
+  const seen: unknown[] = [];
+  act(() => {
+    result.current.onMessage((m) => seen.push(m));
+  });
+  openNewest();
+
+  // Heartbeats keep it alive, and are not passed on to the views.
+  wait(SILENCE_LIMIT_MS - 1);
+  act(() => pushLiveMessage({ type: "heartbeat" }));
+  wait(SILENCE_LIMIT_MS - 1);
+  expect(result.current.status).toBe("open");
+  expect(seen).toEqual([]);
+
+  // Then nothing: the socket is closed and a new one tried.
+  wait(1);
+  expect(result.current.status).toBe("closed");
+  expect(liveSockets()[0].closed).toBe(true);
+  wait(500);
+  expect(liveSockets()).toHaveLength(2);
+  openNewest();
+  expect(onReconnect).toHaveBeenCalledTimes(1);
+
+  // The abandoned socket's own close, and a frame it had in flight, start no
+  // second retry and don't keep its replacement alive.
+  act(() => liveSockets()[0].onclose?.());
+  wait(SILENCE_LIMIT_MS - 1);
+  act(() => liveSockets()[0].onmessage?.({ data: '{"type":"heartbeat"}' }));
+  expect(liveSockets()).toHaveLength(2);
+  wait(1);
+  expect(liveSockets()[1].closed).toBe(true);
+});
+
+test("a connect that hangs is given up on like a silent socket", () => {
+  renderHook(() => useWebSocket());
+  wait(SILENCE_LIMIT_MS);
+  expect(liveSockets()[0].closed).toBe(true);
+  wait(500);
+  expect(liveSockets()).toHaveLength(2);
+});
+
+test("a tab opened during an outage asks for a refetch when it first connects", () => {
+  // Its first requests failed with the connect, and nothing else would make
+  // them again; a first connect that just works has nothing to make up.
+  const onReconnect = vi.fn();
+  renderHook(() => useWebSocket(undefined, { onReconnect }));
+  drop();
+  act(() => vi.advanceTimersByTime(500));
+  openNewest();
+  expect(onReconnect).toHaveBeenCalledTimes(1);
 });
 
 test("unmounting closes the socket and cancels a pending retry", () => {

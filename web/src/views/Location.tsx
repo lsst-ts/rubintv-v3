@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, cameraDataState } from "../lib/queryClient";
+import { useReconnects } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ProxiedImg } from "../components/ProxiedMedia";
 
@@ -26,6 +27,10 @@ function CamThumb({ src, offline }: { src: string | null; offline: boolean }) {
     setImgLoaded(false);
     setFailed(false);
   }, [src]);
+  // Nor is a failure final once the tab's connection has dropped and come
+  // back: the thumbnail may have been asked for while it was down.
+  const reconnects = useReconnects();
+  useEffect(() => setFailed(false), [reconnects]);
   const imgRef = (el: HTMLImageElement | null) => {
     if (el?.complete) setImgLoaded(true);
   };

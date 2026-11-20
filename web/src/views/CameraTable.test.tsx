@@ -9,8 +9,13 @@ import {
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
-import { LiveProvider } from "../lib/LiveContext";
-import { wholeMetadata } from "../test-setup";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
+import {
+  liveSockets,
+  loseLiveConnection,
+  openLiveSockets,
+  wholeMetadata,
+} from "../test-setup";
 import { setDensity } from "../lib/prefs";
 import { CameraTable } from "./CameraTable";
 
@@ -279,5 +284,36 @@ test("with no table drawn, both jump buttons are off", async () => {
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name }).disabled,
     ).toBe(true);
+  }
+});
+
+test("a disconnected tab is flagged by a warning triangle beside the clock", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const mark = () => screen.queryByRole("img", { name: /^Disconnected/ });
+  try {
+    // In the shell the topbar carries the notice until the table scrolls it
+    // away (the CSS shows the triangle only then), so it points back up.
+    const shell = renderTable();
+    act(() => openLiveSockets());
+    await screen.findByText("10");
+    expect(mark()).toBeNull();
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect(mark()!.getAttribute("title")).toMatch(/Scroll up to see the header/);
+    expect(mark()!.className).toBe("conn-mark conn-mark--inline");
+    // On the toolbar's line, just ahead of the UTC clock.
+    expect(mark()!.parentElement!.className).toBe("cam-toolbar");
+    expect(mark()!.nextElementSibling!.textContent).toMatch(/^UTC/);
+    act(() => liveSockets().at(-1)!.onopen?.());
+    expect(mark()).toBeNull();
+    shell.unmount();
+
+    // A headerless embed has no header to scroll up to.
+    renderTable(`/local/auxtel?date=${TODAY}&headerless=true`);
+    act(() => openLiveSockets());
+    await screen.findByText("10");
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect(mark()!.getAttribute("title")).toMatch(/keeps trying to reconnect/);
+  } finally {
+    vi.useRealTimers();
   }
 });

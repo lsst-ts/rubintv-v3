@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
-import { useLiveTopic } from "../lib/LiveContext";
+import { useLive, useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import type { ChannelOut, DatePayload } from "../lib/types";
 import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
@@ -117,6 +117,9 @@ function ChannelCard({
   const imgRef = (el: HTMLImageElement | null) => {
     if (el?.complete) setImgLoaded(true);
   };
+  // A live channel's tag pulses to say its card follows the newest frame,
+  // which it can't while the tab's connection is down.
+  const { disconnected } = useLive();
   return (
     <Link className={`chc-card${stale ? " chc-card--stale" : ""}`} to={href}>
       <div className="chc-frame">
@@ -160,9 +163,18 @@ function ChannelCard({
       <div className="chc-body">
         <span className="sw" style={{ background: ch.colour ?? "var(--line-mid)" }} />
         <div className="chc-title">{ch.title}</div>
-        <span className={`tag chv-tag ${ch.per_day ? "" : "live"}`}>
-          {ch.per_day ? "day" : "live"}
-        </span>
+        {ch.per_day ? (
+          <span className="tag chv-tag">day</span>
+        ) : disconnected ? (
+          <span
+            className="tag chv-tag stalled"
+            title="This tab has lost its live connection to the server, so this card is not following new frames."
+          >
+            disconnected
+          </span>
+        ) : (
+          <span className="tag chv-tag live">live</span>
+        )}
       </div>
       <div className="chc-foot">
         {media.seqLabel && <span className="chc-seq">{media.seqLabel}</span>}
@@ -201,6 +213,7 @@ export function ChannelBrowser() {
   // re-resolves each card's latest frame. Without this the grid froze on its
   // first fetch while the table (which does subscribe) kept updating.
   useLiveTopic({ topic: "camera", location, camera });
+  const { disconnected } = useLive();
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -293,12 +306,19 @@ export function ChannelBrowser() {
     <div className="chc-root">
       {date !== "" && (
         <div
-          className={`chc-dayobs${isCurrentDayObs ? " chc-dayobs--live" : " chc-dayobs--past"}`}
+          className={`chc-dayobs${
+            !isCurrentDayObs
+              ? " chc-dayobs--past"
+              : disconnected
+                ? " chc-dayobs--stalled"
+                : " chc-dayobs--live"
+          }`}
         >
           <span className="chc-dayobs-dot" aria-hidden="true" />
           {isCurrentDayObs ? (
             <span>
               Showing <strong>tonight</strong> · {date}
+              {disconnected && " — disconnected, not updating"}
             </span>
           ) : (
             <span>

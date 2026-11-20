@@ -1,8 +1,11 @@
-import { render, screen } from "@testing-library/react";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { createQueryClient } from "../lib/queryClient";
 import { LoadingBanner } from "./LoadingBanner";
 import type { StatusResponse } from "../lib/types";
+
+// The client behind the last renderWith, for a test that polls again.
+let qc: QueryClient;
 
 function renderWith(
   status: Partial<StatusResponse>,
@@ -24,8 +27,9 @@ function renderWith(
       ok: true,
       json: () => Promise.resolve(payload),
     })) as unknown as typeof fetch;
+  qc = createQueryClient();
   return render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={qc}>
       <LoadingBanner {...props} />
     </QueryClientProvider>,
   );
@@ -125,4 +129,22 @@ test("clears once the current camera's full sweep completes", async () => {
   // …but the camera in view is done, so no pill for it.
   await new Promise((r) => setTimeout(r, 0));
   expect(screen.queryByRole("status")).toBeNull();
+});
+
+test("goes quiet while the server can't be reached, and returns with it", async () => {
+  // The last answer is kept when a poll fails, and would go on claiming a
+  // scan in progress.
+  renderWith({ historical_loading: true });
+  expect((await screen.findByRole("status")).textContent).toBe("Loading dates");
+  const reachable = globalThis.fetch;
+
+  // A 4xx is not retried, so the failure shows as soon as it is polled.
+  globalThis.fetch = (() =>
+    Promise.resolve({ ok: false, status: 403 })) as unknown as typeof fetch;
+  await act(() => qc.refetchQueries({ queryKey: ["status"] }));
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+
+  globalThis.fetch = reachable;
+  await act(() => qc.refetchQueries({ queryKey: ["status"] }));
+  expect((await screen.findByRole("status")).textContent).toBe("Loading dates");
 });

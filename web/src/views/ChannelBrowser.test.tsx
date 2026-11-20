@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
-import { LiveProvider } from "../lib/LiveContext";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
+import { liveSockets, loseLiveConnection, openLiveSockets } from "../test-setup";
 import { ChannelBrowser } from "./ChannelBrowser";
 import type { CalendarOut, CameraOut, DatePayload } from "../lib/types";
 
@@ -258,6 +259,39 @@ test("a card more than five frames behind the night is flagged", async () => {
   expect(close.className).not.toContain("chc-card--stale");
 });
 
+test("a live card's tag stops pulsing while the tab is disconnected", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    stub({
+      channels: [channel("witness"), channel("movies", { per_day: true })],
+      payload: emptyPayload,
+      channelLatest: {},
+    });
+    renderBrowser();
+    act(() => openLiveSockets());
+    const card = await screen.findByRole("link", { name: /witness/ });
+    const tag = () => card.querySelector(".chv-tag")!;
+    expect([tag().className, tag().textContent]).toEqual([
+      "tag chv-tag live",
+      "live",
+    ]);
+
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect([tag().className, tag().textContent]).toEqual([
+      "tag chv-tag stalled",
+      "disconnected",
+    ]);
+    // A per-night card's tag is its kind, and says nothing about liveness.
+    const perNight = screen.getByRole("link", { name: /movies/ });
+    expect(perNight.querySelector(".chv-tag")!.textContent).toBe("day");
+
+    act(() => liveSockets().at(-1)!.onopen?.());
+    expect(tag().textContent).toBe("live");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 describe("on the live observing night", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -271,6 +305,24 @@ describe("on the live observing night", () => {
     await screen.findByText("tonight");
     expect(container.querySelector(".chc-dayobs--live")?.textContent).toBe(
       `Showing tonight · ${NEWEST}`,
+    );
+  });
+
+  test("with the tab disconnected, tonight's grid says it isn't updating", async () => {
+    // This one needs the timers faked too, to sit out the shell's grace.
+    vi.useRealTimers();
+    vi.useFakeTimers({
+      shouldAdvanceTime: true,
+      now: new Date(`${NEWEST}T20:00:00Z`),
+    });
+    stub({ channels: [channel("witness")], payload: emptyPayload, channelLatest: {} });
+    const { container } = renderBrowser();
+    act(() => openLiveSockets());
+    await screen.findByText("tonight");
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect(container.querySelector(".chc-dayobs--live")).toBeNull();
+    expect(container.querySelector(".chc-dayobs--stalled")?.textContent).toBe(
+      `Showing tonight · ${NEWEST} — disconnected, not updating`,
     );
   });
 });

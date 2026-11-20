@@ -134,6 +134,18 @@ h1, h2 {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.8); }
 }
+/* A live tag's other state: the view follows the newest data but the tab's
+   connection is down, so nothing is arriving. Amber like the header's
+   "Disconnected" notice, and the dot holds still. */
+.tag.stalled {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line-mid));
+  background: color-mix(in srgb, var(--warn) 9%, var(--paper-2));
+}
+.tag.stalled::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--warn);
+}
 
 /* ── App shell (single full-width main column) ─────────────────────────── */
 /* App root wraps the optional full-width environment strip above the main
@@ -437,6 +449,35 @@ h1, h2 {
 .conn-closed {
   color: var(--ink-soft);
   background: color-mix(in srgb, var(--ink-soft) 14%, transparent);
+}
+/* The header's "Disconnected" notice: only rendered once the socket has been
+   down a while, so it's an amber warning, not the quiet grey of a state the
+   Status page merely reports. */
+.conn-lost {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  font-weight: 600;
+}
+
+/* The same notice where there is no topbar to carry it: a warning triangle.
+   A headerless embed pins it to the corner. The camera table has its own in
+   its toolbar, beside the UTC clock (--inline): in an embed that one stands
+   in for the corner's, and in the full shell it is in the page whenever the
+   tab is disconnected but shown only while the table has the topbar, and so
+   the notice in it, scrolled away (see .topbar). */
+.conn-mark {
+  position: fixed; top: 8px; right: 10px; z-index: 60;
+  display: inline-flex;
+  color: var(--warn);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+}
+.conn-mark svg { width: 26px; height: 26px; }
+.conn-mark--inline { position: static; filter: none; }
+.conn-mark--inline svg { width: 22px; height: 22px; }
+.shell.headerless:has(.conn-mark--inline) > .conn-mark { display: none; }
+.app-root .conn-mark--inline { display: none; }
+.app-root:has(.table-wrap[data-hide-topbar]) .conn-mark--inline {
+  display: inline-flex;
 }
 
 /* S3-connectivity alert: only rendered when the server can't reach the
@@ -1167,12 +1208,15 @@ h1, h2 {
 /* Date-chip day_obs state (same UTC−12 rule as the Channels banner). The
    selected date carries whether it's the live observing day: a quiet green
    tint when it's tonight (table updates live), amber when it's a historical
-   day (table is static). Full meaning is in the chip's title tooltip. */
+   day (table is static). Tonight with the tab's connection down is neither:
+   no tint and a dashed border, as nothing is updating. Full meaning is in the
+   chip's title tooltip. */
 .date-trigger.is-live-day {
   border-color: color-mix(in srgb, var(--good) 55%, var(--line-mid));
   background: color-mix(in srgb, var(--good) 9%, var(--paper-2));
 }
 .date-trigger.is-live-day .ui-icon { color: var(--good); }
+.date-trigger.is-stalled-day { border-style: dashed; border-color: var(--ink-soft); }
 .date-trigger.is-past-day {
   border-color: color-mix(in srgb, var(--warn) 55%, var(--line-mid));
   background: color-mix(in srgb, var(--warn) 9%, var(--paper-2));
@@ -2227,7 +2271,8 @@ kbd {
   padding: 1px 7px;
   text-transform: uppercase; letter-spacing: 0.4px;
 }
-.chv-tag.live::before { width: 5px; height: 5px; }
+.chv-tag.live::before,
+.chv-tag.stalled::before { width: 5px; height: 5px; }
 
 /* Channel head — swatch + title + tag, used by the single-exposure viewer. */
 .chv-vhead {
@@ -2307,6 +2352,11 @@ kbd {
 }
 .chc-dayobs--live .chc-dayobs-dot {
   background: var(--good); animation: pulse 1.5s infinite;
+}
+/* Tonight, but the tab's connection is down: a hollow, still dot. Not amber,
+   which on this line means an older night. */
+.chc-dayobs--stalled .chc-dayobs-dot {
+  box-sizing: border-box; border: 1.5px dashed var(--ink-soft);
 }
 /* Older night: amber, no pulse — the grid is not updating live. */
 .chc-dayobs--past { color: var(--warn); }

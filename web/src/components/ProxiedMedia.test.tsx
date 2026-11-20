@@ -1,6 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import type { ReactNode } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { createQueryClient } from "../lib/queryClient";
+import { LiveProvider } from "../lib/LiveContext";
 import { MediaInterruptionProvider } from "../lib/MediaInterruption";
+import { openLiveSockets, reconnectLive } from "../test-setup";
 import { InterruptedNotice, ProxiedImg, ProxiedVideo } from "./ProxiedMedia";
 
 // A response body that delivers `bytes` and then, unless `complete`, fails
@@ -150,6 +155,188 @@ test("a movie whose server can't be reached counts as interrupted", async () => 
   const { video, report } = renderVideo();
   fireEvent.error(video);
   await waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+});
+
+describe("once the tab's connection is back", () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
+  // The media inside the tab's live connection, already open.
+  function renderLive(media: ReactNode, report = vi.fn()) {
+    const view = render(
+      <QueryClientProvider client={createQueryClient()}>
+        <LiveProvider>
+          <MediaInterruptionProvider value={report}>{media}</MediaInterruptionProvider>
+        </LiveProvider>
+      </QueryClientProvider>,
+    );
+    act(() => openLiveSockets());
+    return { ...view, report };
+  }
+  const blob = (img: HTMLElement) =>
+    waitFor(() => expect(img.getAttribute("src")).toMatch(/^blob:/));
+
+  test("an image that couldn't be fetched is fetched again", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+    const onError = vi.fn();
+    renderLive(<ProxiedImg src="/api/x.png" alt="frame" onError={onError} />);
+    const img = screen.getByRole("img", { name: "frame" });
+    fireEvent.error(img);
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+
+    // Still down for this try: it stays as it was, and is tried next time.
+    reconnectLive();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(img.getAttribute("src")).toBe("/api/x.png");
+
+    stubFetch({ ok: true, body: body([1, 2, 3], true) });
+    reconnectLive();
+    await blob(img);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  test("an image cut short is fetched again, whole", async () => {
+    stubFetch({ ok: true, body: body([1, 2, 3], false) });
+    const { report } = renderLive(<ProxiedImg src="/api/x.png" alt="frame" />);
+    const img = screen.getByRole("img", { name: "frame" });
+    fireEvent.error(img);
+    await blob(img);
+    const partial = img.getAttribute("src");
+    expect(report).toHaveBeenCalledTimes(1);
+
+    const fetchMock = stubFetch({ ok: true, body: body([1, 2, 3, 4], true) });
+    reconnectLive();
+    await waitFor(() => expect(img.getAttribute("src")).not.toBe(partial));
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
+    expect(report).toHaveBeenCalledTimes(1);
+
+    // Whole now, so a later reconnect leaves it alone.
+    reconnectLive();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("a cut-short copy that wouldn't draw is fetched again too", async () => {
+    stubFetch({ ok: true, body: body([1, 2, 3], false) });
+    renderLive(<ProxiedImg src="/api/x.png" alt="frame" />);
+    const img = screen.getByRole("img", { name: "frame" });
+    fireEvent.error(img);
+    await blob(img);
+    const partial = img.getAttribute("src");
+    fireEvent.error(img);
+
+    stubFetch({ ok: true, body: body([1, 2, 3, 4], true) });
+    reconnectLive();
+    await waitFor(() => expect(img.getAttribute("src")).not.toBe(partial));
+  });
+
+  test("an image that loaded, or recovered whole, is left alone", async () => {
+    const fetchMock = stubFetch({ ok: true, body: body([1, 2, 3], true) });
+    renderLive(
+      <>
+        <ProxiedImg src="/api/fine.png" alt="fine" />
+        <ProxiedImg src="/api/x.png" alt="frame" />
+      </>,
+    );
+    fireEvent.load(screen.getByRole("img", { name: "fine" }));
+    const img = screen.getByRole("img", { name: "frame" });
+    fireEvent.error(img);
+    await blob(img);
+    reconnectLive();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("an image still loading is fetched, in case its request has hung", async () => {
+    // A connection that died without closing fails nothing: the request just
+    // never ends. In jsdom no image ever finishes loading, which is that.
+    const fetchMock = stubFetch({ ok: true, body: body([1, 2, 3], true) });
+    const onLoad = vi.fn();
+    renderLive(<ProxiedImg src="/api/x.png" alt="frame" onLoad={onLoad} />);
+    const img = screen.getByRole("img", { name: "frame" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    reconnectLive();
+    await blob(img);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("the browser's own load landing first calls the fetch off", async () => {
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init: RequestInit) => {
+        signal = init.signal ?? undefined;
+        return new Promise(() => {});
+      }),
+    );
+    renderLive(<ProxiedImg src="/api/x.png" alt="frame" />);
+    const img = screen.getByRole("img", { name: "frame" });
+    reconnectLive();
+    expect(signal?.aborted).toBe(false);
+    fireEvent.load(img);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  test("a fetch that finds nothing leaves a later failure its own try", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+    const onError = vi.fn();
+    renderLive(<ProxiedImg src="/api/x.png" alt="frame" onError={onError} />);
+    const img = screen.getByRole("img", { name: "frame" });
+    reconnectLive();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(onError).not.toHaveBeenCalled();
+
+    // The browser's own request, still under way, now fails.
+    fireEvent.error(img);
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("a lazy image still loading has its own request started over", () => {
+    // One that hasn't scrolled into view looks the same, and must not be
+    // downloaded early: the browser decides again whether to load it.
+    const fetchMock = stubFetch({ ok: true, body: body([1, 2, 3], true) });
+    renderLive(<ProxiedImg src="/api/x.png" alt="frame" loading="lazy" />);
+    const img = screen.getByRole("img", { name: "frame" });
+    const setSrc = vi.fn();
+    Object.defineProperty(img, "src", { set: setSrc, configurable: true });
+    reconnectLive();
+    expect(setSrc).toHaveBeenCalledWith("/api/x.png");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("a movie that failed, or has hung, is loaded again; others are not", async () => {
+    stubFetch({ ok: true, body: body([0], true) });
+    const load = vi
+      .spyOn(HTMLMediaElement.prototype, "load")
+      .mockImplementation(() => {});
+    try {
+      const { container, report } = renderLive(
+        <>
+          <ProxiedVideo src="/api/fine.mp4" />
+          <ProxiedVideo src="/api/m.mp4" />
+          <ProxiedVideo src="/api/hung.mp4" />
+        </>,
+      );
+      const [, failed, hung] = container.querySelectorAll("video");
+      fireEvent.error(failed);
+      await waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+      // Loading, with nothing to show for it yet.
+      Object.defineProperty(hung, "networkState", {
+        value: HTMLMediaElement.NETWORK_LOADING,
+        configurable: true,
+      });
+
+      reconnectLive();
+      expect(load.mock.contexts).toEqual([failed, hung]);
+      // Loaded again, the failed one has nothing left to retry.
+      Object.defineProperty(hung, "networkState", { value: 0 });
+      reconnectLive();
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally {
+      load.mockRestore();
+    }
+  });
 });
 
 test("the interrupted-download notice reloads the page", () => {

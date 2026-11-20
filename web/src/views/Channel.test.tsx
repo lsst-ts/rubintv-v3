@@ -2,9 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
-import { LiveProvider } from "../lib/LiveContext";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
 import { routes } from "../routes";
-import { wholeMetadata } from "../test-setup";
+import {
+  liveSockets,
+  loseLiveConnection,
+  openLiveSockets,
+  wholeMetadata,
+} from "../test-setup";
 
 // The single-channel viewer's own interactions: arrow keys step through the
 // night's exposures and Shift+arrows through the channels that share one,
@@ -167,6 +172,31 @@ test("live mode on a video channel shows the newest one straight away", async ()
     expect(document.querySelector(".seq-current")?.textContent).toBe("4"),
   );
   expect(document.querySelector("video")).not.toBeNull();
+});
+
+test("live mode stops calling itself LIVE while the tab is disconnected", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderAt("/local/auxtel/movie/current");
+    act(() => openLiveSockets());
+    const badge = await screen.findByText("LIVE");
+    expect(badge.className).toContain("live");
+    await waitFor(() => expect(document.title).toContain("· LIVE ·"));
+
+    // Nothing newer can arrive, so the badge and the tab's title say so.
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect(screen.queryByText("LIVE")).toBeNull();
+    const stalled = screen.getByText("DISCONNECTED");
+    expect(stalled.className).toContain("stalled");
+    expect(stalled.getAttribute("title")).toMatch(/not following new data/);
+    expect(document.title).toContain("· DISCONNECTED ·");
+
+    act(() => liveSockets().at(-1)!.onopen?.());
+    expect(screen.getByText("LIVE")).toBeDefined();
+    expect(document.title).toContain("· LIVE ·");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("live mode promotes a new image once it has decoded", async () => {
