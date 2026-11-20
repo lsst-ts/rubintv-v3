@@ -1,26 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- RubinTV v3 favicon, small cut: TV + ringed planet only. Outline flips to
-       light ink on dark browser chrome via prefers-color-scheme. -->
+  <!-- RubinTV favicon, small cut: the constellation television of the logo
+       with heavier lines and points, fatter sparkles and only the one star
+       on screen, so it holds at 16px. Lines and points flip to their light
+       colours on dark browser chrome via prefers-color-scheme. -->
   <style>
-    .ink { fill: #23282d; }
-    .ink-s { stroke: #23282d; }
+    .ink { stroke: #23282d; }
+    .pt { fill: #0a8d93; }
     @media (prefers-color-scheme: dark) {
-      .ink { fill: #e8edef; }
-      .ink-s { stroke: #e8edef; }
+      .ink { stroke: #e8edef; }
+      .pt { fill: #19d3da; }
     }
   </style>
-  <g class="ink-s" stroke-width="4.2" stroke-linecap="round">
-    <path d="M24 14 L15 4"/><path d="M40 14 L49 4"/>
-  </g>
-  <circle class="ink" cx="15" cy="4" r="3.6"/><circle class="ink" cx="49" cy="4" r="3.6"/>
-  <g class="ink-s" stroke-width="3.4" stroke-linejoin="round">
-    <rect x="3" y="14" width="58" height="48" rx="9" fill="#0a8d93"/>
-    <rect x="10" y="21" width="44" height="34" rx="5" fill="#14181b"/>
-  </g>
-  <g transform="translate(32 38) rotate(-18)">
-    <ellipse rx="17.5" ry="4.2" fill="none" stroke="#19d3da" stroke-width="3.4" opacity="0.6"/>
-    <circle r="9.5" fill="#e8edef"/>
-    <clipPath id="ring-front"><rect x="-20.5" y="0" width="41.0" height="7.6"/></clipPath>
-    <ellipse rx="17.5" ry="4.2" fill="none" stroke="#19d3da" stroke-width="3.4" clip-path="url(#ring-front)"/>
+  <path class="ink" d="M9 27L55 25L57 55L11 57ZM18 8L31 26L46 8" fill="none"
+        stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <g class="pt">
+    <circle cx="9" cy="27" r="5.5"/><circle cx="55" cy="25" r="5.5"/>
+    <circle cx="57" cy="55" r="5.5"/><circle cx="11" cy="57" r="5.5"/>
+    <circle cx="31" cy="26" r="4.2"/>
+    <path d="M18 0Q19.2 6.8 26 8Q19.2 9.2 18 16Q16.8 9.2 10 8Q16.8 6.8 18 0Z"/>
+    <path d="M46 0Q47.2 6.8 54 8Q47.2 9.2 46 16Q44.8 9.2 38 8Q44.8 6.8 46 0Z"/>
+    <path d="M33 30.5Q34.6 39.9 44 41.5Q34.6 43.1 33 52.5Q31.4 43.1 22 41.5Q31.4 39.9 33 30.5Z"/>
   </g>
 </svg>
