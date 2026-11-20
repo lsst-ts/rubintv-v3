@@ -756,7 +756,7 @@ async def test_only_a_changed_current_day_listing_is_logged(
     assert logged == [("info", "day"), ("debug", "recent")]
 
 
-# -- a cycle that never ends -------------------------------------------------
+# -- a cycle that never ends, and the cache volume that could cause one -------
 
 
 class _Logged:
@@ -833,3 +833,139 @@ async def test_watchdog_looks_for_a_stall_until_stopped(
     engine._check_stall = check  # type: ignore[method-assign]
     await asyncio.wait_for(engine._watchdog_loop(), timeout=5.0)
     assert checks == 3
+
+
+class _HeldCache:
+    """Cache writers that record their calls; the slice writer waits to be
+    released, like a write to a volume that has hung."""
+
+    def __init__(self) -> None:
+        self.begun = asyncio.Event()
+        self.release = asyncio.Event()
+        self.written: list[set[tuple[str, str, str]]] = []
+        self.deleted: list[set[tuple[str, str, str]]] = []
+
+    async def write(self, touched: set[tuple[str, str, str]]) -> None:
+        self.written.append(touched)
+        self.begun.set()
+        await self.release.wait()
+
+    async def delete(self, pruned: set[tuple[str, str, str]]) -> None:
+        self.deleted.append(pruned)
+
+
+def _cached_engine(cache: _HeldCache) -> PollEngine:
+    return PollEngine(
+        _models(),
+        EventStore(),
+        FakePoller(),  # type: ignore[arg-type]
+        recent_window_days=0,
+        cache_slice_writer=cache.write,
+        cache_slice_deleter=cache.delete,
+    )
+
+
+async def test_a_hung_cache_write_holds_up_no_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A hung volume used to park the poll on its first write. Now a scan
+    # waits only so long, later ones don't wait at all, and one write is
+    # outstanding however many scans pass.
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    monkeypatch.setattr(tasks, "CACHE_WAIT_SECONDS", 0.01)
+    cache = _HeldCache()
+    engine = _cached_engine(cache)
+    a, b, c = (("loc", "cam", f"2026-01-0{n}") for n in (1, 2, 3))
+
+    assert engine.cache_write_stalled_seconds() is None
+    await asyncio.wait_for(engine._persist_slices({a}), timeout=5.0)
+    assert logged.events == ["cache.write.stalled"]
+    # What the Status page goes by to say the volume isn't responding.
+    stalled = engine.cache_write_stalled_seconds()
+    assert stalled is not None and stalled > 0.0
+    await asyncio.wait_for(engine._persist_slices({b, c}), timeout=5.0)
+    # A slice dropped while it waits to be written is deleted instead.
+    await asyncio.wait_for(engine._evict_slices("loc", "cam", {b[2]}), timeout=5.0)
+    assert cache.written == [{a}] and cache.deleted == []
+    assert logged.events == ["cache.write.stalled"]
+
+    # The volume comes back: what queued up goes out, and it says so.
+    cache.release.set()
+    job = engine._slice_writes._job
+    assert job is not None
+    await asyncio.wait_for(job, timeout=5.0)
+    assert cache.written == [{a}, {c}] and cache.deleted == [{b}]
+    assert logged.events == ["cache.write.stalled", "cache.write.resumed"]
+    assert engine.cache_write_stalled_seconds() is None
+    # ...and the next write is waited on as before.
+    await engine._persist_slices({a})
+    assert cache.written[-1] == {a}
+
+
+async def test_scans_that_overlap_share_one_cache_write() -> None:
+    # The live poll and the history sweep both persist slices. The second to
+    # ask while a write is under way waits for that one, which takes its
+    # slices too, and starts no write of its own beside it.
+    cache = _HeldCache()
+    engine = _cached_engine(cache)
+    a, b = (("loc", "cam", f"2026-01-0{n}") for n in (1, 2))
+    first = asyncio.ensure_future(engine._persist_slices({a}))
+    await asyncio.wait_for(cache.begun.wait(), timeout=5.0)
+    second = asyncio.ensure_future(engine._persist_slices({b}))
+    await asyncio.sleep(0)  # the second caller reaches its wait
+    assert cache.written == [{a}] and not first.done() and not second.done()
+    cache.release.set()
+    await asyncio.wait_for(asyncio.gather(first, second), timeout=5.0)
+    assert cache.written == [{a}, {b}]
+
+
+async def test_stop_gives_up_on_a_hung_cache_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tasks, "CACHE_WAIT_SECONDS", 0.01)
+    cache = _HeldCache()
+    engine = _cached_engine(cache)
+    await engine._persist_slices({("loc", "cam", "2026-01-01")})
+    job = engine._slice_writes._job
+    assert job is not None and not job.done()
+    await asyncio.wait_for(engine.stop(), timeout=5.0)
+    await asyncio.gather(job, return_exceptions=True)
+    assert job.cancelled()
+
+
+async def test_a_failed_cache_write_fails_no_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # It used to fail the poll cycle that made it, which read as "S3
+    # unreachable"; after a full sweep, it had the whole sweep run again.
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    rewrites = 0
+
+    async def write(touched: set[tuple[str, str, str]]) -> None:
+        raise RuntimeError("dictionary changed size during iteration")
+
+    async def rewrite() -> None:
+        nonlocal rewrites
+        rewrites += 1
+
+    engine = PollEngine(
+        _models(),
+        EventStore(),
+        FakePoller(),  # type: ignore[arg-type]
+        recent_window_days=0,
+        cache_writer=rewrite,
+        cache_slice_writer=write,
+    )
+
+    async def refresh(seconds: float) -> None:
+        engine._stop.set()
+
+    engine._refresh_recent_until = refresh  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._historical_loop(), timeout=5.0)
+    assert "cache.write.error" in logged.events
+    assert "poll.historical.error" not in logged.events
+    # The sweep went on to its whole-cache rewrite, and finished.
+    assert rewrites == 1 and "cache.written" in logged.events
+    assert engine.historical_loading is False

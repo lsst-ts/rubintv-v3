@@ -229,6 +229,9 @@ default) so a restart is warm.
 | `cache.load.skip` | warning | A cache file couldn't be read and was skipped; its dates come from the next listing. |
 | `cache.written` | info | The cache was written after a full sweep. |
 | `cache.write.failed` | warning | Writing one cache file failed (disk full, say); the app carries on. |
+| `cache.write.stalled` | warning | The cache volume hasn't taken a write within `waited_seconds` (5 s for the `slices` a scan changed, 60 s for the `rewrite` after a full sweep; `what` says which). Scans stop waiting for it and carry on, so the pages stay live, but the cache falls behind until it finishes: a restart meanwhile would start from an older index. A volume that has hung, not failed, looks like this. |
+| `cache.write.resumed` | info | A stalled write finished after `write_seconds`, and what queued behind it is being written. |
+| `cache.write.error` | error | A cache write raised something other than a file error; traceback attached. The scan that asked for it carries on. |
 | `cache.delete.failed` | warning | Removing one cache file failed. |
 | `cache.cleared` | info | An admin flush deleted the cache's `files`. |
 | `cache.clear.failed` | warning | One file couldn't be deleted during a flush. |
