@@ -6,6 +6,7 @@ import { STALE, staleTimeForDate } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { DownloadMovieLink } from "../components/DownloadMovieLink";
+import { LiveBadge, useLiveWord } from "../components/LiveBadge";
 import {
   JumpToCurrentIcon,
   RangeArrowIcon,
@@ -49,9 +50,10 @@ export function PerDayChannel({ live }: { live: boolean }) {
 
   const channelInfo = cameraInfo?.channels?.find((c) => c.name === channel);
   const title = channelInfo?.title ?? channel;
+  const liveWord = useLiveWord();
   usePageTitle(
     `${cameraInfo?.title ?? camera} / ${channel}`,
-    live ? "LIVE" : date || undefined,
+    live ? liveWord : date || undefined,
   );
 
   useLiveTopic({ topic: "camera", location, camera });
@@ -98,11 +100,7 @@ export function PerDayChannel({ live }: { live: boolean }) {
         <h3>
           {cameraInfo?.title ?? camera} / {channel}
         </h3>
-        {live && (
-          <span className="tag live live-badge" role="status">
-            LIVE
-          </span>
-        )}
+        {live && <LiveBadge />}
         <span style={{ flex: 1 }} />
         {!live && (
           <nav className="seq-nav">

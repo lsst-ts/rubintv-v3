@@ -26,6 +26,7 @@ import { FilterControl, FilterBar } from "../components/FilterControl";
 import { ColumnOrderList } from "../components/ColumnOrderList";
 import { ScrollingTitle } from "../components/ScrollingTitle";
 import { LiveClocks } from "../components/LiveClocks";
+import { DisconnectedMark } from "../components/ConnectionStatus";
 import {
   matchRow,
   SEQ_COL,
@@ -541,6 +542,14 @@ export function CameraTable() {
 
         <span className="tb-grow" />
 
+        {/* The topbar's "Disconnected" notice slides away with the topbar
+            while the table is scrolled down, and a headerless embed has no
+            topbar: a warning triangle beside the clock stands in for it
+            (the CSS shows it only while the topbar is out of sight). */}
+        <DisconnectedMark
+          inline
+          scrollHint={params.get("headerless") !== "true"}
+        />
         <LiveClocks sinceLabel={sinceLabel} lastImage={lastImageTime} />
 
         {/* Jump to the table's top / bottom (also the Home / End keys). With

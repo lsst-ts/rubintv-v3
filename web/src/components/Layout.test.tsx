@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { createQueryClient } from "../lib/queryClient";
-import { LiveProvider } from "../lib/LiveContext";
+import { createQueryClient, currentDayObs } from "../lib/queryClient";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
+import { liveSockets, loseLiveConnection, openLiveSockets } from "../test-setup";
 import type { CameraOut } from "../lib/types";
 import { tabsForCamera } from "../lib/useShellNav";
 import { routes } from "../routes";
@@ -129,6 +130,92 @@ test("the topbar publishes its height for the table to hide it by", async () => 
   const main = container.querySelector<HTMLElement>(".main")!;
   expect(main.style.getPropertyValue("--topbar-h")).toBe("132px");
   height.mockRestore();
+});
+
+// Leave the tab's connection down past the grace the shell allows a blip.
+const loseConnection = () => loseLiveConnection(DISCONNECT_GRACE_MS);
+
+test("a tab whose connection is down says so, and stops calling the day live", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const today = currentDayObs();
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/auxtel\/calendar$/.test(url)) {
+      body = { dates: [today] };
+    } else if (/\/cameras\/auxtel$/.test(url)) {
+      body = { name: "auxtel", title: "AuxTel", channels: [], metadata_columns: {} };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+  try {
+    renderAt("/local/auxtel");
+    act(() => openLiveSockets());
+    const chip = await screen.findByRole("button", { name: today });
+    expect(chip.className).toContain("is-live-day");
+    expect(screen.queryByText("Disconnected")).toBeNull();
+
+    loseConnection();
+    expect(screen.getByText("Disconnected").closest(".topbar-status")).not.toBeNull();
+    expect(chip.className).toContain("is-stalled-day");
+    expect(chip.getAttribute("title")).toMatch(/not updating/);
+
+    // The retry that gets through clears both.
+    act(() => liveSockets().at(-1)!.onopen?.());
+    expect(screen.queryByText("Disconnected")).toBeNull();
+    expect(chip.className).toContain("is-live-day");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a headerless embed has no topbar, so a warning triangle stands for its notice", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // The shell's own, pinned to the corner (the camera table carries another
+  // in its toolbar, which the CSS shows in this one's place).
+  const mark = (within: HTMLElement) =>
+    within.querySelector<HTMLElement>(".shell.headerless > .conn-mark");
+  try {
+    const embed = renderAt("/usdf/auxtel?headerless=true");
+    act(() => openLiveSockets());
+    expect(mark(embed.container)).toBeNull();
+    loseConnection();
+    expect(mark(embed.container)!.getAttribute("aria-label")).toMatch(
+      /^Disconnected: this view has lost its live connection/,
+    );
+    expect(embed.container.querySelector(".topbar")).toBeNull();
+    act(() => liveSockets().at(-1)!.onopen?.());
+    expect(mark(embed.container)).toBeNull();
+    embed.unmount();
+
+    // The full shell has the topbar's notice, and no corner triangle.
+    const shell = renderAt("/usdf/auxtel");
+    act(() => openLiveSockets());
+    await screen.findByRole("link", { name: "usdf" });
+    loseConnection();
+    expect(screen.getByText("Disconnected")).toBeDefined();
+    expect(shell.container.querySelector(".conn-mark:not(.conn-mark--inline)")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("the status page reports the connection itself, so the topbar leaves it to it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderAt("/status");
+    act(() => openLiveSockets());
+    expect(await screen.findByText("WebSocket connected")).toBeDefined();
+    loseConnection();
+    expect(screen.getByText(/^WebSocket (connecting…|disconnected)$/)).toBeDefined();
+    expect(screen.queryByText("Disconnected")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("the next-day stepper moves to the following day with data", async () => {

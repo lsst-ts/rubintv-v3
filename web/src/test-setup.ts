@@ -1,3 +1,6 @@
+import { act } from "@testing-library/react";
+import { vi } from "vitest";
+
 // Vitest setup. Stub WebSocket so components that open the per-tab socket
 // (e.g. ConnectionStatus) don't try a real network connection in jsdom.
 //
@@ -66,6 +69,26 @@ export function liveSockets(): readonly StubWebSocket[] {
 // already dead). Call inside act().
 export function dropLiveSocket(): void {
   StubWebSocket.instances.at(-1)?.onclose?.();
+}
+
+// Drop the connection and leave it down for `ms`. Past the shell's grace
+// (DISCONNECT_GRACE_MS) the tab then counts as disconnected. Needs fake
+// timers; under { shouldAdvanceTime: true } a test's awaits still settle.
+// Open the socket first (openLiveSockets), or a slow run reaches the grace
+// on its own, before the test has seen the connected page.
+export function loseLiveConnection(ms: number): void {
+  act(() => dropLiveSocket());
+  act(() => {
+    vi.advanceTimersByTime(ms);
+  });
+}
+
+// A whole reconnect: drop the connection, sit out the retry's first backoff
+// so the tab opens a new socket, and let that one connect. Same needs as
+// loseLiveConnection.
+export function reconnectLive(): void {
+  loseLiveConnection(1000);
+  act(() => StubWebSocket.instances.at(-1)?.onopen?.());
 }
 
 // Deliver a raw text frame, unparsed — for frames that aren't JSON at all.

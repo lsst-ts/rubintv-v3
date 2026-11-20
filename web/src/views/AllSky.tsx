@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
-import { useLiveTopic } from "../lib/LiveContext";
+import { useLive, useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
 import { DatePicker } from "../components/DatePicker";
 import { DownloadMovieLink } from "../components/DownloadMovieLink";
@@ -54,6 +54,7 @@ export function AllSky() {
 
   // Live updates for this camera, so channelData for today lands live.
   useLiveTopic({ topic: "camera", location, camera });
+  const { disconnected } = useLive();
 
   const { data: payload } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
@@ -152,6 +153,7 @@ export function AllSky() {
           title={cameraInfo?.title ?? camera}
           value={date}
           isCurrentDayObs={isCurrentDayObs}
+          connected={!disconnected}
           // Merge with the existing params (as Layout's applyDate does):
           // replacing them wholesale would drop unrelated ones, e.g.
           // headerless=true.
@@ -165,7 +167,16 @@ export function AllSky() {
         />
         <span style={{ flex: 1 }} />
         {isCurrent ? (
-          <span className="tag live">live</span>
+          disconnected ? (
+            <span
+              className="tag stalled"
+              title="This tab has lost its live connection to the server, so this view is not following new data."
+            >
+              disconnected
+            </span>
+          ) : (
+            <span className="tag live">live</span>
+          )
         ) : (
           <span className="tag">historical · {date}</span>
         )}

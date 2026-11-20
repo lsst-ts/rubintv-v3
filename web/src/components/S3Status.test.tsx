@@ -1,9 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { createQueryClient } from "../lib/queryClient";
 import { S3Status } from "./S3Status";
 import type { StatusResponse } from "../lib/types";
+
+// The client behind the last renderWith, for a test that polls again.
+let qc: QueryClient;
 
 function renderWith(
   status: Partial<StatusResponse>,
@@ -26,9 +29,10 @@ function renderWith(
       ok: true,
       json: () => Promise.resolve(payload),
     })) as unknown as typeof fetch;
+  qc = createQueryClient();
   return render(
     <MemoryRouter>
-      <QueryClientProvider client={createQueryClient()}>
+      <QueryClientProvider client={qc}>
         <S3Status linkToStatus={linkToStatus} verbose={verbose} />
       </QueryClientProvider>
     </MemoryRouter>,
@@ -86,4 +90,33 @@ test("does not link by default (in-page use)", async () => {
   renderWith({ s3_healthy: false });
   await screen.findByText(/S3 unreachable/);
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+test("a failed status poll is reported, not papered over with the last answer", async () => {
+  // The query keeps its last good data when a refetch fails, so a server that
+  // has gone away would otherwise go on reading as it last did: healthy.
+  renderWith({ s3_healthy: true, s3_slow: true });
+  await screen.findByText(/S3 slow/);
+
+  // A 4xx is not retried, so the failure shows as soon as it is polled.
+  globalThis.fetch = (() =>
+    Promise.resolve({ ok: false, status: 403 })) as unknown as typeof fetch;
+  await act(() => qc.refetchQueries({ queryKey: ["status"] }));
+  const pill = await screen.findByRole("alert");
+  expect(pill.textContent).toBe("Server unreachable");
+  expect(pill.getAttribute("title")).toMatch(/status check .* failed/);
+  expect(screen.queryByText(/S3 slow/)).toBeNull();
+});
+
+test("a status poll that fails from the start is reported too", async () => {
+  globalThis.fetch = (() =>
+    Promise.resolve({ ok: false, status: 403 })) as unknown as typeof fetch;
+  render(
+    <MemoryRouter>
+      <QueryClientProvider client={createQueryClient()}>
+        <S3Status />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText("Server unreachable")).toBeDefined();
 });

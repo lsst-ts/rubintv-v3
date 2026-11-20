@@ -10,7 +10,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "./lib/queryClient";
 import { LiveProvider } from "./lib/LiveContext";
-import { openLiveSockets, pushLiveMessage, sentLiveFrames, wholeMetadata } from "./test-setup";
+import {
+  openLiveSockets,
+  pushLiveMessage,
+  reconnectLive,
+  sentLiveFrames,
+  wholeMetadata,
+} from "./test-setup";
 import { routes } from "./routes";
 
 // Views fetch on mount; in jsdom those calls fail, but headings still render
@@ -449,21 +455,21 @@ test("per-day channel's date stepper walks the channel's nights in place", async
   expect(within(dialog).getByText("nights with a movie")).toBeDefined();
 });
 
-test("a cut-short image keeps what arrived and the shell offers a reload", async () => {
-  // The <img> fails (the proxy aborted the transfer); ProxiedImg fetches the
-  // URL, gets three bytes before the connection drops, shows them, and the
-  // topbar raises its notice — which navigating away clears.
+// AuxTel's monitor channel, whose image transfers are cut off after three
+// bytes for as long as the returned `link.broken` is left set.
+function stubCutShortMonitor() {
+  const link = { broken: true };
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/channels/monitor/")) {
       let sent = false;
       const body = new ReadableStream<Uint8Array>({
         pull(ctl) {
-          if (sent) ctl.error(new TypeError("network error"));
-          else {
+          if (!sent) {
             sent = true;
             ctl.enqueue(new Uint8Array([1, 2, 3]));
-          }
+          } else if (link.broken) ctl.error(new TypeError("network error"));
+          else ctl.close();
         },
       });
       return Promise.resolve({
@@ -492,7 +498,14 @@ test("a cut-short image keeps what arrived and the shell offers a reload", async
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
+  return link;
+}
 
+test("a cut-short image keeps what arrived and the shell offers a reload", async () => {
+  // The <img> fails (the proxy aborted the transfer); ProxiedImg fetches the
+  // URL, gets three bytes before the connection drops, shows them, and the
+  // topbar raises its notice — which navigating away clears.
+  stubCutShortMonitor();
   const { router } = renderAt("/local/auxtel/monitor?seq=252&date=2026-04-10");
   const img = await screen.findByRole("img", { name: /monitor 252/ });
   expect(screen.queryByRole("button", { name: /Download interrupted/ })).toBeNull();
@@ -507,6 +520,28 @@ test("a cut-short image keeps what arrived and the shell offers a reload", async
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: /Download interrupted/ })).toBeNull(),
   );
+});
+
+test("a cut-short image is fetched again once the tab's connection is back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const link = stubCutShortMonitor();
+    renderAt("/local/auxtel/monitor?seq=252&date=2026-04-10");
+    act(() => openLiveSockets());
+    const img = await screen.findByRole("img", { name: /monitor 252/ });
+    fireEvent.error(img);
+    await screen.findByRole("button", { name: /Download interrupted/ });
+    const partial = img.getAttribute("src");
+
+    // The whole image replaces the part, and the offer to reload goes.
+    link.broken = false;
+    reconnectLive();
+    await waitFor(() => expect(img.getAttribute("src")).not.toBe(partial));
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
+    expect(screen.queryByRole("button", { name: /Download interrupted/ })).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 // A camera configured with all three per-row link templates, one date with a

@@ -17,6 +17,7 @@ import {
   ArrowRightIcon,
   ChevronDownIcon,
 } from "../components/Icons";
+import { LiveBadge, useLiveWord } from "../components/LiveBadge";
 import { PerDayChannel } from "./PerDayChannel";
 import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
@@ -207,9 +208,10 @@ function SeqChannel({ live }: { live: boolean }) {
   const hasNewer = nextIdx >= 0 && nextIdx < seqs.length;
   const catchingUp = live && seq !== targetSeq;
 
+  const liveWord = useLiveWord();
   usePageTitle(
     `${cameraInfo?.title ?? camera} / ${channel}`,
-    live ? "LIVE" : seq ? `#${seq}` : undefined,
+    live ? liveWord : seq ? `#${seq}` : undefined,
   );
   const next = hasNewer && !catchingUp ? seqs[nextIdx] : null;
 
@@ -423,11 +425,7 @@ function SeqChannel({ live }: { live: boolean }) {
         <h3>
           {cameraInfo?.title ?? camera} / {channel}
         </h3>
-        {live && (
-          <span className="tag live live-badge" role="status">
-            LIVE
-          </span>
-        )}
+        {live && <LiveBadge />}
         {src && !isVideo && (
           <a
             className="chv-iconlink"

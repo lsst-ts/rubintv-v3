@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
 import { LiveProvider } from "../lib/LiveContext";
+import { openLiveSockets, reconnectLive } from "../test-setup";
 import { routes } from "../routes";
 
 // A location payload with two cameras: one whose primary channel has a latest
@@ -160,6 +161,24 @@ test("a thumbnail drops its spinner once loaded, or its image once broken", asyn
   fireEvent.error(b);
   expect(await screen.findByText("no recent frame")).toBeDefined();
   expect(screen.getAllByAltText("")).toHaveLength(1);
+});
+
+test("a thumbnail that failed is tried again once the tab's connection is back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderAt("/local");
+    act(() => openLiveSockets());
+    fireEvent.error(await screen.findByAltText(""));
+    await waitFor(() => expect(screen.queryByAltText("")).toBeNull());
+
+    // Back as a fresh <img>, so the browser asks for it again.
+    reconnectLive();
+    const img = await screen.findByAltText("");
+    expect(img.getAttribute("src")).toMatch(/\/000002\/thumb\/image\.jpg$/);
+    expect(img.className).toContain("chc-img-loading");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("an offline camera is shown but not navigable", async () => {

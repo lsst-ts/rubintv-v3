@@ -419,6 +419,10 @@ interface Props {
   // currentDayObs, the UTC−12 rule). Tints the trigger chip so a date that
   // isn't tonight reads as historical at a glance.
   isCurrentDayObs?: boolean;
+  // Whether the tab's live connection is up. The current day only reads as
+  // live while it is: with the connection down nothing is updating, whatever
+  // the date.
+  connected?: boolean;
   onChange: (date: string) => void;
 }
 
@@ -431,6 +435,7 @@ export function DatePicker({
   perDay = NO_PER_DAY,
   value,
   isCurrentDayObs = false,
+  connected = true,
   onChange,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -497,15 +502,19 @@ export function DatePicker({
     setOpen((o) => !o);
   };
 
-  // The trigger's tooltip spells out what its live/past tint means.
+  // The trigger's tooltip spells out what its live/stalled/past tint means.
   const triggerTitle = !value
     ? undefined
     : movies
       ? isCurrentDayObs
-        ? "Movie for the current observing night."
+        ? connected
+          ? "Movie for the current observing night."
+          : "Movie for the current observing night. This tab has lost its connection to the server, so a newer one won't appear until it reconnects."
         : "Movie for a past night, not the current observing night."
       : isCurrentDayObs
-        ? "Current observing day — this table updates live as new exposures arrive."
+        ? connected
+          ? "Current observing day — this table updates live as new exposures arrive."
+          : "Current observing day, but this tab has lost its connection to the server, so the table is not updating until it reconnects."
         : "Historical day — this is not the current observing day, so the table is not updating live.";
 
   return (
@@ -516,7 +525,9 @@ export function DatePicker({
           "date-trigger" +
           (value
             ? isCurrentDayObs
-              ? " is-live-day"
+              ? connected
+                ? " is-live-day"
+                : " is-stalled-day"
               : " is-past-day"
             : "")
         }

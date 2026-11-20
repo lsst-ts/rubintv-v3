@@ -223,6 +223,34 @@ test("trigger chip is tinted historical when the date isn't the current day_obs"
   expect(trigger.getAttribute("title")).toMatch(/Historical day/);
 });
 
+test("the current day doesn't read as live while the tab's connection is down", () => {
+  const chip = (movies: boolean) => {
+    const { unmount } = render(
+      <DatePicker
+        dates={["2026-04-10"]}
+        counts={{ "2026-04-10": 5 }}
+        maxSeq={{}}
+        movies={movies}
+        value="2026-04-10"
+        isCurrentDayObs
+        connected={false}
+        onChange={() => {}}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /2026-04-10/ });
+    const seen = [trigger.className, trigger.getAttribute("title")];
+    unmount();
+    return seen;
+  };
+  const [tableClass, tableTitle] = chip(false);
+  expect(tableClass).toContain("is-stalled-day");
+  expect(tableClass).not.toContain("is-live-day");
+  expect(tableTitle).toMatch(/Current observing day, but .* not updating/);
+  const [movieClass, movieTitle] = chip(true);
+  expect(movieClass).toContain("is-stalled-day");
+  expect(movieTitle).toMatch(/current observing night\. .* lost its connection/);
+});
+
 const monthHeads = (dialog: HTMLElement) =>
   [...dialog.querySelectorAll(".dp-mhead")].map((h) =>
     h.querySelector(".month")!.textContent + " " + h.querySelector(".yr")!.textContent,

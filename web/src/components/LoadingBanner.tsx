@@ -82,7 +82,7 @@ function bannerState(
 }
 
 export function LoadingBanner({ location, camera }: Props) {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
     // Poll while there's still something to report for the current scope.
@@ -90,6 +90,11 @@ export function LoadingBanner({ location, camera }: Props) {
       bannerState(query.state.data, location, camera) === null ? false : 5000,
   });
 
+  // The poll failed, so the scan's state is unknown: say nothing, where the
+  // last answer kept in `data` would go on claiming progress. The polling
+  // carries on (it goes by that last answer), so the pill returns with the
+  // server.
+  if (isError) return null;
   const state = bannerState(data, location, camera);
   if (state === null) return null;
 

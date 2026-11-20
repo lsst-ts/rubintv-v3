@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { createQueryClient } from "../lib/queryClient";
-import { LiveProvider } from "../lib/LiveContext";
+import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
+import { loseLiveConnection, openLiveSockets } from "../test-setup";
 import { AllSky } from "./AllSky";
 
 // The All Sky panel on its own: which file each tile asks for (per-seq
@@ -72,6 +73,21 @@ test("without a date it opens the newest night, live", async () => {
   renderAt("/local/allsky");
   expect(await screen.findByText("live")).toBeDefined();
   expect(await screen.findByRole("img", { name: /Current Image 3/ })).toBeDefined();
+});
+
+test("the newest night stops reading as live while the tab is disconnected", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    stub({ stills: [1], movies: [2] });
+    renderAt("/local/allsky");
+    act(() => openLiveSockets());
+    expect(await screen.findByText("live")).toBeDefined();
+    loseLiveConnection(DISCONNECT_GRACE_MS);
+    expect(screen.queryByText("live")).toBeNull();
+    expect(screen.getByText("disconnected").className).toBe("tag stalled");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a seq's own extension wins, then the channel default, then png/mp4", async () => {

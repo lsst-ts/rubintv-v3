@@ -10,6 +10,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { S3Status } from "./S3Status";
+import { ConnectionStatus, DisconnectedMark } from "./ConnectionStatus";
 import { InterruptedNotice } from "./ProxiedMedia";
 import { MediaInterruptionProvider } from "../lib/MediaInterruption";
 import { LoadingBanner } from "./LoadingBanner";
@@ -21,6 +22,7 @@ import { api } from "../lib/api";
 import { instanceEnv, processingBanner } from "../lib/links";
 import { useShellNav, tabsForCamera } from "../lib/useShellNav";
 import { useRouteValid } from "../lib/useRouteValid";
+import { useLive } from "../lib/LiveContext";
 import { setCameraTabPref } from "../lib/cameraTabPref";
 import {
   ariaKeys,
@@ -55,12 +57,18 @@ export function Layout() {
   const navigate = useNavigate();
   const nav = useShellNav();
   const site = useSite();
+  const { disconnected, reconnects } = useLive();
   // A media download on this page was cut short (see ProxiedMedia): the
   // topbar offers a reload. The notice belongs to the page it was raised on,
-  // so navigating clears it.
+  // so navigating clears it. So does the tab's connection coming back, as
+  // the media is then fetched again, and reports again if it's cut short
+  // again.
   const [mediaInterrupted, setMediaInterrupted] = useState(false);
   const reportInterruption = useCallback(() => setMediaInterrupted(true), []);
-  useEffect(() => setMediaInterrupted(false), [pathname, search]);
+  useEffect(
+    () => setMediaInterrupted(false),
+    [pathname, search, reconnects],
+  );
   // The topbar's height, published as --topbar-h on the main column. The
   // camera table hides the topbar while it's scrolled down (see .topbar in
   // index.css): the CSS slides it out by exactly this much, and the table
@@ -223,6 +231,10 @@ export function Layout() {
   if (headerless) {
     return (
       <div className="shell headerless">
+        {/* No topbar to carry the "Disconnected" notice, so a warning
+            triangle in the corner stands for it (the camera table has its
+            own beside its clock, and the CSS drops this one for it). */}
+        <DisconnectedMark />
         <main className="app-content">
           <Outlet />
         </main>
@@ -348,10 +360,14 @@ export function Layout() {
 
             <div className="topbar-strip-right">
               <div className="topbar-status">
+                {/* The tab's own connection: quiet while it's up, a notice
+                    once it has been down a while — on every page, as every
+                    page's data stops updating with it. The Status page shows
+                    the full state itself, so it's left off there. */}
+                {nav.system !== "status" && <ConnectionStatus />}
                 {/* S3 connectivity is only meaningful (and only actionable)
                     while viewing a camera's images, so — like the historical
-                    refresh pill — it's scoped to camera pages. The WebSocket
-                    'connected' indicator now lives on the Status page. */}
+                    refresh pill — it's scoped to camera pages. */}
                 {onCamera && <S3Status linkToStatus />}
                 {/* Historical-scan notice sits with the other status signals
                     as a compact inline pill, not a full-width banner. Scan
@@ -412,6 +428,7 @@ export function Layout() {
                         perDay={perDayTitle ? undefined : nav.perDayMarks}
                         value={nav.date}
                         isCurrentDayObs={nav.isCurrentDayObs}
+                        connected={!disconnected}
                         onChange={applyDate}
                       />
                       <button
