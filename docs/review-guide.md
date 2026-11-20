@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 405 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 411 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -217,6 +217,7 @@ Another iterative arc landing on the `?seq_filter` catch-all + its docs.
 - `2f93679` Document the seq_filter URL parameter in a new viewer guide
 
 ### 17. Loading state fix + S3 connectivity indicators
+(Group 58 adds a third state to the S3 pill, "Poll stalled".)
 - `ec7a6ac` Fix empty-table loading state and add S3 connectivity
   indicators (bundles two concerns in one atomic commit: the empty-table
   loading fix and the S3 indicators)
@@ -404,7 +405,8 @@ Safe to skim.
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
-  `121fbdd`, and the commit that noted the disconnected-tab notice.
+  `121fbdd`, `5adc9cf`, and the commit that noted the stalled poll and
+  the cache's troubles.
 
 ---
 
@@ -647,7 +649,9 @@ final `ColumnOrderList` and `useColumnPrefs`.
   (help cursor); titles on the cards; bare image counts; one pill width
   ("Recent ready" is now "Recent"); cards in a row share a height; a key
   below the cards; the cache table set apart beneath. The "N cameras
-  still loading" headline is gone
+  still loading" headline is gone. (Group 58 moves the walk to a worker
+  thread it waits on for only so long, reports the volume's troubles,
+  and takes the pills out of their boxes.)
 
 ### 39. Route validation and the 404 page
 - `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
@@ -1117,6 +1121,60 @@ Analysis endpoint that group 42 removed.
   what the page shows, now also for a tab opened during the outage,
   and fetches again any image or movie that failed, was cut short or
   is still loading
+- `2e2f1ca` (later) Reconnect as soon as a status poll shows the server
+  is back. While a server is down the retries thin out to one every
+  10 s, so a tab could wait most of that after it returned (5.8 s in a
+  local test; 2.3 s with this). A status poll that gets an answer while
+  a retry is waiting brings it forward: `retryNow` in `ws.ts`, called
+  from `LiveContext.tsx`. Only that poll triggers it, which bounds the
+  extra tries when a server answers HTTP but won't take a WebSocket
+- `d1dda7f` (later) Say why a date's table couldn't be loaded. A date
+  picked from a calendar already on the page, with the server gone,
+  read "No data for <date>". The notice now says the server is
+  unreachable and that the date will load when the connection is back
+  (it goes by the socket, not the 5 s-delayed "Disconnected"), or,
+  with the connection up, gives the HTTP status and says to reload:
+  `loadFailure` in `CameraTable.tsx`
+
+### 58. A stalled poll and a troubled cache, both made visible
+The same review found that a current-day poll cycle which never ends
+left every health flag green: they are written as a cycle ends, and
+nothing recorded when one last had. It reproduced that with a cache
+write that hangs. These three commits make the stall visible, remove
+that cause of it, and then report the cache volume's own troubles,
+which the pages can't show because the app only reads the cache at
+startup. Review `poll_stalled`, `last_poll_age_seconds`, `_check_stall`
+and `_CacheWrites` in `data/tasks.py`; `brief_error`, `_inspect` and
+`CacheInspector` in `data/cache.py`; and `cache_usage` in
+`api/health.py`. On the page, `web/src/lib/lastPoll.ts` and
+`DataAsOf.tsx`, then `CacheProblems` and `CacheNotice` in `Status.tsx`.
+A permissions change refuses a write at once, so it exercises the third
+commit, not the second; hanging the volume takes a stub (see
+`_HeldCache` in `tests/test_poll_engine.py`).
+- `7a983f8` Say when the live poll has stalled, and when it last
+  succeeded. `/api/health/status` gains `poll_stalled` (the running
+  cycle has gone over 60 s) and `last_poll_age_seconds`; a watchdog
+  logs `poll.current.stalled` and `.resumed`. The S3 pill reads "Poll
+  stalled" ahead of its other states. Camera pages show "as of HH:MM:SS
+  UTC" after the current day's date, counted on the tab's own clock so
+  it turns amber past 30 s without waiting on a status poll, and stands
+  still while the tab is disconnected. The Status page gives the last
+  poll's time and duration on a line under its pills, which lose their
+  boxes
+- `3b9c4b8` Wait only so long for the cache volume. Cache writes run in
+  a task of their own, one at a time; a scan waits 5 s for its slices
+  (60 s for the rewrite after a full sweep) and then carries on, and
+  while a write is overdue scans only queue what they changed. A hung
+  volume costs how current the next warm start is, not the live poll.
+  `cache.write.stalled`, `.resumed` and `.error` are logged, and a
+  write that raises no longer fails the poll cycle or reruns the sweep
+- `75a70c6` Report trouble with the cache volume on the Status page.
+  `/api/health/cache` lists `problems`: `not_responding`, `unreadable`
+  and `not_writable`, each with its cause in a phrase. The look at the
+  volume runs on a worker thread, one at a time, waited on for 10 s,
+  and isn't made at all while a write is overdue. The page shows a red
+  pill per problem and a block in the cache notice (what it is, what it
+  costs, the cause), and "unknown" where it used to say 0 B
 
 ---
 
