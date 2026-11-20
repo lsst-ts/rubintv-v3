@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 411 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 413 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -228,6 +228,8 @@ Another iterative arc landing on the `?seq_filter` catch-all + its docs.
 
 ### 18. Header, nav and chrome polish
 Small independent UI fixes to the shell chrome; low review risk.
+(`RubinMark`, added and sized here, is replaced by the RubinTV logo in
+group 34's `8a13341` and removed.)
 - `de6a2d3` Remove appearance controls from the main-page gutter
 - `2dbca79` Add vector Rubin mark and tidy the header status row
 - `ba71c34` Highlight Channels tab on channel pages, drop doubled live dot
@@ -405,8 +407,8 @@ Safe to skim.
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
-  `121fbdd`, `5adc9cf`, and the commit that noted the stalled poll and
-  the cache's troubles.
+  `121fbdd`, `5adc9cf`, `f75546a`, and the commit that noted the home
+  page's logo.
 
 ---
 
@@ -529,6 +531,17 @@ out.
 - `fecbb10` Trim the home page: the location cards drop their ids
   (just the title, evenly padded) and the hero its "live camera
   displays" tagline
+- `8a13341` Give the home page a RubinTV logo that arrives as the Rubin
+  mark. The hero's Rubin mark and the "RubinTV" line under it become
+  one lockup at the same height: a television drawn as a constellation,
+  with the name beside it. The first time it is shown in a tab it plays
+  an intro of about 3.5 s, in which the Rubin mark's trails sweep off
+  and its dots and sparkles gather into the set; after that, and with
+  reduced motion, the finished logo is simply there, and a click
+  replays it. Review `lib/brandIntro.ts` (geometry and timing, a pure
+  function of time) and `BrandIntro.tsx` (the clock and the SVG). The
+  test setup's `matchMedia` stub now reports reduced motion, so other
+  tests that mount Home see the finished logo. `RubinMark.tsx` goes
 
 ### 35. Location and Channels cards
 - `9396183` Hide Previously Used Channels group on USDF Summit
