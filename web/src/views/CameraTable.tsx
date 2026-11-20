@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
-import { useLiveTopic } from "../lib/LiveContext";
+import { useLive, useLiveTopic } from "../lib/LiveContext";
 import { useMetadata } from "../lib/useMetadata";
 import { useColumnPrefs } from "../lib/columns";
 import { useDensity } from "../lib/prefs";
@@ -47,6 +47,25 @@ import {
   type ScrollEdges,
   type TableScroll,
 } from "./CameraDataTable";
+
+// Why a date's rows couldn't be fetched, for the notice that stands where
+// the table would. With the tab's live connection down the reason is the
+// server, and the fetch is made again when the connection returns (the
+// provider refetches everything then). This goes by the socket itself, not
+// the header's `disconnected`, which waits out a grace: the request has
+// already failed, and for those seconds the advice below would be wrong.
+// Otherwise the request failed with the tab still in touch, and nothing
+// will retry it.
+function loadFailure(date: string, error: Error, connectionDown: boolean): string {
+  if (connectionDown) {
+    return `Can't load ${date}: the server is unreachable. It will load when the connection is back.`;
+  }
+  const why =
+    error instanceof ApiError
+      ? `the server answered with an error (HTTP ${error.status})`
+      : "the server didn't answer";
+  return `Can't load ${date}: ${why}. Reload the page to try again.`;
+}
 
 // The main camera view: date picker, per-seq-num table with channel columns
 // and metadata columns, per-day artifacts. Subscribes to the camera topic so
@@ -91,12 +110,17 @@ export function CameraTable() {
     failed: metaFailed,
   } = useMetadata(location, camera, date);
 
-  const { data: payload, isPending } = useQuery({
+  const {
+    data: payload,
+    isPending,
+    error: payloadError,
+  } = useQuery({
     queryKey: queryKeys.datePayload(location, camera, date),
     queryFn: () => api.datePayload(location, camera, date),
     enabled: date !== "",
     staleTime: date ? staleTimeForDate(new Date(date)) : 0,
   });
+  const { status: liveStatus } = useLive();
 
 
   // Guard `channels` like the rest of the shell (useShellNav, columns): the
@@ -632,8 +656,15 @@ export function CameraTable() {
       ) : seqNums.length === 0 ? (
         /* No rows yet. While the payload (or a deep-linked date's on-demand
            backfill) is still in flight, the loader above stands in — don't
-           also render an empty table or a premature "no data" notice. */
-        isPending ? null : (
+           also render an empty table or a premature "no data" notice. Nor
+           call a date empty when its rows couldn't be fetched: the calendar
+           may be on the page from before the server went away, and a date
+           picked from it then has data, just none that can be had. */
+        isPending ? null : payloadError && !payload ? (
+          <div className="table-empty" role="alert">
+            {loadFailure(date, payloadError, liveStatus !== "open")}
+          </div>
+        ) : (
           <div className="table-empty">
             {allSeqNums.length > 0 && filters.length > 0
               ? `No rows match the active filter${filters.length === 1 ? "" : "s"}.`
