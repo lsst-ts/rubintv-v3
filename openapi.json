@@ -77,7 +77,7 @@
           "health"
         ],
         "summary": "Cache Usage",
-        "description": "Disk cache locations and sizes, for the Status page.\n\nSeparate from ``/status`` because it stats every cached file (thousands\non the PVC) and every page polls that one. Sync, so the walk runs on the\nthreadpool rather than stalling the event loop.",
+        "description": "Disk cache locations, sizes and troubles, for the Status page.\n\nSeparate from ``/status`` because it stats every cached file (thousands\non the PVC) and every page polls that one. The look runs on a worker\nthread and is waited on for only so long (see ``CacheInspector``).",
         "operationId": "cache_usage_api_health_cache_get",
         "responses": {
           "200": {
@@ -1693,6 +1693,10 @@
           "bytes": {
             "type": "integer",
             "title": "Bytes"
+          },
+          "unreadable": {
+            "type": "boolean",
+            "title": "Unreadable"
           }
         },
         "type": "object",
@@ -1700,15 +1704,46 @@
           "path",
           "use",
           "files",
-          "bytes"
+          "bytes",
+          "unreadable"
         ],
         "title": "CacheEntry"
+      },
+      "CacheProblem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "not_responding",
+              "unreadable",
+              "not_writable"
+            ],
+            "title": "Kind"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "detail"
+        ],
+        "title": "CacheProblem"
       },
       "CacheUsageResponse": {
         "properties": {
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/CacheProblem"
+            },
+            "type": "array",
+            "title": "Problems"
           },
           "dir": {
             "anyOf": [
@@ -1754,6 +1789,7 @@
         "type": "object",
         "required": [
           "enabled",
+          "problems",
           "dir",
           "entries",
           "volume_total_bytes",

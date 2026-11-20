@@ -220,7 +220,9 @@ repeats every 12 hours, and the recent window is re-listed every
 ### Disk cache
 
 The index is cached under `RUBINTV_CACHE_DIR` (the `/scratch` PVC by
-default) so a restart is warm.
+default) so a restart is warm. A cache that can't be read or written, or a
+volume that has stopped answering, also shows on the Status page ("Cache
+unreadable", "Cache not writable", "Cache not responding").
 
 | Event | Level | Meaning |
 |---|---|---|

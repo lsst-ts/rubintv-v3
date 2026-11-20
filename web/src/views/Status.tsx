@@ -11,7 +11,7 @@ import {
 } from "../lib/lastPoll";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { S3Status } from "../components/S3Status";
-import type { CacheEntry, CameraStatus } from "../lib/types";
+import type { CacheEntry, CacheProblem, CameraStatus } from "../lib/types";
 
 // Site-wide operational view of historical-scan progress. Collection is
 // per-camera (recent window first, then the full back-catalogue), so this
@@ -111,23 +111,80 @@ function formatBytes(bytes: number): string {
   return i === 0 ? `${n} B` : `${n.toFixed(1)} ${units[i]}`;
 }
 
-// Where the disk cache lives and what it takes, entry by entry: the scan
-// index behind warm starts, the guide's, and anything this version no longer
-// reads (an older cache version's slices), whose space can be reclaimed. Its
-// own query, polled slower than /status: the server stats every cached file.
-function CacheNotice() {
-  const { data } = useQuery({
+// The disk cache as the server finds it. Its own query, polled slower than
+// /status: the server stats every cached file.
+function useCacheUsage() {
+  return useQuery({
     queryKey: ["cacheUsage"],
     queryFn: () => api.cacheUsage(),
     refetchInterval: 30_000,
-  });
+  }).data;
+}
+
+// What can be wrong with the cache volume, and what each costs. None of it
+// stops the app (it reads the cache once, at startup, and otherwise only
+// writes to it), so the pages look fine throughout and this page is the one
+// place it shows.
+const CACHE_PROBLEM: Record<
+  CacheProblem["kind"],
+  { label: string; means: string }
+> = {
+  not_responding: {
+    label: "Cache not responding",
+    means:
+      "The cache volume has stopped answering. The pages stay live, as scans no longer wait for it, but nothing is being saved: a restart now would start from an older index, and may hang reading it.",
+  },
+  unreadable: {
+    label: "Cache unreadable",
+    means:
+      "The server can't list the cache directory, so its size isn't known. A restart now would not find the saved index, and would load everything from S3 again.",
+  },
+  not_writable: {
+    label: "Cache not writable",
+    means:
+      "New scan results aren't being saved, so a restart now would start from an older index.",
+  },
+};
+
+// The cache's troubles as alert pills, for the top of the page: the notice
+// that explains them is at the bottom, under the scan cards.
+function CacheProblems() {
+  const problems = useCacheUsage()?.problems ?? [];
+  return (
+    <>
+      {problems.map((p) => (
+        <span
+          key={p.kind}
+          className="conn conn-closed s3-alert"
+          role="alert"
+          title={`${CACHE_PROBLEM[p.kind].means} ${p.detail}.`}
+        >
+          {CACHE_PROBLEM[p.kind].label}
+        </span>
+      ))}
+    </>
+  );
+}
+
+// Where the disk cache lives and what it takes, entry by entry: the scan
+// index behind warm starts, the guide's, and anything this version no longer
+// reads (an older cache version's slices), whose space can be reclaimed.
+// Between the summary and the table, anything wrong with it: per problem
+// its name, what it costs, and the server's own account of the cause, each
+// on a line of its own. A size the server couldn't measure reads "unknown",
+// not the 0 B of an empty cache.
+function CacheNotice() {
+  const data = useCacheUsage();
   if (!data?.enabled) return null;
+  const { problems } = data;
+  const measured = !problems.some((p) => p.kind !== "not_writable");
   const total = data.entries.reduce((sum, e) => sum + e.bytes, 0);
   const { volume_total_bytes: volTotal, volume_free_bytes: volFree } = data;
   return (
     <div role="note" className="cache-usage">
       <p>
-        Disk cache in <code>{data.dir}</code>: {formatBytes(total)}
+        Disk cache in <code>{data.dir}</code>:{" "}
+        {measured ? formatBytes(total) : "size unknown"}
       </p>
       {/* The volume is whatever filesystem holds the cache dir — a laptop's
           whole disk in dev, the PVC in deployments — so its used space is
@@ -139,44 +196,59 @@ function CacheNotice() {
           {`Volume (shared with other files): ${formatBytes(volTotal - volFree)} used, ${formatBytes(volFree)} free, ${formatBytes(volTotal)} total`}
         </p>
       )}
-      <table>
-        <thead>
-          <tr>
-            <th>Path</th>
-            <th className="cache-usage-num">Size</th>
-            <th className="cache-usage-num">Files</th>
-            <th>Use</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.entries.map((e) => {
-            // The shared cache-dir prefix recedes so the entry's own name
-            // (v3, guide…) is what the eye picks out down the column.
-            const cut = e.path.lastIndexOf("/") + 1;
-            return (
-              <tr key={e.path} className={`cache-usage-row--${e.use}`}>
-                <td>
-                  <code>
-                    <span className="cache-usage-dir">
-                      {e.path.slice(0, cut)}
+      {problems.length > 0 && (
+        <ul className="cache-problems">
+          {problems.map((p) => (
+            <li key={p.kind}>
+              <strong>{CACHE_PROBLEM[p.kind].label}</strong>
+              <span>{CACHE_PROBLEM[p.kind].means}</span>
+              <span className="cache-problem-detail">{p.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {data.entries.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th className="cache-usage-num">Size</th>
+              <th className="cache-usage-num">Files</th>
+              <th>Use</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.entries.map((e) => {
+              // The shared cache-dir prefix recedes so the entry's own name
+              // (v3, guide…) is what the eye picks out down the column.
+              const cut = e.path.lastIndexOf("/") + 1;
+              return (
+                <tr key={e.path} className={`cache-usage-row--${e.use}`}>
+                  <td>
+                    <code>
+                      <span className="cache-usage-dir">
+                        {e.path.slice(0, cut)}
+                      </span>
+                      {e.path.slice(cut)}
+                    </code>
+                  </td>
+                  <td className="cache-usage-num">
+                    {e.unreadable ? "unknown" : formatBytes(e.bytes)}
+                  </td>
+                  <td className="cache-usage-num">
+                    {e.unreadable ? "unknown" : e.files.toLocaleString()}
+                  </td>
+                  <td>
+                    <span className={`cache-use cache-use--${e.use}`}>
+                      {CACHE_USE_LABEL[e.use]}
                     </span>
-                    {e.path.slice(cut)}
-                  </code>
-                </td>
-                <td className="cache-usage-num">{formatBytes(e.bytes)}</td>
-                <td className="cache-usage-num">
-                  {e.files.toLocaleString()}
-                </td>
-                <td>
-                  <span className={`cache-use cache-use--${e.use}`}>
-                    {CACHE_USE_LABEL[e.use]}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -247,11 +319,11 @@ export function Status() {
       {/* The title, with the page's indicators tucked small to its right, a
           row of pills: the two links it reports on — the tab's
           browser↔app-server WebSocket and the server↔bucket S3 poll — then
-          how the server started (the cache mode). S3 gets the verbose pill
-          (explicit green when healthy — quiet here would read as
-          "unknown"). Under the row, on a quiet line of its own so it
-          doesn't stretch it, when the last poll cycle succeeded and how
-          long it took (see LastPoll). */}
+          how the server started (the cache mode) and anything wrong with
+          the cache. S3 gets the verbose pill (explicit green when healthy —
+          quiet here would read as "unknown"). Under the row, on a quiet line
+          of its own so it doesn't stretch it, when the last poll cycle
+          succeeded and how long it took (see LastPoll). */}
       <div className="status-top">
         <h1>Scan status</h1>
         <div className="status-signals">
@@ -271,6 +343,7 @@ export function Status() {
                 >
                   {CACHE_MODE[cacheMode].label}
                 </span>
+                {cacheMode !== "off" && <CacheProblems />}
               </section>
             )}
           </div>

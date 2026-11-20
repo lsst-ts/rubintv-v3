@@ -602,8 +602,9 @@ h1, h2 {
 .scan-status [title] { cursor: help; }
 
 /* Status page title row: the heading left, and tucked small to its right a
-   row of pills (the browser↔server WebSocket, the server↔bucket S3 link
-   and how the server started), bare: a pill is its own frame. The last poll's time sits under the row, ranged right
+   row of pills (the browser↔server WebSocket, the server↔bucket S3 link,
+   how the server started and any trouble with its cache), bare: a pill is
+   its own frame. The last poll's time sits under the row, ranged right
    with it. Both drop below the heading when the row runs out of room. */
 .status-top {
   display: flex;
@@ -687,6 +688,30 @@ h1, h2 {
 }
 .cache-usage p { margin: 0; }
 .cache-usage p + p { color: var(--ink-soft); margin-top: 0.15rem; }
+/* Something wrong with the cache volume, between the summary and the table:
+   a block per problem, marked down its left edge in the alert pill's red.
+   Its name takes the red, what it costs reads as body text, and the
+   server's account of the cause recedes beneath. */
+.cache-problems {
+  list-style: none;
+  margin: 0.75rem 0 0.25rem;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.cache-problems li {
+  display: grid;
+  gap: 0.2rem;
+  max-width: 46rem;
+  padding: 0.05rem 0 0.05rem 0.75rem;
+  border-left: 3px solid #c64f50;
+  line-height: 1.35;
+}
+.cache-problems strong { color: #c64f50; }
+.cache-problems .cache-problem-detail {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
 .cache-usage table {
   border-collapse: collapse;
   margin-top: 0.6rem;

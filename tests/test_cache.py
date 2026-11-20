@@ -23,12 +23,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import threading
 from pathlib import Path
 
 import pytest
-from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache, dir_usage
+from lsst.ts.rubintv.data import cache as cache_mod
+from lsst.ts.rubintv.data.cache import (
+    CACHE_VERSION,
+    CacheInspector,
+    DirReport,
+    DiskCache,
+    brief_error,
+    dir_usage,
+)
 from lsst.ts.rubintv.data.index import DateIndex, ExtInfo, PerDayRef
 
 
@@ -171,6 +181,28 @@ def test_a_failed_write_is_not_fatal(tmp_path: Path) -> None:
     assert cache.load_all() == {}
 
 
+def test_the_last_write_or_delete_to_fail_is_remembered(tmp_path: Path) -> None:
+    # The failures are only warnings in the log; this is what the Status
+    # page goes by. It clears when a write next succeeds.
+    cache = DiskCache(tmp_path)
+    assert cache.write_error is None
+    (tmp_path / CACHE_VERSION / "local").mkdir(parents=True)
+    (tmp_path / CACHE_VERSION / "local" / "lsstcam").write_text("not a dir")
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    # Where it failed is given from the cache dir, not the filesystem root.
+    assert cache.write_error is not None
+    assert cache.write_error.endswith(f": {CACHE_VERSION}/local/lsstcam")
+    cache.write("local", "auxtel", "2026-04-10", sample_index())
+    assert cache.write_error is None
+
+    stuck = tmp_path / CACHE_VERSION / "local" / "auxtel" / "2026-04-11.json"
+    stuck.mkdir()
+    cache.delete("local", "auxtel", "2026-04-11")
+    assert cache.write_error is not None and "2026-04-11" in cache.write_error
+    cache.delete("local", "auxtel", "2026-04-10")
+    assert cache.write_error is None
+
+
 def test_failed_deletes_are_not_fatal(tmp_path: Path) -> None:
     # A slice that can't be unlinked (here a directory in its place) is
     # logged and skipped by both the per-date evict and the admin flush,
@@ -228,3 +260,132 @@ def test_dir_usage_skips_files_it_cannot_stat(
     monkeypatch.setattr(os, "lstat", lstat)
     [entry] = dir_usage(tmp_path)
     assert entry.files == 1
+
+
+def test_brief_error_names_a_file_from_the_cache_dir(tmp_path: Path) -> None:
+    inside = PermissionError(13, "Permission denied", str(tmp_path / "v3" / "a"))
+    assert brief_error(inside, tmp_path) == "Permission denied: v3/a"
+    # The dir itself needs no naming, and an error may name no file at all.
+    assert (
+        brief_error(PermissionError(13, "Permission denied", str(tmp_path)), tmp_path)
+        == "Permission denied"
+    )
+    assert (
+        brief_error(OSError(28, "No space left on device"), tmp_path)
+        == "No space left on device"
+    )
+    assert brief_error(OSError("odd"), tmp_path) == "odd"
+    # Anything outside it keeps its whole path.
+    assert (
+        brief_error(
+            FileNotFoundError(2, "No such file or directory", "/elsewhere/x"), tmp_path
+        )
+        == "No such file or directory: /elsewhere/x"
+    )
+
+
+def _deny_listing(monkeypatch: pytest.MonkeyPatch, denied: Path) -> None:
+    """Make listing ``denied`` fail as it does without permission. Not a
+    chmod: that stops nothing when the tests run as root."""
+    real_scandir = os.scandir
+
+    def scandir(path: object) -> object:
+        if Path(str(path)) == denied:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_scandir(path)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(os, "scandir", scandir)
+
+
+def test_dir_usage_notes_a_directory_it_cannot_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # It used to come back as 0 files and 0 bytes, like an empty one.
+    (tmp_path / "v3" / "local").mkdir(parents=True)
+    (tmp_path / "v3" / "a.json").write_text("{}")
+    (tmp_path / "guide").mkdir()
+    _deny_listing(monkeypatch, tmp_path / "v3" / "local")
+    usage = {e.path.name: e for e in dir_usage(tmp_path)}
+    assert usage["guide"].error is None
+    assert usage["v3"].files == 1
+    assert usage["v3"].error == "Permission denied: v3/local"
+
+
+def test_inspect_reports_what_the_dir_holds_and_allows(tmp_path: Path) -> None:
+    DiskCache(tmp_path).write("local", "lsstcam", "2026-04-10", sample_index())
+    report = cache_mod._inspect(tmp_path)
+    assert [(e.path.name, e.files) for e in report.entries] == [(CACHE_VERSION, 1)]
+    assert report.unreadable is None
+    assert report.writable is True
+    assert report.volume_total is not None and report.volume_free is not None
+
+
+def test_inspect_says_why_the_dir_cannot_be_listed_or_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    DiskCache(tmp_path)
+    _deny_listing(monkeypatch, tmp_path)
+    monkeypatch.setattr(os, "access", lambda path, mode: False)
+    report = cache_mod._inspect(tmp_path)
+    assert report.entries == []
+    assert report.unreadable == "Permission denied"
+    assert report.writable is False
+
+
+async def test_a_look_that_does_not_return_is_waited_on_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A hung volume holds the look's thread for good. The first request
+    # waits out the limit; later ones are answered at once, and none starts
+    # another look (and another held thread) beside it.
+    release = threading.Event()
+    looks = 0
+    report = DirReport([], None, True, None, None)
+
+    def inspect(root: Path) -> DirReport:
+        nonlocal looks
+        looks += 1
+        release.wait()
+        return report
+
+    monkeypatch.setattr(cache_mod, "_inspect", inspect)
+    inspector = CacheInspector()
+    try:
+        assert await inspector.report(tmp_path, 0.01) is None
+        # The limit counts from when the look began, so it has already run
+        # out for whoever asks next.
+        assert await asyncio.wait_for(inspector.report(tmp_path, 0.0), 5.0) is None
+        assert looks == 1
+        assert inspector.waited_seconds() > 0.0
+    finally:
+        release.set()
+    # The volume answers: that look's result is served, then a new look.
+    look = inspector._look
+    assert look is not None
+    await asyncio.wait_for(look, 5.0)
+    assert await inspector.report(tmp_path, 5.0) is report
+    assert looks == 2
+
+
+async def test_requests_that_overlap_share_one_look(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = threading.Event()
+    looks = 0
+    report = DirReport([], None, True, None, None)
+
+    def inspect(root: Path) -> DirReport:
+        nonlocal looks
+        looks += 1
+        release.wait()
+        return report
+
+    monkeypatch.setattr(cache_mod, "_inspect", inspect)
+    inspector = CacheInspector()
+    first = asyncio.ensure_future(inspector.report(tmp_path, 5.0))
+    second = asyncio.ensure_future(inspector.report(tmp_path, 5.0))
+    await asyncio.sleep(0)  # both reach their wait
+    release.set()
+    reports = await asyncio.wait_for(asyncio.gather(first, second), 5.0)
+    assert list(reports) == [report, report]
+    assert looks == 1

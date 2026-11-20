@@ -80,6 +80,13 @@ comes up without the sub-app and logs why.
   finishing, and `last_poll_age_seconds` is how long ago a cycle last
   succeeded. Pages show the last as "as of HH:MM:SS UTC" beside the current
   day's date, amber once it is over 30 s old.
+- `GET /api/health/cache` — what the disk cache holds, for the Status page,
+  and `problems` with the volume: `not_responding` (a write, or this look at
+  it, hasn't returned), `unreadable` (the cache dir or the index in it can't
+  be listed) and `not_writable` (the last write failed, or the server's user
+  may not write there). The app only reads the cache at startup, so none of
+  these shows on the data pages: the Status page is where to look, and the
+  cost is a next start from an older index, or a cold one.
 
 ## Startup behaviour (cache warming)
 

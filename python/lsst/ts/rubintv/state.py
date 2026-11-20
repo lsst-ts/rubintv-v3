@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from lsst.ts.rubintv.data.redis_inputs import RedisInputs
     from lsst.ts.rubintv.data.tasks import CameraScanState
 from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.data.cache import CacheInspector
 from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
 from lsst.ts.rubintv.data.metadata import MetadataCache
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
@@ -93,6 +94,17 @@ class AppState:
     """Callable returning the seconds since a current-day poll cycle last
     succeeded (the poll engine owns the clock; this reads it); ``None`` until
     one has."""
+    cache_write_error: Callable[[], str | None] = field(default=lambda: None)
+    """Callable returning what the disk cache's most recent write failed
+    with, ``None`` if it succeeded (the cache owns it; this reads it)."""
+    cache_write_stalled_seconds: Callable[[], float | None] = field(
+        default=lambda: None
+    )
+    """Callable returning how long a cache write has been outstanding, once
+    scans have stopped waiting for it; ``None`` while the volume keeps up
+    (the poll engine owns it; this reads it)."""
+    cache_inspector: CacheInspector = field(default_factory=CacheInspector)
+    """Looks over the cache dir for the Status page."""
     camera_status: Callable[[], dict[tuple[str, str], CameraScanState]] = field(
         default=dict
     )

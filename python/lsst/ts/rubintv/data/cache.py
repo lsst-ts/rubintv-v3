@@ -32,8 +32,11 @@ from S3. Missing cache dir disables caching silently.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,6 +55,21 @@ log = get_logger(__name__)
 CACHE_VERSION = "v3"
 
 
+def brief_error(exc: OSError, root: Path) -> str:
+    """An OS error as the Status page words it: what went wrong and, for a
+    file under ``root``, where, relative to it. The page names the cache dir
+    once already; the full path in every line buries the rest."""
+    what = exc.strerror or str(exc)
+    if exc.filename is None:
+        return what
+    path = Path(os.fsdecode(exc.filename))
+    if path == root:
+        return what
+    if path.is_relative_to(root):
+        path = path.relative_to(root)
+    return f"{what}: {path}"
+
+
 class DiskCache:
     """Reads/writes per-date index slices as JSON. No-op if dir is None."""
 
@@ -66,6 +84,11 @@ class DiskCache:
             except OSError as exc:
                 log.warning("cache.disabled", dir=str(self._root), error=str(exc))
                 self._root = None
+        self.write_error: str | None = None
+        """What the most recent write or delete failed with (see
+        ``brief_error``); ``None`` once one succeeds, and before any. The
+        failures are only warnings in the log, so this is what lets the
+        Status page say the cache isn't being kept."""
 
     @property
     def enabled(self) -> bool:
@@ -87,7 +110,10 @@ class DiskCache:
             tmp.replace(path)  # atomic swap
         except OSError as exc:
             # PVC write failure mid-run must not crash the app.
+            self.write_error = brief_error(exc, self._root.parent)
             log.warning("cache.write.failed", path=str(path), error=str(exc))
+        else:
+            self.write_error = None
 
     def delete(self, location: str, camera: str, date: str) -> None:
         """Remove one cached slice (e.g. a date pruned as stale). No-op if
@@ -99,7 +125,10 @@ class DiskCache:
         try:
             path.unlink(missing_ok=True)
         except OSError as exc:
+            self.write_error = brief_error(exc, self._root.parent)
             log.warning("cache.delete.failed", path=str(path), error=str(exc))
+        else:
+            self.write_error = None
 
     def clear(self) -> int:
         """Delete every cached slice. Returns the number of files removed.
@@ -149,6 +178,9 @@ class EntryUsage:
     path: Path
     files: int
     bytes: int
+    error: str | None = None
+    """Why a directory in it couldn't be listed, if one couldn't: the counts
+    then leave out whatever is under it."""
 
 
 def dir_usage(root: Path) -> list[EntryUsage]:
@@ -157,19 +189,28 @@ def dir_usage(root: Path) -> list[EntryUsage]:
     Bytes are allocated blocks — what ``du`` reports and what fills the PVC —
     not apparent sizes: thousands of small slices each round up to whole
     blocks. Unreadable parts (e.g. a root-owned ``lost+found``) are skipped,
-    not fatal. Blocking I/O over every cached file: call it off the loop.
+    not fatal, and noted on their entry. Blocking I/O over every cached
+    file: call it off the loop.
     """
     try:
         children = sorted(root.iterdir())
     except OSError:
         return []
-    return [EntryUsage(child, *_tree_usage(child)) for child in children]
+    entries = []
+    for child in children:
+        files, size, error = _tree_usage(child)
+        brief = None if error is None else brief_error(error, root)
+        entries.append(EntryUsage(child, files, size, brief))
+    return entries
 
 
-def _tree_usage(path: Path) -> tuple[int, int]:
-    """(file count, allocated bytes) under ``path``, a file or a directory."""
+def _tree_usage(path: Path) -> tuple[int, int, OSError | None]:
+    """(file count, allocated bytes, first listing error) under ``path``, a
+    file or a directory."""
+    errors: list[OSError] = []
     if path.is_dir():
-        paths = [os.path.join(d, n) for d, _, names in os.walk(path) for n in names]
+        walk = os.walk(path, onerror=errors.append)
+        paths = [os.path.join(d, n) for d, _, names in walk for n in names]
     else:
         paths = [str(path)]
     files = size = 0
@@ -180,7 +221,77 @@ def _tree_usage(path: Path) -> tuple[int, int]:
             continue
         files += 1
         size += st.st_blocks * 512
-    return files, size
+    return files, size, errors[0] if errors else None
+
+
+@dataclass(frozen=True)
+class DirReport:
+    """What a look at the cache dir found (see ``CacheInspector``)."""
+
+    entries: list[EntryUsage]
+    unreadable: str | None
+    """Why the dir itself couldn't be listed, if it couldn't (``entries`` is
+    then empty)."""
+    writable: bool
+    """Whether the server's user may write to the index's own directory. A
+    check of permissions and of a read-only mount, not a write: a full
+    volume passes it."""
+    volume_total: int | None
+    volume_free: int | None
+
+
+def _inspect(root: Path) -> DirReport:
+    unreadable = None
+    try:
+        with os.scandir(root):
+            pass
+    except OSError as exc:
+        unreadable = brief_error(exc, root)
+    try:
+        volume = shutil.disk_usage(root)
+    except OSError:
+        total = free = None
+    else:
+        total, free = volume.total, volume.free
+    return DirReport(
+        entries=[] if unreadable else dir_usage(root),
+        unreadable=unreadable,
+        writable=os.access(root / CACHE_VERSION, os.W_OK | os.X_OK),
+        volume_total=total,
+        volume_free=free,
+    )
+
+
+class CacheInspector:
+    """The Status page's look at the cache dir: what it holds, and whether
+    it can be read and written.
+
+    It stats every cached file, so it runs on a worker thread, one look at a
+    time: requests that overlap share it. A volume that has hung would hold
+    that thread for good, and one more for every later look, so a look is
+    waited on for only so long, and while one is outstanding the answer is
+    that the volume isn't responding, with no new look begun.
+    """
+
+    def __init__(self) -> None:
+        self._look: asyncio.Task[DirReport] | None = None
+        self._started = 0.0
+
+    async def report(self, root: Path, wait: float) -> DirReport | None:
+        """What a look at ``root`` finds, or ``None`` if the volume hasn't
+        answered within ``wait`` seconds of the look beginning."""
+        look = self._look
+        if look is None or look.done():
+            self._started = time.monotonic()
+            look = self._look = asyncio.create_task(asyncio.to_thread(_inspect, root))
+        remaining = self._started + wait - time.monotonic()
+        if remaining > 0:
+            await asyncio.wait({look}, timeout=remaining)
+        return look.result() if look.done() else None
+
+    def waited_seconds(self) -> float:
+        """How long ago the look now outstanding began."""
+        return time.monotonic() - self._started
 
 
 def _encode(index: DateIndex) -> dict[str, object]:

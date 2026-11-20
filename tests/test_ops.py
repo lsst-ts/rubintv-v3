@@ -39,8 +39,10 @@ import boto3
 import pytest
 from fastapi.testclient import TestClient
 from lsst.ts.rubintv import middleware
+from lsst.ts.rubintv.api import health
 from lsst.ts.rubintv.app import _resolve_models_path, create_app
 from lsst.ts.rubintv.config.settings import Settings
+from lsst.ts.rubintv.data import cache as cache_mod
 from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
 from lsst.ts.rubintv.data.dayobs import get_current_day_obs
 from lsst.ts.rubintv.data.index import DateIndex
@@ -205,6 +207,7 @@ def test_cache_usage_is_empty_when_cache_disabled() -> None:
         body = client.get("/api/health/cache").json()
     assert body == {
         "enabled": False,
+        "problems": [],
         "dir": None,
         "entries": [],
         "volume_total_bytes": None,
@@ -235,6 +238,8 @@ def test_cache_usage_lists_each_entry_and_what_uses_it(tmp_path: Path) -> None:
     ]
     assert all(e["path"].startswith(str(tmp_path)) for e in body["entries"])
     assert body["entries"][2]["bytes"] >= 2 * 8192
+    assert body["problems"] == []
+    assert not any(e["unreadable"] for e in body["entries"])
     assert 0 <= body["volume_free_bytes"] <= body["volume_total_bytes"]
 
 
@@ -250,6 +255,126 @@ def test_cache_usage_survives_an_unreadable_volume(
     assert body["enabled"] is True
     assert body["volume_total_bytes"] is None
     assert body["volume_free_bytes"] is None
+
+
+def _deny_listing(monkeypatch: pytest.MonkeyPatch, denied: Path) -> None:
+    # Not a chmod: that stops nothing when the tests run as root.
+    real_scandir = os.scandir
+
+    def scandir(path: object) -> object:
+        if Path(str(path)) == denied:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_scandir(path)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(os, "scandir", scandir)
+
+
+def test_cache_usage_says_when_the_index_cannot_be_read_or_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Permissions taken away under a running server. It used to read as an
+    # empty cache: 0 B, and nothing said.
+    index = tmp_path / CACHE_VERSION
+    with run_app(cache_dir=tmp_path) as client:
+        _deny_listing(monkeypatch, index)
+        real_access = os.access
+        monkeypatch.setattr(
+            os,
+            "access",
+            lambda path, mode: Path(path) != index and real_access(path, mode),
+        )
+        body = client.get("/api/health/cache").json()
+        monkeypatch.undo()
+    assert [p["kind"] for p in body["problems"]] == ["unreadable", "not_writable"]
+    # Paths are given from the cache dir, which the page names once.
+    assert [p["detail"] for p in body["problems"]] == [
+        f"Permission denied: {CACHE_VERSION}",
+        f"No write permission on {CACHE_VERSION}",
+    ]
+    [entry] = [e for e in body["entries"] if e["use"] == "index"]
+    assert entry["unreadable"] is True
+
+
+def test_cache_usage_ignores_a_stray_it_cannot_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A PVC's lost+found is root's: not the app's to read, and no trouble.
+    (tmp_path / "lost+found").mkdir()
+    with run_app(cache_dir=tmp_path) as client:
+        _deny_listing(monkeypatch, tmp_path / "lost+found")
+        body = client.get("/api/health/cache").json()
+        monkeypatch.undo()
+    assert body["problems"] == []
+    assert [Path(e["path"]).name for e in body["entries"]] == [CACHE_VERSION]
+
+
+def test_cache_usage_says_when_the_whole_dir_cannot_be_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with run_app(cache_dir=tmp_path) as client:
+        _deny_listing(monkeypatch, tmp_path)
+        body = client.get("/api/health/cache").json()
+        monkeypatch.undo()
+    assert body["problems"] == [{"kind": "unreadable", "detail": "Permission denied"}]
+    assert body["entries"] == []
+
+
+def test_cache_usage_reports_the_last_failed_write(tmp_path: Path) -> None:
+    with run_app(cache_dir=tmp_path) as client:
+        state = client.app.state.app_state  # type: ignore[attr-defined]
+        state.cache_write_error = lambda: "No space left on device"
+        body = client.get("/api/health/cache").json()
+    assert body["problems"] == [
+        {
+            "kind": "not_writable",
+            "detail": "The last write failed: No space left on device",
+        }
+    ]
+
+
+def test_cache_usage_does_not_touch_a_volume_that_has_stopped_taking_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The scans have given up waiting on a write. A look at the volume now
+    # would hang behind it, so none is made.
+    def inspect(root: Path) -> None:
+        raise AssertionError("looked at a hung volume")
+
+    with run_app(cache_dir=tmp_path) as client:
+        state = client.app.state.app_state  # type: ignore[attr-defined]
+        state.cache_write_stalled_seconds = lambda: 42.4
+        monkeypatch.setattr(cache_mod, "_inspect", inspect)
+        body = client.get("/api/health/cache").json()
+        monkeypatch.undo()
+    assert body["problems"] == [
+        {
+            "kind": "not_responding",
+            "detail": "A write has not returned for 42 s",
+        }
+    ]
+    assert body["dir"] == str(tmp_path)
+    assert body["entries"] == [] and body["volume_total_bytes"] is None
+
+
+def test_cache_usage_gives_up_on_a_look_that_does_not_return(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = threading.Event()
+
+    def inspect(root: Path) -> None:
+        release.wait()
+
+    with run_app(cache_dir=tmp_path) as client:
+        monkeypatch.setattr(cache_mod, "_inspect", inspect)
+        monkeypatch.setattr(health, "CACHE_LOOK_WAIT_SECONDS", 0.01)
+        try:
+            body = client.get("/api/health/cache").json()
+        finally:
+            release.set()
+            monkeypatch.undo()
+    [problem] = body["problems"]
+    assert problem["kind"] == "not_responding"
+    assert problem["detail"].startswith("A read has not returned for ")
 
 
 def test_models_path_defaults_to_the_packaged_copy(tmp_path: Path) -> None:
