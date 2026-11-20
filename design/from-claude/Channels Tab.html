@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>RubinTV — Channels Tab layouts</title>
+<link rel="stylesheet" href="channels-styles.css" />
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { background: #08091A; color: #EFE9D8; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script src="channels-data.js"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="channels-chrome.jsx"></script>
+<script type="text/babel" src="channels-layouts.jsx"></script>
+
+<script type="text/babel">
+const { useState } = React;
+const DC = window.DesignCanvas;
+const Section = window.DCSection;
+const Artboard = window.DCArtboard;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "focus": "all"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweaks, setTweak] = window.useTweaks
+    ? window.useTweaks(TWEAK_DEFAULTS)
+    : [TWEAK_DEFAULTS, () => {}];
+
+  const boards = [
+    { id: 'A', label: 'A · Latest-frame grid', w: 1240, h: 1320, comp: window.ChannelsTabA,
+      blurb: 'Closest to the reference camera-card style. Each channel = a portrait card with its latest frame.' },
+    { id: 'B', label: 'B · Featured viewer + rail', w: 1240, h: 1100, comp: window.ChannelsTabB,
+      blurb: 'One channel takes the spotlight; all 9 sit in a rail you can click to focus.' },
+    { id: 'C', label: 'C · Grouped list + viewer', w: 1240, h: 1100, comp: window.ChannelsTabC,
+      blurb: 'Kiosk-style: persistent grouped list on the left, one big preview + metadata on the right.' },
+    { id: 'D', label: 'D · Contact sheet', w: 1240, h: 1040, comp: window.ChannelsTabD,
+      blurb: 'Wall of equal frames with a coloured top edge; per-day movies pulled out as wide tiles.' },
+  ];
+
+  const visible = tweaks.focus === 'all'
+    ? boards
+    : boards.filter(b => b.id === tweaks.focus);
+
+  return (
+    <React.Fragment>
+      <DC initialZoom={0.55}>
+        <div style={{ padding: '22px 28px 6px', borderBottom: '1px solid #1f2638', background: '#0F1424', color: '#EFE9D8' }}>
+          <div style={{ fontFamily: 'IBM Plex Serif, Georgia, serif', fontWeight: 600, fontSize: 26 }}>
+            RubinTV — Channels tab · layout explorations
+          </div>
+          <div style={{ fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 11, color: '#8088A8', marginTop: 4, letterSpacing: '0.04em' }}>
+            LSSTCam · 8 image channels + 1 per-day movie · 4 directions · pan, zoom, click an artboard to focus
+          </div>
+        </div>
+        <Section id="channels" title="Channels tab — variations">
+          {visible.map(b => (
+            <Artboard key={b.id} id={'ch-' + b.id} label={b.label} width={b.w} height={b.h}>
+              <b.comp />
+            </Artboard>
+          ))}
+        </Section>
+      </DC>
+
+      {window.TweaksPanel && (
+        <window.TweaksPanel title="Tweaks">
+          <window.TweakSection title="View">
+            <window.TweakRadio
+              label="Show"
+              value={tweaks.focus}
+              onChange={v => setTweak('focus', v)}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'A',   label: 'A' },
+                { value: 'B',   label: 'B' },
+                { value: 'C',   label: 'C' },
+                { value: 'D',   label: 'D' },
+              ]}
+            />
+          </window.TweakSection>
+          <window.TweakSection title="Notes">
+            <div style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#8088A8', lineHeight: 1.5 }}>
+              Click any artboard to fullscreen it. Reorder by dragging the label.
+            </div>
+          </window.TweakSection>
+        </window.TweaksPanel>
+      )}
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>
