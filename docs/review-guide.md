@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 413 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 415 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -407,8 +407,8 @@ Safe to skim.
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
-  `121fbdd`, `5adc9cf`, `f75546a`, and the commit that noted the home
-  page's logo.
+  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, and the commit that noted
+  the brand band on a lone location's page.
 
 ---
 
@@ -542,8 +542,21 @@ out.
   function of time) and `BrandIntro.tsx` (the clock and the SVG). The
   test setup's `matchMedia` stub now reports reduced motion, so other
   tests that mount Home see the finished logo. `RubinMark.tsx` goes
+- `5a78c8e` Head a lone location's page with the brand band. A
+  deployment with one location (summit, base, tucson) redirects past
+  the launcher, so its location page now carries the same band, logo
+  and memorial, above the camera groups; with several locations their
+  pages are unchanged. The band becomes `BrandHero.tsx`, shared by
+  `Home.tsx` and `Location.tsx`. Two details to check: in `Location`
+  the band is the first child of the same `<section>` in all three
+  states, because anywhere else React remounted it when the cameras
+  arrived and cut the intro off; and Home passes `paused` while the
+  locations load, so an intro about to be lost to the redirect is
+  neither started nor counted as played
 
 ### 35. Location and Channels cards
+(Group 34's `5a78c8e` puts the brand band above the camera groups on a
+single-location deployment's location page.)
 - `9396183` Hide Previously Used Channels group on USDF Summit
 - `4343548` Border stale Channels cards in the indicative orange
 - `dd0bdc4` Represent each camera card by its primary channel's latest
