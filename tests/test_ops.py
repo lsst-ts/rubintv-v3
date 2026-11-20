@@ -122,6 +122,10 @@ def test_status_endpoint_reports_loading() -> None:
         assert body["s3_slow"] is False
         # Last-cycle latency is reported as a number (0.0 if no cycle has run).
         assert isinstance(body["s3_last_cycle_seconds"], (int, float))
+        # No cycle has overrun, and the age of the last good one is a number
+        # (null if none has finished yet).
+        assert body["poll_stalled"] is False
+        assert isinstance(body["last_poll_age_seconds"], (int, float, type(None)))
         # Per-camera readiness is present and well-formed for each camera.
         assert isinstance(body["cameras"], list)
         for cam in body["cameras"]:

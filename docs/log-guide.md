@@ -81,6 +81,10 @@ list the bucket; it retries every cycle. `poll.current.slow` means a cycle
 took over 5 s, an early sign of a degrading link. When all is well,
 `poll.current.heartbeat` appears about once a minute with the keys listed
 and the cycle time; if it stops appearing, the poll loop isn't running.
+`poll.current.stalled` means a cycle began and hasn't ended a minute later,
+so nothing new is being found although the last cycle to finish was fine;
+the page says "Poll stalled". The events around it say what the cycle is
+waiting on, and `poll.current.resumed` follows if it gets going again.
 
 **Past dates are missing, or the "loading history" notice stays up.** The
 history sweep logs `poll.recent.start` / `poll.recent.done` (the last
@@ -173,6 +177,8 @@ The current day's prefixes are listed every `RUBINTV_POLL_INTERVAL_SECONDS`
 | `poll.current.cycle` | debug | Every cycle: `keys` listed and `cycle_seconds`. The cycle's own listings get no `poll.scan` line unless they changed something. |
 | `poll.current.slow` | warning | A cycle took longer than 5 s (`cycle_seconds`); logged on entering the slow state. The page shows an "S3 slow" notice. |
 | `poll.current.error` | error | A cycle failed, nearly always S3 unreachable; traceback attached. The page shows "S3 unreachable" and the poll retries every cycle. |
+| `poll.current.stalled` | error | A cycle has been running for over 60 s (`running_seconds`) and hasn't finished, so today's index is no longer following the bucket; `last_poll_age_seconds` is how long since a cycle last succeeded. Logged once per stall, by a watchdog that looks every 10 s. The page shows "Poll stalled". |
+| `poll.current.resumed` | info | A stalled cycle ended after `cycle_seconds`, and the poll carries on. |
 | `poll.ready` | info | The first current-day poll finished; the pod reports ready from here. |
 | `day.rollover` | info | The observing day changed at 12:00 UTC (`from_`, `to`). |
 

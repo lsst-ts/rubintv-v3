@@ -29,6 +29,7 @@ full sweep and that per-camera flags flip in the right order.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -753,3 +754,82 @@ async def test_only_a_changed_current_day_listing_is_logged(
     await engine._apply_scan("day", "loc", prefix, result)  # unchanged: nothing
     await engine._apply_scan("recent", "loc", prefix, result)  # unchanged: debug
     assert logged == [("info", "day"), ("debug", "recent")]
+
+
+# -- a cycle that never ends -------------------------------------------------
+
+
+class _Logged:
+    """Stands in for the module's logger, keeping each event's name."""
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def __getattr__(self, level: str) -> object:
+        return lambda event, **fields: self.events.append(event)
+
+
+class _HeldPoller(FakePoller):
+    """A FakePoller whose scans wait to be released, like a listing that
+    never returns, and say when one has begun."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.begun = threading.Event()
+        self.release = threading.Event()
+
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        self.begun.set()
+        self.release.wait()
+        return super().scan(location, prefix)
+
+
+async def test_a_cycle_that_never_ends_is_reported_stalled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The health flags are written as a cycle ends, so one that never ends
+    # leaves them saying "healthy". Its running time is what shows it.
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    # Any cycle still running counts as overrun: no real minute to wait out.
+    monkeypatch.setattr(tasks, "STALLED_CYCLE_SECONDS", 0.0)
+    poller = _HeldPoller()
+    engine, _ = _engine(window=0, poller=poller)
+    assert engine.poll_stalled() is False
+    assert engine.last_poll_age_seconds() is None
+
+    loop = asyncio.ensure_future(engine._current_day_loop())
+    await asyncio.to_thread(poller.begun.wait)
+    assert engine.poll_stalled() is True
+    assert engine.s3_healthy is True and engine.s3_slow is False
+    assert engine.last_poll_age_seconds() is None
+    # The cycle can't log its own stall; the watchdog does, once.
+    engine._check_stall()
+    engine._check_stall()
+    assert logged.events.count("poll.current.stalled") == 1
+
+    engine._stop.set()  # so the loop ends with this cycle
+    poller.release.set()
+    await asyncio.wait_for(loop, timeout=5.0)
+    assert engine.poll_stalled() is False
+    age = engine.last_poll_age_seconds()
+    assert age is not None and age >= 0.0
+    assert logged.events.count("poll.current.resumed") == 1
+
+
+async def test_watchdog_looks_for_a_stall_until_stopped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tasks, "_WATCHDOG_SECONDS", 0.0)
+    engine, _ = _engine(window=0)
+    checks = 0
+
+    def check() -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 3:
+            engine._stop.set()
+
+    engine._check_stall = check  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._watchdog_loop(), timeout=5.0)
+    assert checks == 3

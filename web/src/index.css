@@ -601,10 +601,10 @@ h1, h2 {
    the explanation is discoverable and consistent. */
 .scan-status [title] { cursor: help; }
 
-/* Status page title row: the heading left, and tucked small to its right one
-   quiet box each for the browser↔server WebSocket and the server↔bucket S3
-   link (hairline-framed, no shadow, so they don't compete with the cards).
-   They drop below the heading when the row runs out of room. */
+/* Status page title row: the heading left, and tucked small to its right a
+   row of pills (the browser↔server WebSocket, the server↔bucket S3 link
+   and how the server started), bare: a pill is its own frame. The last poll's time sits under the row, ranged right
+   with it. Both drop below the heading when the row runs out of room. */
 .status-top {
   display: flex;
   flex-wrap: wrap;
@@ -613,22 +613,20 @@ h1, h2 {
   gap: 0.5rem 1.5rem;
 }
 .status-top h1 { margin-bottom: 0.25em; }
-.status-sections {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 0.5rem;
+.status-signals {
+  display: grid;
+  justify-items: end;
+  gap: 0.4rem;
 }
+.status-sections,
 .status-section {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
-  background: var(--paper-2);
-  border: 1px solid var(--line-mid);
-  border-radius: 0.4rem;
-  padding: 0.3rem 0.5rem;
+  justify-content: flex-end;
+  gap: 0.4rem 0.5rem;
 }
-.status-section .s3-latency {
+.status-signals .s3-latency {
   font-family: var(--mono);
   font-size: 0.75rem;
   white-space: nowrap;
@@ -1180,6 +1178,16 @@ h1, h2 {
   font-size: 16px; color: var(--ink);
   font-weight: 600; line-height: 1.1; letter-spacing: 0.1px;
 }
+
+/* "as of HH:MM:SS UTC" after the current day's date (see DataAsOf): quiet
+   while the server's last poll is recent, amber once it isn't. */
+.data-as-of {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--ink-soft);
+  white-space: nowrap;
+}
+.data-as-of.is-stale { color: var(--warn); font-weight: 600; }
 
 /* Prev/next-day steppers flanking the date picker. */
 .date-stepper { display: inline-flex; align-items: center; gap: 4px; }

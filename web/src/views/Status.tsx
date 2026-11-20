@@ -2,6 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { usePageTitle } from "../lib/usePageTitle";
+import {
+  roughAge,
+  STALE_AFTER_MS,
+  useLastPoll,
+  useNow,
+  utcClock,
+} from "../lib/lastPoll";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { S3Status } from "../components/S3Status";
 import type { CacheEntry, CameraStatus } from "../lib/types";
@@ -174,6 +181,45 @@ function CacheNotice() {
   );
 }
 
+// When the server's last S3 poll cycle succeeded, and how long it took.
+//
+// The time is what shows a poll that has stopped: it stops moving, and turns
+// amber with its age once that is more than a normal gap (the age is counted
+// on the tab's clock, so it grows between status polls and while they fail).
+// Hidden until a first cycle completes.
+//
+// The duration is shown even when healthy, so a link degrading toward the
+// slow threshold is visible before it crosses it (amber once flagged slow).
+// `seconds` is null while S3 is unreachable: the last cycle to succeed says
+// nothing of the link now.
+function LastPoll({ seconds, slow }: { seconds: number | null; slow: boolean }) {
+  const at = useLastPoll();
+  const now = useNow();
+  if (at === null) return null;
+  const age = now - at;
+  const stale = age > STALE_AFTER_MS;
+  return (
+    <span
+      className="s3-latency"
+      title="When the server's last S3 poll cycle succeeded, and how long it took"
+    >
+      Last poll:{" "}
+      <span className={stale ? "s3-latency--slow" : undefined}>
+        {utcClock(at)} UTC
+        {stale && ` (${roughAge(age)} ago)`}
+      </span>
+      {seconds !== null && (
+        <>
+          , took{" "}
+          <span className={slow ? "s3-latency--slow" : undefined}>
+            {seconds.toFixed(1)}s
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
 export function Status() {
   usePageTitle("Scan status");
   const { data, isPending, isError } = useQuery({
@@ -198,46 +244,44 @@ export function Status() {
 
   return (
     <section className="scan-status">
-      {/* The title, with the page's indicators tucked small to its right:
-          the two links it reports on — the tab's browser↔app-server
-          WebSocket and the server↔bucket S3 poll — then how the server
-          started (the cache mode). S3 gets the verbose pill (explicit green when
-          healthy — quiet here would read as "unknown") plus the last-cycle
-          latency, shown even when healthy so a link degrading toward the
-          slow threshold is visible before it crosses it (amber once flagged
-          slow; hidden until a first cycle completes). */}
+      {/* The title, with the page's indicators tucked small to its right, a
+          row of pills: the two links it reports on — the tab's
+          browser↔app-server WebSocket and the server↔bucket S3 poll — then
+          how the server started (the cache mode). S3 gets the verbose pill
+          (explicit green when healthy — quiet here would read as
+          "unknown"). Under the row, on a quiet line of its own so it
+          doesn't stretch it, when the last poll cycle succeeded and how
+          long it took (see LastPoll). */}
       <div className="status-top">
         <h1>Scan status</h1>
-        <div className="status-sections">
-          <section className="status-section" aria-label="WebSocket">
-            <ConnectionStatus verbose />
-          </section>
-          <section className="status-section" aria-label="S3">
-            <S3Status verbose />
-            {data && data.s3_healthy && data.s3_last_cycle_seconds > 0 && (
-              <span
-                className="s3-latency"
-                role="status"
-                title="How long the server's last S3 poll cycle took"
-              >
-                Last poll:{" "}
-                <span className={data.s3_slow ? "s3-latency--slow" : undefined}>
-                  {data.s3_last_cycle_seconds.toFixed(1)}s
-                </span>
-              </span>
-            )}
-          </section>
-          {cacheMode && (
-            <section className="status-section" aria-label="Start-up">
-              <span
-                className={`conn cache-mode cache-mode--${cacheMode}`}
-                role={cacheMode === "off" ? "alert" : "status"}
-                title={CACHE_MODE[cacheMode].hint}
-              >
-                {CACHE_MODE[cacheMode].label}
-              </span>
+        <div className="status-signals">
+          <div className="status-sections">
+            <section className="status-section" aria-label="WebSocket">
+              <ConnectionStatus verbose />
             </section>
-          )}
+            <section className="status-section" aria-label="S3">
+              <S3Status verbose />
+            </section>
+            {cacheMode && (
+              <section className="status-section" aria-label="Start-up">
+                <span
+                  className={`conn cache-mode cache-mode--${cacheMode}`}
+                  role={cacheMode === "off" ? "alert" : "status"}
+                  title={CACHE_MODE[cacheMode].hint}
+                >
+                  {CACHE_MODE[cacheMode].label}
+                </span>
+              </section>
+            )}
+          </div>
+          <LastPoll
+            seconds={
+              data && data.s3_healthy && data.s3_last_cycle_seconds > 0
+                ? data.s3_last_cycle_seconds
+                : null
+            }
+            slow={data?.s3_slow ?? false}
+          />
         </div>
       </div>
       {isPending && <p className="skeleton">Loading status…</p>}

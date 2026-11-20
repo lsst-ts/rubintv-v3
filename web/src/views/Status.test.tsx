@@ -27,6 +27,8 @@ function renderWith(
     s3_healthy: true,
     s3_slow: false,
     s3_last_cycle_seconds: 0.8,
+    poll_stalled: false,
+    last_poll_age_seconds: 2,
     cameras,
     ...over,
   };
@@ -220,14 +222,34 @@ test("surfaces the S3 pill here when the bucket is unreachable", async () => {
   expect(await screen.findByText(/S3 unreachable/)).toBeDefined();
 });
 
-test("shows the last S3 poll latency while healthy", async () => {
+test("shows when the last S3 poll succeeded and how long it took", async () => {
   renderWith([cam({})], { s3_healthy: true, s3_last_cycle_seconds: 1.2 });
-  expect(await screen.findByText(/Last poll:/)).toBeDefined();
-  expect(screen.getByText(/1\.2s/)).toBeDefined();
+  const line = await screen.findByText(/Last poll:/);
+  expect(line.textContent).toMatch(/Last poll: \d\d:\d\d:\d\d UTC, took 1\.2s/);
+  expect(line.querySelector(".s3-latency--slow")).toBeNull();
 });
 
-test("hides the latency line before the first cycle completes", async () => {
-  renderWith([cam({})], { s3_healthy: true, s3_last_cycle_seconds: 0 });
+test("a slow last poll has its duration in amber", async () => {
+  renderWith([cam({})], { s3_slow: true, s3_last_cycle_seconds: 6.34 });
+  const line = await screen.findByText(/Last poll:/);
+  expect(line.querySelector(".s3-latency--slow")?.textContent).toBe("6.3s");
+});
+
+test("a last poll that is no longer recent is amber, with its age", async () => {
+  // Unreachable, so the last cycle to succeed says nothing of the link now:
+  // the time stays, the duration goes.
+  renderWith([cam({})], { s3_healthy: false, last_poll_age_seconds: 300 });
+  const line = await screen.findByText(/Last poll:/);
+  expect(line.textContent).toMatch(/UTC \(5 min ago\)$/);
+  expect(line.querySelector(".s3-latency--slow")?.textContent).toMatch(/5 min ago/);
+});
+
+test("hides the last-poll line before the first cycle completes", async () => {
+  renderWith([cam({})], {
+    s3_healthy: true,
+    s3_last_cycle_seconds: 0,
+    last_poll_age_seconds: null,
+  });
   await screen.findByText(/Scan status/);
   expect(screen.queryByText(/Last poll:/)).toBeNull();
 });

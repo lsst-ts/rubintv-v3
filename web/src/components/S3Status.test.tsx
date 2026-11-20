@@ -21,6 +21,8 @@ function renderWith(
     s3_healthy: true,
     s3_slow: false,
     s3_last_cycle_seconds: 0.8,
+    poll_stalled: false,
+    last_poll_age_seconds: 2,
     cameras: [],
     ...status,
   };
@@ -70,6 +72,23 @@ test("unreachable takes precedence over slow", async () => {
   renderWith({ s3_healthy: false, s3_slow: true });
   expect(await screen.findByText(/S3 unreachable/)).toBeDefined();
   expect(screen.queryByText(/S3 slow/)).toBeNull();
+});
+
+test("a poll that has stalled is said first, whatever the last cycle found", async () => {
+  // The other flags are the last finished cycle's, so they still read
+  // "healthy" (or "unreachable") while the cycle after it hangs.
+  renderWith({ poll_stalled: true, s3_healthy: true, last_poll_age_seconds: 300 });
+  const pill = await screen.findByText("Poll stalled");
+  expect(pill.getAttribute("role")).toBe("alert");
+  expect(pill.getAttribute("title")).toMatch(/last finished one at \d\d:\d\d:\d\d UTC/);
+  expect(screen.queryByText(/S3/)).toBeNull();
+});
+
+test("a poll stalled on its first cycle has no last time to give", async () => {
+  renderWith({ poll_stalled: true, s3_healthy: false, last_poll_age_seconds: null });
+  const pill = await screen.findByText("Poll stalled");
+  expect(pill.getAttribute("title")).toMatch(/not finished one since the server started/);
+  expect(screen.queryByText(/S3 unreachable/)).toBeNull();
 });
 
 test("links the slow pill to the status page when asked", async () => {
