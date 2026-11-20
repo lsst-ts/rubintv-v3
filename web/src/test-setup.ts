@@ -156,11 +156,13 @@ if (!HTMLCanvasElement.prototype.getContext) {
     null) as typeof HTMLCanvasElement.prototype.getContext;
 }
 
-// jsdom has no matchMedia; the theme toggle queries prefers-color-scheme.
-// Stub it as "light, no preference" with no-op listeners.
+// jsdom has no matchMedia; the theme toggle queries prefers-color-scheme and
+// the brand intro prefers-reduced-motion. Stub it as "light, reduced motion"
+// with no-op listeners: reduced motion so the Home logo renders finished
+// rather than running its animation clock under every test that mounts it.
 if (typeof window.matchMedia !== "function") {
   window.matchMedia = ((query: string) => ({
-    matches: false,
+    matches: query.includes("prefers-reduced-motion"),
     media: query,
     onchange: null,
     addEventListener() {},
