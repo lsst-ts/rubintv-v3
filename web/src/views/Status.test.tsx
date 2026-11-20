@@ -8,6 +8,7 @@ import type { CacheUsageResponse, StatusResponse } from "../lib/types";
 
 const NO_CACHE_USAGE: CacheUsageResponse = {
   enabled: false,
+  problems: [],
   dir: null,
   entries: [],
   volume_total_bytes: null,
@@ -154,11 +155,12 @@ test("shows a warm-start pill when the cache populated the calendar", async () =
 test("lists where the disk cache lives, its sizes and what uses each part", async () => {
   renderWith([cam({})], { cache_enabled: true, warm_start: true }, {
     enabled: true,
+    problems: [],
     dir: "/scratch",
     entries: [
-      { path: "/scratch/v3", use: "index", files: 5524, bytes: 45 * 2 ** 20 },
-      { path: "/scratch/guide", use: "guide", files: 2, bytes: 1.1 * 2 ** 20 },
-      { path: "/scratch/v1", use: "unused", files: 5007, bytes: 42 * 2 ** 20 },
+      { path: "/scratch/v3", use: "index", files: 5524, bytes: 45 * 2 ** 20, unreadable: false },
+      { path: "/scratch/guide", use: "guide", files: 2, bytes: 1.1 * 2 ** 20, unreadable: false },
+      { path: "/scratch/v1", use: "unused", files: 5007, bytes: 42 * 2 ** 20, unreadable: false },
     ],
     volume_total_bytes: 2 ** 30,
     volume_free_bytes: 768 * 2 ** 20,
@@ -185,8 +187,9 @@ test("lists where the disk cache lives, its sizes and what uses each part", asyn
 test("a cold first run shows the empty index, and no volume it can't read", async () => {
   renderWith([cam({})], { cache_enabled: true }, {
     enabled: true,
+    problems: [],
     dir: "/scratch",
-    entries: [{ path: "/scratch/v3", use: "index", files: 0, bytes: 0 }],
+    entries: [{ path: "/scratch/v3", use: "index", files: 0, bytes: 0, unreadable: false }],
     volume_total_bytes: null,
     volume_free_bytes: null,
   });
@@ -197,6 +200,96 @@ test("a cold first run shows the empty index, and no volume it can't read", asyn
     "Disk cache in /scratch: 0 B",
   );
   expect(screen.queryByText(/^Volume/)).toBeNull();
+});
+
+const INDEX_ENTRY = {
+  path: "/scratch/v3",
+  use: "index",
+  files: 5524,
+  bytes: 45 * 2 ** 20,
+  unreadable: false,
+} as const;
+
+test("a cache that isn't taking writes says so, top and bottom", async () => {
+  // The pages look fine throughout (the cache is only read at startup), so
+  // this is the one place a cache that has stopped being kept shows.
+  renderWith([cam({})], { cache_enabled: true, warm_start: true }, {
+    enabled: true,
+    problems: [
+      { kind: "not_writable", detail: "The last write failed: No space left on device" },
+    ],
+    dir: "/scratch",
+    entries: [INDEX_ENTRY],
+    volume_total_bytes: null,
+    volume_free_bytes: null,
+  });
+  const pill = await screen.findByRole("alert");
+  expect(pill.textContent).toBe("Cache not writable");
+  expect(pill.closest('[aria-label="Start-up"]')).not.toBeNull();
+  expect(pill.getAttribute("title")).toMatch(
+    /aren't being saved.*older index\. The last write failed: No space left on device\.$/,
+  );
+  // In the notice: its name, what it costs and the cause, a line each.
+  const item = within(screen.getByRole("note")).getByRole("listitem");
+  expect([...item.children].map((c) => c.textContent)).toEqual([
+    "Cache not writable",
+    "New scan results aren't being saved, so a restart now would start from an older index.",
+    "The last write failed: No space left on device",
+  ]);
+  // What is there can still be measured.
+  expect(screen.getByText(/^Disk cache in/).textContent).toBe(
+    "Disk cache in /scratch: 45.0 MiB",
+  );
+});
+
+test("an index the server can't list reads as unknown, not as empty", async () => {
+  renderWith([cam({})], { cache_enabled: true }, {
+    enabled: true,
+    problems: [
+      { kind: "unreadable", detail: "Permission denied: v3" },
+      { kind: "not_writable", detail: "No write permission on v3" },
+    ],
+    dir: "/scratch",
+    entries: [{ ...INDEX_ENTRY, files: 0, bytes: 0, unreadable: true }],
+    volume_total_bytes: null,
+    volume_free_bytes: null,
+  });
+  const pills = await screen.findAllByRole("alert");
+  expect(pills.map((p) => p.textContent)).toEqual([
+    "Cache unreadable",
+    "Cache not writable",
+  ]);
+  expect(screen.getByText(/^Disk cache in/).textContent).toBe(
+    "Disk cache in /scratch: size unknown",
+  );
+  const cells = [...screen.getAllByRole("row")[1].querySelectorAll("td")];
+  expect(cells.map((td) => td.textContent)).toEqual([
+    "/scratch/v3",
+    "unknown",
+    "unknown",
+    "scan index (warm starts)",
+  ]);
+  expect(screen.queryByText("0 B")).toBeNull();
+  expect(within(screen.getByRole("note")).getAllByRole("listitem")).toHaveLength(2);
+});
+
+test("a volume that has stopped answering shows no sizes at all", async () => {
+  renderWith([cam({})], { cache_enabled: true }, {
+    enabled: true,
+    problems: [
+      { kind: "not_responding", detail: "A write has not returned for 42 s" },
+    ],
+    dir: "/scratch",
+    entries: [],
+    volume_total_bytes: null,
+    volume_free_bytes: null,
+  });
+  expect((await screen.findByRole("alert")).textContent).toBe("Cache not responding");
+  expect(screen.getByText(/^Disk cache in/).textContent).toBe(
+    "Disk cache in /scratch: size unknown",
+  );
+  expect(screen.getByText("A write has not returned for 42 s")).toBeDefined();
+  expect(screen.queryByRole("table")).toBeNull();
 });
 
 test("shows a cold-start pill when no snapshot was loaded", async () => {

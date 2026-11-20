@@ -32,17 +32,21 @@ cache usage, for the Status page alone).
 
 from __future__ import annotations
 
-import shutil
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Response, status
 from lsst.ts.rubintv import __version__
 from lsst.ts.rubintv.api.deps import get_app_state
-from lsst.ts.rubintv.data.cache import CACHE_VERSION, dir_usage
+from lsst.ts.rubintv.data.cache import CACHE_VERSION
 from lsst.ts.rubintv.state import AppState
 from pydantic import BaseModel
 
 router = APIRouter()
+
+# How long the Status page's look at the cache dir is waited on before the
+# answer is that the volume isn't responding. It stats every cached file,
+# which a healthy volume does in well under a second.
+CACHE_LOOK_WAIT_SECONDS = 10.0
 
 
 class LiveResponse(BaseModel):
@@ -126,11 +130,32 @@ class CacheEntry(BaseModel):
     files: int
     bytes: int
     """Allocated on disk, as ``du`` reports, not the files' apparent size."""
+    unreadable: bool
+    """Part of it couldn't be listed, so ``files`` and ``bytes`` leave out
+    whatever is there."""
+
+
+class CacheProblem(BaseModel):
+    kind: Literal["not_responding", "unreadable", "not_writable"]
+    """``not_responding``: a write to the volume, or this look at it, hasn't
+    returned (the rest of the answer is then empty: the volume isn't asked
+    again while it holds one call). ``unreadable``: the cache dir or the scan
+    index in it can't be listed. ``not_writable``: the last write failed, or
+    the server's user may not write there."""
+    detail: str
+    """The specifics, as a phrase for a person: the operating system's
+    error, with any path relative to the cache dir, or how long the volume
+    has been silent."""
 
 
 class CacheUsageResponse(BaseModel):
     enabled: bool
     """Whether the disk cache is in use. When false, the rest is empty."""
+    problems: list[CacheProblem]
+    """What is wrong with the cache volume, if anything. None of it stops
+    the app, which reads the cache once at startup and otherwise only writes
+    to it, so nothing else reports it: the cost is a next start from an
+    older index, or a cold one."""
     dir: str | None
     """Absolute path of the cache dir."""
     entries: list[CacheEntry]
@@ -201,23 +226,44 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
 
 
 @router.get("/cache", response_model=CacheUsageResponse)
-def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageResponse:
-    """Disk cache locations and sizes, for the Status page.
+async def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageResponse:
+    """Disk cache locations, sizes and troubles, for the Status page.
 
     Separate from ``/status`` because it stats every cached file (thousands
-    on the PVC) and every page polls that one. Sync, so the walk runs on the
-    threadpool rather than stalling the event loop.
+    on the PVC) and every page polls that one. The look runs on a worker
+    thread and is waited on for only so long (see ``CacheInspector``).
     """
     root = state.settings.cache_dir
     if not state.cache_enabled or root is None:
         return CacheUsageResponse(
             enabled=False,
+            problems=[],
             dir=None,
             entries=[],
             volume_total_bytes=None,
             volume_free_bytes=None,
         )
     root = root.absolute()
+    problems: list[CacheProblem] = []
+    report = None
+    stalled = state.cache_write_stalled_seconds()
+    if stalled is not None:
+        # The scans are already waiting on this volume; don't queue a look
+        # behind their write.
+        silent = f"A write has not returned for {stalled:.0f} s"
+    else:
+        inspector = state.cache_inspector
+        report = await inspector.report(root, CACHE_LOOK_WAIT_SECONDS)
+        silent = f"A read has not returned for {inspector.waited_seconds():.0f} s"
+    if report is None:
+        return CacheUsageResponse(
+            enabled=True,
+            problems=[CacheProblem(kind="not_responding", detail=silent)],
+            dir=str(root),
+            entries=[],
+            volume_total_bytes=None,
+            volume_free_bytes=None,
+        )
     # The observing-block guide, where deployed, keeps its own cache in a
     # ``guide`` subdirectory of the same dir.
     uses: dict[str, CacheUse] = {CACHE_VERSION: "index", "guide": "guide"}
@@ -227,23 +273,40 @@ def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageResponse:
             use=uses.get(e.path.name, "unused"),
             files=e.files,
             bytes=e.bytes,
+            unreadable=e.error is not None,
         )
-        for e in dir_usage(root)
+        for e in report.entries
     ]
     # An empty stray (e.g. the volume's lost+found) is noise, not something
     # to reclaim; in-use entries show even when empty (a cold first run).
     entries = [e for e in entries if e.use != "unused" or e.files]
     entries.sort(key=lambda e: (e.use == "unused", -e.bytes))
-    try:
-        volume = shutil.disk_usage(root)
-    except OSError:
-        total = free = None
-    else:
-        total, free = volume.total, volume.free
+    # A stray the server can't list (lost+found is root's) is no trouble;
+    # the dir itself or the index in it is.
+    unreadable = report.unreadable or next(
+        (e.error for e in report.entries if e.path.name == CACHE_VERSION), None
+    )
+    if unreadable is not None:
+        problems.append(CacheProblem(kind="unreadable", detail=unreadable))
+    write_error = state.cache_write_error()
+    if write_error is not None:
+        problems.append(
+            CacheProblem(
+                kind="not_writable", detail=f"The last write failed: {write_error}"
+            )
+        )
+    elif not report.writable:
+        problems.append(
+            CacheProblem(
+                kind="not_writable",
+                detail=f"No write permission on {CACHE_VERSION}",
+            )
+        )
     return CacheUsageResponse(
         enabled=True,
+        problems=problems,
         dir=str(root),
         entries=entries,
-        volume_total_bytes=total,
-        volume_free_bytes=free,
+        volume_total_bytes=report.volume_total,
+        volume_free_bytes=report.volume_free,
     )

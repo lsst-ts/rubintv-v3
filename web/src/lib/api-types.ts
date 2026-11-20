@@ -73,11 +73,11 @@ export interface paths {
         };
         /**
          * Cache Usage
-         * @description Disk cache locations and sizes, for the Status page.
+         * @description Disk cache locations, sizes and troubles, for the Status page.
          *
          *     Separate from ``/status`` because it stats every cached file (thousands
-         *     on the PVC) and every page polls that one. Sync, so the walk runs on the
-         *     threadpool rather than stalling the event loop.
+         *     on the PVC) and every page polls that one. The look runs on a worker
+         *     thread and is waited on for only so long (see ``CacheInspector``).
          */
         get: operations["cache_usage_api_health_cache_get"];
         put?: never;
@@ -726,11 +726,25 @@ export interface components {
             files: number;
             /** Bytes */
             bytes: number;
+            /** Unreadable */
+            unreadable: boolean;
+        };
+        /** CacheProblem */
+        CacheProblem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "not_responding" | "unreadable" | "not_writable";
+            /** Detail */
+            detail: string;
         };
         /** CacheUsageResponse */
         CacheUsageResponse: {
             /** Enabled */
             enabled: boolean;
+            /** Problems */
+            problems: components["schemas"]["CacheProblem"][];
             /** Dir */
             dir: string | null;
             /** Entries */

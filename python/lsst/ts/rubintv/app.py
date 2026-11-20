@@ -318,6 +318,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state.s3_last_cycle_seconds = lambda: engine.s3_last_cycle_seconds
     state.poll_stalled = engine.poll_stalled
     state.last_poll_age_seconds = engine.last_poll_age_seconds
+    state.cache_write_error = lambda: cache.write_error
+    state.cache_write_stalled_seconds = engine.cache_write_stalled_seconds
 
     # Admin handles: the Redis manager (control writes / flush) and the
     # flush-historical action that clears the disk + in-memory cache and kicks
