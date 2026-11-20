@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 415 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 417 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -407,8 +407,8 @@ Safe to skim.
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
-  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, and the commit that noted
-  the brand band on a lone location's page.
+  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, and the commit
+  that noted the redrawn favicon.
 
 ---
 
@@ -525,7 +525,7 @@ out.
   camera name; the tab row is view switching only)
 - `3f9409e` Pin sort arrow to bottom of angled headers so it survives
   truncation
-- `e043b70` Add favicon
+- `e043b70` Add favicon (redrawn as the logo in `4d9a7f0`, below)
 - `3088b59` Add a Simon Krughoff memorial to the home page
 - `0751ea0` Tint the memorial plaque in the mark's own teal
 - `fecbb10` Trim the home page: the location cards drop their ids
@@ -553,6 +553,12 @@ out.
   arrived and cut the intro off; and Home passes `paused` while the
   locations load, so an intro about to be lost to the redirect is
   neither started nor counted as played
+- `4d9a7f0` Redraw the favicon and app icons as the RubinTV logo.
+  Assets only, in `web/public`: `favicon.svg` is a bolder small cut
+  that holds at 16px, `icon-large.svg` and `icon-large-tile.svg` are
+  the logo itself, and the PNGs and `.ico` are rendered from them. The
+  `.ico` and small PNGs can't follow the browser's theme, so their
+  lines are a mid grey that shows on light and dark chrome
 
 ### 35. Location and Channels cards
 (Group 34's `5a78c8e` puts the brand band above the camera groups on a
