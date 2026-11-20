@@ -115,6 +115,16 @@ STALLED_CYCLE_SECONDS = 60.0
 # own stall, and the status endpoint only works it out when asked.
 _WATCHDOG_SECONDS = 10.0
 
+# How long a scan waits for the cache volume to take the slices it changed
+# before carrying on without it. A volume that hangs (a PVC whose backing
+# store has gone away blocks in the kernel, it doesn't fail) then costs how
+# current the next warm start is, not the live poll.
+CACHE_WAIT_SECONDS = 5.0
+
+# The same for the whole-cache rewrite that follows a full sweep, which is
+# thousands of files and takes a while on a healthy volume.
+CACHE_REWRITE_WAIT_SECONDS = 60.0
+
 # Ceiling on concurrent on-demand (deep-link) date scans. Deep-link backfill is
 # reachable from any authenticated request, so this caps its S3 fan-out well
 # below the ~4-worker endpoint ceiling to keep the live poller responsive.
@@ -147,6 +157,63 @@ class CameraScanState:
 
     recent_ready: bool = False
     full_complete: bool = False
+
+
+class _CacheWrites:
+    """One kind of write to the cache volume, waited on for only so long.
+
+    ``write`` runs in a task of its own, one at a time. A caller that has
+    waited ``wait`` seconds for it carries on, and from then until it
+    finishes callers don't wait at all (``write`` picks up whatever they
+    left for it when it gets there). A hung volume so holds one worker
+    thread, not one per poll cycle, and stops no scan; nor does a write that
+    fails, which is logged here.
+    """
+
+    def __init__(self, what: str, write: Callable[[], Awaitable[None]]) -> None:
+        self._what = what
+        self._write = write
+        self._job: asyncio.Task[None] | None = None
+        self._started = 0.0
+        self._overdue = False
+
+    def overdue_seconds(self) -> float | None:
+        """How long the write now running has been, once a caller has given
+        up waiting for it; ``None`` while the volume is keeping up."""
+        if not self._overdue or self._job is None or self._job.done():
+            return None
+        return time.monotonic() - self._started
+
+    async def flush(self, wait: float) -> None:
+        job = self._job
+        if job is None or job.done():
+            job = self._job = asyncio.create_task(
+                self._run(), name=f"poll-cache-{self._what}"
+            )
+        elif self._overdue:
+            return
+        done, _ = await asyncio.wait({job}, timeout=wait)
+        if not done and not self._overdue:
+            self._overdue = True
+            log.warning("cache.write.stalled", what=self._what, waited_seconds=wait)
+
+    async def _run(self) -> None:
+        self._started = time.monotonic()
+        try:
+            await self._write()
+        except Exception:  # noqa: BLE001 - the cache is best-effort
+            log.exception("cache.write.error", what=self._what)
+        if self._overdue:
+            self._overdue = False
+            log.info(
+                "cache.write.resumed",
+                what=self._what,
+                write_seconds=round(time.monotonic() - self._started, 1),
+            )
+
+    def cancel(self) -> None:
+        if self._job is not None:
+            self._job.cancel()
 
 
 class PollEngine:
@@ -236,12 +303,29 @@ class PollEngine:
         self._cycle_started: float | None = None
         self._last_poll: float | None = None
         self._stall_logged = False
+        # Cache slices waiting to be written (True) or deleted (False), and
+        # the two kinds of cache write. They are waited on separately, so a
+        # scan's few slices don't queue behind the whole-cache rewrite.
+        self._slices_pending: dict[tuple[str, str, str], bool] = {}
+        self._slice_writes = _CacheWrites("slices", self._write_pending_slices)
+        self._cache_rewrite = _CacheWrites("rewrite", self._rewrite_cache)
 
     def poll_stalled(self) -> bool:
         """Whether the current-day cycle now running has overrun
         ``STALLED_CYCLE_SECONDS``: the live poll has stopped, whatever
         ``s3_healthy`` still says of the cycle before it."""
         return self._cycle_running_seconds() > STALLED_CYCLE_SECONDS
+
+    def cache_write_stalled_seconds(self) -> float | None:
+        """How long a cache write has been outstanding, once scans have
+        stopped waiting for it: the volume isn't taking writes. ``None``
+        while it is keeping up."""
+        overdue = [
+            seconds
+            for writes in (self._slice_writes, self._cache_rewrite)
+            if (seconds := writes.overdue_seconds()) is not None
+        ]
+        return max(overdue) if overdue else None
 
     def _cycle_running_seconds(self) -> float:
         started = self._cycle_started
@@ -269,6 +353,8 @@ class PollEngine:
     async def stop(self) -> None:
         """Signal loops to stop and await them."""
         self._stop.set()
+        self._slice_writes.cancel()
+        self._cache_rewrite.cancel()
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
@@ -379,9 +465,7 @@ class PollEngine:
                 log.info("poll.historical.start", cameras=cameras)
                 total = await self._scan_all_history()
                 log.info("poll.historical.done", events=total)
-                if self._cache_writer is not None:
-                    await self._cache_writer()
-                    log.info("cache.written")
+                await self._cache_rewrite.flush(CACHE_REWRITE_WAIT_SECONDS)
             except Exception:  # noqa: BLE001
                 # A failed sweep leaves history incomplete: keep the loading
                 # flag honest (still True on a cold start, so the frontend
@@ -704,14 +788,35 @@ class PollEngine:
         is discovered rather than only after a full 12h cycle or shutdown."""
         if self._cache_slice_writer is None or not touched:
             return
-        await self._cache_slice_writer(touched)
+        for key in touched:
+            self._slices_pending[key] = True
+        await self._slice_writes.flush(CACHE_WAIT_SECONDS)
 
     async def _evict_slices(self, location: str, camera: str, dates: set[str]) -> None:
         """Delete cache slices for dates pruned as stale, so they don't seed
         the calendar again on the next warm start."""
         if self._cache_slice_deleter is None or not dates:
             return
-        await self._cache_slice_deleter({(location, camera, date) for date in dates})
+        for date in dates:
+            self._slices_pending[(location, camera, date)] = False
+        await self._slice_writes.flush(CACHE_WAIT_SECONDS)
+
+    async def _write_pending_slices(self) -> None:
+        # Until nothing is left, so slices queued while this was writing (or
+        # hung) go out as it finishes.
+        while self._slices_pending:
+            pending, self._slices_pending = self._slices_pending, {}
+            deletes = {key for key, keep in pending.items() if not keep}
+            writes = {key for key, keep in pending.items() if keep}
+            if deletes and self._cache_slice_deleter is not None:
+                await self._cache_slice_deleter(deletes)
+            if writes and self._cache_slice_writer is not None:
+                await self._cache_slice_writer(writes)
+
+    async def _rewrite_cache(self) -> None:
+        if self._cache_writer is not None:
+            await self._cache_writer()
+            log.info("cache.written")
 
     async def _warm_metadata(self, location: str, camera: str) -> None:
         """Pre-fetch recent metadata for a camera once its recent scan is done.
