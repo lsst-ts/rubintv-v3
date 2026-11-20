@@ -32,6 +32,9 @@ without waiting for the next change.
 
 Messages for a camera are hints, not data: they name what changed (a date's
 channel data, its metadata.json) and the client fetches it over REST.
+
+A connection with nothing to carry is sent a heartbeat every
+``HEARTBEAT_SECONDS``, so a page that hears nothing knows its socket is dead.
 """
 
 from __future__ import annotations
@@ -60,6 +63,12 @@ _CHANGE_TO_TOPIC = {
     "detectorStatus": "detectors",
     "controlReadback": "admin",
 }
+
+# How long a connection may carry nothing before the server sends a heartbeat
+# frame. A page cannot see the protocol's own pings, so without this a socket
+# that died without closing looks the same as a quiet night; the page
+# reconnects once it has heard nothing for a little over two of these.
+HEARTBEAT_SECONDS = 20.0
 
 
 class WsService:
@@ -174,7 +183,10 @@ class WsService:
 
     async def _send_loop(self, conn: Connection) -> None:
         while True:
-            msg = await conn.queue.get()
+            try:
+                msg = await asyncio.wait_for(conn.queue.get(), HEARTBEAT_SECONDS)
+            except TimeoutError:
+                msg = ServerMessage(type="heartbeat")
             payload = msg.model_dump_json()
             await conn.socket.send_text(payload)
             size = len(payload.encode())

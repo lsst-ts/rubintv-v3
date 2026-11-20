@@ -60,6 +60,9 @@ ServerMessageType = Literal[
     "detectorStatus",
     "controlReadback",
     "calendarUpdate",
+    # Sent on a connection that has had nothing else to carry for a while, so
+    # the page can tell a quiet night from a dead socket (see ws/handler.py).
+    "heartbeat",
     "error",
 ]
 

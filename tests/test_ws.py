@@ -441,6 +441,29 @@ def test_ws_frames_from_a_page_loaded_before_the_stream_went_are_harmless(
         assert ws.receive_json()["type"] == "controlReadback"
 
 
+def test_ws_quiet_connection_is_sent_heartbeats(
+    ws_client: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A page can't see the protocol's own pings, so a connection with nothing
+    # to carry is sent heartbeats: silence then means the socket is dead.
+    # Real frames still get through between them.
+    monkeypatch.setattr(handler_mod, "HEARTBEAT_SECONDS", 0.01)
+    client, _ = ws_client
+    with client.websocket_connect("/ws") as ws:
+        assert ws.receive_json() == {
+            "type": "heartbeat",
+            "location": None,
+            "camera": None,
+            "date": None,
+            "data": None,
+            "message": None,
+        }
+        ws.send_json({"action": "subscribe", **CAMERA_SUB})
+        while (msg := ws.receive_json())["type"] == "heartbeat":
+            pass
+        assert msg["type"] == "channelData"
+
+
 async def test_ws_service_stop_before_start_is_a_no_op() -> None:
     # Shutdown can run after a startup that failed before the pump began.
     service = WsService(EventStore(), None, None)  # type: ignore[arg-type]

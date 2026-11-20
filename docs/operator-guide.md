@@ -224,7 +224,7 @@ session can be measured without a profiler:
 | Event | Fields | What it measures |
 |---|---|---|
 | `http.request` | `method`, `path`, `status`, `duration_ms`, `bytes`, `client`, `forwarded_for`, `user_agent` | every REST/proxy request: time to response headers, uncompressed body size (`null` for a chunked stream; the compressed size for a whole metadata document, which is sent from a stored compressed copy) |
-| `ws.frame.sent` | `type`, `bytes`, `camera`, `date` | every WebSocket frame put on the wire |
+| `ws.frame.sent` | `type`, `bytes`, `camera`, `date` | every WebSocket frame put on the wire, including the `heartbeat` a connection with nothing else to carry is sent every 20 s |
 | `metadata.fetch` | `rows`, `bytes`, `requests`, `s3_ms`, `parse_ms` | each metadata.json read from S3 (a new or rewritten file; an unchanged one costs a HEAD and logs nothing): download time against parse time. `info` when it took a second or more |
 | `ws.disconnect` | `frames_sent`, `bytes_sent` | a connection's lifetime totals |
 | `metadata.compress` | `bytes`, `gzipped_bytes`, `duration_ms` | each whole metadata document gzipped, once per version; a page's first open of a night waits for the fetch and then this |
