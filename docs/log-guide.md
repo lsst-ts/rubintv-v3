@@ -256,7 +256,7 @@ default) so a restart is warm.
 | `ws.client.slow` | warning | A browser's send queue was full, so a message to it was dropped. A slow or stalled client. |
 | `ws.pump.fan_out.error` | error | A change couldn't be sent to subscribers; the pump carries on with the next. |
 | `ws.frame.recv` | debug | A request from a browser: `subscribe` or `unsubscribe`. |
-| `ws.frame.sent` | debug | A frame sent: `type`, `bytes`. |
+| `ws.frame.sent` | debug | A frame sent: `type`, `bytes`. A connection with nothing else to carry is sent a `heartbeat` every 20 s, which is how a page tells a quiet night from a dead socket. |
 | `bus.subscriber.slow` | warning | An internal subscriber's queue was full, so a change was dropped for it. |
 
 ### Redis (cluster status and controls)
