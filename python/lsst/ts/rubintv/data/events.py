@@ -71,8 +71,10 @@ class ObjectKind(StrEnum):
 class ObjectEvent:
     """A normalised object change from a ``DataSource``.
 
-    ``etag`` and ``size`` are optional and currently unset by ``S3Poller``:
-    the store indexes presence only, so it does not look at them.
+    ``etag`` is what the listing reported, if anything. The store looks at
+    it only for objects rewritten in place (``metadata.json`` and the night
+    report); everything else is indexed by presence. ``size`` is unset by
+    ``S3Poller`` and unused.
     """
 
     kind: ObjectKind

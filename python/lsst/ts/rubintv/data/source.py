@@ -36,8 +36,11 @@ That statelessness is deliberate. The previous design cached each prefix's
 last listing to diff against, which meant retaining every object key in the
 bucket — gigabytes, and unbounded in the bucket's size — purely to answer
 "did this change?". It doesn't need answering: the store already knows what
-it holds, and an object's content changing is invisible to a presence index
-anyway (the browser revalidates media against S3 by ETag on its own).
+it holds. For the few objects the producer rewrites in place (a date's
+``metadata.json`` and its night report) the store keeps the ETag each
+listing reports and compares the next one with it. A channel frame or movie
+replaced under its own key is not noticed here: a browser holding it asks
+again only when its cached copy expires (see ``api/proxy.py``).
 """
 
 from __future__ import annotations
@@ -123,7 +126,8 @@ class S3Poller:
         """Keys under ``prefix`` with their ETags.
 
         The ETag is free (it is on every listing entry) and is what lets the
-        store notice a rewritten ``metadata.json``, whose key never changes.
+        store notice a rewritten ``metadata.json`` or night-report object,
+        whose keys never change.
         """
         client: S3Client = self._client_for(location)
         paginator = client.get_paginator("list_objects_v2")

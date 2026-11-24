@@ -2912,13 +2912,25 @@
           "filename": {
             "type": "string",
             "title": "Filename"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "type": "object",
         "required": [
           "key",
           "group",
-          "filename"
+          "filename",
+          "version"
         ],
         "title": "PlotOut"
       },

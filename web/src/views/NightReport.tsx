@@ -137,8 +137,10 @@ function PlotPanel({
   // plot should survive that unless it has left the report.
   const [enlargedKey, setEnlargedKey] = useState<string | null>(null);
   const enlarged = plots.find((p) => p.key === enlargedKey);
+  // The version makes a redrawn plot a new URL, so a live refresh reloads
+  // the plots that changed and leaves the rest alone.
   const plotUrl = (p: Plot) =>
-    api.nightReportPlotUrl(location, camera, date, p.group, p.filename);
+    api.nightReportPlotUrl(location, camera, date, p.group, p.filename, p.version);
 
   return (
     <div className="nr-plot-grid">
@@ -211,7 +213,8 @@ function buildTabs(data: NightReportOut): Tab[] {
 // from the design's NightReportView). Everything a user sees calls it the
 // Nightly Summary, URLs included (/nightly-summary, page and API); the code and
 // the bucket keep night report. Live during the night via the nightReport
-// topic.
+// topic, which the server sends for each rewrite of the report's text or
+// plots.
 export function NightReport() {
   const { location = "", camera = "" } = useParams();
   const [params] = useSearchParams();

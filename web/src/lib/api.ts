@@ -163,16 +163,22 @@ export const api = {
 
   // Build a proxied URL for a Nightly Summary plot. The plot key is fully known
   // ({camera}/{date}/night_report/{group}/{filename}), so the dedicated route
-  // GETs it directly rather than resolving by prefix listing.
+  // GETs it directly rather than resolving by prefix listing. `version` is
+  // the plot's from the report: the producer redraws tonight's plots under
+  // the same keys after every exposure, and the browser keeps a URL for an
+  // hour, so the version goes in the URL (the server ignores it) to make a
+  // redrawn plot a new one.
   nightReportPlotUrl: (
     loc: string,
     cam: string,
     date: string,
     group: string,
     filename: string,
+    version?: string | null,
   ) =>
     `${BASE}/api/locations/${enc(loc)}/cameras/${enc(cam)}/nightly-summary/` +
-    `${enc(date)}/plot/${enc(group)}/${enc(filename)}`,
+    `${enc(date)}/plot/${enc(group)}/${enc(filename)}` +
+    (version ? `?v=${enc(version)}` : ""),
 
   // Build a proxied media URL for a per-day artifact. Per-day objects live at
   // `{camera}/{date}/{channel}/{seq}/{filename}.{ext}`, where seq is a word

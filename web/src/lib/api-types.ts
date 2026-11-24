@@ -1078,6 +1078,8 @@ export interface components {
             group: string;
             /** Filename */
             filename: string;
+            /** Version */
+            version: string | null;
         };
         /** ReadyResponse */
         ReadyResponse: {

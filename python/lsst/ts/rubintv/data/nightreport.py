@@ -26,8 +26,9 @@ The store holds the set of night-report object keys (presence); the content
 — is fetched here on demand. Internal naming stays ``night_report`` (mirrors
 the S3 prefix); the UI renders a neutral label.
 
-Historical night reports do not mutate; the current day's can gain/update
-text and plots through the night, so this is fetched live (no long cache).
+Historical night reports do not mutate; the current day's text and plots
+are rewritten under the same keys after every exposure, so the text is read
+from S3 on each request (nothing here caches it).
 """
 
 from __future__ import annotations
