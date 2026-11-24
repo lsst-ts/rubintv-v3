@@ -98,6 +98,11 @@ export interface ShellNav {
   // → ""), so the picker, the table, and the channel views all agree. Only
   // meaningful on a camera route with a per-date view; empty otherwise.
   date: string;
+  // The date a link back into the Table or Channels should carry: `date`,
+  // or null when that is the camera's newest date. A Table URL with no ?date=
+  // follows the newest night; one that names tonight stays on it for good, so
+  // the newest date is never written into a link.
+  linkDate: string | null;
   calendar: CalendarOut | undefined;
   // The dates the picker offers: the calendar's dates (or, on a per-day
   // channel page, that channel's nights), plus the resolved date spliced in if
@@ -233,6 +238,11 @@ export function useShellNav(): ShellNav {
   // place is what lets the picker, the table, and the channel views agree.
   const date = searchParams.get("date") ?? calendarDates[0] ?? "";
 
+  // Compared with the camera's own newest date, also on a per-day channel
+  // page, where `date` ranges over that channel's nights instead.
+  const newestDate = Array.isArray(calendar?.dates) ? calendar.dates[0] : null;
+  const linkDate = date !== "" && date !== newestDate ? date : null;
+
   // The picker must display the date actually in view. A deep-linked date the
   // scanner hasn't indexed yet isn't in the calendar, and a picker whose value
   // matches no option would silently show the newest — so splice it in
@@ -295,6 +305,7 @@ export function useShellNav(): ShellNav {
     hasClusterStatus: locationQ.data?.has_cluster_status ?? false,
     isLoading: locationsQ.isPending,
     date,
+    linkDate,
     calendar,
     pickerDates,
     perDayChannel,

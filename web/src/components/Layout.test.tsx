@@ -321,8 +321,10 @@ test("[ and ] step the day as the stepper buttons do, but not while typing", asy
   expect(next.getAttribute("title")).toBe("Next day with data (])");
   expect(next.getAttribute("aria-keyshortcuts")).toBe("]");
 
+  // Onto the newest day, which the URL leaves unnamed (see the tests of the
+  // Table following the night, below).
   expect(fireEvent.keyDown(document.body, { key: "]" })).toBe(false);
-  await waitFor(() => expect(date()).toContain("date=2026-04-10"));
+  await waitFor(() => expect(date()).toBe(""));
   fireEvent.keyDown(document.body, { key: "[" });
   await waitFor(() => expect(date()).toContain("date=2026-04-08"));
 
@@ -364,6 +366,125 @@ test("[ and ] do nothing in a headerless embed, which has no stepper", async () 
   await screen.findByText("No data for 2026-04-08.");
   expect(fireEvent.keyDown(document.body, { key: "]" })).toBe(true);
   expect(router.state.location.search).toContain("date=2026-04-08");
+});
+
+// A Table with no ?date= in its URL shows the newest night and moves on to the
+// next one when it starts. Naming tonight in the URL would hold the page on
+// tonight, so nothing in the shell writes the newest date into a Table URL.
+function stubFollowingCamera(dates: () => string[]) {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {};
+    if (url.endsWith("/api/locations")) {
+      body = [{ name: "local", title: "Local" }];
+    } else if (/\/cameras\/lsstcam\/calendar$/.test(url)) {
+      body = { dates: dates() };
+    } else if (/\/cameras\/lsstcam$/.test(url)) {
+      body = {
+        name: "lsstcam",
+        title: "LSSTCam",
+        channels: [{ name: "monitor", title: "Monitor", per_day: false }],
+        metadata_columns: {},
+      };
+    } else if (/\/dates\//.test(url)) {
+      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }) as unknown as typeof fetch;
+}
+
+function renderRouterAt(path: string) {
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <LiveProvider>
+        <RouterProvider router={router} />
+      </LiveProvider>
+    </QueryClientProvider>,
+  );
+  return router;
+}
+
+const urlOf = (router: ReturnType<typeof createMemoryRouter>) =>
+  router.state.location.pathname + router.state.location.search;
+
+const nextNightLands = (date: string) =>
+  act(() =>
+    pushLiveMessage({
+      type: "calendarUpdate",
+      location: "local",
+      camera: "lsstcam",
+      date,
+    }),
+  );
+
+test("a trip to Channels and back leaves the Table following the next night", async () => {
+  let dates = ["2026-04-10", "2026-04-08"];
+  stubFollowingCamera(() => dates);
+  const router = renderRouterAt("/local/lsstcam");
+
+  fireEvent.click(await screen.findByRole("link", { name: /^Channels/ }));
+  await waitFor(() => expect(urlOf(router)).toBe("/local/lsstcam/channels"));
+  fireEvent.click(screen.getByRole("link", { name: "Table" }));
+  await waitFor(() => expect(urlOf(router)).toBe("/local/lsstcam"));
+  await screen.findByRole("button", { name: "2026-04-10" });
+
+  // The next night's first data: the Table moves on to it.
+  dates = ["2026-04-11", ...dates];
+  nextNightLands("2026-04-11");
+  await screen.findByRole("button", { name: "2026-04-11" });
+  expect(urlOf(router)).toBe("/local/lsstcam");
+});
+
+test("a link that names the newest night doesn't pass the date on to the tabs", async () => {
+  stubFollowingCamera(() => ["2026-04-10", "2026-04-08"]);
+  renderRouterAt("/local/lsstcam?date=2026-04-10");
+  const channels = await screen.findByRole("link", { name: /^Channels/ });
+  await waitFor(() =>
+    expect(channels.getAttribute("href")).toBe("/local/lsstcam/channels"),
+  );
+  expect(screen.getByRole("link", { name: "Table" }).getAttribute("href")).toBe(
+    "/local/lsstcam",
+  );
+});
+
+test("the tabs keep an earlier night in view", async () => {
+  stubFollowingCamera(() => ["2026-04-10", "2026-04-08"]);
+  renderRouterAt("/local/lsstcam?date=2026-04-08");
+  const channels = await screen.findByRole("link", { name: /^Channels/ });
+  expect(channels.getAttribute("href")).toBe(
+    "/local/lsstcam/channels?date=2026-04-08",
+  );
+  expect(screen.getByRole("link", { name: "Table" }).getAttribute("href")).toBe(
+    "/local/lsstcam?date=2026-04-08",
+  );
+});
+
+test("stepping forward onto the newest night goes back to following", async () => {
+  let dates = ["2026-04-10", "2026-04-08"];
+  stubFollowingCamera(() => dates);
+  // Another param on the URL is kept; only the date goes.
+  const router = renderRouterAt("/local/lsstcam?date=2026-04-08&seq_filter=1-5");
+  const next = await screen.findByRole("button", { name: /Next day with data/ });
+  await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(next);
+  await waitFor(() =>
+    expect(urlOf(router)).toBe("/local/lsstcam?seq_filter=1-5"),
+  );
+  await screen.findByRole("button", { name: "2026-04-10" });
+
+  dates = ["2026-04-11", ...dates];
+  nextNightLands("2026-04-11");
+  await screen.findByRole("button", { name: "2026-04-11" });
+});
+
+test("picking the newest night from Channels opens the Table following it", async () => {
+  stubFollowingCamera(() => ["2026-04-10", "2026-04-08"]);
+  const router = renderRouterAt("/local/lsstcam/channels?date=2026-04-08");
+  const next = await screen.findByRole("button", { name: /Next day with data/ });
+  await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(next);
+  await waitFor(() => expect(urlOf(router)).toBe("/local/lsstcam"));
 });
 
 // AuxTel with one date, 2026-04-10: `config` sets what the camera config says
