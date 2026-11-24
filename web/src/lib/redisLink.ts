@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { roughAge, utcClock } from "./lastPoll";
+import { hasAged, roughAge, utcClock } from "./lastPoll";
 import type { RedisStatus } from "./types";
 
 // Whether the server is reading Redis, and when Redis last answered it.
@@ -90,8 +90,9 @@ export function unansweredSince(link: RedisLink, now: number): string {
     : `since ${utcWhen(link.readAt, now)}`;
 }
 
-/** How long that is, in words; null if the server didn't say. */
+/** How long that is, in words; null if the server didn't say, or it is
+ *  under a second. */
 export function unansweredFor(link: RedisLink, now: number): string | null {
   const from = link.readAt ?? link.changedAt;
-  return from === null ? null : roughAge(now - from);
+  return from === null || !hasAged(now - from) ? null : roughAge(now - from);
 }

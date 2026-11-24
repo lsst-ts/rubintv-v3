@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { roughAge, useNow } from "../lib/lastPoll";
+import { hasAged, roughAge, useNow } from "../lib/lastPoll";
 import { queryKeys } from "../lib/liveQuery";
 import { useLive, useLiveTopic } from "../lib/LiveContext";
 import {
@@ -305,18 +305,20 @@ function Freshness({
       className="cluster-freshness"
       title="When the cluster last wrote any set. It writes one only when it changes, so this stands still while the cluster is quiet, and also if whatever writes it has stopped."
     >
-      Last change {utcWhen(newest, now)} ({roughAge(now - newest)} ago)
+      Last change {utcWhen(newest, now)}
+      {hasAged(now - newest) && ` (${roughAge(now - newest)} ago)`}
     </p>
   );
 }
 
 // How long ago a set was last written, beside its title. An old one is a
 // quiet set or a writer that has stopped: nothing in the data tells them
-// apart, so it is shown plainly and left to the reader.
+// apart, so it is shown plainly and left to the reader. Nothing is shown for
+// a set written this second.
 function SetAge({ name }: { name: string }) {
   const at = useWritten()[name];
   const now = useNow();
-  if (at === undefined) return null;
+  if (at === undefined || !hasAged(now - at)) return null;
   return (
     <span
       className="detector-age"

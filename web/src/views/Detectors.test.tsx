@@ -476,6 +476,28 @@ describe("how fresh the picture is", () => {
     ).toBeDefined();
   });
 
+  test("a set written this second shows its time and no age", async () => {
+    const { send } = openPage();
+    await screen.findByText(AWAITING);
+    send(fresh(READING, BUSY, { sfmSet0: 0.2 }));
+    expect(await screen.findByText("Last change 14:04:59 UTC")).toBeDefined();
+    expect(head("Imaging Worker Set 1").textContent).toBe(
+      "Imaging Worker Set 1",
+    );
+    expect(screen.queryByText(/ago/)).toBeNull();
+
+    // The age appears with the first second.
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(
+      screen.getByText("Last change 14:04:59 UTC (1 s ago)"),
+    ).toBeDefined();
+    expect(
+      within(head("Imaging Worker Set 1")).getByText("1 s ago"),
+    ).toBeDefined();
+  });
+
   test("a set written days ago carries its date", async () => {
     const { send } = openPage();
     await screen.findByText(AWAITING);

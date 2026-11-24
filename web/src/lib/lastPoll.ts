@@ -53,3 +53,9 @@ export function roughAge(ms: number): string {
   if (s < 48 * 3600) return `${Math.floor(s / 3600)} h`;
   return `${Math.floor(s / 86400)} d`;
 }
+
+// True once an age rounds to a second or more: before that there is nothing
+// to say beside a time ("0 s ago" only repeats it).
+export function hasAged(ms: number): boolean {
+  return Math.round(ms / 1000) >= 1;
+}
