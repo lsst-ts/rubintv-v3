@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 421 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 425 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -408,7 +408,8 @@ Safe to skim.
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
-  `914c136`, and the commit that noted the Nightly Summary tab's arrival.
+  `914c136`, `f329047`, and the commit that noted the views that
+  navigation no longer freezes.
 
 ---
 
@@ -562,7 +563,9 @@ out.
 
 ### 35. Location and Channels cards
 (Group 34's `5a78c8e` puts the brand band above the camera groups on a
-single-location deployment's location page.)
+single-location deployment's location page. Group 60 keeps the
+Table/Channels choice below to one browser tab, and refreshes the
+location cards while the page stays open.)
 - `9396183` Hide Previously Used Channels group on USDF Summit
 - `4343548` Border stale Channels cards in the indicative orange
 - `dd0bdc4` Represent each camera card by its primary channel's latest
@@ -1240,6 +1243,44 @@ of them once.
   night-report object, on which those pages already refetch the
   payload: `first_report` in `EventStore.apply`. Later objects and
   rewrites publish `nightReport` alone
+
+### 60. Views that navigation no longer freezes
+The same review found three pages that stopped keeping up because of
+how they were reached, with the data still arriving: a table held on
+tonight's date by a tab click, a table moved to Channels by a choice
+made in another browser tab, and location cards that were fetched
+once. Review `web/src/lib/cameraTabPref.ts`, the `arrival` ref in
+`CameraTable.tsx` and the matching effect in `ChannelBrowser.tsx`;
+`linkDate` in `web/src/lib/useShellNav.ts` with `applyDate` and the
+tab links in `Layout.tsx`; and the query at the top of
+`Location.tsx`. The remembered tab is from `49547f8` and `e5fa4e7`
+(group 35).
+- `69227c0` Keep the Table/Channels choice to the browser tab that
+  made it. The choice was read from localStorage on every render, so
+  a Table on the bare camera URL jumped to Channels at the next live
+  update after another tab picked Channels. Each browser tab now
+  keeps its own in sessionStorage, seeded once from the last tab
+  clicked anywhere. The redirect to Channels is settled once per
+  arrival and only for a link followed inside the app: a camera URL
+  that is loaded, reloaded or come back to with Back opens the view
+  it names, and that view becomes the tab's choice for the next
+  camera
+- `521da2f` Keep a camera table following the newest night across tab
+  clicks. The Table and Channels links carried the date in view, and
+  a Table URL that names a date stays on it, so a trip to Channels
+  and back pinned the table to tonight. The links now carry a date
+  only when it isn't the camera's newest, and picking the newest date
+  clears `?date=`. The Nightly Summary link keeps its date. A link
+  from outside that names the newest night still holds the table on
+  it
+- `1cc850a` Refresh a Location page's camera cards while it stays
+  open. The query never went stale and the page subscribes to no
+  camera topic, so a card's status, date and thumbnail were those of
+  the tab's first visit. They are fetched again on coming back to the
+  page (30 s stale time) and once a minute while it is open and in
+  view, by polling: the live topics are per camera. The clock is
+  re-read each minute for the noon-UTC rollover, and a refresh that
+  fails leaves the cards up
 
 ---
 
