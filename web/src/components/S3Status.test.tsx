@@ -23,6 +23,12 @@ function renderWith(
     s3_last_cycle_seconds: 0.8,
     poll_stalled: false,
     last_poll_age_seconds: 2,
+    redis: {
+      configured: false,
+      connected: false,
+      changed_age_seconds: null,
+      read_age_seconds: null,
+    },
     cameras: [],
     ...status,
   };

@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
+import { roughAge, useNow } from "../lib/lastPoll";
 import { queryKeys } from "../lib/liveQuery";
-import { useLiveTopic } from "../lib/LiveContext";
+import { useLive, useLiveTopic } from "../lib/LiveContext";
+import {
+  unansweredFor,
+  unansweredSince,
+  useRedisLink,
+  utcWhen,
+  type RedisLink,
+} from "../lib/redisLink";
 import { usePageTitle } from "../lib/usePageTitle";
 import { AdminAccessNote } from "../components/AdminAccessNote";
 import { ConfirmButton } from "../components/ConfirmButton";
@@ -38,6 +46,21 @@ interface DetectorCorners {
 }
 type DetectorMap = Record<string, DetectorCorners>;
 
+// When each set was last written (on the tab's clock), by set name: pushed
+// into the cache with the status itself (see applyLiveMessage), and read
+// from there like it.
+const NONE_WRITTEN: Record<string, number> = {};
+function useWritten(): Record<string, number> {
+  const qc = useQueryClient();
+  const key = queryKeys.detectorWritten();
+  const { data } = useQuery<Record<string, number>>({
+    queryKey: key,
+    queryFn: () => qc.getQueryData<Record<string, number>>(key) ?? {},
+    staleTime: Infinity,
+  });
+  return data ?? NONE_WRITTEN;
+}
+
 const SETS = {
   sfmSet0: "Imaging Worker Set 1",
   sfmSet1: "Imaging Worker Set 2",
@@ -68,6 +91,16 @@ export function Detectors() {
   const sets = data ?? {};
   const hasAny = Object.keys(sets).length > 0;
 
+  // How fresh that is. The cluster writes a set only when it changes, and
+  // the page keeps the last picture it was sent, so without these a picture
+  // from before Redis, the server or this tab's connection went away reads
+  // as the cluster now.
+  const written = useWritten();
+  const link = useRedisLink();
+  const { disconnected } = useLive();
+  const redisLost = link !== undefined && link.configured && !link.connected;
+  const frozen = hasAny && (disconnected || redisLost);
+
   // Whether to offer the (site-admin gated) restart controls. The endpoint is
   // server-gated regardless; this just hides buttons a non-admin can't use.
   const { data: adminStatus } = useQuery({
@@ -87,7 +120,7 @@ export function Detectors() {
   };
 
   return (
-    <section className="cluster-status">
+    <section className={"cluster-status" + (frozen ? " is-frozen" : "")}>
       <h1>Cluster Status</h1>
       {adminStatus && !admin && (
         <AdminAccessNote
@@ -95,12 +128,12 @@ export function Detectors() {
           consequence="the worker restart buttons are hidden"
         />
       )}
-      {!hasAny && (
-        <p className="skeleton">
-          Awaiting cluster status. (Requires Redis streams configured for this
-          deployment.)
-        </p>
-      )}
+      <Freshness
+        link={link}
+        hasAny={hasAny}
+        disconnected={disconnected}
+        written={written}
+      />
       {feedback && (
         <p
           role="status"
@@ -190,13 +223,107 @@ export function Detectors() {
 
       <div className="bottom-row">
         <div className="spareworkers-section">
-          <h3>Backlog Workers</h3>
+          <div className="detector-head">
+            <h3>Backlog Workers</h3>
+            <SetAge name="spareWorkers" />
+          </div>
           <Cells payload={sets.spareWorkers} fallbackCount={4} prefix="spareworkers" />
           <RestartButton name="spareWorkers" title="Backlog Workers" onRestart={restart} admin={admin} />
         </div>
         <OtherQueues payload={sets.otherQueues} />
       </div>
     </section>
+  );
+}
+
+// What the picture below is worth, in a line above it.
+//
+// Quiet while all is well: the newest change of any set, as a time. Amber
+// when the picture is no longer being kept up (the server has lost Redis, or
+// this tab the server), with since when. The sentence in the live region
+// holds still while that lasts; the age that grows is beside it, outside.
+function Freshness({
+  link,
+  hasAny,
+  disconnected,
+  written,
+}: {
+  link: RedisLink | undefined;
+  hasAny: boolean;
+  disconnected: boolean;
+  written: Record<string, number>;
+}) {
+  const now = useNow();
+  if (disconnected && hasAny) {
+    return (
+      <p className="cluster-freshness is-stale">
+        <span role="alert">
+          This tab has lost its connection to the server, so the picture below
+          is not being updated.
+        </span>
+      </p>
+    );
+  }
+  if (!link) {
+    return hasAny ? null : <p className="skeleton">Awaiting cluster status.</p>;
+  }
+  if (!link.configured) {
+    return (
+      <p className="skeleton">
+        Cluster status is read from Redis, which is not configured for this
+        deployment.
+      </p>
+    );
+  }
+  if (!link.connected) {
+    const age = unansweredFor(link, now);
+    return (
+      <p className="cluster-freshness is-stale">
+        <span role="alert">
+          The server has had no answer from Redis {unansweredSince(link, now)}
+          {hasAny
+            ? ", so the picture below is the cluster as it was then."
+            : ", so there is no cluster status to show."}{" "}
+          It keeps trying.
+        </span>
+        {age !== null && <span> ({age})</span>}
+      </p>
+    );
+  }
+  if (!hasAny) {
+    return (
+      <p className="skeleton">
+        Awaiting cluster status: Redis is answering, but holds none yet.
+      </p>
+    );
+  }
+  const times = Object.values(written);
+  if (times.length === 0) return null;
+  const newest = Math.max(...times);
+  return (
+    <p
+      className="cluster-freshness"
+      title="When the cluster last wrote any set. It writes one only when it changes, so this stands still while the cluster is quiet, and also if whatever writes it has stopped."
+    >
+      Last change {utcWhen(newest, now)} ({roughAge(now - newest)} ago)
+    </p>
+  );
+}
+
+// How long ago a set was last written, beside its title. An old one is a
+// quiet set or a writer that has stopped: nothing in the data tells them
+// apart, so it is shown plainly and left to the reader.
+function SetAge({ name }: { name: string }) {
+  const at = useWritten()[name];
+  const now = useNow();
+  if (at === undefined) return null;
+  return (
+    <span
+      className="detector-age"
+      title={`Last written at ${utcWhen(at, now)}. A set is written only when it changes.`}
+    >
+      {roughAge(now - at)} ago
+    </span>
   );
 }
 
@@ -253,7 +380,10 @@ function CanvasSection({
 }: SectionProps & { map: DetectorMap; size: "large" | "small" }) {
   return (
     <div className={`detector-section detector-section-${size}`}>
-      <h2 className="detector-title">{title}</h2>
+      <div className="detector-head">
+        <h2 className="detector-title">{title}</h2>
+        <SetAge name={name} />
+      </div>
       <DetectorCanvas map={map} workers={workersOf(payload)} />
       <RestartButton name={name} title={title} onRestart={onRestart} admin={admin} />
     </div>
@@ -270,7 +400,10 @@ function CellsSection({
 }: SectionProps & { fallbackCount: number }) {
   return (
     <div className="step1b-section">
-      <h2 className="detector-title">{title}</h2>
+      <div className="detector-head">
+        <h2 className="detector-title">{title}</h2>
+        <SetAge name={name} />
+      </div>
       <div className="step1b-canvas">
         <Cells payload={payload} fallbackCount={fallbackCount} prefix="step1b" />
       </div>
@@ -343,7 +476,10 @@ function OtherQueues({ payload }: { payload: SetPayload | undefined }) {
   return (
     <div className="other-queues-section">
       <div className="other-queues">
-        <h3>Other Queues</h3>
+        <div className="detector-head">
+          <h3>Other Queues</h3>
+          <SetAge name="otherQueues" />
+        </div>
         <table className="data-table">
           <thead>
             <tr>

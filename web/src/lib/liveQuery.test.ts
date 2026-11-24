@@ -157,4 +157,82 @@ test("site-wide snapshots without a payload store an empty one", () => {
   applyLiveMessage(qc, { type: "controlReadback" });
   expect(qc.getQueryData(queryKeys.detectorStatus())).toEqual({});
   expect(qc.getQueryData(queryKeys.controlReadback())).toEqual({});
+  // Nor do they say anything about Redis, so nothing is recorded of it.
+  expect(qc.getQueryData(queryKeys.detectorWritten())).toEqual({});
+  expect(qc.getQueryData(queryKeys.redisLink())).toBeUndefined();
+});
+
+describe("how fresh the site-wide snapshots are", () => {
+  const NOW = Date.UTC(2026, 10, 24, 14, 5, 0);
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test("ages are placed on the tab's clock as the message arrives", () => {
+    // The server sends ages, not times, so its clock and the tab's needn't
+    // agree.
+    const qc = new QueryClient();
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        detectors: { sfmSet0: {} },
+        ages: { sfmSet0: 90, otherQueues: 0.5 },
+        redis: {
+          configured: true,
+          connected: true,
+          changed_age_seconds: 600,
+          read_age_seconds: 2,
+        },
+      },
+    });
+    expect(qc.getQueryData(queryKeys.detectorWritten())).toEqual({
+      sfmSet0: NOW - 90_000,
+      otherQueues: NOW - 500,
+    });
+    expect(qc.getQueryData(queryKeys.redisLink())).toEqual({
+      configured: true,
+      connected: true,
+      changedAt: NOW - 600_000,
+      readAt: NOW - 2000,
+    });
+  });
+
+  test("either message carries the link, and the later one stands", () => {
+    const qc = new QueryClient();
+    applyLiveMessage(qc, {
+      type: "detectorStatus",
+      data: {
+        redis: {
+          configured: true,
+          connected: true,
+          changed_age_seconds: 600,
+          read_age_seconds: 2,
+        },
+      },
+    });
+    applyLiveMessage(qc, {
+      type: "controlReadback",
+      data: {
+        controls: {},
+        redis: {
+          configured: true,
+          connected: false,
+          changed_age_seconds: 1,
+          read_age_seconds: null,
+        },
+      },
+    });
+    const down = {
+      configured: true,
+      connected: false,
+      changedAt: NOW - 1000,
+      readAt: null,
+    };
+    expect(qc.getQueryData(queryKeys.redisLink())).toEqual(down);
+    // One without it (an older server) leaves that alone.
+    applyLiveMessage(qc, { type: "controlReadback", data: { controls: {} } });
+    expect(qc.getQueryData(queryKeys.redisLink())).toEqual(down);
+  });
 });

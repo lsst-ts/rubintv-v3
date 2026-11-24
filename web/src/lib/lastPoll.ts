@@ -45,10 +45,11 @@ export function utcClock(ms: number): string {
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
-// A rough age in words: "45 s", "12 min", "3 h".
+// A rough age in words: "45 s", "12 min", "3 h", "4 d".
 export function roughAge(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 90) return `${s} s`;
   if (s < 90 * 60) return `${Math.floor(s / 60)} min`;
-  return `${Math.floor(s / 3600)} h`;
+  if (s < 48 * 3600) return `${Math.floor(s / 3600)} h`;
+  return `${Math.floor(s / 86400)} d`;
 }

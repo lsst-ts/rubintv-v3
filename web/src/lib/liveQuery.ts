@@ -6,6 +6,8 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { metadataKey, metadataRewritten } from "./metadata";
+import { redisLinkFrom, redisLinkKey, writtenTimes } from "./redisLink";
+import type { RedisStatus } from "./types";
 
 export interface ServerMessage {
   type: string;
@@ -34,7 +36,19 @@ export const queryKeys = {
   // and read by the Detectors / Admin views with an inert cache-only queryFn.
   detectorStatus: () => ["detectorStatus"] as const,
   controlReadback: () => ["controlReadback"] as const,
+  // How fresh those two are, from the same messages, on this tab's clock:
+  // when each detector set was written, and whether the server is reading
+  // Redis at all (see lib/redisLink).
+  detectorWritten: () => ["detectorWritten"] as const,
+  redisLink: redisLinkKey,
 };
+
+// Both site-wide messages say whether Redis is being read. One without the
+// report (an older server) leaves what the page holds alone.
+function applyRedisLink(qc: QueryClient, msg: ServerMessage, now: number) {
+  const link = redisLinkFrom(msg.data?.redis as RedisStatus | undefined, now);
+  if (link) qc.setQueryData(queryKeys.redisLink(), link);
+}
 
 /** Apply a live message by invalidating the affected cached queries. */
 export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
@@ -44,10 +58,16 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
   // payload travels in `data`. Handle them before the per-camera guard and
   // write straight into the cache slot the view reads.
   if (type === "detectorStatus") {
+    const now = Date.now();
     qc.setQueryData(
       queryKeys.detectorStatus(),
       (msg.data?.detectors as unknown) ?? {},
     );
+    qc.setQueryData(
+      queryKeys.detectorWritten(),
+      writtenTimes(msg.data?.ages as Record<string, number> | undefined, now),
+    );
+    applyRedisLink(qc, msg, now);
     return;
   }
   if (type === "controlReadback") {
@@ -55,6 +75,7 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
       queryKeys.controlReadback(),
       (msg.data?.controls as unknown) ?? {},
     );
+    applyRedisLink(qc, msg, Date.now());
     return;
   }
 

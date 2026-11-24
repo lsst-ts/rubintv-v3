@@ -9,6 +9,13 @@ import {
   useNow,
   utcClock,
 } from "../lib/lastPoll";
+import {
+  redisLinkFrom,
+  unansweredFor,
+  unansweredSince,
+  utcWhen,
+  type RedisLink,
+} from "../lib/redisLink";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { S3Status } from "../components/S3Status";
 import type { CacheEntry, CacheProblem, CameraStatus } from "../lib/types";
@@ -17,6 +24,7 @@ import type { CacheEntry, CacheProblem, CameraStatus } from "../lib/types";
 // per-camera (recent window first, then the full back-catalogue), so this
 // surfaces each camera's two-stage readiness. Distinct from the per-location,
 // admin-gated control-readback page (Admin.tsx): this is unguarded ops info.
+// Its header also reports the server's three links (see the pills below).
 // Polls /status until every camera's full sweep has completed.
 
 type Stage = "pending" | "recent" | "complete";
@@ -292,9 +300,70 @@ function LastPoll({ seconds, slow }: { seconds: number | null; slow: boolean }) 
   );
 }
 
+// Whether the server is reading Redis, which carries the cluster status and
+// the admin controls' readbacks: the third link this page reports on. Every
+// state is shown, a deployment with no Redis included, since quiet here
+// would read as "unknown".
+function RedisPill({ link }: { link: RedisLink }) {
+  const now = useNow();
+  if (!link.configured) {
+    return (
+      <span
+        className="conn conn-closed"
+        role="status"
+        title="No Redis is configured for this deployment, so there is no cluster status and the admin controls are off."
+      >
+        Redis not configured
+      </span>
+    );
+  }
+  if (link.connected) {
+    return (
+      <span
+        className="conn conn-open"
+        role="status"
+        title="The server is reading Redis, which carries the cluster status and the admin controls' readbacks."
+      >
+        Redis connected
+      </span>
+    );
+  }
+  const age = unansweredFor(link, now);
+  return (
+    <span
+      className="conn conn-closed s3-alert"
+      role="alert"
+      title={`The server has had no answer from Redis ${unansweredSince(link, now)}${age === null ? "" : ` (${age})`}. The Cluster Status and Admin pages show what it last said. The server keeps trying, at least twice a minute; check its logs.`}
+    >
+      Redis unreachable
+    </span>
+  );
+}
+
+// When Redis last answered the server: what the Cluster Status and Admin
+// pages are "as of". A few seconds old at most while Redis is connected (the
+// server asks at least that often, and this page asks the server every 5),
+// so it reads like LastPoll's time: amber, with its age, once it has stopped
+// moving. Hidden where there is no Redis, or it has yet to answer.
+function LastRedisRead({ link }: { link: RedisLink }) {
+  const now = useNow();
+  if (!link.configured || link.readAt === null) return null;
+  const age = now - link.readAt;
+  const stale = !link.connected || age > STALE_AFTER_MS;
+  return (
+    <span className="s3-latency" title="When Redis last answered the server">
+      Redis last read:{" "}
+      <span className={stale ? "s3-latency--slow" : undefined}>
+        {utcWhen(link.readAt, now)}
+        {stale && ` (${roughAge(age)} ago)`}
+      </span>
+    </span>
+  );
+}
+
 export function Status() {
   usePageTitle("Scan status");
-  const { data, isPending, isError } = useQuery({
+  const { data, dataUpdatedAt, isPending, isError } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
     // Keep polling while any camera is still completing its full sweep.
@@ -306,6 +375,7 @@ export function Status() {
   });
 
   const groups = byLocation(data?.cameras ?? []);
+  const redis = redisLinkFrom(data?.redis, dataUpdatedAt);
   const cacheMode: CacheMode | null = !data
     ? null
     : !data.cache_enabled
@@ -317,13 +387,14 @@ export function Status() {
   return (
     <section className="scan-status">
       {/* The title, with the page's indicators tucked small to its right, a
-          row of pills: the two links it reports on — the tab's
-          browser↔app-server WebSocket and the server↔bucket S3 poll — then
-          how the server started (the cache mode) and anything wrong with
-          the cache. S3 gets the verbose pill (explicit green when healthy —
-          quiet here would read as "unknown"). Under the row, on a quiet line
-          of its own so it doesn't stretch it, when the last poll cycle
-          succeeded and how long it took (see LastPoll). */}
+          row of pills: the three links it reports on — the tab's
+          browser↔app-server WebSocket, the server↔bucket S3 poll and the
+          server↔Redis readers — then how the server started (the cache mode)
+          and anything wrong with the cache. S3 gets the verbose pill
+          (explicit green when healthy — quiet here would read as "unknown").
+          Under the row, on quiet lines of their own so they don't stretch
+          it, when the last poll cycle succeeded and how long it took (see
+          LastPoll), and when Redis last answered (see LastRedisRead). */}
       <div className="status-top">
         <h1>Scan status</h1>
         <div className="status-signals">
@@ -334,6 +405,11 @@ export function Status() {
             <section className="status-section" aria-label="S3">
               <S3Status verbose />
             </section>
+            {redis && (
+              <section className="status-section" aria-label="Redis">
+                <RedisPill link={redis} />
+              </section>
+            )}
             {cacheMode && (
               <section className="status-section" aria-label="Start-up">
                 <span
@@ -355,6 +431,7 @@ export function Status() {
             }
             slow={data?.s3_slow ?? false}
           />
+          {redis && <LastRedisRead link={redis} />}
         </div>
       </div>
       {isPending && <p className="skeleton">Loading status…</p>}

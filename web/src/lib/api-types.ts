@@ -680,6 +680,8 @@ export interface components {
             is_release: boolean;
             /** Redis Enabled */
             redis_enabled: boolean;
+            /** Redis Connected */
+            redis_connected: boolean;
             /** Cache Enabled */
             cache_enabled: boolean;
             /** Witness Detector Key */
@@ -1238,6 +1240,20 @@ export interface components {
             /** Ready */
             ready: boolean;
         };
+        /**
+         * RedisStatus
+         * @description Whether Redis (cluster status, control readbacks) is being read.
+         */
+        RedisStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Changed Age Seconds */
+            changed_age_seconds: number | null;
+            /** Read Age Seconds */
+            read_age_seconds: number | null;
+        };
         /** StatusResponse */
         StatusResponse: {
             /** Ready */
@@ -1258,6 +1274,7 @@ export interface components {
             poll_stalled: boolean;
             /** Last Poll Age Seconds */
             last_poll_age_seconds: number | null;
+            redis: components["schemas"]["RedisStatus"];
             /** Cameras */
             cameras: components["schemas"]["CameraStatus"][];
         };
