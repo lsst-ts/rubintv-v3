@@ -187,10 +187,25 @@ class EventStore:
                 and change.date is not None
                 and change.date not in self._calendar[loc_cam]
             )
+            # A date's first night-report object changes what its payload
+            # says (``has_night_report``). Pages on the camera topic read
+            # that to offer the Nightly Summary tab and don't hear
+            # ``nightReport``, so it is a data change for them as well. The
+            # last one to go is covered by ``reconcile``.
+            first_report = (
+                change is not None
+                and change.type == "nightReport"
+                and change.date is not None
+                and not self.has_night_report(*loc_cam, change.date)
+            )
             async with self._locks[loc_cam]:
                 altered = self._mutate(event.kind, loc_cam, event)
             if altered and change is not None:
                 changes.add(change)
+                if first_report:
+                    changes.add(
+                        StoreChange("channelData", loc_cam[0], loc_cam[1], change.date)
+                    )
                 if new_date and change.date in self._calendar[loc_cam]:
                     changes.add(
                         StoreChange(

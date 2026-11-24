@@ -691,8 +691,8 @@ async def test_night_report_publishes_when_an_objects_etag_changes() -> None:
     plot = "auxtel/2026-04-10/night_report/Coverage/airmass.png"
     async with bus.subscribe() as stream:
         await store.apply([created(text, etag="t1"), created(plot, etag="p1")])
-        types = {c.type for c in await _collect(bus, 2, stream)}
-        assert types == {"nightReport", "calendarUpdate"}
+        types = {c.type for c in await _collect(bus, 3, stream)}
+        assert types == {"nightReport", "channelData", "calendarUpdate"}
         # Re-listed with the same ETags: silent.
         assert (
             await store.apply([created(text, etag="t1"), created(plot, etag="p1")])
@@ -714,6 +714,29 @@ async def test_night_report_publishes_when_an_objects_etag_changes() -> None:
     idx = store.date_index("local", "auxtel", "2026-04-10")
     assert idx is not None
     assert idx.night_report_etags == {text: "t2", plot: "p3"}
+
+
+async def test_a_dates_first_night_report_object_is_a_data_change_too() -> None:
+    # Pages on the camera topic offer the Nightly Summary tab from the date
+    # payload's ``has_night_report`` and don't hear ``nightReport``, so a
+    # report's arrival has to reach them as a change to the date's data.
+    bus = EventBus()
+    store = EventStore(bus)
+    text = "auxtel/2026-04-10/night_report/auxtel_night_report_2026-04-10_md.json"
+    plot = "auxtel/2026-04-10/night_report/Coverage/airmass.png"
+    async with bus.subscribe() as stream:
+        await store.apply([created("auxtel/2026-04-10/monitor/000001/a.png")])
+        await _collect(bus, 2, stream)  # the frame, and its date
+        await store.apply([created(text, etag="t1")])
+        assert set(await _collect(bus, 2, stream)) == {
+            StoreChange("nightReport", "local", "auxtel", "2026-04-10"),
+            StoreChange("channelData", "local", "auxtel", "2026-04-10"),
+        }
+        # The rest of the report, and a rewrite: the payload says nothing new.
+        await store.apply([created(text, etag="t2"), created(plot, etag="p1")])
+        (change,) = await _collect(bus, 1, stream)
+        assert change.type == "nightReport"
+        assert next(iter(bus._queues)).empty()  # noqa: SLF001
 
 
 async def test_night_report_without_an_etag_publishes_only_its_arrival() -> None:

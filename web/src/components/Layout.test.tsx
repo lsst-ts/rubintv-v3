@@ -4,7 +4,12 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createQueryClient, currentDayObs } from "../lib/queryClient";
 import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
-import { liveSockets, loseLiveConnection, openLiveSockets } from "../test-setup";
+import {
+  liveSockets,
+  loseLiveConnection,
+  openLiveSockets,
+  pushLiveMessage,
+} from "../test-setup";
 import type { CameraOut } from "../lib/types";
 import { tabsForCamera } from "../lib/useShellNav";
 import { routes } from "../routes";
@@ -366,8 +371,10 @@ test("[ and ] do nothing in a headerless embed, which has no stepper", async () 
 // one.
 function stubNightReportCamera(
   config: Partial<CameraOut>,
-  hasNightReport: boolean,
+  hasNightReport: boolean | (() => boolean),
 ) {
+  const has = () =>
+    typeof hasNightReport === "function" ? hasNightReport() : hasNightReport;
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = {};
@@ -389,10 +396,10 @@ function stubNightReportCamera(
         metadata: {},
         channels: {},
         extensions: {},
-        has_night_report: hasNightReport,
+        has_night_report: has(),
       };
     } else if (/\/nightly-summary\//.test(url)) {
-      body = { exists: hasNightReport };
+      body = { exists: has() };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
@@ -429,6 +436,35 @@ test("the nightly summary page keeps its tab on a night without one", async () =
   renderAt("/local/auxtel/nightly-summary?date=2026-04-10");
   const tab = await screen.findByRole("link", { name: "Nightly Summary" });
   expect(tab.getAttribute("aria-current")).toBe("page");
+});
+
+test("the tab appears when the night's first summary lands", async () => {
+  // The Table is on the camera topic and never hears `nightReport`; the
+  // server sends a date's first report as a change to the date's data.
+  let landed = false;
+  stubNightReportCamera(
+    { night_report_prefix: "auxtel_night_reports" },
+    () => landed,
+  );
+  renderAt("/local/auxtel?date=2026-04-10");
+  await screen.findByText("No data for 2026-04-10.");
+  expect(screen.queryByRole("link", { name: "Nightly Summary" })).toBeNull();
+  landed = true;
+  act(() =>
+    pushLiveMessage({
+      type: "channelData",
+      location: "local",
+      camera: "auxtel",
+      date: "2026-04-10",
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getAllByRole("link", { name: "Nightly Summary" })
+        .some((l) => l.classList.contains("tab")),
+    ).toBe(true),
+  );
 });
 
 const AUXTEL = {
