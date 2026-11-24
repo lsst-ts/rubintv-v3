@@ -164,6 +164,11 @@ export function Layout() {
   // grid always shows the newest frame per channel) — picking a date takes the
   // user to that date's Table, which is where the date applies.
   //
+  // Picking the camera's newest date clears ?date= instead of setting it: the
+  // Table with no date in its URL shows that night and moves on to the next
+  // one when it starts, where ?date=<tonight> would hold the page on tonight
+  // for as long as it stays open.
+  //
   // Picking a date (via the picker or the prev/next-day steppers, which both
   // call this) is an inherently Table action, so remember Table as the wanted
   // tab: the next camera the user opens then lands on its Table too, matching
@@ -178,17 +183,19 @@ export function Layout() {
       return;
     }
     setCameraTabPref("table");
+    const newest = d === nav.calendar?.dates?.[0];
     if (nav.activeTab === "table") {
       setParams(
         (prev) => {
           const p = new URLSearchParams(prev);
-          p.set("date", d);
+          if (newest) p.delete("date");
+          else p.set("date", d);
           return p;
         },
         { replace: true },
       );
     } else {
-      navigate(`/${location}/${camera}?date=${d}`);
+      navigate(`/${location}/${camera}` + (newest ? "" : `?date=${d}`));
     }
   };
 
@@ -472,11 +479,16 @@ export function Layout() {
                     const base =
                       `/${location}/${camera}` +
                       (tab.suffix ? `/${tab.suffix}` : "");
-                    // Carry the resolved date into every tab link so switching
+                    // Carry the date in view into every tab link so switching
                     // views keeps the day in view — the fix for returning to the
                     // Table and seeing the newest day instead of the one you
-                    // left. The Nightly Summary link already takes ?date= too.
-                    const to = nav.date ? `${base}?date=${nav.date}` : base;
+                    // left. Not the newest date, though (nav.linkDate): written
+                    // into the link it would stop the Table following the next
+                    // night. The Nightly Summary is the exception: it reads its
+                    // night from ?date= alone.
+                    const linkDate =
+                      tab.id === "nightly-summary" ? nav.date : nav.linkDate;
+                    const to = linkDate ? `${base}?date=${linkDate}` : base;
                     const active = nav.activeTab === tab.id;
                     return (
                       <Link
