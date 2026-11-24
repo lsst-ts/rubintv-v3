@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigationType, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate, currentDayObs } from "../lib/queryClient";
 import { useLive, useLiveTopic } from "../lib/LiveContext";
 import { usePageTitle } from "../lib/usePageTitle";
+import { noteCameraTabShown } from "../lib/cameraTabPref";
 import type { ChannelOut, DatePayload } from "../lib/types";
 import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 
@@ -198,6 +199,14 @@ export function ChannelBrowser() {
   });
 
   usePageTitle(cameraInfo?.title ?? camera, "Channels");
+
+  // Back, Forward or a page load brought this tab to Channels, so Channels is
+  // its choice now, as a click on the tab would have made it (see
+  // lib/cameraTabPref).
+  const arrivedBy = useNavigationType();
+  useEffect(() => {
+    if (arrivedBy === "POP") noteCameraTabShown("channels");
+  }, [arrivedBy, location, camera]);
 
   // The latest day with data drives "latest frame" for every channel.
   const { data: calendar } = useQuery({

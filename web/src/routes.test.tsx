@@ -1745,9 +1745,12 @@ test("camera table shows an empty-state notice, not the table, when a date has n
 
 // The remembered camera-tab preference (rubintv.cameraTab) carries a user's
 // Table/Channels choice to the next camera they open. A camera with a real
-// (non-per-day) channel offers the Channels tab; the default stub's other
-// endpoints stay empty.
+// (non-per-day) channel offers the Channels tab, and the location page has a
+// card for it; the default stub's other endpoints stay empty.
 function stubChannelCamera() {
+  // Each date payload has one more exposure than the last, so a refetch
+  // redraws the table.
+  let payloads = 0;
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = { ok: true };
@@ -1760,22 +1763,147 @@ function stubChannelCamera() {
         channels: [{ name: "monitor", title: "Monitor", per_day: false }],
       };
     } else if (/\/dates\//.test(url)) {
-      body = { per_day: {}, metadata: {}, channels: {}, extensions: {} };
+      payloads += 1;
+      body = {
+        per_day: {},
+        metadata: {},
+        channels: { monitor: Array.from({ length: payloads }, (_, i) => i + 1) },
+        extensions: {},
+      };
+    } else if (/\/api\/locations\/local$/.test(url)) {
+      body = {
+        name: "local",
+        title: "Local",
+        camera_groups: [
+          {
+            label: "Cameras",
+            cameras: [
+              {
+                name: "lsstcam",
+                title: "LSSTCam",
+                online: true,
+                latest_date: "2026-04-10",
+                primary_image: null,
+              },
+            ],
+          },
+        ],
+        has_cluster_status: false,
+      };
     }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   }) as unknown as typeof fetch;
 }
 
+const seqRows = () =>
+  [...document.querySelectorAll("td.seq")].map((td) => td.textContent);
+
+// Open the camera the way a user does, from its card on the location page.
+async function openCameraFromItsCard() {
+  const rendered = renderAt("/local");
+  fireEvent.click(await screen.findByRole("link", { name: /LSSTCam/ }));
+  return rendered;
+}
+
 test("a remembered Channels choice opens the next camera on its Channels tab", async () => {
   localStorage.setItem("rubintv.cameraTab", "channels");
   stubChannelCamera();
-  // Landing on the bare base (Table) route: with the preference set and this
-  // camera offering Channels, we redirect to the Channels tab.
-  const { router } = renderAt("/local/lsstcam");
+  // The card links to the bare base (Table) route: with the preference set
+  // and this camera offering Channels, we redirect to the Channels tab.
+  const { router } = await openCameraFromItsCard();
   await waitFor(() =>
     expect(router.state.location.pathname).toBe("/local/lsstcam/channels"),
   );
   expect(await screen.findByText("Image channels")).toBeDefined();
+  localStorage.removeItem("rubintv.cameraTab");
+});
+
+test("a camera URL that is loaded, not followed, opens on the view it names", async () => {
+  // A bookmark, a reload or a pasted link asks for the Table by its URL, so
+  // the preference doesn't send it to Channels.
+  localStorage.setItem("rubintv.cameraTab", "channels");
+  stubChannelCamera();
+  const { router } = renderAt("/local/lsstcam");
+  await waitFor(() => expect(seqRows()).toEqual(["1"]));
+  expect(router.state.location.pathname).toBe("/local/lsstcam");
+  // The Table is this tab's choice now; what other tabs start from is not
+  // changed by a page merely being loaded.
+  expect(sessionStorage.getItem("rubintv.cameraTab")).toBe("table");
+  expect(localStorage.getItem("rubintv.cameraTab")).toBe("channels");
+  localStorage.removeItem("rubintv.cameraTab");
+});
+
+test("Back from Channels returns to the Table, which the next camera then opens on", async () => {
+  localStorage.removeItem("rubintv.cameraTab");
+  stubChannelCamera();
+  const { router } = await openCameraFromItsCard();
+  fireEvent.click(await screen.findByRole("link", { name: /^Channels/ }));
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/lsstcam/channels"),
+  );
+  // This tab now prefers Channels, and Back still reaches the Table.
+  await act(() => router.navigate(-1));
+  await waitFor(() => expect(seqRows().length).toBeGreaterThan(0));
+  expect(router.state.location.pathname).toBe("/local/lsstcam");
+
+  // Having come back to the Table, the tab opens its next camera there.
+  await act(() => router.navigate("/local"));
+  fireEvent.click(await screen.findByRole("link", { name: /LSSTCam/ }));
+  await waitFor(() => expect(seqRows().length).toBeGreaterThan(0));
+  expect(router.state.location.pathname).toBe("/local/lsstcam");
+  localStorage.removeItem("rubintv.cameraTab");
+});
+
+test("Back to Channels makes it the view the next camera opens on", async () => {
+  localStorage.removeItem("rubintv.cameraTab");
+  stubChannelCamera();
+  const { router } = await openCameraFromItsCard();
+  fireEvent.click(await screen.findByRole("link", { name: /^Channels/ }));
+  await screen.findByText("Image channels");
+  // To the Table by its tab, which picks it; then Back, to Channels.
+  fireEvent.click(screen.getByRole("link", { name: "Table" }));
+  await waitFor(() => expect(seqRows().length).toBeGreaterThan(0));
+  await act(() => router.navigate(-1));
+  await screen.findByText("Image channels");
+
+  await act(() => router.navigate("/local"));
+  fireEvent.click(await screen.findByRole("link", { name: /LSSTCam/ }));
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/local/lsstcam/channels"),
+  );
+  localStorage.removeItem("rubintv.cameraTab");
+});
+
+test("a live-view camera's page is not a Table to come back to", async () => {
+  // All Sky has neither tab; loading it leaves the tab's choice alone.
+  sessionStorage.setItem("rubintv.cameraTab", "channels");
+  stubAllSky();
+  const { container } = renderAt("/local/allsky");
+  await waitFor(() =>
+    expect(container.querySelector(".live-view-media")).not.toBeNull(),
+  );
+  expect(sessionStorage.getItem("rubintv.cameraTab")).toBe("channels");
+});
+
+test("picking Channels in another browser tab doesn't move an open Table", async () => {
+  localStorage.removeItem("rubintv.cameraTab");
+  stubChannelCamera();
+  const { router } = await openCameraFromItsCard();
+  await waitFor(() => expect(seqRows()).toEqual(["1"]));
+
+  // The other tab's choice lands in the storage every tab shares; then a new
+  // exposure redraws this tab's table.
+  localStorage.setItem("rubintv.cameraTab", "channels");
+  act(() =>
+    pushLiveMessage({
+      type: "channelData",
+      location: "local",
+      camera: "lsstcam",
+      date: "2026-04-10",
+    }),
+  );
+  await waitFor(() => expect(seqRows().length).toBe(2));
+  expect(router.state.location.pathname).toBe("/local/lsstcam");
   localStorage.removeItem("rubintv.cameraTab");
 });
 

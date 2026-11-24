@@ -116,6 +116,12 @@ globalThis.WebSocket = StubWebSocket;
 // connection opened by the current render.
 beforeEach(resetLiveSockets);
 
+// Each test is a fresh browser tab as far as the camera-tab preference goes:
+// a tab settles its own choice in sessionStorage the first time a camera page
+// reads it (lib/cameraTabPref), which would otherwise carry into every later
+// test in the file.
+beforeEach(() => sessionStorage.removeItem("rubintv.cameraTab"));
+
 // jsdom implements neither ResizeObserver nor the canvas 2D context. The
 // Cluster Status view's canvas uses both; stub them so the component mounts
 // (the canvas drawing itself isn't asserted in tests — structure is).
