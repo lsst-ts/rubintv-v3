@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 425 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 428 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -376,7 +376,8 @@ Polish and fixes found while iterating on the real phalanx deployment.
 ### 30. Cluster Status: seed from retained stream entries
 Fixes the page sitting blank after an app restart during a quiet period:
 the producer's 0.5s loop is change-gated, so we seed each stream from
-its `maxlen=2` retained entry (XREVRANGE) before tailing.
+its `maxlen=2` retained entry (XREVRANGE) before tailing. (Group 61
+gives each seeded set the age of that entry.)
 - `10c5357` Seed cluster-status streams from last retained entry on
   startup
 - `2a663f3` Add toggleable DEBUG trace for cluster-status data flow
@@ -408,8 +409,8 @@ Safe to skim.
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
-  `914c136`, `f329047`, and the commit that noted the views that
-  navigation no longer freezes.
+  `914c136`, `f329047`, `65c7485`, and the commit that noted Redis's
+  retries and ages.
 
 ---
 
@@ -630,7 +631,8 @@ final `ColumnOrderList` and `useColumnPrefs`.
   `redisDown` flag gates every write consistently; flush-historical stays
   enabled since it clears the disk cache, not Redis)
 - `9b0e699` Reword Redis-off warning now that writes are blocked, not
-  failed
+  failed (group 61 tells an unreachable Redis from an unconfigured
+  one)
 - `d4c2e83` Show full version only on deployed builds; sha+date locally
 - `09517d6` (later) Show each camera's found-image count on the Scan
   Status page, so a sweep making progress reads differently from one
@@ -1281,6 +1283,45 @@ tab links in `Layout.tsx`; and the query at the top of
   view, by polling: the live topics are per camera. The clock is
   re-read each minute for the noon-UTC rollover, and a refresh that
   fails leaves the cards up
+
+### 61. Redis: retried for ever, and its answers given an age
+The same review found that a Redis which was down as the app started
+was never tried again (the supervision from group 32 began only after
+a first successful exchange), that keyspace notifications were set
+once at start-up although Redis forgets them when it restarts, and
+that Cluster Status and the Admin readbacks said nothing of their age.
+Review `_supervise`, `_read`, `_lost`, `_ensure_keyspace_events`,
+`_read_readbacks` and the two reader loops in `data/redis_inputs.py`,
+with `RedisLink` and `DetectorStore.ages` in `data/controls.py` and
+`_site_payload` in `ws/handler.py`. On the page,
+`web/src/lib/redisLink.ts`, then `Freshness` and `SetAge` in
+`Detectors.tsx`, `RedisDown` and `Readback` in `Admin.tsx`, and
+`RedisPill` in `Status.tsx`. The producer writes only on change
+(group 30) and sends no heartbeat, so an old set may be a quiet one or
+a dead producer: the pages give the age and no verdict.
+- `0f42697` Keep retrying Redis, and report how old its answers are.
+  Start-up no longer talks to Redis; each reader retries for as long
+  as the app runs, after 1 s doubling to 30 s, and from 1 s again
+  after 30 s healthy. An outage logs one `redis.unavailable` per
+  reader and one `redis.connected`. The keyspace setting is checked on
+  connect and every 10 s (redis-py can reconnect a subscription with
+  no error raised), adding `K` and `$` to what the server holds
+  instead of overwriting it; the same tick reads the readbacks
+  outright and drops those whose key has gone. The detector reader
+  asks every 5 s and a reply 15 s late counts as a dead connection.
+  `RedisLink` goes out as ages on `detectorStatus` and
+  `controlReadback`, in `/api/health/status` (`redis`) and in
+  `/api/admin/status` (`redis_connected`); each set carries the age
+  of its stream entry. A control write that fails answers 503 with
+  the reason (API artifacts regenerated)
+- `adc473d` Show Redis's link state and the age of what it last said.
+  Cluster Status has a "Last change" line and an age beside each set,
+  and dims the picture under a notice while the server has no answer
+  from Redis. Admin tells "Redis unreachable since ..." from "not
+  configured", labels its values "Last read" and disables the
+  controls. The Status page gains a Redis pill and a "Redis last
+  read" line. Ages are placed on the browser's clock as they arrive,
+  as `lastPoll` does (group 58)
 
 ---
 
