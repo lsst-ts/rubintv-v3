@@ -87,7 +87,9 @@ class ObjectEvent:
 # The kinds of data a StoreChange can concern. Used to scope notification
 # fan-out (a client subscribed to one camera shouldn't hear about another).
 ChangeType = Literal[
-    "channelData",  # structured data / extension info for a (loc, cam, date)
+    # What the date payload reports for a (loc, cam, date): its channels'
+    # seqs and extensions, and whether it has a night report at all.
+    "channelData",
     "metadata",  # metadata.json for a (loc, cam, date)
     "perDay",  # per-day channel artifact for a (loc, cam, date)
     "nightReport",  # night-report content for a (loc, cam, date)
