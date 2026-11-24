@@ -399,6 +399,27 @@ describe("the Redis link", () => {
     );
   });
 
+  test("one lost this second is amber, with no age yet", async () => {
+    // The clock stands still, so the age is none however long the run takes.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      renderWith(
+        [cam({})],
+        redis({ connected: false, changed_age_seconds: 0, read_age_seconds: 0 }),
+      );
+      const pill = await screen.findByRole("alert");
+      expect(pill.getAttribute("title")).toMatch(
+        /no answer from Redis since \d\d:\d\d:\d\d UTC\. /,
+      );
+      const line = screen.getByText(/Redis last read:/);
+      expect(line.querySelector(".s3-latency--slow")?.textContent).toMatch(
+        /^\d\d:\d\d:\d\d UTC$/,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("one that has never answered has no last read to show", async () => {
     renderWith(
       [cam({})],

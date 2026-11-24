@@ -59,4 +59,8 @@ test("a link that is down says since when, and for how long", () => {
 
   // And with no time for that either, no age is claimed.
   expect(unansweredFor({ ...never, changedAt: null }, NOW)).toBeNull();
+
+  // Nor is one of no seconds: it starts counting at the first.
+  expect(unansweredFor({ ...down, readAt: NOW - 400 }, NOW)).toBeNull();
+  expect(unansweredFor({ ...down, readAt: NOW - 1_000 }, NOW)).toBe("1 s");
 });

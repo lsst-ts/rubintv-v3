@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { usePageTitle } from "../lib/usePageTitle";
 import {
+  hasAged,
   roughAge,
   STALE_AFTER_MS,
   useLastPoll,
@@ -355,7 +356,7 @@ function LastRedisRead({ link }: { link: RedisLink }) {
       Redis last read:{" "}
       <span className={stale ? "s3-latency--slow" : undefined}>
         {utcWhen(link.readAt, now)}
-        {stale && ` (${roughAge(age)} ago)`}
+        {stale && hasAged(age) && ` (${roughAge(age)} ago)`}
       </span>
     </span>
   );

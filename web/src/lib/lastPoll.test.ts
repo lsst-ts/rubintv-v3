@@ -1,4 +1,4 @@
-import { roughAge, utcClock } from "./lastPoll";
+import { hasAged, roughAge, utcClock } from "./lastPoll";
 
 test("utcClock is HH:MM:SS in UTC, zero-padded", () => {
   expect(utcClock(Date.UTC(2026, 10, 20, 4, 5, 6))).toBe("04:05:06");
@@ -15,4 +15,11 @@ test("roughAge counts seconds, then minutes, hours and days", () => {
   expect(roughAge(47 * 3_600_000)).toBe("47 h");
   expect(roughAge(48 * 3_600_000)).toBe("2 d");
   expect(roughAge(9.5 * 86_400_000)).toBe("9 d");
+});
+
+test("hasAged is true once roughAge would say a second or more", () => {
+  expect(hasAged(-5)).toBe(false);
+  expect(hasAged(499)).toBe(false);
+  expect(hasAged(500)).toBe(true);
+  expect(hasAged(60_000)).toBe(true);
 });
