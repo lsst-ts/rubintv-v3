@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 428 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 430 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -409,8 +409,8 @@ Safe to skim.
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
-  `914c136`, `f329047`, `65c7485`, and the commit that noted Redis's
-  retries and ages.
+  `914c136`, `f329047`, `65c7485`, `f91afe2`, and the commit that
+  noted the ages left out under a second.
 
 ---
 
@@ -1322,6 +1322,10 @@ a dead producer: the pages give the age and no verdict.
   controls. The Status page gains a Redis pill and a "Redis last
   read" line. Ages are placed on the browser's clock as they arrive,
   as `lastPoll` does (group 58)
+- `1f79ba8` (later) Leave an age out until a second of it has passed:
+  a cluster writing several times a second read "(0 s ago)" on every
+  line. `hasAged` in `lib/lastPoll.ts` gates the "Last change" line's
+  age, each set's, and the unreachable notices'
 
 ---
 
