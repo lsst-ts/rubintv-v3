@@ -38,6 +38,7 @@ from fastapi import APIRouter, Depends, Response, status
 from lsst.ts.rubintv import __version__
 from lsst.ts.rubintv.api.deps import get_app_state
 from lsst.ts.rubintv.data.cache import CACHE_VERSION
+from lsst.ts.rubintv.data.controls import RedisLink
 from lsst.ts.rubintv.state import AppState
 from pydantic import BaseModel
 
@@ -76,6 +77,25 @@ class CameraStatus(BaseModel):
     scans run, so the Status page shows how much each one has found."""
 
 
+class RedisStatus(BaseModel):
+    """Whether Redis (cluster status, control readbacks) is being read."""
+
+    configured: bool
+    """A Redis URL is set. When false the rest says nothing."""
+    connected: bool
+    """Redis is answering every reader. False from startup until it first
+    does, and whenever a reader has failed and not yet got back through; the
+    readers keep trying."""
+    changed_age_seconds: float | None
+    """Seconds since ``connected`` last changed: how long Redis has been
+    read without a break, or how long it has been unreachable."""
+    read_age_seconds: float | None
+    """Seconds, when this was answered, since Redis last answered a reader;
+    ``None`` if it never has. A few seconds while connected (the readers ask
+    at least that often); while not, the age of everything the Cluster
+    Status and Admin pages show."""
+
+
 class StatusResponse(BaseModel):
     ready: bool
     cache_enabled: bool
@@ -112,6 +132,8 @@ class StatusResponse(BaseModel):
     succeeded: how far behind the bucket today's data may be. An age, not a
     time, so the frontend can place it on its own clock whatever the
     server's says. ``None`` before the first cycle completes."""
+    redis: RedisStatus
+    """Whether Redis is being read, and how long ago it last answered."""
     cameras: list[CameraStatus]
     """Per-camera cold-start scan progress, so the frontend can scope the
     'loading' affordance to the camera being viewed."""
@@ -221,6 +243,9 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
         s3_last_cycle_seconds=state.s3_last_cycle_seconds(),
         poll_stalled=state.poll_stalled(),
         last_poll_age_seconds=state.last_poll_age_seconds(),
+        redis=RedisStatus.model_validate(
+            (state.redis.link if state.redis is not None else RedisLink()).report()
+        ),
         cameras=cameras,
     )
 

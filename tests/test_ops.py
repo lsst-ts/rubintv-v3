@@ -128,6 +128,13 @@ def test_status_endpoint_reports_loading() -> None:
         # (null if none has finished yet).
         assert body["poll_stalled"] is False
         assert isinstance(body["last_poll_age_seconds"], (int, float, type(None)))
+        # The test app has no Redis configured, and says so.
+        assert body["redis"] == {
+            "configured": False,
+            "connected": False,
+            "changed_age_seconds": None,
+            "read_age_seconds": None,
+        }
         # Per-camera readiness is present and well-formed for each camera.
         assert isinstance(body["cameras"], list)
         for cam in body["cameras"]:

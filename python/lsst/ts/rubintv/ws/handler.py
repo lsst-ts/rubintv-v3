@@ -42,7 +42,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import WebSocket, WebSocketDisconnect
-from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
+from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore, RedisLink
 from lsst.ts.rubintv.data.events import StoreChange
 from lsst.ts.rubintv.data.store import EventStore
 from lsst.ts.rubintv.logging import get_logger
@@ -79,10 +79,12 @@ class WsService:
         store: EventStore,
         controls: ControlStore,
         detectors: DetectorStore,
+        redis_link: RedisLink | None = None,
     ) -> None:
         self._store = store
         self._controls = controls
         self._detectors = detectors
+        self._redis_link = redis_link if redis_link is not None else RedisLink()
         self.manager = ConnectionManager()
         self._pump_task: asyncio.Task[None] | None = None
 
@@ -133,10 +135,21 @@ class WsService:
         self.manager.publish_to_topic(topic_key, msg)
 
     def _site_payload(self, change_type: str) -> dict[str, object]:
-        """The current site-wide snapshot for a detectors/admin message."""
+        """The current site-wide snapshot for a detectors/admin message.
+
+        Each carries how fresh it is: whether Redis is being read (``redis``,
+        see ``RedisLink.report``) and, for detector sets, how long ago each
+        was written (``ages``). Without them a page can't tell what Redis
+        says now from what it last said before it stopped answering.
+        """
+        redis = self._redis_link.report()
         if change_type == "detectorStatus":
-            return {"detectors": self._detectors.all()}
-        return {"controls": self._controls.all("*")}
+            return {
+                "detectors": self._detectors.all(),
+                "ages": self._detectors.ages(),
+                "redis": redis,
+            }
+        return {"controls": self._controls.all("*"), "redis": redis}
 
     # -- per-connection handling ----------------------------------------
 
@@ -213,7 +226,7 @@ class WsService:
                 conn,
                 ServerMessage(
                     type="detectorStatus",
-                    data={"detectors": self._detectors.all()},
+                    data=self._site_payload("detectorStatus"),
                 ),
             )
             return
@@ -222,7 +235,7 @@ class WsService:
                 conn,
                 ServerMessage(
                     type="controlReadback",
-                    data={"controls": self._controls.all("*")},
+                    data=self._site_payload("controlReadback"),
                 ),
             )
             return

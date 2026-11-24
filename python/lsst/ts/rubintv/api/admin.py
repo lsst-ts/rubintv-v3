@@ -285,6 +285,7 @@ def get_admin_status(
         commit_date=commit_date(),
         is_release=is_release(),
         redis_enabled=state.redis is not None and state.redis.enabled,
+        redis_connected=state.redis is not None and state.redis.link.connected,
         cache_enabled=state.cache_enabled,
         witness_detector_key=state.settings.witness_detector_key,
         is_admin=is_site_admin(state, x_auth_request_user),

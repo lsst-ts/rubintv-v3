@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 import boto3
@@ -187,6 +188,54 @@ def test_ws_detectors_snapshot_and_delta(ws_client) -> None:  # type: ignore[no-
         assert delta["data"]["detectors"]["sfmSet0"]["workers"]["1"] == {
             "status": "busy"
         }
+
+
+def test_ws_detector_and_admin_messages_say_how_fresh_they_are(
+    ws_client: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # What Redis last said is all these pages show, so each message carries
+    # whether Redis is still being read and when each set was written;
+    # without them a picture from before an outage reads as current.
+    client, _ = ws_client
+    state = client.app.state.app_state  # type: ignore[attr-defined]
+    # The stores' clock alone: the event loop runs on the real one.
+    monkeypatch.setattr(
+        "lsst.ts.rubintv.data.controls.time",
+        SimpleNamespace(time=lambda: 1795521700.0, monotonic=lambda: 900.0),
+    )
+    state.detectors.set("sfmSet0", {"workers": {}}, written_at=1795521640.0)
+    state.detectors.set("untimed", {"workers": {}})
+    link = state.redis.link
+    not_configured = {
+        "configured": False,
+        "connected": False,
+        "changed_age_seconds": None,
+        "read_age_seconds": None,
+    }
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe", "topic": "detectors", "location": ""})
+        snap = ws.receive_json()["data"]
+        assert snap["ages"] == {"sfmSet0": 60.0}
+        assert snap["redis"] == not_configured
+        ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
+        assert ws.receive_json()["data"] == {"controls": {}, "redis": not_configured}
+
+        # The readers write the link the handler was given, so a change of
+        # state reaches both pages with the next message.
+        link.configured = True
+        link.connected = True
+        link.changed_at = 300.0
+        link.read_at = 898.0
+        reading = {
+            "configured": True,
+            "connected": True,
+            "changed_age_seconds": 600.0,
+            "read_age_seconds": 2.0,
+        }
+        state.store.bus.publish(StoreChange("detectorStatus", "*", ""))
+        assert ws.receive_json()["data"]["redis"] == reading
+        state.store.bus.publish(StoreChange("controlReadback", "*", ""))
+        assert ws.receive_json()["data"]["redis"] == reading
 
 
 def test_ws_admin_snapshot(ws_client) -> None:  # type: ignore[no-untyped-def]
@@ -355,12 +404,12 @@ def test_ws_admin_change_carries_the_readback(
     state = client.app.state.app_state  # type: ignore[attr-defined]
     with client.websocket_connect("/ws") as ws:
         ws.send_json({"action": "subscribe", "topic": "admin", "location": ""})
-        assert ws.receive_json()["data"] == {"controls": {}}
+        assert ws.receive_json()["data"]["controls"] == {}
         state.controls.set("*", "AOS_READBACK", "tie")
         state.store.bus.publish(StoreChange("controlReadback", "*", ""))
         msg = ws.receive_json()
         assert msg["type"] == "controlReadback"
-        assert msg["data"] == {"controls": {"AOS_READBACK": "tie"}}
+        assert msg["data"]["controls"] == {"AOS_READBACK": "tie"}
 
 
 def test_ws_night_report_topic_signals_without_a_snapshot(

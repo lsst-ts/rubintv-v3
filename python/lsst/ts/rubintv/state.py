@@ -122,7 +122,8 @@ class AppState:
     redis: RedisInputs | None = field(default=None)
     """The Redis input manager (set in the lifespan). Admin control writes and
     the danger-zone flush go through it; ``None``/disabled when no Redis URL is
-    configured, so admin write endpoints report 503."""
+    configured, so admin write endpoints report 503. Its ``link`` says whether
+    a configured Redis is answering."""
     flush_historical: Callable[[], Awaitable[int]] | None = field(default=None)
     """Admin action: clear the disk + in-memory historical cache and trigger a
     cold rescan. Returns the number of disk slices removed. Wired in the

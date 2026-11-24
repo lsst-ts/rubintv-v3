@@ -1716,6 +1716,10 @@
             "type": "boolean",
             "title": "Redis Enabled"
           },
+          "redis_connected": {
+            "type": "boolean",
+            "title": "Redis Connected"
+          },
           "cache_enabled": {
             "type": "boolean",
             "title": "Cache Enabled"
@@ -1747,6 +1751,7 @@
           "commit_date",
           "is_release",
           "redis_enabled",
+          "redis_connected",
           "cache_enabled",
           "witness_detector_key",
           "is_admin",
@@ -3321,6 +3326,49 @@
         ],
         "title": "ReadyResponse"
       },
+      "RedisStatus": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "changed_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed Age Seconds"
+          },
+          "read_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Age Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "connected",
+          "changed_age_seconds",
+          "read_age_seconds"
+        ],
+        "title": "RedisStatus",
+        "description": "Whether Redis (cluster status, control readbacks) is being read."
+      },
       "StatusResponse": {
         "properties": {
           "ready": {
@@ -3366,6 +3414,9 @@
             ],
             "title": "Last Poll Age Seconds"
           },
+          "redis": {
+            "$ref": "#/components/schemas/RedisStatus"
+          },
           "cameras": {
             "items": {
               "$ref": "#/components/schemas/CameraStatus"
@@ -3385,6 +3436,7 @@
           "s3_last_cycle_seconds",
           "poll_stalled",
           "last_poll_age_seconds",
+          "redis",
           "cameras"
         ],
         "title": "StatusResponse"
