@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useNavigationType,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { api, ApiError } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
@@ -13,7 +19,7 @@ import { useColumnPickerWidth } from "../lib/useColumnPickerWidth";
 import { hasImageViewer, isDevInstance } from "../lib/links";
 import { usePageTitle } from "../lib/usePageTitle";
 import { tabsForCamera } from "../lib/useShellNav";
-import { getCameraTabPref } from "../lib/cameraTabPref";
+import { getCameraTabPref, noteCameraTabShown } from "../lib/cameraTabPref";
 import { DownloadMetadata } from "../components/DownloadMetadata";
 import {
   ColumnsIcon,
@@ -75,6 +81,22 @@ export function CameraTable() {
   const { location = "", camera = "" } = useParams();
   const [params, setParams] = useSearchParams();
 
+  // Whether to hand this visit to the Channels tab (see the redirect below),
+  // settled once on arriving at a camera and kept for the visit. Asked again
+  // on each render it would follow whatever came later: the table's own URL
+  // rewrites (the seq filter's, on mount) count as navigations too.
+  const arrivedBy = useNavigationType();
+  const arrival = useRef({ at: "", byHistory: false, wantsChannels: false });
+  if (arrival.current.at !== `${location}/${camera}`) {
+    const byHistory = arrivedBy === "POP";
+    arrival.current = {
+      at: `${location}/${camera}`,
+      byHistory,
+      wantsChannels:
+        !byHistory && getCameraTabPref() === "channels" && !params.toString(),
+    };
+  }
+
   const { data: cameraInfo, isPending: cameraPending } = useQuery({
     queryKey: queryKeys.camera(location, camera),
     queryFn: () => api.camera(location, camera),
@@ -96,6 +118,15 @@ export function CameraTable() {
     !cameraInfo?.live_view && (cameraInfo?.title ?? camera),
     !cameraInfo?.live_view && date,
   );
+
+  // Back, Forward or a page load brought this tab to the Table, so the Table
+  // is its choice now: the next camera opened from here lands on its Table
+  // too. A live-view camera's page is not a Table (see the hand-off to
+  // <AllSky> below).
+  const isTable = cameraInfo !== undefined && !cameraInfo.live_view;
+  useEffect(() => {
+    if (arrival.current.byHistory && isTable) noteCameraTabShown("table");
+  }, [location, camera, isTable]);
 
   // Live updates for this camera (drives table, metadata and calendar
   // refetches).
@@ -388,9 +419,10 @@ export function CameraTable() {
   // open a newly-visited camera on its Channels tab too (the tab is otherwise
   // URL-derived, so the base route always lands on Table). Only from the bare
   // base route — never a deep link that already carries a seq filter or other
-  // params the redirect would drop.
-  const wantsChannels = getCameraTabPref() === "channels" && !params.toString();
-  if (wantsChannels) {
+  // params the redirect would drop. And only on a link followed into the
+  // camera: a page load, a reload, or Back and Forward ("POP") asked for this
+  // URL as it stands, and Back from Channels has to be able to reach the Table.
+  if (arrival.current.wantsChannels) {
     // Hold the table render until the config resolves rather than flashing it
     // and then navigating away: only the config tells us whether this camera
     // actually offers a Channels tab to redirect to.
