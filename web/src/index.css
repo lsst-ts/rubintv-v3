@@ -3003,6 +3003,23 @@ a.seq-arrow:hover { background: var(--line-soft); }
 
 /* ── Cluster Status (detectors) ────────────────────────────────────────── */
 .cluster-status h1 { margin-bottom: 0.5rem; }
+/* The line under the title saying how fresh the picture is: quiet while it
+   is being kept up, amber once it isn't (see Freshness). */
+.cluster-freshness {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.75rem;
+}
+.cluster-freshness.is-stale { color: var(--warn); font-weight: 600; }
+/* A picture that is no longer being kept up is drawn back, so it can't be
+   taken at a glance for the cluster now. */
+.cluster-status.is-frozen .main-detectors,
+.cluster-status.is-frozen .aos-detectors,
+.cluster-status.is-frozen .bottom-row {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
 
 /* Status colours — shared by legend swatches and the cell grids. The canvas
    sets fill colours directly from getStatusColor(). Ported from the design's
@@ -3091,6 +3108,24 @@ a.seq-arrow:hover { background: var(--line-soft); }
   font-size: 0.95rem;
   margin: 0 0 0.6rem;
   font-weight: 600;
+}
+/* A set's title with, to its right, how long ago the set was written. The
+   age drops under the title where the card is too narrow for both. */
+.detector-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 0.5rem;
+  margin: 0 0 0.6rem;
+}
+.detector-head > h2,
+.detector-head > h3 { margin: 0; }
+.detector-age {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
 /* Grid items now size via the row templates above; the old flex hints are
    kept only as harmless fallbacks. */
@@ -3263,6 +3298,8 @@ a.seq-arrow:hover { background: var(--line-soft); }
   color: var(--ink-soft);
   margin: 0 0 0.5rem;
 }
+/* Read before Redis stopped answering (the header says since when). */
+.admin-readback.is-stale { color: var(--warn); }
 .admin-note {
   font-size: 0.8rem;
   color: var(--ink-soft);

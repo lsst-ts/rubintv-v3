@@ -1,9 +1,16 @@
 import { useRef, useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
+import { useNow } from "../lib/lastPoll";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE } from "../lib/queryClient";
 import { useLiveTopic } from "../lib/LiveContext";
+import {
+  unansweredFor,
+  unansweredSince,
+  useRedisLink,
+  type RedisLink,
+} from "../lib/redisLink";
 import { usePageTitle } from "../lib/usePageTitle";
 import { useDismiss } from "../lib/useDismiss";
 import { AdminAccessNote } from "../components/AdminAccessNote";
@@ -88,12 +95,29 @@ export function Admin() {
     staleTime: STALE.config,
   });
 
+  // Whether Redis can be written to and read back: "off" (none configured)
+  // or "down" (configured, but not answering the server). The live link says
+  // so as it changes; until its first message the status fetched with the
+  // page does, and until that resolves we optimistically assume it is up.
+  const link = useRedisLink();
+  const redis: "up" | "off" | "down" = link
+    ? !link.configured
+      ? "off"
+      : link.connected
+        ? "up"
+        : "down"
+    : !status || (status.redis_enabled && status.redis_connected)
+      ? "up"
+      : status.redis_enabled
+        ? "down"
+        : "off";
   // Every control action except "Flush historical cache" writes to Redis and
-  // 503s when it isn't configured, so disable them all together (rather than
-  // letting some fire into an error and others sit inert). The header's "Redis
-  // not configured" warning says why they're greyed. Until /admin/status
-  // resolves we optimistically leave them enabled.
-  const redisDown = status ? !status.redis_enabled : false;
+  // 503s when it can't, so disable them all together (rather than letting
+  // some fire into an error and others sit inert). The header's warning says
+  // why they're greyed.
+  const redisDown = redis !== "up";
+  // The values shown were read before Redis stopped answering.
+  const stale = redis === "down";
   // A non-admin's writes would only 403, so disable every action and say why
   // up front rather than after a click. Same optimism until status resolves.
   const locked = status ? !status.is_admin : false;
@@ -136,12 +160,13 @@ export function Admin() {
               : `${status.git_sha} · ${status.commit_date}`
             : ""}
           {status?.user && <span> · signed in as {status.user}</span>}
-          {status && !status.redis_enabled && (
+          {redis === "off" && (
             <span className="admin-warn" role="alert">
               {" "}
               · Redis not configured — control writes are not possible
             </span>
           )}
+          {redis === "down" && <RedisDown link={link} />}
         </span>
       </header>
 
@@ -163,6 +188,7 @@ export function Admin() {
             key={menu.key}
             menu={menu}
             value={readbackOf(menu.key)}
+            stale={stale}
             disabled={redisDown || locked}
             send={(value) => api.setControl(menu.key, value)}
           />
@@ -177,6 +203,7 @@ export function Admin() {
 
         <WitnessBox
           value={status ? readbackOf(status.witness_detector_key) : undefined}
+          stale={stale}
           disabled={redisDown || locked}
           send={(value) => api.setWitnessDetector(value)}
         />
@@ -213,6 +240,38 @@ export function Admin() {
   );
 }
 
+// The header's warning while a configured Redis isn't answering the server:
+// writes can't be made, and the "Current" values are what was last read.
+// The sentence in the live region holds still while that lasts; the age
+// that grows is beside it, outside. Without the live link (the status
+// fetched with the page said so) there is no time to give.
+function RedisDown({ link }: { link: RedisLink | undefined }) {
+  const now = useNow();
+  const age = link ? unansweredFor(link, now) : null;
+  return (
+    <span className="admin-warn">
+      {" "}
+      ·{" "}
+      <span role="alert">
+        Redis unreachable{link ? ` ${unansweredSince(link, now)}` : ""} —
+        control writes are not possible, and the current values are as last
+        read
+      </span>
+      {age !== null && ` (${age})`}
+    </span>
+  );
+}
+
+// A control's value as the analysis side last acknowledged it. `stale`: it
+// was read before Redis stopped answering, so it may no longer be so.
+function Readback({ value, stale }: { value: string | undefined; stale: boolean }) {
+  return (
+    <p className={"admin-readback" + (stale ? " is-stale" : "")}>
+      {stale ? "Last read" : "Current"}: <strong>{value ?? "—"}</strong>
+    </p>
+  );
+}
+
 // A configured control menu: the current readback (or a placeholder), and a
 // list of the menu's values that sends one as soon as it's picked, as V2's
 // did. Not a <select>: on Windows and Linux arrowing through a closed select
@@ -220,11 +279,13 @@ export function Admin() {
 function MenuBox({
   menu,
   value,
+  stale,
   send,
   disabled = false,
 }: {
   menu: AdminMenuOut;
   value: string | undefined;
+  stale: boolean;
   send: (value: string) => Promise<AdminActionOut>;
   disabled?: boolean;
 }) {
@@ -243,9 +304,7 @@ function MenuBox({
   return (
     <div className="admin-box">
       <h2>{menu.title}</h2>
-      <p className="admin-readback">
-        Current: <strong>{value ?? "—"}</strong>
-      </p>
+      <Readback value={value} stale={stale} />
       <div className="admin-picker" ref={ref}>
         <button
           type="button"
@@ -334,10 +393,12 @@ function ArbitraryBox({
 // Send a value to the witness-detector control key.
 function WitnessBox({
   value,
+  stale,
   send,
   disabled = false,
 }: {
   value: string | undefined;
+  stale: boolean;
   send: (value: string) => Promise<AdminActionOut>;
   disabled?: boolean;
 }) {
@@ -346,9 +407,7 @@ function WitnessBox({
   return (
     <div className="admin-box">
       <h2>Witness Detector</h2>
-      <p className="admin-readback">
-        Current: <strong>{value ?? "—"}</strong>
-      </p>
+      <Readback value={value} stale={stale} />
       <div className="admin-row">
         <input
           aria-label="witness detector value"

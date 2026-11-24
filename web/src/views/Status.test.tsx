@@ -30,6 +30,12 @@ function renderWith(
     s3_last_cycle_seconds: 0.8,
     poll_stalled: false,
     last_poll_age_seconds: 2,
+    redis: {
+      configured: false,
+      connected: false,
+      changed_age_seconds: null,
+      read_age_seconds: null,
+    },
     cameras,
     ...over,
   };
@@ -345,4 +351,79 @@ test("hides the last-poll line before the first cycle completes", async () => {
   });
   await screen.findByText(/Scan status/);
   expect(screen.queryByText(/Last poll:/)).toBeNull();
+});
+
+describe("the Redis link", () => {
+  // The third link the page reports on: whether the server is reading Redis,
+  // which the Cluster Status and Admin pages show the last word of.
+  const redis = (over: Partial<StatusResponse["redis"]>) => ({
+    redis: {
+      configured: true,
+      connected: true,
+      changed_age_seconds: 3600,
+      read_age_seconds: 2,
+      ...over,
+    },
+  });
+
+  test("a deployment without Redis says so, quietly", async () => {
+    renderWith([cam({})]);
+    const pill = await screen.findByText("Redis not configured");
+    expect(pill.getAttribute("role")).toBe("status");
+    expect(pill.className).toBe("conn conn-closed");
+    expect(screen.queryByText(/Redis last read/)).toBeNull();
+  });
+
+  test("a Redis that is answering shows green, with when it last did", async () => {
+    renderWith([cam({})], redis({}));
+    const pill = await screen.findByText("Redis connected");
+    expect(pill.className).toBe("conn conn-open");
+    const line = screen.getByText(/Redis last read:/);
+    expect(line.textContent).toMatch(/^Redis last read: \d\d:\d\d:\d\d UTC$/);
+    expect(line.querySelector(".s3-latency--slow")).toBeNull();
+  });
+
+  test("a Redis that has stopped answering is an alert, dated", async () => {
+    renderWith(
+      [cam({})],
+      redis({ connected: false, changed_age_seconds: 290, read_age_seconds: 300 }),
+    );
+    const pill = await screen.findByRole("alert");
+    expect(pill.textContent).toBe("Redis unreachable");
+    expect(pill.getAttribute("title")).toMatch(
+      /no answer from Redis since \d\d:\d\d:\d\d UTC \(5 min\)\. .* keeps trying/,
+    );
+    const line = screen.getByText(/Redis last read:/);
+    expect(line.querySelector(".s3-latency--slow")?.textContent).toMatch(
+      /UTC \(5 min ago\)$/,
+    );
+  });
+
+  test("one that has never answered has no last read to show", async () => {
+    renderWith(
+      [cam({})],
+      redis({ connected: false, changed_age_seconds: 40, read_age_seconds: null }),
+    );
+    const pill = await screen.findByRole("alert");
+    expect(pill.getAttribute("title")).toMatch(
+      /no answer from Redis since the server started \(40 s\)/,
+    );
+    expect(screen.queryByText(/Redis last read/)).toBeNull();
+  });
+
+  test("a last read that has stopped moving is amber even while connected", async () => {
+    // The server says connected but its last answer from Redis is old: the
+    // age is what the page goes by.
+    renderWith([cam({})], redis({ read_age_seconds: 120 }));
+    const line = await screen.findByText(/Redis last read:/);
+    expect(line.querySelector(".s3-latency--slow")?.textContent).toMatch(
+      /2 min ago/,
+    );
+  });
+
+  test("a server that doesn't say (an older one) shows nothing of Redis", async () => {
+    renderWith([cam({})], { redis: undefined });
+    await screen.findByText(/S3 connected/);
+    expect(screen.queryByText(/Redis/)).toBeNull();
+  });
 });

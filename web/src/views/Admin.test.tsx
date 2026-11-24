@@ -19,11 +19,13 @@ let posts: { url: string; body: unknown }[] = [];
 // `access` is what /admin/status says about the caller: a site admin signed
 // in as "tester" unless overridden (user null: no login reached the app).
 // `readbacks` is what /admin/controls returns: full *_READBACK key -> value.
+// `redisConnected` is whether a configured Redis is answering the server.
 function stub(
   redisEnabled = true,
   isRelease = true,
   access: { isAdmin?: boolean; user?: string | null } = {},
   readbacks: Record<string, string> = {},
+  redisConnected = true,
 ) {
   posts = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -43,6 +45,7 @@ function stub(
         commit_date: "2026-07-02",
         is_release: isRelease,
         redis_enabled: redisEnabled,
+        redis_connected: redisEnabled && redisConnected,
         cache_enabled: true,
         witness_detector_key: "RUBINTV_CONTROL_WITNESS_DETECTOR",
         is_admin: access.isAdmin ?? true,
@@ -512,4 +515,123 @@ test("a box shows that a send is under way until the reply comes", async () => {
     } as Response),
   );
   expect((await statusIn("AOS Pipeline")).textContent).toMatch(stamped("Sent TIE"));
+});
+
+describe("a configured Redis that isn't answering", () => {
+  // "Redis not configured" used to cover this too (and a Redis lost after
+  // startup showed nothing at all): the controls would fail, and the values
+  // beside them are no longer being read.
+  const NOW = Date.UTC(2026, 10, 24, 14, 5, 0);
+  const link = (redis: Record<string, unknown>, controls = {}) => ({
+    type: "controlReadback",
+    data: { controls, redis },
+  });
+  const DOWN = {
+    configured: true,
+    connected: false,
+    changed_age_seconds: 170,
+    read_age_seconds: 180,
+  };
+  const UP = {
+    configured: true,
+    connected: true,
+    changed_age_seconds: 5,
+    read_age_seconds: 1,
+  };
+  const disabled = (name: string | RegExp) =>
+    (screen.getByRole("button", { name }) as HTMLButtonElement).disabled;
+
+  test("the status fetched with the page disables the controls and says why", async () => {
+    stub(true, true, {}, { RUBINTV_CONTROL_AOS_PIPELINE_READBACK: "DANISH" }, false);
+    renderAdmin(createQueryClient());
+    const alert = await screen.findByRole("alert");
+    // No time to give yet: that comes with the live link.
+    expect(alert.textContent).toBe(
+      "Redis unreachable — control writes are not possible, and the current values are as last read",
+    );
+    expect(screen.queryByText(/not configured/)).toBeNull();
+    await waitFor(() => expect(disabled("Flush Redis")).toBe(true));
+    expect(disabled("Reset Head Node")).toBe(true);
+    expect(disabled(/Send a value/)).toBe(true);
+    expect(disabled("Flush historical cache")).toBe(false);
+    // The values are marked as what was last read, not as current.
+    const box = await boxFor("AOS Pipeline");
+    await within(box).findByText("DANISH");
+    const readback = box.querySelector(".admin-readback")!;
+    expect(readback.textContent).toBe("Last read: DANISH");
+    expect(readback.className).toBe("admin-readback is-stale");
+  });
+
+  test("the live link dates it, and lifts it when Redis is back", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+    try {
+      stub();
+      const qc = createQueryClient();
+      renderAdmin(qc);
+      await screen.findByText(/v3\.0\.0/);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(disabled("Flush Redis")).toBe(false);
+
+      act(() =>
+        applyLiveMessage(
+          qc,
+          link(DOWN, { RUBINTV_CONTROL_AOS_PIPELINE_READBACK: "TIE" }),
+        ),
+      );
+      const alert = await screen.findByRole("alert");
+      const said =
+        "Redis unreachable since 14:02:00 UTC — control writes are not possible, and the current values are as last read";
+      expect(alert.textContent).toBe(said);
+      // The age grows beside the sentence, outside the live region.
+      expect(alert.parentElement!.textContent).toBe(` · ${said} (3 min)`);
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      expect(alert.parentElement!.textContent).toBe(` · ${said} (5 min)`);
+      expect(disabled("Flush Redis")).toBe(true);
+      expect((await boxFor("AOS Pipeline")).textContent).toContain(
+        "Last read: TIE",
+      );
+
+      act(() =>
+        applyLiveMessage(
+          qc,
+          link(UP, { RUBINTV_CONTROL_AOS_PIPELINE_READBACK: "TIE" }),
+        ),
+      );
+      await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+      expect(disabled("Flush Redis")).toBe(false);
+      expect(await currentIn("AOS Pipeline")).toBe("TIE");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("the live link outranks what the page loaded with", async () => {
+    // Loaded while Redis was down; it has since come back.
+    stub(true, true, {}, {}, false);
+    const qc = createQueryClient();
+    renderAdmin(qc);
+    await screen.findByRole("alert");
+    act(() => applyLiveMessage(qc, link(UP)));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(disabled("Flush Redis")).toBe(false);
+
+    // And one that says there is no Redis at all reads as not configured.
+    act(() =>
+      applyLiveMessage(
+        qc,
+        link({
+          configured: false,
+          connected: false,
+          changed_age_seconds: null,
+          read_age_seconds: null,
+        }),
+      ),
+    );
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /Redis not configured/,
+    );
+  });
 });
