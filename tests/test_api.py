@@ -173,6 +173,7 @@ def test_admin_status_reports_version_and_flags(seeded_client: TestClient) -> No
     assert body["is_release"] is False
     # The seeded client has no Redis and no cache dir configured.
     assert body["redis_enabled"] is False
+    assert body["redis_connected"] is False
     assert body["cache_enabled"] is False
     assert body["witness_detector_key"]
     # No X-Auth-Request-User header -> not an admin (the frontend hides admin
@@ -1272,6 +1273,32 @@ def test_admin_actions_write_through_redis(seeded_client: TestClient) -> None:
     resp = seeded_client.post("/api/admin/flush-redis", headers=headers)
     assert resp.status_code == 200
     assert fake.flushed is True
+
+
+def test_status_tells_a_redis_that_is_configured_from_one_that_answers(
+    seeded_client: TestClient,
+) -> None:
+    # "redis_enabled" used to mean "answered once, at startup": a Redis that
+    # was down then read as not configured, and one lost since as fine.
+    state = seeded_client.app.state.app_state  # type: ignore[attr-defined]
+    state.redis._redis = _FakeAdminRedis()  # noqa: SLF001 - test injection
+    link = state.redis.link
+    link.configured = True
+
+    body = seeded_client.get("/api/admin/status").json()
+    assert body["redis_enabled"] is True
+    assert body["redis_connected"] is False
+    redis = seeded_client.get("/api/health/status").json()["redis"]
+    assert redis["configured"] is True
+    assert redis["connected"] is False
+    assert redis["read_age_seconds"] is None
+
+    link.connected = True
+    link.read_at = link.changed_at = time.monotonic()
+    assert seeded_client.get("/api/admin/status").json()["redis_connected"] is True
+    redis = seeded_client.get("/api/health/status").json()["redis"]
+    assert redis["connected"] is True
+    assert 0 <= redis["read_age_seconds"] < 60
 
 
 def test_admin_action_503_when_redis_drops_mid_request(

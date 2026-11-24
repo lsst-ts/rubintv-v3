@@ -79,7 +79,10 @@ comes up without the sub-app and logs why.
   is true when the cycle now running has gone over a minute without
   finishing, and `last_poll_age_seconds` is how long ago a cycle last
   succeeded. Pages show the last as "as of HH:MM:SS UTC" beside the current
-  day's date, amber once it is over 30 s old.
+  day's date, amber once it is over 30 s old. `redis` reports the Redis
+  readers: `configured`, `connected`, how long that has held
+  (`changed_age_seconds`) and how long ago Redis last answered
+  (`read_age_seconds`, a few seconds at most while connected).
 - `GET /api/health/cache` — what the disk cache holds, for the Status page,
   and `problems` with the volume: `not_responding` (a write, or this look at
   it, hasn't returned), `unreadable` (the cache dir or the index in it can't
@@ -102,13 +105,32 @@ A PVC write failure mid-run is non-fatal — caching is best-effort.
 
 ## Redis (optional)
 
-If neither `RUBINTV_REDIS_URL` nor `RA_REDIS_HOST` is set, or the server is unreachable, detector
+If neither `RUBINTV_REDIS_URL` nor `RA_REDIS_HOST` is set, detector
 status and admin control-readback live updates are disabled with a logged
 warning. The rest of the app serves S3 data normally — there is no silent,
-total degradation. Keyspace notifications must be enabled on the Redis
-server for `*_READBACK` updates (`notify-keyspace-events KEA`). The Admin
-page's current values don't depend on them at load: on each (re)connect the
-app reads `K_READBACK` for every menu key and the witness-detector key.
+total degradation.
+
+A Redis that is configured but not answering, at startup or later, is
+retried for as long as the app runs: after 1 s, doubling to 30 s, so one
+that comes back is picked up within half a minute and no restart is needed.
+Until then the Cluster Status and Admin pages say that Redis isn't
+answering and since when: the cluster picture is drawn back, the Admin
+page's values are labelled "Last read" and its controls are disabled. The
+Status page has a Redis pill and the time Redis last answered. A connection
+that goes silent without closing is given up after 15 s.
+
+`*_READBACK` values reach the Admin page two ways. Keyspace notifications
+deliver a change at once; the app turns them on itself (it adds `K$` to the
+server's `notify-keyspace-events`, on connect and whenever it finds them
+off, since the setting is lost when Redis restarts), so the server needn't
+set them. And every 10 s the app reads `K_READBACK` outright for every menu
+key and the witness-detector key, which catches a change whose notification
+was lost and drops a value whose key has gone.
+
+Cluster status is only written when it changes, so each set on the Cluster
+Status page shows when it last did. That age is the producer's: a set that
+is merely quiet and one whose producer has stopped look the same apart from
+it, as the producer sends no heartbeat.
 
 Admin writes are confined to the `RUBINTV_CONTROL_` namespace (plus any
 configured key outside it). The Admin page's free-form box writes there as

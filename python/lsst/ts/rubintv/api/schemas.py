@@ -272,6 +272,11 @@ class AdminStatusOut(BaseModel):
     ``version`` (less its ``+g<sha>`` local part, which repeats the sha) only
     when True; locally it shows just the sha and date."""
     redis_enabled: bool
+    """Whether a Redis is configured. Control writes answer 503 without
+    one."""
+    redis_connected: bool
+    """Whether that Redis is answering now. The Admin page takes it from
+    here until its live subscription says (and keeps saying) the same."""
     cache_enabled: bool
     witness_detector_key: str
     is_admin: bool

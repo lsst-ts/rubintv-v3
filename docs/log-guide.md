@@ -122,11 +122,14 @@ browser couldn't keep up and messages to it were dropped;
 `ws.pump.fan_out.error` means a change failed to reach subscribers.
 `ws.connect` and `ws.disconnect` give the connection count as `total`.
 
-**Cluster status or controls are stale.** `redis.disabled` or
-`redis.unavailable` at startup means no Redis: those panels stay empty.
-`redis.reader.error` followed by `redis.reader.reconnect` is a reader that
-died and is being restarted. `redis.config_set.failed` means control values
-can't be read back live.
+**Cluster status or controls are stale.** `redis.disabled` at startup
+means no Redis is configured: those panels stay empty. `redis.unavailable`
+means Redis is configured but isn't answering; the app keeps trying, and
+`redis.connected` is logged when it gets through (the Status page's Redis
+line says which holds now). `redis.reader.error` is a reader stopped by
+something other than the connection. `redis.keyspace.enabled` after startup
+means Redis restarted. `redis.config_set.failed` means control values are
+read back by poll alone, up to 10 seconds late.
 
 **The night report is missing parts.** `nightreport.fetch.skip` and the
 `nr_text.*` events name the items that were skipped and why.
@@ -273,20 +276,25 @@ unreadable", "Cache not writable", "Cache not responding").
 ### Redis (cluster status and controls)
 
 Redis is optional. Without it the cluster-status panels stay empty and
-admin controls answer 503.
+admin controls answer 503. Two readers use it, `readback` (control values)
+and `detectors` (cluster status); each connects by itself and, when it
+can't read, tries again after 1 s, doubling to 30 s, for as long as the app
+runs. A long outage is therefore one `redis.unavailable` per reader, then
+one `redis.connected`.
 
 | Event | Level | Meaning |
 |---|---|---|
-| `redis.connected` | info | Connected to Redis at `url` (any password masked as `***`). |
-| `redis.disabled` | warning | No Redis configured (`RUBINTV_REDIS_URL` or `RA_REDIS_HOST`). |
-| `redis.unavailable` | warning | Redis is configured but didn't answer at startup; carrying on without it. |
-| `redis.config_set.failed` | warning | Keyspace notifications couldn't be turned on (a managed Redis may forbid it), so control values aren't read back live. |
-| `redis.reader.error` | error | A reader (`readback` or `detectors`) failed; traceback attached. |
-| `redis.reader.reconnect` | warning | That reader restarts after `backoff_seconds`. |
+| `redis.connected` | info | Every reader is reading Redis at `url` (any password masked as `***`): at startup, and each time after an outage. |
+| `redis.disabled` | warning | No Redis configured (`RUBINTV_REDIS_URL` or `RA_REDIS_HOST`), or the URL isn't one (`error`). Nothing is retried. |
+| `redis.unavailable` | warning | Reader `reader` can't reach Redis (`error`), at startup or later. It keeps trying; this is logged once, not at every try, and again only if the failure changes. |
+| `redis.keyspace.enabled` | info | Keyspace notifications were off (`was` is what the server held) and have been turned on. Expected once at startup; later it means Redis restarted and lost the setting. |
+| `redis.config_set.failed` | warning | Keyspace notifications couldn't be read or turned on (a managed Redis may forbid it), so control values are read back by the 10-second poll alone. Logged once. |
+| `redis.reader.error` | error | A reader (`readback` or `detectors`) was stopped by something other than the connection, such as a reply it can't use; traceback attached. It is restarted like any other failure, and logged once. |
 | `redis.readback.seed` | info | On each (re)connect, the configured controls' current `*_READBACK` values were read: `found` of `keys` had one, and `readbacks` maps each found key to its value. `found: 0` with controls set means the analysis side isn't writing readbacks. |
-| `redis.readback.change` | info | The analysis side wrote a readback: `key` (a `*_READBACK`) now holds `value`. A control sent from the Admin page (`admin.control.set`) with no matching change after it was never acknowledged. |
-| `redis.detector.seed_failed` | warning | Reading a detector status stream's latest entry at startup failed; it fills in with the next live entry. |
-| `redis.detector.bad_payload` | warning | A detector status entry wasn't valid JSON and was ignored. |
+| `redis.readback.change` | info | The analysis side wrote a readback: `key` (a `*_READBACK`) now holds `value`. `via` is `event` (a keyspace notification) or `poll` (found by the 10-second read; the notification was lost). A control sent from the Admin page (`admin.control.set`) with no matching change after it was never acknowledged. |
+| `redis.readback.gone` | info | A readback `key` the Admin page was showing no longer exists in Redis (deleted, expired, or flushed), so it is no longer shown. |
+| `redis.detector.seed_failed` | warning | A detector status stream couldn't be read on connect (its key holds something other than a stream); it is left out until the next connect. |
+| `redis.detector.bad_payload` | warning | A detector status entry wasn't a JSON object and was ignored. |
 | `redis.set` | info | A control value was written (`key`). |
 | `redis.flushdb` | warning | The whole Redis database was flushed by an admin. |
 | `redis.detector.seed_start` | debug | Seeding detector status from the latest stream entries. Set `DEBUG` to trace cluster status end to end. |
@@ -297,6 +305,7 @@ admin controls answer 503.
 | `redis.detector.live_entry` | debug | A new entry arrived on a stream. |
 | `redis.detector.live_publish` | debug | Updated status published to browsers. |
 | `redis.detector.apply` | debug | An entry applied to a detector set (`workers`). |
+| `redis.reader.reconnect` | debug | A reader that failed tries again after `backoff_seconds`. |
 
 ### Admin actions
 

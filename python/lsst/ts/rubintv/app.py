@@ -40,7 +40,7 @@ from lsst.ts.rubintv.api import admin, data, health, nightreport, proxy
 from lsst.ts.rubintv.config.loader import load_models
 from lsst.ts.rubintv.config.settings import Settings, get_settings
 from lsst.ts.rubintv.data.cache import DiskCache
-from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore
+from lsst.ts.rubintv.data.controls import ControlStore, DetectorStore, RedisLink
 from lsst.ts.rubintv.data.metadata import MetadataCache, MetadataUnavailable
 from lsst.ts.rubintv.data.nightreport import NightReportFetcher
 from lsst.ts.rubintv.data.redis_inputs import RedisInputs
@@ -141,7 +141,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     metadata = MetadataCache(s3, buckets)
     controls = ControlStore()
     detectors = DetectorStore()
-    ws_service = WsService(store, controls, detectors)
+    redis_link = RedisLink()
+    ws_service = WsService(store, controls, detectors, redis_link)
     state = AppState(
         settings=settings,
         models=models,
@@ -168,6 +169,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             *(menu.key for menu in models.admin_redis_menus),
             settings.witness_detector_key,
         ],
+        link=redis_link,
     )
 
     # Cache writes are blocking file I/O (json.dumps + write per slice). The
