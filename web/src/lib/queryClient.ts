@@ -79,6 +79,9 @@ export function staleTimeForDate(date: Date, now: Date = new Date()): number {
 
 export const STALE = {
   config: Infinity, // locations/cameras: static
+  // A location's cards: each camera's newest day and latest frame are read
+  // from the live index, so the Location page asks again on coming back to it.
+  locationCards: 30 * SECOND,
   calendar: 5 * MINUTE,
   nightReport: 2 * MINUTE,
 } as const;

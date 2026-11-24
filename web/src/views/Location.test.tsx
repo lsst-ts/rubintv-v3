@@ -272,3 +272,130 @@ test("a location that can't be loaded says so, under the band", async () => {
   expect((await screen.findByText("Could not load location.")).role).toBe("alert");
   expect(screen.getByRole("img", { name: "RubinTV" })).toBeDefined();
 });
+
+// ── Keeping the cards current ────────────────────────────────────────────
+// The labels and frames come from one request, which the page repeats: on
+// coming back to it, and once a minute while it stays open.
+
+const frame = (date: string, seq: string) =>
+  `/locations/local/cameras/lsstcam/channels/witness_detector/${date}/${seq}/image.jpg`;
+
+// One camera whose card the server answers for afresh at each request, so a
+// test can move it on; `requests()` counts the answers so far.
+function stubMovingCamera(start: { latest_date: string; primary_image: string }) {
+  const cam = { name: "lsstcam", title: "LSSTCam", online: true, ...start };
+  let count = 0;
+  overrideFetch("/api/locations/local", () => {
+    count += 1;
+    const payload = locationPayload();
+    payload.camera_groups[0].cameras = [{ ...cam }];
+    return Promise.resolve(payload);
+  });
+  return { cam, requests: () => count };
+}
+
+const passTime = (ms: number) =>
+  act(() => {
+    vi.advanceTimersByTime(ms);
+  });
+
+test("the cards catch up with the cameras while the page stays open", async () => {
+  // 03:00 UTC on the observing day 2026-04-10; the camera's last night is the
+  // one before, until its first exposure of tonight lands.
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.UTC(2026, 3, 11, 3) });
+  try {
+    const { cam } = stubMovingCamera({
+      latest_date: "2026-04-09",
+      primary_image: frame("2026-04-09", "000950"),
+    });
+    renderAt("/local");
+    expect(await screen.findByText("stale")).toBeDefined();
+    expect(screen.getByAltText("").getAttribute("src")).toContain("/000950/");
+
+    cam.latest_date = "2026-04-10";
+    cam.primary_image = frame("2026-04-10", "000001");
+    passTime(61_000);
+    expect(await screen.findByText("live")).toBeDefined();
+    expect(screen.getByAltText("").getAttribute("src")).toMatch(
+      /\/2026-04-10\/000001\/thumb\/image\.jpg$/,
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("coming back to the page asks for the cards again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.UTC(2026, 3, 11, 3) });
+  try {
+    const { cam, requests } = stubMovingCamera({
+      latest_date: "2026-04-09",
+      primary_image: frame("2026-04-09", "000950"),
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ["/local"] });
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <LiveProvider>
+          <RouterProvider router={router} />
+        </LiveProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("stale")).toBeDefined();
+    expect(requests()).toBe(1);
+
+    // Away, to a page that asks for no location: nothing is fetched there.
+    await act(() => router.navigate("/status"));
+    cam.latest_date = "2026-04-10";
+    passTime(45_000);
+    expect(requests()).toBe(1);
+
+    await act(() => router.navigate("/local"));
+    expect(await screen.findByText("live")).toBeDefined();
+    expect(requests()).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a camera stops reading live when the observing day moves on", async () => {
+  // A minute before the noon-UTC rollover, with data for the day that is
+  // about to end. The server's answer doesn't change; the day does.
+  vi.useFakeTimers({
+    shouldAdvanceTime: true,
+    now: Date.UTC(2026, 3, 11, 11, 59),
+  });
+  try {
+    stubMovingCamera({
+      latest_date: "2026-04-10",
+      primary_image: frame("2026-04-10", "000950"),
+    });
+    renderAt("/local");
+    expect(await screen.findByText("live")).toBeDefined();
+    passTime(121_000);
+    expect(await screen.findByText("stale")).toBeDefined();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a refresh that fails leaves the cards as they were", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.UTC(2026, 3, 11, 3) });
+  try {
+    renderAt("/local");
+    await screen.findByText("LSSTCam");
+    // From here the server refuses the request (a 403, which isn't retried).
+    let refused = 0;
+    const inner = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      if (!String(input).endsWith("/api/locations/local")) return inner(input);
+      refused += 1;
+      return Promise.resolve({ ok: false, status: 403, json: async () => ({}) });
+    }) as unknown as typeof fetch;
+    passTime(61_000);
+    await waitFor(() => expect(refused).toBeGreaterThan(0));
+    await act(async () => {});
+    expect(screen.getByText("LSSTCam")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
