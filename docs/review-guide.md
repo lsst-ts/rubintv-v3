@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 419 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 421 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -407,8 +407,8 @@ Safe to skim.
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
-  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`, and
-  the commit that noted the night report's rewrites.
+  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
+  `914c136`, and the commit that noted the Nightly Summary tab's arrival.
 
 ---
 
@@ -1232,6 +1232,14 @@ of them once.
   version unchanged, so the first listing after an upgrade publishes
   one `nightReport` for each date that has a report, once (API
   artifacts regenerated)
+- `e1e7405` Show the Nightly Summary tab when a night's first report
+  lands. The tab (from `b151804`, group 49) reads the date payload's
+  `has_night_report`, and `nightReport` goes to a topic that the Table
+  and Channels views don't subscribe to, so they heard nothing. The
+  store now also publishes `channelData` for a date's first
+  night-report object, on which those pages already refetch the
+  payload: `first_report` in `EventStore.apply`. Later objects and
+  rewrites publish `nightReport` alone
 
 ---
 
