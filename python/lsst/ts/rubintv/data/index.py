@@ -92,6 +92,10 @@ class DateIndex:
     caller already has. ``night_report_keys`` keeps full object keys because
     the report fetcher GETs them directly and a plot's group segment can't
     be reconstructed from anything else; there are only a handful per date.
+
+    Two kinds of object are rewritten in place as a night goes on, and for
+    those the index also keeps the ETag last listed, so a rewrite registers
+    as a change: the date's ``metadata.json`` and its night-report objects.
     """
 
     channels: dict[str, set[SeqNum]] = field(default_factory=dict)
@@ -102,6 +106,11 @@ class DateIndex:
     # folding both into one ExtInfo would let whichever arrived last decide.
     per_day: dict[str, PerDayRef] = field(default_factory=dict)
     night_report_keys: set[str] = field(default_factory=set)
+    # ETag of each night-report object as last listed. The producer rewrites
+    # the report's text and plots under the same keys after every exposure,
+    # so presence alone would show a night's first version until morning.
+    # A key listed without an ETag has no entry.
+    night_report_etags: dict[str, str] = field(default_factory=dict)
     # Whether the date has a metadata.json. The table builds its rows from
     # metadata, so this alone puts a date on the calendar: the producer
     # writes it before any channel image lands (e.g. daytime calibrations).

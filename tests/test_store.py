@@ -413,6 +413,25 @@ async def test_reconcile_removes_a_vanished_night_report() -> None:
     assert not store.has_night_report("local", "lsstcam", "2026-04-10")
 
 
+async def test_reconcile_forgets_a_vanished_night_report_plots_etag() -> None:
+    # A plot that goes and comes back is an arrival, whatever its ETag: a
+    # remembered one would make an identical re-upload look like no change.
+    store = EventStore()
+    text = "lsstcam/2026-04-10/night_report/summary_md.json"
+    plot = "lsstcam/2026-04-10/night_report/Coverage/airmass.png"
+    await store.apply([created(text, etag="t1"), created(plot, etag="p1")])
+    await store.reconcile(
+        ("local", "lsstcam"), {text}, ScanScope(dates=frozenset({"2026-04-10"}))
+    )
+    idx = store.date_index("local", "lsstcam", "2026-04-10")
+    assert idx is not None
+    assert idx.night_report_keys == {text}
+    assert idx.night_report_etags == {text: "t1"}
+    assert await store.apply([created(plot, etag="p1")]) == {
+        ("local", "lsstcam", "2026-04-10")
+    }
+
+
 async def test_reconcile_drops_a_date_whose_metadata_vanished() -> None:
     store = EventStore()
     await store.apply([created("lsstcam/2026-04-10/metadata.json", etag="m1")])
@@ -660,6 +679,67 @@ async def test_metadata_publishes_only_when_its_etag_changes() -> None:
         assert change.type == "metadata"
         idx = store.date_index("local", "lsstcam", "2026-04-11")
         assert idx is not None and idx.metadata_etag == "m2"
+
+
+async def test_night_report_publishes_when_an_objects_etag_changes() -> None:
+    # The producer rebuilds the report after every exposure and uploads its
+    # text and plots under the same keys. An open Nightly Summary refetches
+    # only on ``nightReport``, so each rewrite has to publish one.
+    bus = EventBus()
+    store = EventStore(bus)
+    text = "auxtel/2026-04-10/night_report/auxtel_night_report_2026-04-10_md.json"
+    plot = "auxtel/2026-04-10/night_report/Coverage/airmass.png"
+    async with bus.subscribe() as stream:
+        await store.apply([created(text, etag="t1"), created(plot, etag="p1")])
+        types = {c.type for c in await _collect(bus, 2, stream)}
+        assert types == {"nightReport", "calendarUpdate"}
+        # Re-listed with the same ETags: silent.
+        assert (
+            await store.apply([created(text, etag="t1"), created(plot, etag="p1")])
+            == set()
+        )
+        assert next(iter(bus._queues)).empty()  # noqa: SLF001
+        # Text and plot rewritten in one cycle: one change between them.
+        touched = await store.apply(
+            [created(text, etag="t2"), created(plot, etag="p2")]
+        )
+        assert touched == {("local", "auxtel", "2026-04-10")}
+        (change,) = await _collect(bus, 1, stream)
+        assert change == StoreChange("nightReport", "local", "auxtel", "2026-04-10")
+        assert next(iter(bus._queues)).empty()  # noqa: SLF001
+        # A plot alone.
+        await store.apply([created(text, etag="t2"), created(plot, etag="p3")])
+        (change,) = await _collect(bus, 1, stream)
+        assert change.type == "nightReport"
+    idx = store.date_index("local", "auxtel", "2026-04-10")
+    assert idx is not None
+    assert idx.night_report_etags == {text: "t2", plot: "p3"}
+
+
+async def test_night_report_without_an_etag_publishes_only_its_arrival() -> None:
+    # As for metadata: no ETag, no way to tell a rewrite from a re-listing.
+    store = EventStore()
+    key = "auxtel/2026-04-10/night_report/Coverage/airmass.png"
+    event = ObjectEvent(ObjectKind.CREATED, "local", key)
+    assert await store.apply([event]) == {("local", "auxtel", "2026-04-10")}
+    assert await store.apply([event]) == set()
+    idx = store.date_index("local", "auxtel", "2026-04-10")
+    assert idx is not None and idx.night_report_etags == {}
+
+
+async def test_night_report_from_a_slice_without_etags_is_announced_once() -> None:
+    # A warm start from a slice written before the ETags were kept knows the
+    # keys but not their versions. The first listing fills them in and counts
+    # as a change (so the slice is written back with them); the next is quiet.
+    store = EventStore()
+    key = "auxtel/2026-04-10/night_report/Coverage/airmass.png"
+    store.load_snapshot(
+        {("local", "auxtel"): {"2026-04-10": DateIndex(night_report_keys={key})}}
+    )
+    assert await store.apply([created(key, etag="p1")]) == {
+        ("local", "auxtel", "2026-04-10")
+    }
+    assert await store.apply([created(key, etag="p1")]) == set()
 
 
 async def test_metadata_alone_makes_a_date() -> None:

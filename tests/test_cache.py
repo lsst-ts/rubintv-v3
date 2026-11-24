@@ -48,6 +48,7 @@ def sample_index() -> DateIndex:
         extensions={"witness_detector": ExtInfo(default="png", exceptions={2: "jpg"})},
         per_day={"movies": PerDayRef(seq="final", ext="mp4")},
         night_report_keys={"lsstcam/2026-04-10/night_report/s_md.json"},
+        night_report_etags={"lsstcam/2026-04-10/night_report/s_md.json": '"n1"'},
         has_metadata=True,
         metadata_etag='"abc123"',
     )
@@ -85,8 +86,25 @@ def test_round_trip(tmp_path: Path) -> None:
     # the proxy resolves the filename by listing the prefix at request time.
     assert idx.per_day["movies"] == PerDayRef(seq="final", ext="mp4")
     assert idx.night_report_keys == {"lsstcam/2026-04-10/night_report/s_md.json"}
+    assert idx.night_report_etags == {
+        "lsstcam/2026-04-10/night_report/s_md.json": '"n1"'
+    }
     assert idx.has_metadata
     assert idx.metadata_etag == '"abc123"'
+
+
+def test_slice_without_night_report_etags_loads_with_none(tmp_path: Path) -> None:
+    # Slices written before the night report's ETags were kept: the keys
+    # load, and the first listing supplies the ETags.
+    cache = DiskCache(tmp_path)
+    cache.write("local", "lsstcam", "2026-04-10", sample_index())
+    (path,) = (tmp_path / CACHE_VERSION).glob("*/*/*.json")
+    raw = json.loads(path.read_text())
+    del raw["night_report_etags"]
+    path.write_text(json.dumps(raw))
+    idx = cache.load_all()[("local", "lsstcam")]["2026-04-10"]
+    assert idx.night_report_keys == {"lsstcam/2026-04-10/night_report/s_md.json"}
+    assert idx.night_report_etags == {}
 
 
 def test_slice_without_has_metadata_infers_it_from_the_etag(tmp_path: Path) -> None:

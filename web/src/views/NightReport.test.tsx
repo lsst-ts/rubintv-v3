@@ -8,14 +8,16 @@ import {
 } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { BASE } from "../lib/basePath";
 import { createQueryClient } from "../lib/queryClient";
 import { queryKeys } from "../lib/liveQuery";
 import { LiveProvider } from "../lib/LiveContext";
 import { NightReport } from "./NightReport";
 
 // The Nightly Summary's text tabs (paragraph, key/value and link sections),
-// switching tabs, and keeping the chosen tab across a live refresh. Plot
-// groups and the enlarge dialog are in routes.test.
+// switching tabs, and keeping the chosen tab across a live refresh, and a
+// live refresh reloading the plots that were redrawn. Plot groups and the
+// enlarge dialog are in routes.test.
 
 const REPORT = {
   date: "2026-04-10",
@@ -33,7 +35,7 @@ const REPORT = {
     },
     { type: "keyvalues", title: "Night log", content: { seeing: "0.7" } },
   ],
-  plots: [{ key: "k1", group: "Seeing", filename: "fwhm.png" }],
+  plots: [{ key: "k1", group: "Seeing", filename: "fwhm.png", version: "a1" }],
 };
 
 function stub() {
@@ -119,6 +121,46 @@ test("switching tabs shows that section; a live refresh keeps the choice", async
   });
   await waitFor(() => expect(tabs()).toEqual(["Night logtext", "Seeing1"]));
   expect(within(panel()).getByText("MULTILINE")).toBeDefined();
+});
+
+test("a live refresh reloads a redrawn plot and leaves the others alone", async () => {
+  // The producer redraws tonight's plots under the same keys, and the browser
+  // keeps a plot's URL for an hour: only the version in the URL tells it one
+  // has changed.
+  const plots = [
+    { key: "k1", group: "Seeing", filename: "fwhm.png", version: "a1" },
+    { key: "k2", group: "Seeing", filename: "dimm.png", version: "b1" },
+    { key: "k3", group: "Seeing", filename: "old.png", version: null },
+  ];
+  const key = queryKeys.nightReport("local", "auxtel", "2026-04-10");
+  const qc = renderReport();
+  fireEvent.click(await screen.findByRole("tab", { name: /Seeing/ }));
+  act(() => {
+    qc.setQueryData(key, { ...REPORT, plots });
+  });
+  const img = (name: string) => screen.getByAltText(name) as HTMLImageElement;
+  const base = `${BASE}/api/locations/local/cameras/auxtel/nightly-summary/2026-04-10/plot/Seeing`;
+  await waitFor(() => expect(img("dimm.png")).toBeDefined());
+  expect(img("fwhm.png").getAttribute("src")).toBe(`${base}/fwhm.png?v=a1`);
+  expect(img("dimm.png").getAttribute("src")).toBe(`${base}/dimm.png?v=b1`);
+  // A plot no listing has given a version yet keeps its bare URL.
+  expect(img("old.png").getAttribute("src")).toBe(`${base}/old.png`);
+
+  const before = { fwhm: img("fwhm.png"), dimm: img("dimm.png") };
+  act(() => {
+    qc.setQueryData(key, {
+      ...REPORT,
+      plots: [{ ...plots[0], version: "a2" }, plots[1], plots[2]],
+    });
+  });
+  await waitFor(() =>
+    expect(img("fwhm.png").getAttribute("src")).toBe(`${base}/fwhm.png?v=a2`),
+  );
+  // The same element with a new src: what was drawn stays until the new
+  // copy arrives.
+  expect(img("fwhm.png")).toBe(before.fwhm);
+  expect(img("dimm.png")).toBe(before.dimm);
+  expect(img("dimm.png").getAttribute("src")).toBe(`${base}/dimm.png?v=b1`);
 });
 
 test("a report that disappears on refresh says there's none", async () => {

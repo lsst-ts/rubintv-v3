@@ -266,9 +266,15 @@ class EventStore:
         if (nr := parse_night_report(key)) is not None:
             idx = self._date_index(loc_cam, nr.day_obs)
             self._calendar[loc_cam].add(nr.day_obs)
-            if key in idx.night_report_keys:
-                return False
+            # The key is fetched as it stands, so presence finds the object;
+            # the ETag is kept because the producer rewrites the report's
+            # text and plots under the same keys after every exposure, and a
+            # rewrite has to publish for an open report to follow the night.
+            added = key not in idx.night_report_keys
             idx.night_report_keys.add(key)
+            if event.etag is None or idx.night_report_etags.get(key) == event.etag:
+                return added
+            idx.night_report_etags[key] = event.etag
             return True
         if (md := parse_metadata(key)) is not None:
             # metadata.json content is fetched separately; the index keeps
@@ -615,6 +621,8 @@ def _apply_stale(idx: DateIndex, stale: StaleEntries) -> None:
     for channel in stale.per_day:
         del idx.per_day[channel]
     idx.night_report_keys -= stale.night_report_keys
+    for key in stale.night_report_keys:
+        idx.night_report_etags.pop(key, None)
     if stale.metadata:
         idx.has_metadata = False
         idx.metadata_etag = None

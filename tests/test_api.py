@@ -636,6 +636,11 @@ def test_night_report(seeded_client: TestClient) -> None:
     assert by_type["links"]["content"] == [{"text": "Logbook", "url": "https://x/log"}]
     plot = next(p for p in body["plots"] if p["filename"] == "elana_coverage.png")
     assert plot["group"] == "Coverage"
+    # The plot's version is its ETag as the poll listed it, for its URL.
+    head = boto3.client("s3", region_name="us-east-1").head_object(
+        Bucket=TEST_BUCKET, Key=plot["key"]
+    )
+    assert plot["version"] == head["ETag"].strip('"') != ""
 
 
 def test_night_report_backfills_unindexed_date(seeded_client: TestClient) -> None:

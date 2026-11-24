@@ -24,7 +24,9 @@
 Users see these as the Nightly Summary, so the routes say ``nightly-summary``;
 the code keeps the night-report name, which mirrors the S3 prefix. Returns
 assembled text items + grouped plot keys for a date. Historical reports are
-stable; the current day's can update.
+stable; the current day's is rewritten after every exposure, under the same
+keys. The store publishes ``nightReport`` for each rewrite it lists, and
+each plot carries a ``version`` so a page can tell which ones to load again.
 """
 
 from __future__ import annotations
@@ -45,6 +47,11 @@ class PlotOut(BaseModel):
     key: str
     group: str
     filename: str
+    # Differs whenever the plot's bytes do (its ETag as last listed, without
+    # the quotes). The page puts it in the plot's URL, so a rewritten plot
+    # is a new URL to the browser and an unchanged one stays cached. ``None``
+    # if no listing has reported an ETag for it.
+    version: str | None
 
 
 class NightReportOut(BaseModel):
@@ -77,6 +84,7 @@ async def get_night_report(
         await state.backfill_date(location.name, camera.name, date)
         idx = state.store.date_index(location.name, camera.name, date)
     keys = set(idx.night_report_keys) if idx else set()
+    etags = dict(idx.night_report_etags) if idx else {}
     if not keys:
         return NightReportOut(date=date, exists=False, text=[], plots=[])
     report = await asyncio.to_thread(state.nightreport.fetch, location.name, keys)
@@ -85,6 +93,12 @@ async def get_night_report(
         exists=True,
         text=report.text,
         plots=[
-            PlotOut(key=p.key, group=p.group, filename=p.filename) for p in report.plots
+            PlotOut(
+                key=p.key,
+                group=p.group,
+                filename=p.filename,
+                version=etags[p.key].strip('"') if p.key in etags else None,
+            )
+            for p in report.plots
         ],
     )

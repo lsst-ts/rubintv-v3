@@ -1213,6 +1213,8 @@ export interface components {
             group: string;
             /** Filename */
             filename: string;
+            /** Version */
+            version: string | null;
         };
         /** ProgramNamesOut */
         ProgramNamesOut: {
