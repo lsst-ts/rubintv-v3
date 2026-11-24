@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, cameraDataState } from "../lib/queryClient";
 import { useReconnects } from "../lib/LiveContext";
+import { useNow } from "../lib/lastPoll";
 import { usePageTitle } from "../lib/usePageTitle";
 import { ProxiedImg } from "../components/ProxiedMedia";
 import { BrandHero } from "../components/BrandHero";
@@ -97,13 +98,28 @@ const STATUS_CLASS: Record<string, string> = {
 // On a deployment with a single location (summit, base, tucson) this page is
 // where the app opens — Home redirects straight to it — so it carries the
 // brand band the launcher otherwise would, above the camera groups.
+//
+// The cards are kept current by asking again, not over the socket: the page
+// covers every camera of the location and the live topics are per camera. The
+// answer is read from the server's index in memory, so a request a minute
+// costs little, and a browser tab that is hidden makes none.
+const REFRESH_MS = 60_000;
+
 export function Location() {
   const { location = "" } = useParams();
-  const { data, isPending, isError } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: queryKeys.location(location),
     queryFn: () => api.location(location),
-    staleTime: STALE.config,
+    // Fetched again on coming back to the page from a camera, and while the
+    // page stays open: left up as an overview it would otherwise show the
+    // labels and frames of the moment it was loaded.
+    staleTime: STALE.locationCards,
+    refetchInterval: REFRESH_MS,
   });
+  // "live" is a comparison with the current observing day, which moves on at
+  // noon UTC whether or not the cameras' data has: re-read the clock so the
+  // labels turn at the rollover instead of at the next change in the data.
+  const now = new Date(useNow(REFRESH_MS));
   usePageTitle(data?.title ?? location);
   // Already fetched by the shell and the route guard, so this reads the cache.
   const { data: locations } = useQuery({
@@ -123,7 +139,9 @@ export function Location() {
         <p className="skeleton">Loading…</p>
       </section>
     );
-  if (isError || !data)
+  // Only when there is nothing to show: a refresh that fails leaves the cards
+  // as they were, and the next one tries again.
+  if (!data)
     return (
       <section>
         {hero}
@@ -139,7 +157,7 @@ export function Location() {
           <div className="cam-group-h">{group.label}</div>
           <div className="cam-grid">
             {group.cameras.map((cam) => {
-              const state = cameraDataState(cam.online, cam.latest_date);
+              const state = cameraDataState(cam.online, cam.latest_date, now);
               const offline = state === "offline";
               const statusLabel = STATUS_LABEL[state] ?? "—";
               const statusClass = STATUS_CLASS[state] ?? "";
