@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 417 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 419 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -407,8 +407,8 @@ Safe to skim.
   `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
-  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, and the commit
-  that noted the redrawn favicon.
+  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`, and
+  the commit that noted the night report's rewrites.
 
 ---
 
@@ -910,7 +910,8 @@ camera tab never appeared. Review `PlotModal` and `PlotPanel` in
 `web/src/views/NightReport.tsx`, then the renamed routes in
 `routes.tsx`, `api/nightreport.py`, `api/proxy.py` and
 `legacy_redirects.py`, then `tabsForCamera` in
-`web/src/lib/useShellNav.ts`.
+`web/src/lib/useShellNav.ts`. (Group 59 makes the page follow the
+report as the producer rewrites it.)
 - `59dba2c` Enlarge a Nightly Summary plot on click: each plot opens
   filling the window; a click anywhere but the caption, Escape or the
   close button closes it. It closes on the click, not on pointerdown, so
@@ -1207,6 +1208,30 @@ commit, not the second; hanging the volume takes a stub (see
   and isn't made at all while a write is overdue. The page shows a red
   pill per problem and a block in the cache notice (what it is, what it
   costs, the cause), and "unknown" where it used to say 0 B
+
+### 59. A night report that follows the night
+The same review found that the store noticed a rewrite of an object
+under its own key only for `metadata.json`. The producer rebuilds the
+night report after every exposure and uploads its text and every plot
+under the same keys, so an open Nightly Summary (group 49) stayed as it
+was when the page loaded, and a reload still showed plots from the
+browser's hour-long cache. Review the night-report branch of `_insert`
+and the matching lines of `_apply_stale` in `data/store.py`, with
+`night_report_etags` in `data/index.py` and its two codec lines in
+`data/cache.py`; then `PlotOut.version` in `api/nightreport.py` and
+`nightReportPlotUrl` in `web/src/lib/api.ts`. Channel frames and movies
+are deliberately still indexed by presence: the producer uploads each
+of them once.
+- `3a5411a` Follow a night report's rewrites, and reload its redrawn
+  plots. The index keeps each night-report object's ETag as last
+  listed, and a different one publishes `nightReport`, on which the
+  page already refetched. Each plot in the reply carries a `version`
+  (its ETag) that the page puts in the plot's URL as `?v=`, so a
+  redrawn plot is fetched and an unchanged one stays cached. The ETags
+  are saved in the warm-start slices under a new field with the cache
+  version unchanged, so the first listing after an upgrade publishes
+  one `nightReport` for each date that has a report, once (API
+  artifacts regenerated)
 
 ---
 
