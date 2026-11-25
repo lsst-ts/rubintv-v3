@@ -25,14 +25,19 @@ All tasks push into the store via the same ``DataSource``, so they share one
 code path and differ only in *what* they scan and *how often*:
 
 - current-day poller: today's prefixes, fast loop (~1s)
+- previous-day poller: yesterday's prefixes every ``previous_day_refresh``
+  (2 min), for what lands after rollover (final movies, analysis catching
+  up, metadata rewrites)
 - historical scanner: recent window then the full back-catalogue on startup;
   afterwards the recent window — plus each camera's few most recent data
   days outside it — is re-scanned every ``recent_refresh`` (2h) and the full
   sweep repeats every 12h: recent dates are mutable, old ones rarely are
 - on-demand scan: one camera-date, for a request that hits an unindexed date
 
-The previous day gets a single extra scan at rollover, to catch per-day
-artifacts that landed late; after that it is only seen by the refresh.
+A day is reconciled by one loop. Reconciling drops whatever a listing
+didn't see, so a slower loop's older listing of a day would drop what a
+faster loop had indexed since: the historical scanner leaves today to the
+current-day poller and yesterday to the previous-day poller.
 
 Day rollover (UTC-12) is detected by the current-day loop and published as a
 ``dayChange`` so clients reset their live views.
@@ -226,6 +231,7 @@ class PollEngine:
         poller: S3Poller,
         *,
         poll_interval: float = 1.0,
+        previous_day_refresh: float = 2 * 60,
         recent_window_days: int = 30,
         recent_refresh: float = 2 * 60 * 60,
         recent_known_days: int = 5,
@@ -243,6 +249,7 @@ class PollEngine:
         self._store = store
         self._poller = poller
         self._interval = poll_interval
+        self._previous_day_refresh = previous_day_refresh
         self._recent_window_days = recent_window_days
         self._recent_refresh = recent_refresh
         self._recent_known_days = recent_known_days
@@ -349,6 +356,10 @@ class PollEngine:
             asyncio.create_task(self._historical_loop(), name="poll-historical"),
             asyncio.create_task(self._watchdog_loop(), name="poll-watchdog"),
         ]
+        if self._previous_day_refresh > 0:
+            self._tasks.append(
+                asyncio.create_task(self._previous_day_loop(), name="poll-previous")
+            )
 
     async def stop(self) -> None:
         """Signal loops to stop and await them."""
@@ -427,6 +438,26 @@ class PollEngine:
             self._cycle_started = None
             await self._sleep(self._interval)
 
+    async def _previous_day_loop(self) -> None:
+        # Its own task, not a step of either other loop: the historical loop
+        # refreshes nothing while a full sweep runs, and a cycle of the
+        # current-day loop shouldn't wait on yesterday's listings. The first
+        # pass runs at once: the recent window leaves yesterday to this.
+        while not self._stop.is_set():
+            day = recent_day_obs(2)[1]
+            started = time.monotonic()
+            try:
+                total = await self._scan_day(day)
+                log.debug(
+                    "poll.previous.refresh",
+                    day=day,
+                    keys=total,
+                    cycle_seconds=round(time.monotonic() - started, 3),
+                )
+            except Exception:  # noqa: BLE001 - a bad pass must not kill loop
+                log.exception("poll.previous.error", day=day)
+            await self._sleep(self._previous_day_refresh)
+
     async def _watchdog_loop(self) -> None:
         while not self._stop.is_set():
             await self._sleep(_WATCHDOG_SECONDS)
@@ -502,9 +533,14 @@ class PollEngine:
                 return
             if time.monotonic() >= deadline:
                 return
+            started = time.monotonic()
             try:
                 events = await self._scan_recent_window(warm=False)
-                log.info("poll.recent.refresh", events=events)
+                log.info(
+                    "poll.recent.refresh",
+                    events=events,
+                    pass_seconds=round(time.monotonic() - started, 1),
+                )
             except Exception:  # noqa: BLE001 - a bad pass must not kill loop
                 log.exception("poll.recent.error")
 
@@ -607,6 +643,11 @@ class PollEngine:
         # slots is stale on disk until rewritten here.
         await self._persist_slices({(location, camera, d) for d in outcome.changed})
 
+    def _live_days(self) -> frozenset[str]:
+        """The days a faster loop than the historical one lists: today, and
+        yesterday while the previous-day refresh is on."""
+        return frozenset(recent_day_obs(2 if self._previous_day_refresh > 0 else 1))
+
     async def _scan_recent_window(self, *, warm: bool = True) -> int:
         """Scan every camera's recent dates: the window, plus known data days.
 
@@ -617,14 +658,21 @@ class PollEngine:
         that observes rarely would otherwise list thirty empty days and never
         re-check the days that matter until the full sweep.
 
+        Today is not listed: the current-day loop has a newer listing of it
+        every second, and reconciling it from this one would drop frames
+        that loop had just indexed. Nor is yesterday while the previous-day
+        loop is on, for the same reason.
+
         Locations run in parallel, cameras serially within one (same
         client-pool reasoning as the full sweep). ``warm`` pre-fetches recent
         metadata afterwards; only the cold start wants that — the periodic
         pass would otherwise re-download today's file per camera every tick.
         """
-        window = recent_day_obs(self._recent_window_days)
+        days = recent_day_obs(self._recent_window_days)
+        live = self._live_days()
+        window = [d for d in days if d not in live]
         known = {
-            (loc.name, cam.name): self._known_days(loc.name, cam.name, window)
+            (loc.name, cam.name): self._known_days(loc.name, cam.name, days)
             for loc in self._models.locations
             for cam in loc.cameras
         }
@@ -689,20 +737,23 @@ class PollEngine:
         total = 0
         for camera in location.cameras:
             prefix = f"{camera.name}/"
+            live = self._live_days()
             result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
             total += len(result.events)
             await self._apply_scan("historical", location.name, prefix, result)
             # The full {camera}/ listing is authoritative for the whole
             # camera, so reconcile with an unbounded scope: dates the listing
             # didn't see are gone (e.g. stale warm-start slices whose keys
-            # were deleted while we were down). Protect the current observing
-            # day — the fast current-day loop may have inserted today's first
-            # keys *after* this sweep listed the prefix, so the listing
-            # wouldn't include them and reconciliation would wrongly drop them.
+            # were deleted while we were down). Protect the days a faster
+            # loop lists — it may have inserted keys *after* this sweep
+            # listed the prefix, so the listing wouldn't include them and
+            # reconciliation would wrongly drop them. Those days are taken
+            # both before the listing and now: a sweep that crosses rollover
+            # has listed the old days while they were still live.
             outcome = await self._store.reconcile(
                 (location.name, camera.name),
                 result.keys,
-                ScanScope(protect=frozenset({get_current_day_obs()})),
+                ScanScope(protect=live | self._live_days()),
             )
             await self._evict_slices(location.name, camera.name, outcome.dropped)
             await self._persist_slices(
@@ -844,7 +895,8 @@ class PollEngine:
                     self._store.bus.publish(
                         StoreChange("dayChange", location.name, camera.name, now_day)
                     )
-            # Keep scanning yesterday for delayed per-day artifacts.
+            # One last listing of the old day for what landed in its final
+            # second; the previous-day loop carries on from here.
             await self._scan_day(old)
 
     def _fire_ready(self) -> None:

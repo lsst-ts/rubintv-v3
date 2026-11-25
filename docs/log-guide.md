@@ -190,21 +190,28 @@ The current day's prefixes are listed every `RUBINTV_POLL_INTERVAL_SECONDS`
 Startup lists the last `RUBINTV_RECENT_WINDOW_DAYS` first, so recent dates
 are browsable within seconds, then sweeps the whole bucket. The full sweep
 repeats every 12 hours, and the recent window is re-listed every
-`RUBINTV_RECENT_REFRESH_SECONDS` (2 hours) in between.
+`RUBINTV_RECENT_REFRESH_SECONDS` (2 hours) in between. The previous
+observing day is re-listed every `RUBINTV_PREVIOUS_DAY_REFRESH_SECONDS`
+(2 minutes), since movies, late analysis and metadata rewrites go on
+landing in it after rollover. Neither the recent window nor the full
+sweep's pruning touches the current day or the previous one: each has its
+own, faster poll.
 
 | Event | Level | Meaning |
 |---|---|---|
 | `poll.recent.start` | info | Listing the recent window: `cameras`, `days`. |
 | `poll.recent.plan` | debug | How many of the window's days are already known. |
 | `poll.recent.done` | info | The recent window is listed; `events` found. |
-| `poll.recent.refresh` | info | A periodic re-listing of the recent window finished. |
+| `poll.recent.refresh` | info | A periodic re-listing of the recent window finished: `events` found, and the `pass_seconds` it took. |
 | `poll.recent.error` | error | A periodic re-listing failed; retried at the next one. |
+| `poll.previous.refresh` | debug | The previous day was re-listed: the `day`, `keys` listed and `cycle_seconds`. A listing that changed the index also logs `poll.scan` (scope `day`). |
+| `poll.previous.error` | error | Re-listing the previous day failed; traceback attached. Retried at the next one. |
 | `poll.historical.start` | info | The full sweep started. |
 | `poll.historical.done` | info | The full sweep finished; `events` found. |
 | `poll.historical.idle` | info | History is complete for the first time since startup or a rescan; the "loading history" notice clears. |
 | `poll.historical.error` | error | The sweep failed; traceback attached. Retried after 60 s, and the loading notice stays up meanwhile. |
 | `poll.historical.rescan` | info | A rescan was requested (by an admin flush) and starts now. |
-| `poll.scan` | info / debug | One listing: `scope` (`day`, `recent`, `historical` or `on-demand`), `location`, `prefix`, `keys` and `slices_touched`. `info` when it changed the index, `debug` when it changed nothing, except a current-day (`day`) listing, which isn't logged when it changed nothing: there is one per camera every second, and `poll.current.cycle` sums them. |
+| `poll.scan` | info / debug | One listing: `scope` (`day`, `recent`, `historical` or `on-demand`), `location`, `prefix`, `keys` and `slices_touched`. `info` when it changed the index, `debug` when it changed nothing, except a `day` listing, which isn't logged when it changed nothing: the current day has one per camera every second and the previous day one every two minutes, and `poll.current.cycle` and `poll.previous.refresh` sum them. |
 | `poll.scan.error` | error | Listing a date opened on demand failed. |
 | `poll.scan.empty_cached` | debug | A date opened on demand is already known to be empty, so it isn't listed again. |
 | `poll.scan.location_error` | error | More than one location failed in the same sweep: the first failure gets the traceback, each other one gets this line. |
