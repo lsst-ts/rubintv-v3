@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 430 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 432 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -409,8 +409,8 @@ Safe to skim.
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
-  `914c136`, `f329047`, `65c7485`, `f91afe2`, and the commit that
-  noted the ages left out under a second.
+  `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, and the
+  commit that noted yesterday's own poll.
 
 ---
 
@@ -768,7 +768,8 @@ Review `EventStore._insert`/`apply` and `ReconcileResult` in
 - `4491599` Re-scan the recent window every two hours between full
   sweeps (`RUBINTV_RECENT_REFRESH_SECONDS`, default 7200). Previously
   recent dates refreshed only with the 12h full sweep, despite the module
-  docstring saying otherwise.
+  docstring saying otherwise. (Group 62 takes today and yesterday out of
+  the window.)
 - `636f562` Make the recent-refresh tests count passes, not wall-clock time
   (a Jenkins box blew through the 60ms budget in one pass)
 - `983f46c` Re-scan each camera's newest data days outside the window every
@@ -1326,6 +1327,35 @@ a dead producer: the pages give the age and no verdict.
   a cluster writing several times a second read "(0 s ago)" on every
   line. `hasAged` in `lib/lastPoll.ts` gates the "Last change" line's
   age, each set's, and the unreachable notices'
+
+### 62. Yesterday re-listed every two minutes, by a loop of its own
+The same review found that the previous observing day was listed once,
+at the instant of rollover, and then only by the two-hourly recent pass
+(group 43), though final movies, late analysis and metadata rewrites
+land in it after rollover and V2 re-polled it every two minutes. It
+also found, by running the real loops against a bucket that only
+grows, that the recent pass listed today alongside the one-second loop
+and reconciled it from the older listing, removing frames that loop
+had just indexed. Review `_previous_day_loop`, `_live_days`,
+`_scan_recent_window` and the `protect` set in
+`_scan_history_for_location`, all in `data/tasks.py`; the module
+docstring states the rule, that a day is reconciled by one loop.
+- `67aaeae` Re-list yesterday every two minutes, and keep older
+  listings off live days. A third task lists yesterday for every
+  camera at start-up and then every
+  `RUBINTV_PREVIOUS_DAY_REFRESH_SECONDS` (default 120, `0` = off); it
+  is its own task because the historical loop refreshes nothing during
+  a full sweep. The recent window leaves out today, and yesterday
+  while that task is on, in the pass before a full sweep as well as
+  the periodic one. The full sweep protects yesterday as well as today
+  from pruning, taking the protected days both before its listing and
+  at the reconcile, so a sweep that crosses noon UTC keeps the old
+  days. `poll.recent.refresh` gains `pass_seconds`. Left open: a
+  listing that begins and is applied within the flight of another
+  listing of the same day is reconciled away by the older one until
+  the next listing restores it (a store-level guard would close it; a
+  full sweep takes minutes, so it should be rare), and after an admin
+  flush yesterday returns at the task's next pass or when opened
 
 ---
 
