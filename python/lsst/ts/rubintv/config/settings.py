@@ -198,12 +198,20 @@ class Settings(BaseSettings):
     the full back-catalogue sweep, so recent history is viewable in seconds.
     ``0`` disables the recent-first phase (full sweep only)."""
 
+    previous_day_refresh_seconds: float = 2 * 60
+    """How often the previous observing day is re-scanned. It goes on
+    changing after rollover (final movies, analysis backlogs clearing,
+    metadata rewrites), so it has a cadence of its own, between the current
+    day's and the recent window's: one listing per camera. ``0`` disables it
+    (the previous day is then scanned with the recent window)."""
+
     recent_refresh_seconds: float = 2 * 60 * 60
     """How often the recent window is re-scanned between full sweeps. Recent
-    dates are mutable (yesterday churns as analysis backlogs clear), so they
-    are re-checked far more often than the 12h back-catalogue refresh. ``0``
-    disables the periodic recent pass (recent dates then refresh only with
-    the full sweep)."""
+    dates are mutable, so they are re-checked far more often than the 12h
+    back-catalogue refresh. The window leaves out the days a faster loop
+    lists: the current day, and the previous one while
+    ``previous_day_refresh_seconds`` is on. ``0`` disables the periodic
+    recent pass (recent dates then refresh only with the full sweep)."""
 
     recent_known_days: int = 5
     """Each recent pass also re-scans this many of a camera's most recent

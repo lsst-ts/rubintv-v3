@@ -240,6 +240,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store,
         poller,
         poll_interval=settings.poll_interval_seconds,
+        previous_day_refresh=settings.previous_day_refresh_seconds,
         recent_window_days=settings.recent_window_days,
         recent_refresh=settings.recent_refresh_seconds,
         recent_known_days=settings.recent_known_days,
