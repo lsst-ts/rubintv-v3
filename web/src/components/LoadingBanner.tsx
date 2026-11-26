@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { pollFor } from "../lib/pollStatus";
 import type { StatusResponse } from "../lib/types";
 
 // Non-blocking banner shown while the backend is still scanning historical
 // data. Collection is per-camera (recent window first, then the full
 // back-catalogue), so when a camera is in view the banner scopes itself to
 // THAT camera: it clears once the camera's full sweep is done, and softens
-// its wording once the recent window is ready. Off a camera (landing/location
-// pages) it falls back to the site-wide loading flag.
+// its wording once the recent window is ready. Off a camera it goes by the
+// location's own loading flag on a location's page, and the site-wide one
+// elsewhere. Each location is scanned on its own, so one whose bucket can't
+// be reached stalls its own pages' pill and no other's.
 //
 // The wording also reflects the cache situation: a warm start (snapshot
 // loaded at boot) means older dates already show and the scan is a refresh,
@@ -32,16 +35,30 @@ interface BannerState {
   stalled?: boolean;
 }
 
+// Whether the scan in view can't progress because the server can't reach
+// S3. For a location, that is its own bucket. Site-wide, with every
+// location scanned on its own, it is only once none of the locations still
+// loading can reach theirs: one that can't mustn't read as a stall of the
+// rest.
+function scanStalled(data: StatusResponse, location?: string): boolean {
+  if (location || !data.locations?.length) {
+    return pollFor(data, location).s3_healthy === false;
+  }
+  const loading = data.locations.filter((l) => l.historical_loading);
+  return loading.length > 0 && loading.every((l) => !l.s3_healthy);
+}
+
 function bannerState(
   data: StatusResponse | undefined,
   location?: string,
   camera?: string,
 ): BannerState | null {
   if (!data) return null;
-  // If the server can't reach S3, the scan is stalled regardless of scope:
-  // a spinning "Refreshing" pill would falsely imply progress. Reword and
-  // freeze the spinner so the loading affordance matches the S3 alert beside
-  // it. (Still only shown while there's a scan to report — see below.)
+  const poll = pollFor(data, location);
+  // If the server can't reach S3 here, the scan is stalled: a spinning
+  // "Refreshing" pill would falsely imply progress. Reword and freeze the
+  // spinner so the loading affordance matches the S3 alert beside it.
+  // (Still only shown while there's a scan to report — see below.)
   const stalled: BannerState = {
     label: "Refresh stalled",
     title:
@@ -50,7 +67,7 @@ function bannerState(
   };
   // A warm start has the calendar populated from cache, so an in-progress
   // scan is just a refresh — don't imply older dates are missing.
-  const scanning: BannerState = data.s3_healthy === false
+  const scanning: BannerState = scanStalled(data, location)
     ? stalled
     : data.warm_start
     ? {
@@ -77,8 +94,8 @@ function bannerState(
         }
       : scanning;
   }
-  // No camera in view: site-wide affordance.
-  return data.historical_loading ? scanning : null;
+  // No camera in view: the location's affordance, or the site-wide one.
+  return poll.historical_loading ? scanning : null;
 }
 
 export function LoadingBanner({ location, camera }: Props) {

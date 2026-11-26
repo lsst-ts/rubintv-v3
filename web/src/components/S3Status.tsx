@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { utcClock } from "../lib/lastPoll";
+import { locationsWhere, pollFor } from "../lib/pollStatus";
 
 // S3-connectivity indicator beside the live (WebSocket) pill. The 'live' pill
 // shows the browser↔app-server WS; this shows whether the app server is
@@ -17,6 +18,12 @@ import { utcClock } from "../lib/lastPoll";
 //                              saying what it found, so this comes first.
 // 'unreachable' takes precedence over 'slow'.
 //
+// The server polls each location on its own, so with a `location` the pill
+// reports that location's poll alone: a bucket the server can't reach shows
+// on its own pages and not on another location's. Without one it reports
+// them all: the worst state any is in, how many are in it when that isn't
+// all of them ("S3: 1 of 4 unreachable"), and in its tooltip which.
+//
 // Both are the server's own report, so they are only as fresh as the page's
 // last successful status poll. When that poll fails the pill says so (red
 // 'Server unreachable') instead of repeating the last answer it got, which
@@ -31,9 +38,11 @@ import { utcClock } from "../lib/lastPoll";
 // contexts that dedicate space to S3 health — the Status page's S3 section —
 // where staying quiet would read as "unknown" rather than "fine".
 export function S3Status({
+  location,
   linkToStatus = false,
   verbose = false,
 }: {
+  location?: string;
   linkToStatus?: boolean;
   verbose?: boolean;
 }) {
@@ -77,8 +86,32 @@ export function S3Status({
 
   if (!data) return null; // nothing known yet
 
-  if (data.poll_stalled) {
-    const age = data.last_poll_age_seconds;
+  const poll = pollFor(data, location);
+  // Whose bucket a state is of: this location's, or the ones the summary
+  // found in it.
+  const bucket = (test: Parameters<typeof locationsWhere>[1]) => {
+    if (location) return "this location's S3 bucket";
+    const names = locationsWhere(data, test);
+    return names.length ? `the S3 bucket for ${names.join(", ")}` : "the S3 bucket";
+  };
+  // The pill's words for a state: the plain label for one location's own
+  // pill, or when every location summed is in it; else how many are, so
+  // one bucket out of four doesn't read as S3 being out.
+  const label = (
+    test: Parameters<typeof locationsWhere>[1],
+    whole: string,
+    what: string,
+    state: string,
+  ) => {
+    const total = location ? 0 : (data.locations?.length ?? 0);
+    const count = locationsWhere(data, test).length;
+    return count > 0 && count < total
+      ? `${what}: ${count} of ${total} ${state}`
+      : whole;
+  };
+
+  if (poll.poll_stalled) {
+    const age = poll.last_poll_age_seconds;
     const last =
       age == null
         ? "It has not finished one since the server started."
@@ -86,26 +119,26 @@ export function S3Status({
     return pill(
       "conn conn-closed s3-alert",
       "alert",
-      `The server's poll of the S3 bucket has stopped: a check it began over a minute ago has not finished, so new data is not being picked up. ${last} Check the server logs.`,
-      "Poll stalled",
+      `The server's poll of ${bucket((l) => l.poll_stalled)} has stopped: a check it began over a minute ago has not finished, so new data is not being picked up. ${last} Check the server logs.`,
+      label((l) => l.poll_stalled, "Poll stalled", "Poll", "stalled"),
     );
   }
 
-  if (data.s3_healthy === false) {
+  if (poll.s3_healthy === false) {
     return pill(
       "conn conn-closed s3-alert",
       "alert",
-      "The server could not reach the S3 bucket on its last poll. Check the server logs.",
-      "S3 unreachable",
+      `The server could not reach ${bucket((l) => !l.s3_healthy)} on its last poll. Check the server logs.`,
+      label((l) => !l.s3_healthy, "S3 unreachable", "S3", "unreachable"),
     );
   }
 
-  if (data.s3_slow) {
+  if (poll.s3_slow) {
     return pill(
       "conn s3-slow",
       "status",
-      `The server's last S3 poll took ${data.s3_last_cycle_seconds.toFixed(1)}s — unusually slow; the connection may be degrading.`,
-      "S3 slow",
+      `The server's last poll of ${bucket((l) => l.s3_slow)} took ${poll.s3_last_cycle_seconds.toFixed(1)}s — unusually slow; the connection may be degrading.`,
+      label((l) => l.s3_slow, "S3 slow", "S3", "slow"),
     );
   }
 
@@ -113,7 +146,9 @@ export function S3Status({
     return pill(
       "conn conn-open",
       "status",
-      "The server reached the S3 bucket on its last poll.",
+      location
+        ? "The server reached this location's S3 bucket on its last poll."
+        : "The server reached every location's S3 bucket on its last poll.",
       "S3 connected",
     );
   }

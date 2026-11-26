@@ -21,6 +21,7 @@ function renderWith(
     s3_last_cycle_seconds: 0.8,
     poll_stalled: false,
     last_poll_age_seconds: 2,
+    locations: [],
     redis: {
       configured: false,
       connected: false,
@@ -51,6 +52,22 @@ const cam = (over: Partial<StatusResponse["cameras"][number]>) => ({
   recent_ready: false,
   full_complete: false,
   image_count: 0,
+  ...over,
+});
+
+// One location's own poll, as the server reports it beside the summary.
+const loc = (
+  location: string,
+  over: Partial<StatusResponse["locations"][number]> = {},
+): StatusResponse["locations"][number] => ({
+  location,
+  location_title: location.toUpperCase(),
+  s3_healthy: true,
+  s3_slow: false,
+  s3_last_cycle_seconds: 0.8,
+  poll_stalled: false,
+  last_poll_age_seconds: 2,
+  historical_loading: false,
   ...over,
 });
 
@@ -155,4 +172,65 @@ test("goes quiet while the server can't be reached, and returns with it", async 
   globalThis.fetch = reachable;
   await act(() => qc.refetchQueries({ queryKey: ["status"] }));
   expect((await screen.findByRole("status")).textContent).toBe("Loading dates");
+});
+
+test("another location's unreachable bucket doesn't stall this camera's pill", async () => {
+  // Each location is scanned on its own: the summary says S3 is unreachable
+  // somewhere, but this camera's location is being scanned.
+  renderWith(
+    {
+      historical_loading: true,
+      s3_healthy: false,
+      locations: [loc("loc"), loc("other", { s3_healthy: false })],
+      cameras: [cam({ recent_ready: true })],
+    },
+    { location: "loc", camera: "cam" },
+  );
+  expect(await pillTitle()).toMatch(/Recent dates are ready/);
+});
+
+test("a location's own unreachable bucket does", async () => {
+  renderWith(
+    {
+      historical_loading: true,
+      s3_healthy: false,
+      locations: [loc("loc", { s3_healthy: false }), loc("other")],
+      cameras: [cam({ recent_ready: true })],
+    },
+    { location: "loc", camera: "cam" },
+  );
+  expect(await pillTitle()).toMatch(/Can't reach S3/);
+});
+
+test("a location's page goes by that location's history, not the site's", async () => {
+  const status: Partial<StatusResponse> = {
+    historical_loading: true,
+    locations: [loc("loc"), loc("other", { historical_loading: true })],
+  };
+  const done = renderWith(status, { location: "loc" });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(screen.queryByRole("status")).toBeNull();
+  done.unmount();
+  renderWith(status, { location: "other" });
+  expect(await pillTitle()).toMatch(/Loading historical data/);
+});
+
+test("site-wide, one unreachable location doesn't stall the others' refresh", async () => {
+  const status = (others: boolean): Partial<StatusResponse> => ({
+    historical_loading: true,
+    warm_start: true,
+    s3_healthy: false,
+    locations: [
+      loc("loc", { historical_loading: others }),
+      loc("other", { historical_loading: true, s3_healthy: false }),
+    ],
+  });
+  // While a location that can reach its bucket is still loading, it is a
+  // refresh...
+  const going = renderWith(status(true));
+  expect((await screen.findByRole("status")).textContent).toBe("Refreshing");
+  going.unmount();
+  // ...and a stall once the only one left can't.
+  renderWith(status(false));
+  expect((await screen.findByRole("status")).textContent).toBe("Refresh stalled");
 });

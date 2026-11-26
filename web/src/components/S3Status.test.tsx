@@ -12,6 +12,7 @@ function renderWith(
   status: Partial<StatusResponse>,
   linkToStatus = false,
   verbose = false,
+  location?: string,
 ) {
   const payload: StatusResponse = {
     ready: true,
@@ -23,6 +24,7 @@ function renderWith(
     s3_last_cycle_seconds: 0.8,
     poll_stalled: false,
     last_poll_age_seconds: 2,
+    locations: [],
     redis: {
       configured: false,
       connected: false,
@@ -41,11 +43,31 @@ function renderWith(
   return render(
     <MemoryRouter>
       <QueryClientProvider client={qc}>
-        <S3Status linkToStatus={linkToStatus} verbose={verbose} />
+        <S3Status
+          linkToStatus={linkToStatus}
+          verbose={verbose}
+          location={location}
+        />
       </QueryClientProvider>
     </MemoryRouter>,
   );
 }
+
+// One location's own poll, as the server reports it beside the summary.
+const loc = (
+  location: string,
+  over: Partial<StatusResponse["locations"][number]> = {},
+): StatusResponse["locations"][number] => ({
+  location,
+  location_title: location.toUpperCase(),
+  s3_healthy: true,
+  s3_slow: false,
+  s3_last_cycle_seconds: 0.8,
+  poll_stalled: false,
+  last_poll_age_seconds: 2,
+  historical_loading: false,
+  ...over,
+});
 
 test("renders nothing while S3 is healthy", async () => {
   renderWith({ s3_healthy: true });
@@ -144,4 +166,85 @@ test("a status poll that fails from the start is reported too", async () => {
     </MemoryRouter>,
   );
   expect(await screen.findByText("Server unreachable")).toBeDefined();
+});
+
+// The server polls each location on its own: one bucket it can't reach is
+// that location's trouble, and the summary's, and no other location's.
+const ONE_DOWN: Partial<StatusResponse> = {
+  s3_healthy: false,
+  locations: [loc("summit"), loc("base", { s3_healthy: false })],
+};
+
+test("a location's pill is quiet while another location's bucket is down", async () => {
+  renderWith(ONE_DOWN, false, true, "summit");
+  const pill = await screen.findByText("S3 connected");
+  expect(pill.getAttribute("title")).toMatch(/this location's S3 bucket/);
+  expect(screen.queryByText(/S3 unreachable/)).toBeNull();
+});
+
+test("a location's pill reports its own bucket", async () => {
+  renderWith(ONE_DOWN, false, false, "base");
+  const pill = await screen.findByText("S3 unreachable");
+  expect(pill.getAttribute("title")).toMatch(/could not reach this location's S3 bucket/);
+});
+
+test("with no location in view, the pill says how many it means and names them", async () => {
+  // One bucket out of two mustn't read as S3 being out.
+  renderWith(ONE_DOWN);
+  const pill = await screen.findByText("S3: 1 of 2 unreachable");
+  expect(pill.getAttribute("role")).toBe("alert");
+  expect(pill.getAttribute("title")).toMatch(/the S3 bucket for BASE on its last poll/);
+});
+
+test("the plain label is kept for when every location is in the state", async () => {
+  renderWith({
+    s3_healthy: false,
+    locations: [loc("summit", { s3_healthy: false }), loc("base", { s3_healthy: false })],
+  });
+  const pill = await screen.findByText("S3 unreachable");
+  expect(pill.getAttribute("title")).toMatch(/the S3 bucket for SUMMIT, BASE/);
+});
+
+test("slow and stalled polls are counted the same way", async () => {
+  const three = (over: Partial<StatusResponse["locations"][number]>) => [
+    loc("summit", over),
+    loc("base"),
+    loc("tucson"),
+  ];
+  const slow = renderWith({ s3_slow: true, locations: three({ s3_slow: true }) });
+  expect(await screen.findByText("S3: 1 of 3 slow")).toBeDefined();
+  slow.unmount();
+  renderWith({ poll_stalled: true, locations: three({ poll_stalled: true }) });
+  expect(await screen.findByText("Poll: 1 of 3 stalled")).toBeDefined();
+});
+
+test("every location healthy reads as connected", async () => {
+  renderWith({ locations: [loc("summit"), loc("base")] }, false, true);
+  const pill = await screen.findByText("S3 connected");
+  expect(pill.getAttribute("title")).toMatch(/every location's S3 bucket/);
+});
+
+test("a location's slow and stalled polls are its own too", async () => {
+  const status: Partial<StatusResponse> = {
+    s3_slow: true,
+    poll_stalled: true,
+    locations: [
+      loc("summit", { s3_slow: true, s3_last_cycle_seconds: 7.25 }),
+      loc("base", { poll_stalled: true, last_poll_age_seconds: null }),
+    ],
+  };
+  const summit = renderWith(status, false, false, "summit");
+  expect((await screen.findByText("S3 slow")).getAttribute("title")).toMatch(/7\.3s/);
+  summit.unmount();
+  renderWith(status, false, false, "base");
+  expect((await screen.findByText("Poll stalled")).getAttribute("title")).toMatch(
+    /this location's S3 bucket has stopped.*not finished one since the server started/,
+  );
+});
+
+test("a server that reports no locations is read by its summary", async () => {
+  // A tab left open across a deploy can be asking a server older than it.
+  renderWith({ s3_healthy: false, locations: undefined }, false, false, "base");
+  const pill = await screen.findByText("S3 unreachable");
+  expect(pill.getAttribute("title")).toMatch(/this location's S3 bucket/);
 });
