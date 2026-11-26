@@ -419,16 +419,37 @@ function SeqChannel({ live }: { live: boolean }) {
   // while a live view is still loading a newer frame: the one before the
   // frame in view may be one it skipped, and fetching that alongside would
   // slow the frame being waited for.
+  //
+  // A preload is stopped once its frame is no longer a neighbour, so stepping
+  // quickly through a night leaves no trail of full-size downloads running
+  // behind it. The exception is the frame just stepped to: the <img> on the
+  // page is sharing that download.
+  const neighbours = useRef(new Map<string, HTMLImageElement>());
   useEffect(() => {
-    if (isVideo || catchingUp) return;
-    for (const s of [prev, next]) {
-      if (s !== null) {
-        const img = new Image();
-        img.src = mediaFor(s);
-      }
+    const wanted =
+      isVideo || catchingUp
+        ? []
+        : [prev, next].filter((s) => s !== null).map(mediaFor);
+    for (const [url, img] of neighbours.current) {
+      if (url === src || wanted.includes(url)) continue;
+      img.src = "";
+      neighbours.current.delete(url);
+    }
+    for (const url of wanted) {
+      if (neighbours.current.has(url)) continue;
+      const img = new Image();
+      img.src = url;
+      neighbours.current.set(url, img);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prev, next, isVideo, catchingUp]);
+  }, [prev, next, isVideo, catchingUp, src]);
+  useEffect(() => {
+    const held = neighbours.current;
+    return () => {
+      for (const img of held.values()) img.src = "";
+      held.clear();
+    };
+  }, []);
 
   const channelInfo = cameraInfo?.channels?.find((c) => c.name === channel);
 
@@ -463,22 +484,30 @@ function SeqChannel({ live }: { live: boolean }) {
   // on any arrow we actually act on — Shift+Arrow is the browser's
   // extend-selection shortcut, so without this stepping channels would drag a
   // text selection across the page. The keys stand down while a field has
-  // focus or a modal (the shortcuts panel) is up.
+  // focus or a modal (the shortcuts panel) is up, and the plain arrows while
+  // a movie has focus: there they are the player's own keys, to seek with.
+  //
+  // A held key repeats some thirty times a second. Each repeat steps on only
+  // once the frame it has reached is drawn, so holding an arrow runs through
+  // the night as fast as its frames arrive and no faster, rather than start
+  // a download for every frame passed. Separate presses each step at once.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (pageKeysPaused()) return;
+      const inMovie = document.activeElement instanceof HTMLVideoElement;
       const to =
         pressed(e, "prevChannel") && prevChan !== null
           ? chanNavTo(prevChan)
           : pressed(e, "nextChannel") && nextChan !== null
             ? chanNavTo(nextChan)
-            : pressed(e, "prevExposure") && prev !== null
+            : pressed(e, "prevExposure") && prev !== null && !inMovie
               ? navTo(prev)
-              : pressed(e, "nextExposure") && next !== null
+              : pressed(e, "nextExposure") && next !== null && !inMovie
                 ? navTo(next)
                 : null;
       if (to === null) return;
       e.preventDefault();
+      if (e.repeat && !imgElRef.current?.complete) return;
       navigate(to);
     };
     window.addEventListener("keydown", onKey);
