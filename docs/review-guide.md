@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 437 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 441 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -410,7 +410,8 @@ Safe to skim.
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
   `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, `3e84f05`,
-  `96daca6`, and the commit that noted the app's error pages.
+  `96daca6`, `6247b85`, and the commit that noted the live channel
+  view's hold.
 
 ---
 
@@ -615,6 +616,8 @@ final `ColumnOrderList` and `useColumnPrefs`.
   three columns so extra width widens names
 
 ### 37. Channel viewer zoom and keyboard
+(Group 64 paces a held arrow key by the frames' loading, and leaves a
+movie in focus its own arrows.)
 - `1641994` Click-to-zoom the single-channel image (fill/fit toggle)
 - `7363e06` Persist the fit/fill zoom across image changes
 - `07206dd` Stop arrow-key nav from selecting text
@@ -1399,6 +1402,40 @@ uses it (`caught` around the views, and the root route).
   stands alone, with a reload and a plain link home. A view that has
   thrown is unmounted and hears no live updates, so its error page
   stays until Try again or a move elsewhere
+
+### 64. A live channel view that keeps up, and arrow keys that don't flood
+The same review found the single-channel viewer's live mode could sit
+on one frame under LIVE for as long as frames landed faster than one
+could load: each new seq gave up the wait on the frame before (`f2a76f0`
+in group 33 introduced the hold) while that frame's download ran on.
+It also found a held arrow key stepped an exposure on every repeat,
+starting full-size downloads that were never stopped. Both are in
+`web/src/views/Channel.tsx`: review `latchKey`, the `loading` ref and
+the effect under it, then `lagging`, then the `neighbours` effect and
+`onKey`. `Channel.test.tsx` stands in for the off-screen image and
+settles each decode by hand, since jsdom loads no images.
+- `fd8956d` Keep a live channel view advancing when frames land faster
+  than they load. One frame is loaded at a time and left to finish; it
+  is shown though no longer the newest, and the newest by then is
+  loaded next, skipping those between. A load is given up, and its
+  download stopped, only when the view stops following, its seq leaves
+  the night, the tab reconnects, or it has taken `LIVE_LOAD_LIMIT_MS`
+  (a minute; the newest seq is then loaded afresh). The frame held
+  belongs to one spell of following, so Jump to current after a step
+  back starts from the newest frame, not the one the earlier spell had
+  reached. A spell's first frame goes straight to the page, and the
+  neighbouring frames aren't fetched while a newer one is waited for
+- `8319d7a` Name the frame a live channel view is waiting on once it
+  falls behind. After `LIVE_LAG_CUE_MS` (three seconds) the seq nav
+  shows the seq being loaded, dimmed with a spinner, where the Next
+  link would be; the badge still reads LIVE. Left as it is: a view one
+  load behind for less than that says nothing
+- `bbaf376` Step a held arrow key at the pace frames load, and stop
+  preloads left behind. A key repeat steps only once the frame in view
+  is drawn (separate presses step at once); a neighbour's preload is
+  stopped once its frame is neither a neighbour nor the one in view;
+  and while a movie has focus the plain arrows are its player's, to
+  seek with (Shift+arrows still switch channel)
 
 ---
 
