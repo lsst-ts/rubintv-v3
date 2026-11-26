@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 441 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 444 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -410,8 +410,8 @@ Safe to skim.
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
   `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, `3e84f05`,
-  `96daca6`, `6247b85`, and the commit that noted the live channel
-  view's hold.
+  `96daca6`, `6247b85`, `0fd2112`, and the commit that noted the
+  locations' own polls.
 
 ---
 
@@ -1358,6 +1358,9 @@ had just indexed. Review `_previous_day_loop`, `_live_days`,
 `_scan_recent_window` and the `protect` set in
 `_scan_history_for_location`, all in `data/tasks.py`; the module
 docstring states the rule, that a day is reconciled by one loop.
+(Group 65 gives each location these loops for itself, and replaces
+`_scan_history_for_location` and its `protect` set with a sweep that
+goes a date at a time, `_sweep_camera`.)
 - `67aaeae` Re-list yesterday every two minutes, and keep older
   listings off live days. A third task lists yesterday for every
   camera at start-up and then every
@@ -1436,6 +1439,53 @@ settles each decode by hand, since jsdom loads no images.
   stopped once its frame is neither a neighbour nor the one in view;
   and while a movie has focus the plain arrows are its player's, to
   seek with (Shift+arrows still switch channel)
+
+### 65. A location that fails alone, and a sweep that goes a date at a time
+The same review ran the real loops with one of two locations always
+raising, and found the healthy one never became ready, never swept
+its history and polled at the pace of the other's failures: one
+barrier (`_gather_locations`) gathered every location's listings and
+failed them together. It also measured the full sweep, which listed a
+camera's whole prefix at once: for a million keys, 308 MiB held and a
+two-second stall of the event loop while `reconcile` indexed them. In
+`data/tasks.py`, review `LocationPoll`, then `start`, then
+`_current_day_loop` with `_cycle_failed`, `_cycle_ended` and
+`_check_rollover`, then `_historical_loop` with its two phases, then
+`_sweep_camera`; `S3Poller.list_dates` is in `data/source.py`. On the
+page, start from `web/src/lib/pollStatus.ts`.
+- `9f36aba` Poll each location on its own, and sweep a camera a date
+  at a time. Every location has its own current-day, previous-day and
+  historical loops and its own health, stall and loading state.
+  Readiness fires once every location's first cycle has ended, failed
+  or stalled ones included. A location that stays down logs its
+  traceback as the failures begin and then once a minute
+  (`poll.current.recovered` when it is back). A failed recent pass or
+  sweep is retried from the camera it failed on. Rollover is announced
+  once, by the first location's loop to notice. The cache rewrite
+  after a sweep is per location. `/api/health/status` gains
+  `locations`; its top-level poll fields stay, as the worst of each.
+  The sweep asks for a camera's dates with one delimiter listing, then
+  lists and reconciles each date, newest first, and drops the dates
+  the index held beforehand that the bucket no longer has: the
+  million-key case stalls the loop for 32 ms and holds no more than
+  the index. Against the real buckets the listing of dates took 0.2 to
+  1.3 s a camera through a tunnel (5,955 dates in all); sweep time on
+  a pod is not yet measured, and `poll.historical.done` gives
+  `listings` and `sweep_seconds` for it. Every `poll.` line but
+  `poll.ready` carries its `location`; `poll.recent.plan` and
+  `poll.scan.location_error` are gone. Left as they are: the store's
+  whole-camera reconcile scope and `protect` set, now unused by the
+  engine; the poller's listings on the default thread pool; the
+  progress flags an admin flush leaves set
+- `7f6141b` Show each location its own S3 state, and count them where
+  they are summed. A camera page's S3 pill, loading pill and "as of"
+  time go by that camera's location. The Status page's header pill
+  says how many locations it means ("S3: 1 of 4 unreachable"; the
+  plain label only when all are), and each location's card carries its
+  own pill and its own "Last poll" line, which replaces the one under
+  the header. With no location in view the loading pill reads "Refresh
+  stalled" only once none of the locations still loading can reach its
+  bucket. A server that reports no `locations` is read by its summary
 
 ---
 
