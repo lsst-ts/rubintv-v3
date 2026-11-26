@@ -3582,3 +3582,14 @@ button.danger:disabled {
 .notfound-link:hover {
   border-color: var(--accent); background: var(--accent-soft);
 }
+
+/* ── Error page ────────────────────────────────────────────────────────────
+   Drawn in place of a view (or, as a last resort, the whole app) that threw.
+   It borrows the 404's layout; its actions include buttons, which need the
+   link's look spelled out. */
+button.notfound-link {
+  background: none; cursor: pointer;
+}
+.route-error code {
+  display: inline-block; text-align: left;
+}
