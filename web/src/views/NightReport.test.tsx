@@ -176,3 +176,19 @@ test("a report that disappears on refresh says there's none", async () => {
   });
   expect(await screen.findByText("No summary for this date.")).toBeDefined();
 });
+
+// Night-report objects are indexed, but none of them yields a section: the
+// text object couldn't be read and no plots are up yet.
+test("a report none of whose sections could be read says so", async () => {
+  globalThis.fetch = (() =>
+    Promise.resolve({
+      ok: true,
+      json: () =>
+        Promise.resolve({ date: "2026-04-10", exists: true, text: [], plots: [] }),
+    })) as unknown as typeof fetch;
+  renderReport();
+  expect(
+    await screen.findByText(/none of its sections could be read/),
+  ).toBeDefined();
+  expect(screen.queryByRole("tab")).toBeNull();
+});
