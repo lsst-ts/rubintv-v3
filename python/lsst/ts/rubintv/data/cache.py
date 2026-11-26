@@ -37,7 +37,7 @@ import json
 import os
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -226,12 +226,16 @@ def _tree_usage(path: Path) -> tuple[int, int, OSError | None]:
 
 @dataclass(frozen=True)
 class DirReport:
-    """What a look at the cache dir found (see ``CacheInspector``)."""
+    """What is known of the cache dir (see ``CacheInspector``)."""
 
     entries: list[EntryUsage]
+    """What the dir holds, as last sized."""
+    sized_age: float | None
+    """Seconds since ``entries`` were sized; ``None`` when they haven't
+    been (the first sizing is still running, or the dir can't be listed),
+    and ``entries`` is then empty."""
     unreadable: str | None
-    """Why the dir itself couldn't be listed, if it couldn't (``entries`` is
-    then empty)."""
+    """Why the dir itself couldn't be listed, if it couldn't."""
     writable: bool
     """Whether the server's user may write to the index's own directory. A
     check of permissions and of a read-only mount, not a write: a full
@@ -241,6 +245,8 @@ class DirReport:
 
 
 def _inspect(root: Path) -> DirReport:
+    """Whether ``root`` can be listed and written, and how full its volume
+    is: a call for each, whatever the dir holds. Its entries aren't sized."""
     unreadable = None
     try:
         with os.scandir(root):
@@ -254,7 +260,8 @@ def _inspect(root: Path) -> DirReport:
     else:
         total, free = volume.total, volume.free
     return DirReport(
-        entries=[] if unreadable else dir_usage(root),
+        entries=[],
+        sized_age=None,
         unreadable=unreadable,
         writable=os.access(root / CACHE_VERSION, os.W_OK | os.X_OK),
         volume_total=total,
@@ -262,36 +269,80 @@ def _inspect(root: Path) -> DirReport:
     )
 
 
-class CacheInspector:
-    """The Status page's look at the cache dir: what it holds, and whether
-    it can be read and written.
+async def _within(task: asyncio.Task[Any], deadline: float) -> bool:
+    """Whether ``task`` is done, having waited for it until ``deadline`` (on
+    the monotonic clock) if it wasn't."""
+    remaining = deadline - time.monotonic()
+    if remaining > 0:
+        await asyncio.wait({task}, timeout=remaining)
+    return task.done()
 
-    It stats every cached file, so it runs on a worker thread, one look at a
-    time: requests that overlap share it. A volume that has hung would hold
-    that thread for good, and one more for every later look, so a look is
-    waited on for only so long, and while one is outstanding the answer is
-    that the volume isn't responding, with no new look begun.
+
+class CacheInspector:
+    """The Status page's look at the cache dir: whether it can be read and
+    written, and what it holds.
+
+    Two things, each on a worker thread and one at a time, so requests that
+    overlap share them. The check (``_inspect``) is a few calls and is made
+    for every request: only a volume that has hung keeps it long, and while
+    one is outstanding the answer is that the volume isn't responding, with
+    no new check begun. The sizing (``dir_usage``) stats every cached file,
+    which takes seconds on a network volume and far longer while a sweep is
+    writing to it, so its result is kept and repeated only once it has
+    aged; a slow one is not a volume in trouble, and the page shows the
+    sizes it has until the next arrives. A volume that has hung holds two
+    threads at most, one for each.
     """
 
     def __init__(self) -> None:
-        self._look: asyncio.Task[DirReport] | None = None
-        self._started = 0.0
+        self._check: asyncio.Task[DirReport] | None = None
+        self._check_started = 0.0
+        self._sizing: asyncio.Task[None] | None = None
+        self._sizing_started = 0.0
+        self._sizes: list[EntryUsage] | None = None
+        self._sized = 0.0
 
-    async def report(self, root: Path, wait: float) -> DirReport | None:
-        """What a look at ``root`` finds, or ``None`` if the volume hasn't
-        answered within ``wait`` seconds of the look beginning."""
-        look = self._look
-        if look is None or look.done():
-            self._started = time.monotonic()
-            look = self._look = asyncio.create_task(asyncio.to_thread(_inspect, root))
-        remaining = self._started + wait - time.monotonic()
-        if remaining > 0:
-            await asyncio.wait({look}, timeout=remaining)
-        return look.result() if look.done() else None
+    async def report(
+        self, root: Path, wait: float, sizes_max_age: float
+    ) -> DirReport | None:
+        """What a check of ``root`` finds, with its entries as last sized,
+        or ``None`` if the volume hasn't answered within ``wait`` seconds of
+        the check beginning.
+
+        Sizes older than ``sizes_max_age`` seconds are measured again
+        behind the answer. Only the first sizing is waited on, as there is
+        nothing to show before it, and for ``wait`` seconds at most.
+        """
+        check = self._check
+        if check is None or check.done():
+            self._check_started = time.monotonic()
+            check = self._check = asyncio.create_task(asyncio.to_thread(_inspect, root))
+        if not await _within(check, self._check_started + wait):
+            return None
+        found = check.result()
+        if found.unreadable is not None:
+            return found
+        if self._sizes is None or self._sized_age() > sizes_max_age:
+            sizing = self._sizing
+            if sizing is None or sizing.done():
+                self._sizing_started = time.monotonic()
+                sizing = self._sizing = asyncio.create_task(self._size(root))
+            if self._sizes is None:
+                await _within(sizing, self._sizing_started + wait)
+        if self._sizes is None:
+            return found
+        return replace(found, entries=self._sizes, sized_age=self._sized_age())
+
+    async def _size(self, root: Path) -> None:
+        sizes = await asyncio.to_thread(dir_usage, root)
+        self._sizes, self._sized = sizes, time.monotonic()
+
+    def _sized_age(self) -> float:
+        return time.monotonic() - self._sized
 
     def waited_seconds(self) -> float:
-        """How long ago the look now outstanding began."""
-        return time.monotonic() - self._started
+        """How long ago the check now outstanding began."""
+        return time.monotonic() - self._check_started
 
 
 def _encode(index: DateIndex) -> dict[str, object]:

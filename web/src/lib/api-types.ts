@@ -75,9 +75,10 @@ export interface paths {
          * Cache Usage
          * @description Disk cache locations, sizes and troubles, for the Status page.
          *
-         *     Separate from ``/status`` because it stats every cached file (thousands
-         *     on the PVC) and every page polls that one. The look runs on a worker
-         *     thread and is waited on for only so long (see ``CacheInspector``).
+         *     Separate from ``/status`` because every page polls that one, and this
+         *     asks the volume. The check of it is waited on for only so long, and the
+         *     sizes, which take a stat of every cached file (thousands on the PVC),
+         *     are measured every few minutes (see ``CacheInspector``).
          */
         get: operations["cache_usage_api_health_cache_get"];
         put?: never;
@@ -751,6 +752,8 @@ export interface components {
             dir: string | null;
             /** Entries */
             entries: components["schemas"]["CacheEntry"][];
+            /** Entries Age Seconds */
+            entries_age_seconds: number | null;
             /** Volume Total Bytes */
             volume_total_bytes: number | null;
             /** Volume Free Bytes */

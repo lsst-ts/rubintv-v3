@@ -22,6 +22,7 @@ import { S3Status } from "../components/S3Status";
 import type {
   CacheEntry,
   CacheProblem,
+  CacheUsageResponse,
   CameraStatus,
   LocationStatus,
 } from "../lib/types";
@@ -126,7 +127,7 @@ function formatBytes(bytes: number): string {
 }
 
 // The disk cache as the server finds it. Its own query, polled slower than
-// /status: the server stats every cached file.
+// /status: the server asks the volume each time.
 function useCacheUsage() {
   return useQuery({
     queryKey: ["cacheUsage"],
@@ -180,25 +181,36 @@ function CacheProblems() {
   );
 }
 
+// The cache's total size, as the notice gives it. A size the server couldn't
+// measure reads "unknown", and one it hasn't measured yet says so: neither is
+// the 0 B of an empty cache. The server sizes the entries only every few
+// minutes, as that stats every cached file, so a size a minute old or more
+// is given its age.
+function cacheSize(data: CacheUsageResponse): string {
+  if (data.problems.some((p) => p.kind !== "not_writable")) return "size unknown";
+  const age = data.entries_age_seconds;
+  if (age == null) return "being measured";
+  const size = formatBytes(data.entries.reduce((sum, e) => sum + e.bytes, 0));
+  const minutes = Math.floor(age / 60);
+  return minutes < 1 ? size : `${size}, measured ${minutes} min ago`;
+}
+
 // Where the disk cache lives and what it takes, entry by entry: the scan
 // index behind warm starts, the guide's, and anything this version no longer
 // reads (an older cache version's slices), whose space can be reclaimed.
 // Between the summary and the table, anything wrong with it: per problem
 // its name, what it costs, and the server's own account of the cause, each
-// on a line of its own. A size the server couldn't measure reads "unknown",
-// not the 0 B of an empty cache.
+// on a line of its own.
 function CacheNotice() {
   const data = useCacheUsage();
   if (!data?.enabled) return null;
   const { problems } = data;
-  const measured = !problems.some((p) => p.kind !== "not_writable");
-  const total = data.entries.reduce((sum, e) => sum + e.bytes, 0);
   const { volume_total_bytes: volTotal, volume_free_bytes: volFree } = data;
   return (
     <div role="note" className="cache-usage">
       <p>
         Disk cache in <code>{data.dir}</code>:{" "}
-        {measured ? formatBytes(total) : "size unknown"}
+        {cacheSize(data)}
       </p>
       {/* The volume is whatever filesystem holds the cache dir — a laptop's
           whole disk in dev, the PVC in deployments — so its used space is

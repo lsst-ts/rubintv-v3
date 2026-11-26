@@ -264,12 +264,18 @@ chmod 600 ~/.lsst/jira_credential
   (`changed_age_seconds`) and how long ago Redis last answered
   (`read_age_seconds`, a few seconds at most while connected).
 - `GET /api/health/cache` — what the disk cache holds, for the Status page,
-  and `problems` with the volume: `not_responding` (a write, or this look at
-  it, hasn't returned), `unreadable` (the cache dir or the index in it can't
-  be listed) and `not_writable` (the last write failed, or the server's user
-  may not write there). The app only reads the cache at startup, so none of
-  these shows on the data pages: the Status page is where to look, and the
-  cost is a next start from an older index, or a cold one.
+  and `problems` with the volume: `not_responding` (a write, or this
+  endpoint's check of the dir, hasn't returned), `unreadable` (the cache dir
+  or the index in it can't be listed) and `not_writable` (the last write
+  failed, or the server's user may not write there). The app only reads the
+  cache at startup, so none of these shows on the data pages: the Status
+  page is where to look, and the cost is a next start from an older index,
+  or a cold one. The check is a few calls on the dir and is waited on for
+  10 s. Sizing the entries stats every cached file, which takes seconds on
+  the PVC and up to a minute while a sweep is writing to it, so the sizes
+  are measured every five minutes and served with `entries_age_seconds` in
+  between (`null`, with no entries, until the first sizing finishes). A
+  slow sizing is not reported as a problem.
 
 ## Startup behaviour (cache warming)
 
