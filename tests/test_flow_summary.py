@@ -59,8 +59,20 @@ SAMPLE = [
     {"event": "ws.frame.sent", "type": "channelData", "bytes": 120},
     {"event": "ws.frame.sent", "type": "detectorStatus", "bytes": 50000},
     {"event": "ws.disconnect", "frames_sent": 2, "bytes_sent": 50120},
-    {"event": "poll.current.cycle", "cycle_seconds": 0.8, "keys": 6000},
-    {"event": "poll.current.cycle", "cycle_seconds": 1.2, "keys": 6002},
+    {
+        "event": "poll.current.heartbeat",
+        "cycles": 60,
+        "keys_last_cycle": 6000,
+        "cycle_seconds_mean": 0.8,
+        "cycle_seconds_max": 1.2,
+    },
+    {
+        "event": "poll.current.heartbeat",
+        "cycles": 20,
+        "keys_last_cycle": 6002,
+        "cycle_seconds_mean": 1.0,
+        "cycle_seconds_max": 1.1,
+    },
     {"event": "poll.scan", "scope": "day", "keys": 6000, "slices_touched": 0},
     {"event": "poll.scan", "scope": "day", "keys": 6002, "slices_touched": 1},
     {"event": "store.apply", "events": 6002, "changes": 2},
@@ -81,5 +93,7 @@ def test_summary_folds_paths_and_reports_each_flow() -> None:
     assert "6144" in text  # 2048 + 4096 bytes on the dates row
     assert "detectorStatus" in text and "50000" in text
     assert "1 connection(s) closed: 2 frames, 50120 bytes" in text
-    assert "2 cycles" in text and "max 1.200" in text
+    # Heartbeats are weighted by the cycles each sums: (60*0.8 + 20*1.0)/80.
+    assert "80 cycles; cycle_seconds mean 0.850 max 1.200" in text
+    assert "keys in the last cycle 6002" in text
     assert "6002 events -> 2 changes" in text

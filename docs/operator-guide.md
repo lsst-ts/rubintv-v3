@@ -264,8 +264,8 @@ session can be measured without a profiler:
 | `metadata.fetch` | `rows`, `bytes`, `requests`, `s3_ms`, `parse_ms` | each metadata.json read from S3 (a new or rewritten file; an unchanged one costs a HEAD and logs nothing): download time against parse time. `info` when it took a second or more |
 | `ws.disconnect` | `frames_sent`, `bytes_sent` | a connection's lifetime totals |
 | `metadata.compress` | `bytes`, `gzipped_bytes`, `duration_ms` | each whole metadata document gzipped, once per version; a page's first open of a night waits for the fetch and then this |
-| `poll.current.cycle` | `cycle_seconds`, `keys` | each 1s current-day cycle: wall time and keys listed |
-| `poll.scan` | `scope`, `prefix`, `keys`, `slices_touched` | each S3 listing; `info` only when it changed the index, `debug` when it was a silent re-listing, except the current-day poll's silent ones, which `poll.current.cycle` sums |
+| `poll.current.heartbeat` | `cycles`, `cycle_seconds_min`, `cycle_seconds_mean`, `cycle_seconds_max`, `keys_last_cycle` | the 1s current-day cycles, summed every 60 (`info`): the spread of their wall times and the keys last listed |
+| `poll.scan` | `scope`, `prefix`, `keys`, `slices_touched` | an S3 listing that changed the index (`info`), or one made on demand that didn't (`debug`); the loops' silent re-listings aren't logged, their own lines count them |
 | `store.apply` | `events`, `changes` | how much of a listing was actually new; logged only when something was |
 
 Capture a session and summarise it:

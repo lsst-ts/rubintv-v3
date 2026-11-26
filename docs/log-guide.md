@@ -61,7 +61,7 @@ Set `RUBINTV_JSON_LOGS=1` to get the cluster's format.
 | Level | Meaning |
 |---|---|
 | `trace` | Everything `debug` logs, plus uvicorn's own protocol tracing: each ASGI message, and websockets' line for every WebSocket frame and keepalive ping. Only for a problem in the WebSocket protocol itself. |
-| `debug` | Per-frame and per-cycle detail, and routine requests (the kubelet's probes, the page's status poll); off by default. About a line a second on a quiet pod, much more while clients are connected and data arrives. See "Watching the data flow" in the operator guide. |
+| `debug` | Per-frame detail, and routine requests (the kubelet's probes, the page's status poll); off by default. On a quiet pod the probes are most of it; much more while clients are connected and data arrives. See "Watching the data flow" in the operator guide. |
 | `info` | Normal operation: startup steps, sweeps completing, clients connecting, each HTTP request. |
 | `warning` | Something degraded or was refused; the app carries on. Worth reading. |
 | `error` | An operation failed; usually with a traceback. The loop or request that failed is retried or abandoned, never the whole app. |
@@ -80,7 +80,8 @@ misconfigured setting.
 list the bucket; it retries every cycle. `poll.current.slow` means a cycle
 took over 5 s, an early sign of a degrading link. When all is well,
 `poll.current.heartbeat` appears about once a minute with the keys listed
-and the cycle time; if it stops appearing, the poll loop isn't running.
+and the cycle times since the last one; if it stops appearing, the poll
+loop isn't running.
 `poll.current.stalled` means a cycle began and hasn't ended a minute later,
 so nothing new is being found although the last cycle to finish was fine;
 the page says "Poll stalled". The events around it say what the cycle is
@@ -176,8 +177,7 @@ The current day's prefixes are listed every `RUBINTV_POLL_INTERVAL_SECONDS`
 | Event | Level | Meaning |
 |---|---|---|
 | `poll.current.start` | info | The current-day poll started; the `day` and the `prefixes` it lists. |
-| `poll.current.heartbeat` | info | About once a minute while polling: `keys_last_cycle` and `cycle_seconds`. Its absence means the loop isn't running. |
-| `poll.current.cycle` | debug | Every cycle: `keys` listed and `cycle_seconds`. The cycle's own listings get no `poll.scan` line unless they changed something. |
+| `poll.current.heartbeat` | info | Every 60 cycles while polling, so about once a minute: the `cycles` it covers, their shortest, mean and longest time (`cycle_seconds_min`, `cycle_seconds_mean`, `cycle_seconds_max`), and `keys_last_cycle`. A cycle has no line of its own, and nor do its listings unless they changed something (`poll.scan`). Its absence means the loop isn't running. |
 | `poll.current.slow` | warning | A cycle took longer than 5 s (`cycle_seconds`); logged on entering the slow state. The page shows an "S3 slow" notice. |
 | `poll.current.error` | error | A cycle failed, nearly always S3 unreachable; traceback attached. The page shows "S3 unreachable" and the poll retries every cycle. |
 | `poll.current.stalled` | error | A cycle has been running for over 60 s (`running_seconds`) and hasn't finished, so today's index is no longer following the bucket; `last_poll_age_seconds` is how long since a cycle last succeeded. Logged once per stall, by a watchdog that looks every 10 s. The page shows "Poll stalled". |
@@ -201,17 +201,17 @@ own, faster poll.
 |---|---|---|
 | `poll.recent.start` | info | Listing the recent window: `cameras`, `days`. |
 | `poll.recent.plan` | debug | How many of the window's days are already known. |
-| `poll.recent.done` | info | The recent window is listed; `events` found. |
-| `poll.recent.refresh` | info | A periodic re-listing of the recent window finished: `events` found, and the `pass_seconds` it took. |
+| `poll.recent.done` | info | The recent window is listed: `events` found, the `listings` made, and the `pass_seconds` it took, which here includes fetching each camera's recent metadata. |
+| `poll.recent.refresh` | info | A periodic re-listing of the recent window finished: `events` found, the `listings` made, and the `pass_seconds` it took. |
 | `poll.recent.error` | error | A periodic re-listing failed; retried at the next one. |
 | `poll.previous.refresh` | debug | The previous day was re-listed: the `day`, `keys` listed and `cycle_seconds`. A listing that changed the index also logs `poll.scan` (scope `day`). |
 | `poll.previous.error` | error | Re-listing the previous day failed; traceback attached. Retried at the next one. |
 | `poll.historical.start` | info | The full sweep started. |
-| `poll.historical.done` | info | The full sweep finished; `events` found. |
+| `poll.historical.done` | info | The full sweep finished: `events` found, and the `sweep_seconds` it took. |
 | `poll.historical.idle` | info | History is complete for the first time since startup or a rescan; the "loading history" notice clears. |
 | `poll.historical.error` | error | The sweep failed; traceback attached. Retried after 60 s, and the loading notice stays up meanwhile. |
 | `poll.historical.rescan` | info | A rescan was requested (by an admin flush) and starts now. |
-| `poll.scan` | info / debug | One listing: `scope` (`day`, `recent`, `historical` or `on-demand`), `location`, `prefix`, `keys` and `slices_touched`. `info` when it changed the index, `debug` when it changed nothing, except a `day` listing, which isn't logged when it changed nothing: the current day has one per camera every second and the previous day one every two minutes, and `poll.current.cycle` and `poll.previous.refresh` sum them. |
+| `poll.scan` | info / debug | One listing: `scope` (`day`, `recent`, `historical` or `on-demand`), `location`, `prefix`, `keys` and `slices_touched`. `info` when it changed the index. One that changed nothing is logged, at `debug`, only when made on demand: the loops make theirs by the hundred (the current day has one per camera every second, a recent pass one per camera per day), and each loop's own line counts them (`poll.current.heartbeat`, `poll.previous.refresh`, `poll.recent.done`, `poll.recent.refresh`, `poll.historical.done`). |
 | `poll.scan.error` | error | Listing a date opened on demand failed. |
 | `poll.scan.empty_cached` | debug | A date opened on demand is already known to be empty, so it isn't listed again. |
 | `poll.scan.location_error` | error | More than one location failed in the same sweep: the first failure gets the traceback, each other one gets this line. |

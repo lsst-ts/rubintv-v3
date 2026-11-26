@@ -570,7 +570,7 @@ class _StopAfter(FakePoller):
         return super().scan(location, prefix)
 
 
-async def _no_wait(_seconds: float) -> bool:
+async def _no_wait(seconds: float) -> bool:
     # Stand-in for PollEngine._pause: tick immediately, no rescan requested.
     return False
 
@@ -852,12 +852,13 @@ async def test_failing_locations_all_finish_before_the_error_propagates(
     assert logged == ["poll.scan.location_error"]
 
 
-async def test_only_a_changed_current_day_listing_is_logged(
+async def test_a_loops_unchanged_listing_is_not_logged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The current-day loop re-lists every prefix each second, and an
-    # unchanged listing logged a debug line per camera per second. Other
-    # scopes list rarely and still log theirs at debug; a change is info.
+    # The current-day loop re-lists every prefix each second and a recent
+    # pass makes hundreds of listings at once: an unchanged one of theirs
+    # isn't logged, their own summary lines count them. One made on demand
+    # still is, at debug; a change is info whatever made the listing.
     logged: list[tuple[str, str]] = []
 
     class Recorder:
@@ -870,21 +871,114 @@ async def test_only_a_changed_current_day_listing_is_logged(
     result = poller.scan("loc", prefix)
     await engine._apply_scan("day", "loc", prefix, result)  # new: info
     await engine._apply_scan("day", "loc", prefix, result)  # unchanged: nothing
-    await engine._apply_scan("recent", "loc", prefix, result)  # unchanged: debug
-    assert logged == [("info", "day"), ("debug", "recent")]
+    for scope in ("recent", "historical"):  # unchanged: nothing
+        await engine._apply_scan(scope, "loc", prefix, result)
+    await engine._apply_scan("on-demand", "loc", prefix, result)  # debug
+    assert logged == [("info", "day"), ("debug", "on-demand")]
 
 
 # -- a cycle that never ends, and the cache volume that could cause one -------
 
 
 class _Logged:
-    """Stands in for the module's logger, keeping each event's name."""
+    """Stands in for the module's logger, keeping each event's name and
+    fields."""
 
     def __init__(self) -> None:
         self.events: list[str] = []
+        self.fields: list[dict[str, object]] = []
 
     def __getattr__(self, level: str) -> object:
-        return lambda event, **fields: self.events.append(event)
+        def record(event: str, **fields: object) -> None:
+            self.events.append(event)
+            self.fields.append(fields)
+
+        return record
+
+    def of(self, event: str) -> list[dict[str, object]]:
+        """The fields of each line logged for ``event``."""
+        pairs = zip(self.events, self.fields, strict=True)
+        return [fields for name, fields in pairs if name == event]
+
+
+# -- one line for a run of cycles, and for a pass -----------------------------
+
+
+async def test_heartbeat_sums_the_cycles_since_the_last(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No line per cycle, at any level: every so many cycles, one line with
+    # how many it covers and the spread of their times.
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    engine, _ = _engine(window=0)
+    engine._interval = 30.0  # a heartbeat every two cycles
+    cycles = 0
+
+    async def sleep(seconds: float) -> None:
+        nonlocal cycles
+        cycles += 1
+        if cycles == 4:
+            engine._stop.set()
+
+    engine._sleep = sleep  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._current_day_loop(), timeout=5.0)
+    beats = logged.of("poll.current.heartbeat")
+    assert [(b["cycle"], b["cycles"]) for b in beats] == [(2, 2), (4, 2)]
+    for beat in beats:
+        assert (
+            beat["cycle_seconds_min"]  # type: ignore[operator]
+            <= beat["cycle_seconds_mean"]
+            <= beat["cycle_seconds_max"]
+        )
+    assert "poll.current.cycle" not in logged.events
+
+
+async def test_recent_pass_counts_the_listings_it_made() -> None:
+    engine, poller = _engine(window=4, known_days=2)
+    await _seed_dates(engine, ["2020-01-01", "2020-02-01", "2020-03-01"])
+    events, listings = await engine._scan_recent_window()
+    # The window's two days without a faster loop and the two newest known
+    # data days, for the one camera.
+    assert listings == len(poller.scanned) == 4
+    assert events == 4
+
+
+async def test_recent_refresh_logs_one_line_for_the_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    poller = _StopAfter(1)
+    engine, _ = _engine(window=3, recent_refresh=1.0, poller=poller)
+    poller.engine = engine
+    await _seed_dates(engine, [recent_day_obs(3)[2]])
+    engine._pause = _no_wait  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
+    # The listing found nothing new, so it has no line of its own: the
+    # pass's says how many there were and how long they took.
+    assert "poll.scan" not in logged.events
+    (line,) = logged.of("poll.recent.refresh")
+    assert (line["events"], line["listings"]) == (1, 1)
+    assert "pass_seconds" in line
+
+
+async def test_startup_passes_log_how_long_they_took(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    engine, _ = _engine(window=3)
+
+    async def refresh(seconds: float) -> None:
+        engine._stop.set()
+
+    engine._refresh_recent_until = refresh  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._historical_loop(), timeout=5.0)
+    (recent,) = logged.of("poll.recent.done")
+    assert recent["listings"] == 1 and "pass_seconds" in recent
+    (sweep,) = logged.of("poll.historical.done")
+    assert "sweep_seconds" in sweep
 
 
 class _HeldPoller(FakePoller):
