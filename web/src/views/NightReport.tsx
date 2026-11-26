@@ -246,6 +246,17 @@ export function NightReport() {
 
   if (isPending && date) return <p className="skeleton">Loading…</p>;
   if (!data?.exists) return <p>No summary for this date.</p>;
+  // The report's objects are in the bucket but none gave a section: the
+  // server skips a text object it can't fetch or parse, and there may be no
+  // plots yet. The next rewrite of the report fetches it again.
+  if (tabs.length === 0) {
+    return (
+      <p>
+        The summary for this date can't be shown: none of its sections could
+        be read.
+      </p>
+    );
+  }
 
   const current = tabs.find((t) => t.id === selected) ?? tabs[0];
 
