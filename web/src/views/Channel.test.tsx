@@ -1,13 +1,17 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
+import { queryKeys } from "../lib/liveQuery";
 import { createQueryClient } from "../lib/queryClient";
 import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
 import { routes } from "../routes";
+import { LIVE_LOAD_LIMIT_MS } from "./Channel";
 import {
   liveSockets,
   loseLiveConnection,
   openLiveSockets,
+  pushLiveMessage,
+  reconnectLive,
   wholeMetadata,
 } from "../test-setup";
 
@@ -23,7 +27,11 @@ const CHANNELS = [
   { name: "movie", title: "Movie", per_day: false },
 ];
 
-// Seqs 5, 7 and 9 on monitor; imexam and spec share 7; movie is a video.
+// Seqs 5, 7 and 9 on monitor (more can land, see `land`); imexam and spec
+// share 7; movie is a video.
+let monitorSeqs = [9, 5, 7];
+// Monitor seqs whose file is a movie, not an image.
+let movieSeqs: number[] = [];
 function stub() {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
@@ -45,9 +53,17 @@ function stub() {
       body = {
         per_day: {},
         metadata: {},
-        channels: { monitor: [9, 5, 7], imexam: [7], spec: [7], movie: [3, 4] },
+        channels: {
+          monitor: [...monitorSeqs],
+          imexam: [7],
+          spec: [7],
+          movie: [3, 4],
+        },
         extensions: {
-          monitor: { default: "png", exceptions: {} },
+          monitor: {
+            default: "png",
+            exceptions: Object.fromEntries(movieSeqs.map((s) => [s, "mp4"])),
+          },
           imexam: { default: "png", exceptions: {} },
           spec: { default: "png", exceptions: {} },
           movie: { default: "mp4", exceptions: {} },
@@ -59,14 +75,20 @@ function stub() {
 }
 
 beforeEach(() => {
+  monitorSeqs = [9, 5, 7];
+  movieSeqs = [];
   stub();
   localStorage.removeItem("rubintv.channel.metaCollapsed");
 });
 
+// The rendered page's query client, for a test that needs to see what the
+// page has fetched.
+let client: QueryClient;
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
+  client = createQueryClient();
   render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <LiveProvider>
         <RouterProvider router={router} />
       </LiveProvider>
@@ -199,20 +221,315 @@ test("live mode stops calling itself LIVE while the tab is disconnected", async 
   }
 });
 
-test("live mode promotes a new image once it has decoded", async () => {
-  // A browser with img.decode(): the newest frame is shown once it resolves.
-  const decode = vi.fn().mockResolvedValue(undefined);
-  HTMLImageElement.prototype.decode = decode;
-  try {
-    renderAt("/local/auxtel/monitor/current");
-    await waitFor(() =>
-      expect(document.querySelector(".seq-current")?.textContent).toBe("9"),
-    );
-    expect(decode).toHaveBeenCalled();
-  } finally {
-    // @ts-expect-error - jsdom has no decode; put it back that way.
-    delete HTMLImageElement.prototype.decode;
+describe("live mode's hold on the frame in view", () => {
+  // The viewer loads the next frame off screen (new Image()) and swaps it in
+  // once decoded. jsdom loads no images, so stand in for those: each records
+  // the URL it was given, and its decode() settles only when the test says
+  // so, or fails as a browser's does when the src is taken away.
+  class OffscreenImage {
+    static made: OffscreenImage[] = [];
+    private url = "";
+    settle: { ok: () => void; fail: () => void } | null = null;
+    constructor() {
+      OffscreenImage.made.push(this);
+    }
+    get src() {
+      return this.url;
+    }
+    set src(url: string) {
+      this.url = url;
+      if (url === "") this.settle?.fail();
+    }
+    decode() {
+      return new Promise<void>((ok, fail) => {
+        this.settle = { ok, fail: () => fail(new Error("src cleared")) };
+      });
+    }
+    decoded() {
+      this.settle?.ok();
+    }
   }
+  const urlOf = (seq: number) => `/${String(seq).padStart(6, "0")}/image.png`;
+  // The frames loaded to take the place of the one in view, in the order
+  // asked for, without any given up since (their src cleared). The viewer
+  // also warms the browser's cache with the frames either side of the one in
+  // view; those it never waits on, so decode() tells the two apart.
+  const held = () => OffscreenImage.made.filter((img) => img.settle !== null);
+  const loading = () =>
+    held()
+      .filter((img) => img.src !== "")
+      .map((img) => Number(/\/(\d{6})\/image\.png$/.exec(img.src)?.[1]));
+  const offscreen = (seq: number) =>
+    held().filter((img) => img.src.endsWith(urlOf(seq))).at(-1)!;
+  const decoded = (seq: number) => act(async () => offscreen(seq).decoded());
+  const shown = () => document.querySelector(".seq-current")?.textContent;
+
+  // A new exposure lands on the monitor channel, the tab hears of it, and
+  // the view has the night's new list.
+  async function land(seq: number) {
+    monitorSeqs = [...monitorSeqs, seq];
+    act(() =>
+      pushLiveMessage({
+        type: "channelData",
+        location: "local",
+        camera: "auxtel",
+        date: "2026-04-10",
+      }),
+    );
+    const night = queryKeys.datePayload("local", "auxtel", "2026-04-10");
+    await waitFor(() =>
+      expect(
+        client.getQueryData<{ channels: { monitor: number[] } }>(night)
+          ?.channels.monitor,
+      ).toEqual(monitorSeqs),
+    );
+    // The query tells the view on a zero timer; let that run, and the view
+    // act on the new list.
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 0));
+    });
+  }
+
+  beforeEach(() => {
+    OffscreenImage.made = [];
+    vi.stubGlobal("Image", OffscreenImage);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  test("the frame in view stays, label and links with it, until the next has decoded", async () => {
+    renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    // The first frame goes straight to the page: nothing to hold in its place.
+    expect(loading()).toEqual([]);
+
+    await land(11);
+    expect(shown()).toBe("9");
+    expect(screen.getByRole("img", { name: "monitor 9" })).toBeDefined();
+    // No way forward yet to a frame that isn't on screen.
+    expect(screen.queryByRole("link", { name: /^Next/ })).toBeNull();
+
+    await decoded(11);
+    expect(shown()).toBe("11");
+    expect(screen.getByRole("img", { name: "monitor 11" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Previous (9)" })).toBeDefined();
+  });
+
+  test("frames that land faster than they load still reach the page, one at a time", async () => {
+    renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+
+    // 11 is still on its way when 12 lands, and 13 after it: it is left to
+    // finish, with nothing else started beside it.
+    await land(11);
+    await land(12);
+    await land(13);
+    expect(loading()).toEqual([11]);
+    expect(shown()).toBe("9");
+
+    // It reaches the page though it is no longer the newest, and the next
+    // load is the newest by then, not each frame in between.
+    await decoded(11);
+    expect(shown()).toBe("11");
+    expect(loading()).toEqual([11, 13]);
+    expect(screen.queryByRole("link", { name: /^Next/ })).toBeNull();
+
+    await land(14);
+    await decoded(13);
+    expect(shown()).toBe("13");
+    // The frame before it was skipped, and isn't fetched for the Previous
+    // link alongside the one being waited for.
+    const warmed = (seq: number) =>
+      OffscreenImage.made.some(
+        (img) => img.settle === null && img.src.endsWith(urlOf(seq)),
+      );
+    expect(warmed(12)).toBe(false);
+
+    await decoded(14);
+    expect(shown()).toBe("14");
+    expect(screen.getByText("LIVE")).toBeDefined();
+    // Caught up: now the frame before is made ready.
+    expect(warmed(13)).toBe(true);
+    expect(warmed(12)).toBe(false);
+  });
+
+  test("a frame that fails to decode still takes its turn", async () => {
+    // Its <img> on the page then recovers what it can (see ProxiedImg).
+    const failed = vi.spyOn(OffscreenImage.prototype, "decode");
+    failed.mockRejectedValue(new Error("no such image"));
+    renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    await land(11);
+    await waitFor(() => expect(shown()).toBe("11"));
+  });
+
+  test("without decode() the swap goes by the image's load", async () => {
+    // As in jsdom, and in a browser too old to have it.
+    const made: Array<{ src: string; onload: (() => void) | null }> = [];
+    class PlainImage {
+      src = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor() {
+        made.push(this);
+      }
+    }
+    vi.stubGlobal("Image", PlainImage);
+    const router = renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    await land(11);
+    expect(shown()).toBe("9");
+    const next = made.find((img) => img.onload !== null)!;
+    expect(next.src.endsWith(urlOf(11))).toBe(true);
+    act(() => next.onload!());
+    expect(shown()).toBe("11");
+
+    // One given up is stopped, and no longer listened to.
+    await land(12);
+    const dropped = made.find((img) => img.src.endsWith(urlOf(12)))!;
+    expect(dropped.onload).not.toBeNull();
+    await act(() => router.navigate("/local/auxtel/monitor?seq=5&date=2026-04-10"));
+    expect(dropped.src).toBe("");
+    expect(dropped.onload).toBeNull();
+  });
+
+  test("a reconnect gives up the load under way and starts it afresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt("/local/auxtel/monitor/current");
+      act(() => openLiveSockets());
+      await screen.findByRole("img", { name: "monitor 9" });
+      await land(11);
+      const hung = offscreen(11);
+
+      // Over a connection that died without closing, that load would hang for
+      // minutes and hold every later frame behind it.
+      reconnectLive();
+      expect(hung.src).toBe("");
+      expect(loading()).toEqual([11]);
+      expect(offscreen(11)).not.toBe(hung);
+      expect(shown()).toBe("9");
+
+      await decoded(11);
+      expect(shown()).toBe("11");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a load that runs out of time is given up for the newest frame", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt("/local/auxtel/monitor/current");
+      await screen.findByRole("img", { name: "monitor 9" });
+      await land(11);
+      const stuck = offscreen(11);
+      await land(12);
+
+      // Just short of the limit it is still waited for.
+      act(() => {
+        vi.advanceTimersByTime(LIVE_LOAD_LIMIT_MS - 1000);
+      });
+      expect(loading()).toEqual([11]);
+
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(stuck.src).toBe("");
+      expect(loading()).toEqual([12]);
+      expect(shown()).toBe("9");
+      await decoded(12);
+      expect(shown()).toBe("12");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("with nothing newer, a load that runs out of time is tried again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt("/local/auxtel/monitor/current");
+      await screen.findByRole("img", { name: "monitor 9" });
+      await land(11);
+      const stuck = offscreen(11);
+      act(() => {
+        vi.advanceTimersByTime(LIVE_LOAD_LIMIT_MS);
+      });
+      expect(stuck.src).toBe("");
+      expect(loading()).toEqual([11]);
+      const again = offscreen(11);
+      expect(again).not.toBe(stuck);
+
+      // The second try has its own full time, and one that arrives is no
+      // longer on the clock.
+      act(() => {
+        vi.advanceTimersByTime(LIVE_LOAD_LIMIT_MS - 1000);
+      });
+      await decoded(11);
+      expect(shown()).toBe("11");
+      act(() => {
+        vi.advanceTimersByTime(LIVE_LOAD_LIMIT_MS);
+      });
+      expect(again.src).not.toBe("");
+      expect(shown()).toBe("11");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("stepping back gives up the load under way, and Jump to current starts from the newest", async () => {
+    const router = renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    await land(11);
+    const dropped = offscreen(11);
+
+    await act(() => router.navigate("/local/auxtel/monitor?seq=5&date=2026-04-10"));
+    await screen.findByRole("img", { name: "monitor 5" });
+    expect(dropped.src).toBe("");
+
+    // Not the frame the earlier spell of following had got to.
+    await act(() => router.navigate("/local/auxtel/monitor/current"));
+    expect(shown()).toBe("11");
+    expect(screen.getByRole("img", { name: "monitor 11" })).toBeDefined();
+  });
+
+  test("leaving the page gives up the load under way", async () => {
+    const router = renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    await land(11);
+    await act(() => router.navigate("/local/auxtel"));
+    expect(held().length).toBe(1);
+    expect(loading()).toEqual([]);
+  });
+
+  test("a newest frame that is taken away is not waited for", async () => {
+    renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    await land(11);
+    const gone = offscreen(11);
+
+    // A rescan drops 11 (the night's list can change) as 10 turns up.
+    monitorSeqs = [9, 5, 7];
+    await land(10);
+    expect(gone.src).toBe("");
+    expect(loading()).toEqual([10]);
+    await decoded(10);
+    expect(shown()).toBe("10");
+  });
+
+  test("a movie among the frames is shown at once", async () => {
+    movieSeqs = [12];
+    renderAt("/local/auxtel/monitor/current");
+    await screen.findByRole("img", { name: "monitor 9" });
+    await land(11);
+    await land(12);
+    expect(shown()).toBe("12");
+    expect(document.querySelector("video")).not.toBeNull();
+    // The image that was on its way has nothing left to do.
+    expect(loading()).toEqual([]);
+  });
 });
 
 test("a broken image clears the loading spinner too", async () => {

@@ -2,9 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { debugLog } from "../lib/debug";
 import { queryKeys } from "../lib/liveQuery";
 import { STALE, staleTimeForDate } from "../lib/queryClient";
-import { useLiveTopic } from "../lib/LiveContext";
+import { useLiveTopic, useReconnects } from "../lib/LiveContext";
 import { useMetadata } from "../lib/useMetadata";
 import { usePageTitle } from "../lib/usePageTitle";
 import { cellFlagClass, formatCell } from "../lib/metaCells";
@@ -20,6 +21,13 @@ import {
 import { LiveBadge, useLiveWord } from "../components/LiveBadge";
 import { PerDayChannel } from "./PerDayChannel";
 import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
+
+// How long a live view waits for one frame to load off screen before it
+// gives that load up and starts again on the newest frame. Long enough that
+// only a stuck request reaches it: a frame of a few megabytes arrives well
+// inside it on any link a live view is usable over, and a load that is
+// merely slow is better left to finish than started over.
+export const LIVE_LOAD_LIMIT_MS = 60_000;
 
 // The single-channel route. A per-day channel (one artifact per night, e.g.
 // Tonight's Movie) has no seqs to step through or exposure metadata to show,
@@ -138,28 +146,88 @@ function SeqChannel({ live }: { live: boolean }) {
   // flicker. onLoad alone isn't enough — it can fire a paint before the swap,
   // and preloaded images fire it near-instantly. Videos have no decode step,
   // so they promote as soon as the target changes.
-  const [loadedSeq, setLoadedSeq] = useState<number | null>(null);
+  //
+  // The latch belongs to one spell of following one channel on one date. A
+  // day_obs rollover, a channel switch, or a step back and a later Jump to
+  // current starts with none, rather than hold the earlier spell's seq
+  // against the new one's frames (a 404 frame and lost prev/next on a new
+  // date, an old frame under LIVE after a jump).
+  const latchKey = [location, camera, channel, date, live].join("|");
+  const [latch, setLatch] = useState<{ key: string; seq: number } | null>(
+    null,
+  );
+  const loadedSeq = latch?.key === latchKey ? latch.seq : null;
 
-  // Reset the latch when the date or channel changes (day_obs rollover in live
-  // mode, or a channel switch). Otherwise loadedSeq would hold the previous
-  // day's/channel's seq against the new date's media URL — a 404 frame and lost
-  // prev/next (seqs.indexOf(seq) === -1) until the new target decodes.
-  useEffect(() => {
-    setLoadedSeq(null);
-  }, [date, channel]);
+  // The one frame being loaded to take the latched one's place. One at a
+  // time, and left to finish when a newer seq lands meanwhile: it is shown
+  // though no longer the newest, and the newest by then is loaded next. Were
+  // each new seq to restart the load, a link on which frames land faster than
+  // they load would never show another, and loading them side by side would
+  // split that link between them.
+  const loading = useRef<{
+    key: string;
+    seq: number;
+    reconnects: number;
+    abandon: () => void;
+  } | null>(null);
+  const reconnects = useReconnects();
+  // How many loads have run out of time; a change starts the next.
+  const [overdue, setOverdue] = useState(0);
 
   useEffect(() => {
+    // A load is given up only when it has nothing left to show (its spell is
+    // over, or its seq is gone from the night), or when it looks stuck, with
+    // every later frame held behind it: the tab's connection has come back
+    // since it began (over one that died without closing it would hang for
+    // minutes), or it has taken LIVE_LOAD_LIMIT_MS (see the timer below).
+    const under = loading.current;
+    if (
+      under &&
+      (under.key !== latchKey ||
+        under.seq > targetSeq ||
+        under.reconnects !== reconnects)
+    ) {
+      under.abandon();
+    }
+    // Nor is an earlier spell's latch kept for a later spell of the same
+    // channel and date to pick up.
+    if (latch && latch.key !== latchKey) setLatch(null);
     if (!live || targetSeq === 0) return;
     if (loadedSeq === targetSeq) return;
-    if (isVideoFor(targetSeq)) {
-      setLoadedSeq(targetSeq);
+    if (loadedSeq === null || isVideoFor(targetSeq)) {
+      // Nothing on screen to hold in the meantime, or nothing to decode.
+      loading.current?.abandon();
+      setLatch({ key: latchKey, seq: targetSeq });
       return;
     }
-    let cancelled = false;
-    const promote = () => {
-      if (!cancelled) setLoadedSeq(targetSeq);
-    };
+    if (loading.current) return;
     const img = new Image();
+    const mine = {
+      key: latchKey,
+      seq: targetSeq,
+      reconnects,
+      abandon: () => {
+        loading.current = null;
+        clearTimeout(limit);
+        img.onload = img.onerror = null;
+        // Stops the download too.
+        img.src = "";
+      },
+    };
+    const promote = () => {
+      if (loading.current !== mine) return;
+      loading.current = null;
+      clearTimeout(limit);
+      setLatch({ key: latchKey, seq: targetSeq });
+    };
+    // Out of time: start over on whichever seq is the newest by now, which
+    // is this one again if nothing has landed since.
+    const limit = setTimeout(() => {
+      debugLog("channel.load.overdue", "seq", targetSeq);
+      mine.abandon();
+      setOverdue((n) => n + 1);
+    }, LIVE_LOAD_LIMIT_MS);
+    loading.current = mine;
     img.src = mediaFor(targetSeq);
     if (typeof img.decode === "function") {
       // decode() resolves when the bitmap is paint-ready; rejects on a
@@ -171,11 +239,9 @@ function SeqChannel({ live }: { live: boolean }) {
       img.onload = promote;
       img.onerror = promote;
     }
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, targetSeq]);
+  }, [latchKey, targetSeq, latch, reconnects, overdue]);
+  useEffect(() => () => loading.current?.abandon(), []);
 
   // The displayed seq: in live mode the latched (loaded) one until the next
   // decodes; before the first decode there's nothing to hold back, so show the
@@ -325,9 +391,12 @@ function SeqChannel({ live }: { live: boolean }) {
 
   const navigate = useNavigate();
 
-  // Preload neighbouring images for instant prev/next (skip videos).
+  // Preload neighbouring images for instant prev/next (skip videos). Not
+  // while a live view is still loading a newer frame: the one before the
+  // frame in view may be one it skipped, and fetching that alongside would
+  // slow the frame being waited for.
   useEffect(() => {
-    if (isVideo) return;
+    if (isVideo || catchingUp) return;
     for (const s of [prev, next]) {
       if (s !== null) {
         const img = new Image();
@@ -335,7 +404,7 @@ function SeqChannel({ live }: { live: boolean }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prev, next, isVideo]);
+  }, [prev, next, isVideo, catchingUp]);
 
   const channelInfo = cameraInfo?.channels?.find((c) => c.name === channel);
 
