@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 434 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 437 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -410,7 +410,7 @@ Safe to skim.
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
   `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, `3e84f05`,
-  and the commit that noted the poll's summed log lines.
+  `96daca6`, and the commit that noted the app's error pages.
 
 ---
 
@@ -695,7 +695,7 @@ final `ColumnOrderList` and `useColumnPrefs`.
   (no trailing slash) rendered a blank page because the router's basename
   kept Vite's slash; unknown locations/cameras now resolve against the
   fetched config through a `RouteGuard` instead of rendering a half-built
-  shell.
+  shell. (Group 63 adds the page for a view that throws.)
 
 ### 40. Deployment config, DDV and operations
 Facts learned from the real phalanx/USDF deployment, each small.
@@ -919,7 +919,8 @@ camera tab never appeared. Review `PlotModal` and `PlotPanel` in
 `routes.tsx`, `api/nightreport.py`, `api/proxy.py` and
 `legacy_redirects.py`, then `tabsForCamera` in
 `web/src/lib/useShellNav.ts`. (Group 59 makes the page follow the
-report as the producer rewrites it.)
+report as the producer rewrites it; group 63 gives a report with no
+readable sections a line of its own.)
 - `59dba2c` Enlarge a Nightly Summary plot on click: each plot opens
   filling the window; a click anywhere but the caption, Escape or the
   close button closes it. It closes on the click, not on pointerdown, so
@@ -1370,6 +1371,34 @@ docstring states the rule, that a day is reconciled by one loop.
   the next listing restores it (a store-level guard would close it; a
   full sweep takes minutes, so it should be rare), and after an admin
   flush yesterday returns at the task's next pass or when opened
+
+### 63. A view that throws no longer takes the app down
+The same review opened a Nightly Summary whose reply said the report
+existed but held no text sections and no plots, and got react-router's
+"Unexpected Application Error!" page in place of the whole app: the
+view threw, and no route had an `errorElement`. Review the `tabs.length`
+check in `web/src/views/NightReport.tsx`, then
+`web/src/components/RouteError.tsx` and the two places `routes.tsx`
+uses it (`caught` around the views, and the root route).
+- `71a744f` Say so when none of a night report's sections could be
+  read. The server reports a night's report as existing when its
+  objects are indexed and leaves out a text object it can't fetch or
+  parse, so a reply can be empty; the page took its first tab without
+  checking there was one. It now reads "The summary for this date can't
+  be shown: none of its sections could be read.", which is kept apart
+  from "No summary for this date."
+- `6265435` Keep the shell when a view throws, and give the app its own
+  error page. Every view's route gets `RouteError` as its
+  `errorElement`, drawn where the view was, so the header, breadcrumbs,
+  tabs and menu stay and any move elsewhere clears it. The page shows
+  what was thrown and a "Try again" button, which drops the queries
+  the view left behind (so it fetches afresh, not from the cached
+  payload it may have tripped over) and navigates to where it already
+  is, which is what resets the router's boundary. The root route has
+  the page in its `whole` form for a throw in the Layout itself: it
+  stands alone, with a reload and a plain link home. A view that has
+  thrown is unmounted and hears no live updates, so its error page
+  stays until Try again or a move elsewhere
 
 ---
 
