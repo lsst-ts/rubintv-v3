@@ -43,7 +43,12 @@ from lsst.ts.rubintv.api import health
 from lsst.ts.rubintv.app import _resolve_models_path, create_app
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data import cache as cache_mod
-from lsst.ts.rubintv.data.cache import CACHE_VERSION, DiskCache
+from lsst.ts.rubintv.data.cache import (
+    CACHE_VERSION,
+    CacheInspector,
+    DirReport,
+    DiskCache,
+)
 from lsst.ts.rubintv.data.dayobs import get_current_day_obs
 from lsst.ts.rubintv.data.index import DateIndex
 from lsst.ts.rubintv.middleware import (
@@ -234,6 +239,7 @@ def test_cache_usage_is_empty_when_cache_disabled() -> None:
         "problems": [],
         "dir": None,
         "entries": [],
+        "entries_age_seconds": None,
         "volume_total_bytes": None,
         "volume_free_bytes": None,
     }
@@ -262,6 +268,7 @@ def test_cache_usage_lists_each_entry_and_what_uses_it(tmp_path: Path) -> None:
     ]
     assert all(e["path"].startswith(str(tmp_path)) for e in body["entries"])
     assert body["entries"][2]["bytes"] >= 2 * 8192
+    assert body["entries_age_seconds"] >= 0.0
     assert body["problems"] == []
     assert not any(e["unreadable"] for e in body["entries"])
     assert 0 <= body["volume_free_bytes"] <= body["volume_total_bytes"]
@@ -340,7 +347,25 @@ def test_cache_usage_says_when_the_whole_dir_cannot_be_listed(
         body = client.get("/api/health/cache").json()
         monkeypatch.undo()
     assert body["problems"] == [{"kind": "unreadable", "detail": "Permission denied"}]
-    assert body["entries"] == []
+    assert body["entries"] == [] and body["entries_age_seconds"] is None
+
+
+def test_cache_usage_says_when_the_entries_are_not_sized_yet(tmp_path: Path) -> None:
+    # The first sizing is still running (it stats every cached file, and is
+    # slow while a sweep writes to the volume). That is no problem with the
+    # cache, and the empty entries aren't its contents.
+    class Unsized(CacheInspector):
+        async def report(
+            self, root: Path, wait: float, sizes_max_age: float
+        ) -> DirReport:
+            return DirReport([], None, None, True, 100, 40)
+
+    with run_app(cache_dir=tmp_path) as client:
+        client.app.state.app_state.cache_inspector = Unsized()  # type: ignore[attr-defined]
+        body = client.get("/api/health/cache").json()
+    assert body["problems"] == []
+    assert body["entries"] == [] and body["entries_age_seconds"] is None
+    assert (body["volume_total_bytes"], body["volume_free_bytes"]) == (100, 40)
 
 
 def test_cache_usage_reports_the_last_failed_write(tmp_path: Path) -> None:
@@ -359,7 +384,7 @@ def test_cache_usage_reports_the_last_failed_write(tmp_path: Path) -> None:
 def test_cache_usage_does_not_touch_a_volume_that_has_stopped_taking_writes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The scans have given up waiting on a write. A look at the volume now
+    # The scans have given up waiting on a write. A check of the volume now
     # would hang behind it, so none is made.
     def inspect(root: Path) -> None:
         raise AssertionError("looked at a hung volume")
@@ -380,7 +405,7 @@ def test_cache_usage_does_not_touch_a_volume_that_has_stopped_taking_writes(
     assert body["entries"] == [] and body["volume_total_bytes"] is None
 
 
-def test_cache_usage_gives_up_on_a_look_that_does_not_return(
+def test_cache_usage_gives_up_on_a_check_that_does_not_return(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     release = threading.Event()

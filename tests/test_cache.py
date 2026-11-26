@@ -36,6 +36,7 @@ from lsst.ts.rubintv.data.cache import (
     CacheInspector,
     DirReport,
     DiskCache,
+    EntryUsage,
     brief_error,
     dir_usage,
 )
@@ -329,13 +330,14 @@ def test_dir_usage_notes_a_directory_it_cannot_list(
     assert usage["v3"].error == "Permission denied: v3/local"
 
 
-def test_inspect_reports_what_the_dir_holds_and_allows(tmp_path: Path) -> None:
+def test_inspect_reports_what_the_dir_allows(tmp_path: Path) -> None:
     DiskCache(tmp_path).write("local", "lsstcam", "2026-04-10", sample_index())
     report = cache_mod._inspect(tmp_path)
-    assert [(e.path.name, e.files) for e in report.entries] == [(CACHE_VERSION, 1)]
     assert report.unreadable is None
     assert report.writable is True
     assert report.volume_total is not None and report.volume_free is not None
+    # Sizing what the dir holds is the inspector's, done less often.
+    assert report.entries == [] and report.sized_age is None
 
 
 def test_inspect_says_why_the_dir_cannot_be_listed_or_written(
@@ -345,65 +347,159 @@ def test_inspect_says_why_the_dir_cannot_be_listed_or_written(
     _deny_listing(monkeypatch, tmp_path)
     monkeypatch.setattr(os, "access", lambda path, mode: False)
     report = cache_mod._inspect(tmp_path)
-    assert report.entries == []
     assert report.unreadable == "Permission denied"
     assert report.writable is False
 
 
-async def test_a_look_that_does_not_return_is_waited_on_once(
+CHECKED = DirReport([], None, None, True, None, None)
+
+
+class _Held:
+    """Stands in for a call on the cache volume: counts its calls, and holds
+    each until released."""
+
+    def __init__(self, result: object) -> None:
+        self.calls = 0
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self._result = result
+
+    def __call__(self, root: Path) -> object:
+        self.calls += 1
+        self.entered.set()
+        self.release.wait()
+        return self._result
+
+
+async def test_the_inspector_reports_the_check_and_the_sizes(tmp_path: Path) -> None:
+    DiskCache(tmp_path).write("local", "lsstcam", "2026-04-10", sample_index())
+    report = await CacheInspector().report(tmp_path, 5.0, 60.0)
+    assert report is not None
+    assert [(e.path.name, e.files) for e in report.entries] == [(CACHE_VERSION, 1)]
+    assert report.sized_age is not None and report.sized_age >= 0.0
+    assert report.unreadable is None and report.writable is True
+
+
+async def test_a_check_that_does_not_return_is_waited_on_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A hung volume holds the look's thread for good. The first request
+    # A hung volume holds the check's thread for good. The first request
     # waits out the limit; later ones are answered at once, and none starts
-    # another look (and another held thread) beside it.
-    release = threading.Event()
-    looks = 0
-    report = DirReport([], None, True, None, None)
-
-    def inspect(root: Path) -> DirReport:
-        nonlocal looks
-        looks += 1
-        release.wait()
-        return report
-
-    monkeypatch.setattr(cache_mod, "_inspect", inspect)
+    # another check (and another held thread) beside it.
+    check = _Held(CHECKED)
+    monkeypatch.setattr(cache_mod, "_inspect", check)
+    monkeypatch.setattr(cache_mod, "dir_usage", lambda root: [])
     inspector = CacheInspector()
     try:
-        assert await inspector.report(tmp_path, 0.01) is None
-        # The limit counts from when the look began, so it has already run
+        assert await inspector.report(tmp_path, 0.01, 60.0) is None
+        # The limit counts from when the check began, so it has already run
         # out for whoever asks next.
-        assert await asyncio.wait_for(inspector.report(tmp_path, 0.0), 5.0) is None
-        assert looks == 1
+        again = inspector.report(tmp_path, 0.0, 60.0)
+        assert await asyncio.wait_for(again, 5.0) is None
+        assert check.calls == 1
         assert inspector.waited_seconds() > 0.0
     finally:
-        release.set()
-    # The volume answers: that look's result is served, then a new look.
-    look = inspector._look
-    assert look is not None
-    await asyncio.wait_for(look, 5.0)
-    assert await inspector.report(tmp_path, 5.0) is report
-    assert looks == 2
+        check.release.set()
+    # The volume answers: the next request makes a check of its own.
+    held = inspector._check
+    assert held is not None
+    await asyncio.wait_for(held, 5.0)
+    assert await inspector.report(tmp_path, 5.0, 60.0) is not None
+    assert check.calls == 2
 
 
-async def test_requests_that_overlap_share_one_look(
+async def test_requests_that_overlap_share_one_check_and_one_sizing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    release = threading.Event()
-    looks = 0
-    report = DirReport([], None, True, None, None)
-
-    def inspect(root: Path) -> DirReport:
-        nonlocal looks
-        looks += 1
-        release.wait()
-        return report
-
-    monkeypatch.setattr(cache_mod, "_inspect", inspect)
+    check = _Held(CHECKED)
+    sizing = _Held([])
+    monkeypatch.setattr(cache_mod, "_inspect", check)
+    monkeypatch.setattr(cache_mod, "dir_usage", sizing)
     inspector = CacheInspector()
-    first = asyncio.ensure_future(inspector.report(tmp_path, 5.0))
-    second = asyncio.ensure_future(inspector.report(tmp_path, 5.0))
+    first = asyncio.ensure_future(inspector.report(tmp_path, 5.0, 60.0))
+    second = asyncio.ensure_future(inspector.report(tmp_path, 5.0, 60.0))
     await asyncio.sleep(0)  # both reach their wait
-    release.set()
+    check.release.set()
+    sizing.release.set()
     reports = await asyncio.wait_for(asyncio.gather(first, second), 5.0)
-    assert list(reports) == [report, report]
-    assert looks == 1
+    assert [r is not None and r.sized_age is not None for r in reports] == [True, True]
+    assert (check.calls, sizing.calls) == (1, 1)
+
+
+async def test_a_slow_sizing_is_not_a_volume_in_trouble(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Sizing 6,000 slices on the USDF PVC took up to a minute while a sweep
+    # was writing to it. That used to be waited on for 10 s and then thrown
+    # away, sizing after sizing, so the page said the volume had stopped
+    # responding for as long as the sweep ran.
+    sized = [EntryUsage(tmp_path / CACHE_VERSION, 7, 4096)]
+    sizing = _Held(sized)
+    monkeypatch.setattr(cache_mod, "dir_usage", sizing)
+    inspector = CacheInspector()
+    first = asyncio.ensure_future(inspector.report(tmp_path, 30.0, 60.0))
+    try:
+        assert await asyncio.to_thread(sizing.entered.wait, 5.0)
+        # The sizing has now run past the limit (its start is put back, not
+        # waited out): a request is answered at once, without the sizes and
+        # with no alarm, and doesn't start a second sizing.
+        inspector._sizing_started -= 60.0
+        report = await asyncio.wait_for(inspector.report(tmp_path, 30.0, 60.0), 5.0)
+        assert report is not None
+        assert report.entries == [] and report.sized_age is None
+        assert sizing.calls == 1
+    finally:
+        sizing.release.set()
+    # However late it finishes, its result is what is served from then on.
+    await asyncio.wait_for(first, 5.0)
+    report = await inspector.report(tmp_path, 5.0, 60.0)
+    assert report is not None
+    assert report.entries == sized and report.sized_age is not None
+    assert sizing.calls == 1
+
+
+async def test_sizes_are_kept_until_they_age(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = [EntryUsage(tmp_path / CACHE_VERSION, 1, 4096)]
+    new = [EntryUsage(tmp_path / CACHE_VERSION, 2, 8192)]
+    results = [old, new]
+    hold = threading.Event()
+    hold.set()
+
+    def dir_usage(root: Path) -> list[EntryUsage]:
+        hold.wait()
+        return results.pop(0)
+
+    monkeypatch.setattr(cache_mod, "dir_usage", dir_usage)
+    inspector = CacheInspector()
+    for _ in range(2):
+        report = await inspector.report(tmp_path, 5.0, 60.0)
+        assert report is not None and report.entries == old
+    assert results == [new]
+    # Once aged they are sized again, behind the answer: the request gets
+    # the sizes there are without waiting for the new ones.
+    hold.clear()
+    try:
+        report = await asyncio.wait_for(inspector.report(tmp_path, 5.0, -1.0), 5.0)
+        assert report is not None and report.entries == old
+        assert inspector._sizing is not None and not inspector._sizing.done()
+    finally:
+        hold.set()
+    await asyncio.wait_for(inspector._sizing, 5.0)
+    report = await inspector.report(tmp_path, 5.0, 60.0)
+    assert report is not None and report.entries == new
+
+
+async def test_a_dir_that_cannot_be_listed_is_not_sized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def dir_usage(root: Path) -> list[EntryUsage]:
+        raise AssertionError("sized a dir that can't be listed")
+
+    _deny_listing(monkeypatch, tmp_path)
+    monkeypatch.setattr(cache_mod, "dir_usage", dir_usage)
+    report = await CacheInspector().report(tmp_path, 5.0, 60.0)
+    assert report is not None
+    assert report.unreadable == "Permission denied"
+    assert report.entries == [] and report.sized_age is None

@@ -11,6 +11,7 @@ const NO_CACHE_USAGE: CacheUsageResponse = {
   problems: [],
   dir: null,
   entries: [],
+  entries_age_seconds: null,
   volume_total_bytes: null,
   volume_free_bytes: null,
 };
@@ -185,6 +186,7 @@ test("lists where the disk cache lives, its sizes and what uses each part", asyn
       { path: "/scratch/guide", use: "guide", files: 2, bytes: 1.1 * 2 ** 20, unreadable: false },
       { path: "/scratch/v1", use: "unused", files: 5007, bytes: 42 * 2 ** 20, unreadable: false },
     ],
+    entries_age_seconds: 12,
     volume_total_bytes: 2 ** 30,
     volume_free_bytes: 768 * 2 ** 20,
   });
@@ -213,6 +215,7 @@ test("a cold first run shows the empty index, and no volume it can't read", asyn
     problems: [],
     dir: "/scratch",
     entries: [{ path: "/scratch/v3", use: "index", files: 0, bytes: 0, unreadable: false }],
+    entries_age_seconds: 12,
     volume_total_bytes: null,
     volume_free_bytes: null,
   });
@@ -243,6 +246,7 @@ test("a cache that isn't taking writes says so, top and bottom", async () => {
     ],
     dir: "/scratch",
     entries: [INDEX_ENTRY],
+    entries_age_seconds: 12,
     volume_total_bytes: null,
     volume_free_bytes: null,
   });
@@ -274,6 +278,7 @@ test("an index the server can't list reads as unknown, not as empty", async () =
     ],
     dir: "/scratch",
     entries: [{ ...INDEX_ENTRY, files: 0, bytes: 0, unreadable: true }],
+    entries_age_seconds: 12,
     volume_total_bytes: null,
     volume_free_bytes: null,
   });
@@ -304,6 +309,7 @@ test("a volume that has stopped answering shows no sizes at all", async () => {
     ],
     dir: "/scratch",
     entries: [],
+    entries_age_seconds: null,
     volume_total_bytes: null,
     volume_free_bytes: null,
   });
@@ -313,6 +319,42 @@ test("a volume that has stopped answering shows no sizes at all", async () => {
   );
   expect(screen.getByText("A write has not returned for 42 s")).toBeDefined();
   expect(screen.queryByRole("table")).toBeNull();
+});
+
+test("a cache whose first sizing is still running says so, with no alarm", async () => {
+  // Sizing stats every cached file, and is slow while a sweep writes to the
+  // volume. Until it has finished there are no entries: not an empty cache,
+  // and not a volume in trouble.
+  renderWith([cam({})], { cache_enabled: true }, {
+    enabled: true,
+    problems: [],
+    dir: "/scratch",
+    entries: [],
+    entries_age_seconds: null,
+    volume_total_bytes: 2 ** 30,
+    volume_free_bytes: 768 * 2 ** 20,
+  });
+  expect((await screen.findByText(/^Disk cache in/)).textContent).toBe(
+    "Disk cache in /scratch: being measured",
+  );
+  expect(screen.getByText(/^Volume/)).toBeDefined();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("table")).toBeNull();
+});
+
+test("sizes the server measured a while ago are given their age", async () => {
+  renderWith([cam({})], { cache_enabled: true }, {
+    enabled: true,
+    problems: [],
+    dir: "/scratch",
+    entries: [INDEX_ENTRY],
+    entries_age_seconds: 239,
+    volume_total_bytes: null,
+    volume_free_bytes: null,
+  });
+  expect((await screen.findByText(/^Disk cache in/)).textContent).toBe(
+    "Disk cache in /scratch: 45.0 MiB, measured 3 min ago",
+  );
 });
 
 test("shows a cold-start pill when no snapshot was loaded", async () => {

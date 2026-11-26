@@ -44,10 +44,15 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-# How long the Status page's look at the cache dir is waited on before the
-# answer is that the volume isn't responding. It stats every cached file,
-# which a healthy volume does in well under a second.
+# How long the Status page's check of the cache dir is waited on before the
+# answer is that the volume isn't responding. The check is a few calls,
+# whatever the dir holds, so only a volume that has hung keeps it this long.
 CACHE_LOOK_WAIT_SECONDS = 10.0
+
+# How old the cache entries' sizes may get before they are measured again.
+# Sizing stats every cached file: about 6 s for the USDF PVC's 6,000 when
+# the volume is quiet, and up to a minute while a sweep is writing to it.
+CACHE_SIZES_MAX_AGE_SECONDS = 5 * 60.0
 
 
 class LiveResponse(BaseModel):
@@ -188,11 +193,11 @@ class CacheEntry(BaseModel):
 
 class CacheProblem(BaseModel):
     kind: Literal["not_responding", "unreadable", "not_writable"]
-    """``not_responding``: a write to the volume, or this look at it, hasn't
-    returned (the rest of the answer is then empty: the volume isn't asked
-    again while it holds one call). ``unreadable``: the cache dir or the scan
-    index in it can't be listed. ``not_writable``: the last write failed, or
-    the server's user may not write there."""
+    """``not_responding``: a write to the volume, or this check of it,
+    hasn't returned (the rest of the answer is then empty: the volume isn't
+    asked again while it holds one call). ``unreadable``: the cache dir or
+    the scan index in it can't be listed. ``not_writable``: the last write
+    failed, or the server's user may not write there."""
     detail: str
     """The specifics, as a phrase for a person: the operating system's
     error, with any path relative to the cache dir, or how long the volume
@@ -212,6 +217,12 @@ class CacheUsageResponse(BaseModel):
     entries: list[CacheEntry]
     """What the cache dir holds: in-use entries first, then unused ones,
     largest first."""
+    entries_age_seconds: float | None
+    """Seconds since ``entries`` were sized. Sizing stats every cached file,
+    so it is repeated only every few minutes and its last result is served
+    in between. ``None`` when they haven't been sized: the first sizing is
+    still running, or a problem with the volume stops it. ``entries`` is
+    then empty, which says nothing of the cache."""
     volume_total_bytes: int | None
     volume_free_bytes: int | None
     """Size and free space of the volume holding the cache dir (the PVC in
@@ -299,9 +310,10 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
 async def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageResponse:
     """Disk cache locations, sizes and troubles, for the Status page.
 
-    Separate from ``/status`` because it stats every cached file (thousands
-    on the PVC) and every page polls that one. The look runs on a worker
-    thread and is waited on for only so long (see ``CacheInspector``).
+    Separate from ``/status`` because every page polls that one, and this
+    asks the volume. The check of it is waited on for only so long, and the
+    sizes, which take a stat of every cached file (thousands on the PVC),
+    are measured every few minutes (see ``CacheInspector``).
     """
     root = state.settings.cache_dir
     if not state.cache_enabled or root is None:
@@ -310,6 +322,7 @@ async def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageRes
             problems=[],
             dir=None,
             entries=[],
+            entries_age_seconds=None,
             volume_total_bytes=None,
             volume_free_bytes=None,
         )
@@ -318,12 +331,14 @@ async def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageRes
     report = None
     stalled = state.cache_write_stalled_seconds()
     if stalled is not None:
-        # The scans are already waiting on this volume; don't queue a look
+        # The scans are already waiting on this volume; don't queue a check
         # behind their write.
         silent = f"A write has not returned for {stalled:.0f} s"
     else:
         inspector = state.cache_inspector
-        report = await inspector.report(root, CACHE_LOOK_WAIT_SECONDS)
+        report = await inspector.report(
+            root, CACHE_LOOK_WAIT_SECONDS, CACHE_SIZES_MAX_AGE_SECONDS
+        )
         silent = f"A read has not returned for {inspector.waited_seconds():.0f} s"
     if report is None:
         return CacheUsageResponse(
@@ -331,6 +346,7 @@ async def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageRes
             problems=[CacheProblem(kind="not_responding", detail=silent)],
             dir=str(root),
             entries=[],
+            entries_age_seconds=None,
             volume_total_bytes=None,
             volume_free_bytes=None,
         )
@@ -377,6 +393,7 @@ async def cache_usage(state: AppState = Depends(get_app_state)) -> CacheUsageRes
         problems=problems,
         dir=str(root),
         entries=entries,
+        entries_age_seconds=report.sized_age,
         volume_total_bytes=report.volume_total,
         volume_free_bytes=report.volume_free,
     )
