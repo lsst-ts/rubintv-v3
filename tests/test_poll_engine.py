@@ -51,6 +51,13 @@ class FakePoller:
 
     def __init__(self) -> None:
         self.scanned: list[tuple[str, str]] = []
+        # What a listing of a camera's dates reports, and each one asked for.
+        self.dates: set[str] = {"2026-01-01"}
+        self.listed: list[tuple[str, str]] = []
+
+    def list_dates(self, location: str, camera: str) -> set[str]:
+        self.listed.append((location, camera))
+        return set(self.dates)
 
     def scan(self, location: str, prefix: str) -> ScanResult:
         self.scanned.append((location, prefix))
@@ -74,6 +81,21 @@ def _models() -> Models:
                 bucket="b",
                 cameras=[Camera(name="cam", title="Cam")],
             )
+        ]
+    )
+
+
+# The one location and camera of ``_models``, for the loops and passes that
+# are run for one at a time.
+LOC = _models().locations[0]
+CAM = LOC.cameras[0]
+
+
+def _two_locations() -> Models:
+    return Models(
+        locations=[
+            Location(name=n, title=n, bucket=n, cameras=[Camera(name="cam", title="C")])
+            for n in ("one", "two")
         ]
     )
 
@@ -117,7 +139,7 @@ async def _seed_dates(engine: PollEngine, dates: list[str]) -> None:
 
 async def test_recent_scanned_before_full() -> None:
     engine, poller = _engine(window=4)
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     prefixes = [p for _, p in poller.scanned]
     # Per-date prefixes under cam/, newest first, none the bare cam/ sweep
     # prefix. Today's and yesterday's aren't among them: each has a faster
@@ -132,7 +154,7 @@ async def test_recent_scanned_before_full() -> None:
 
 async def test_full_sweep_marks_both_flags() -> None:
     engine, _ = _engine(window=0)
-    await engine._scan_all_history()
+    await engine._sweep_camera(LOC, CAM)
     st = engine.camera_status()[("loc", "cam")]
     assert st.recent_ready is True
     assert st.full_complete is True
@@ -142,7 +164,7 @@ async def test_window_zero_skips_recent_phase() -> None:
     engine, poller = _engine(window=0)
     # The loop guards on the window; calling the recent scan with an empty
     # window list yields no per-date prefixes.
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     assert poller.scanned == []
     assert engine.camera_status()[("loc", "cam")].recent_ready is True
 
@@ -170,23 +192,24 @@ async def test_full_sweep_prunes_stale_warm_start_date() -> None:
         cache_slice_deleter=delete_slices,
     )
     assert "1970-01-01" in store.calendar("loc", "cam")
-    await engine._scan_all_history()
-    # The sweep's bare cam/ listing observed 2026-01-01 only; the epoch slice
-    # is gone from the calendar and its cache file was evicted.
+    await engine._sweep_camera(LOC, CAM)
+    # The bucket has 2026-01-01 only; the epoch slice is gone from the
+    # calendar and its cache file was evicted.
     assert store.calendar("loc", "cam") == ["2026-01-01"]
     assert evicted == [{("loc", "cam", "1970-01-01")}]
 
 
 async def test_full_sweep_never_prunes_the_current_day() -> None:
     # Race guard: the fast current-day loop may have inserted today's first
-    # keys *after* the historical sweep listed the {camera}/ prefix, so the
-    # sweep's listing wouldn't include today. Today must be protected from
-    # reconciliation, or it would be deleted the instant it appeared.
+    # keys *after* the historical sweep listed the camera's dates, so the
+    # listing wouldn't include today. Today must be protected from
+    # pruning, or it would be deleted the instant it appeared.
     today = get_current_day_obs()
     poller = FakePoller()
     store = EventStore()
     # Today is present in the store (from the current-day loop) but the fake
-    # sweep listing only ever reports its own historical date, never today.
+    # listing of dates only ever reports its own historical date, never
+    # today.
     await store.apply(
         [ObjectEvent(ObjectKind.CREATED, "loc", f"cam/{today}/c/000001/x.png", "e")]
     )
@@ -197,30 +220,31 @@ async def test_full_sweep_never_prunes_the_current_day() -> None:
         recent_window_days=0,
     )
     assert today in store.calendar("loc", "cam")
-    await engine._scan_all_history()
+    await engine._sweep_camera(LOC, CAM)
     # Today survived even though the sweep listing didn't observe it.
     assert today in store.calendar("loc", "cam")
 
 
 async def test_full_sweep_leaves_yesterday_to_the_previous_day_loop() -> None:
-    # The previous-day loop may have indexed yesterday's late keys after the
-    # sweep listed the prefix, so yesterday is protected as today is. Only
-    # while that loop is on, though: without it nothing else would prune
-    # yesterday between recent passes.
+    # The previous-day loop may have indexed yesterday's first keys after
+    # the sweep listed the camera's dates, so yesterday is protected as
+    # today is. Only while that loop is on, though: without it nothing else
+    # would prune yesterday between recent passes.
     yesterday = recent_day_obs(2)[1]
     for refresh, kept in ((120.0, True), (0.0, False)):
         engine, _ = _engine(window=0, previous_day_refresh=refresh)
         await _seed_dates(engine, [yesterday])
-        await engine._scan_all_history()
+        await engine._sweep_camera(LOC, CAM)
         assert (yesterday in engine._store.calendar("loc", "cam")) is kept
 
 
 async def test_full_sweep_that_crosses_rollover_protects_the_old_days(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A sweep that lists before noon UTC and reconciles after it listed the
-    # old today and yesterday while their loops were still adding to them:
-    # the days live at either end are protected, and no others.
+    # A sweep that lists the camera's dates before noon UTC and prunes
+    # after it asked while the old today and yesterday still had loops
+    # adding to them: the days live at either end are protected, and no
+    # others.
     clock = [datetime(2026, 3, 10, 11, 59, tzinfo=UTC)]
     monkeypatch.setattr(
         tasks, "recent_day_obs", lambda days: recent_day_obs(days, now=clock[0])
@@ -236,7 +260,7 @@ async def test_full_sweep_that_crosses_rollover_protects_the_old_days(
     # Before noon today is 03-09 and yesterday 03-08; after it, 03-10 and
     # 03-09. The fake listing reports none of them, nor 03-07.
     await _seed_dates(engine, ["2026-03-07", "2026-03-08", "2026-03-09", "2026-03-10"])
-    await engine._scan_all_history()
+    await engine._sweep_camera(LOC, CAM)
     assert engine._store.calendar("loc", "cam") == [
         "2026-03-10",
         "2026-03-09",
@@ -255,15 +279,75 @@ async def test_full_sweep_keeps_observed_dates() -> None:
         poller,  # type: ignore[arg-type]
         recent_window_days=0,
     )
-    await engine._scan_all_history()
+    await engine._sweep_camera(LOC, CAM)
     assert store.calendar("loc", "cam") == ["2026-01-01"]
 
 
-async def test_full_sweep_scans_bare_prefix() -> None:
+async def test_full_sweep_lists_a_cameras_dates_one_at_a_time() -> None:
+    # Never the bare cam/ prefix, which is every key the camera has at once:
+    # one listing names its dates, then each is listed on its own, newest
+    # first. Today and yesterday are left to their own loops.
     engine, poller = _engine(window=0)
-    await engine._scan_all_history()
-    assert ("loc", "cam") in {(loc, "cam") for loc, _ in poller.scanned}
-    assert [p for _, p in poller.scanned] == ["cam/"]
+    today, yesterday = recent_day_obs(2)
+    poller.dates = {"2026-01-01", "2025-06-01", "2026-01-02", today, yesterday}
+    events, listings = await engine._sweep_camera(LOC, CAM)
+    assert poller.listed == [("loc", "cam")]
+    assert [p for _, p in poller.scanned] == [
+        "cam/2026-01-02/",
+        "cam/2026-01-01/",
+        "cam/2025-06-01/",
+    ]
+    # One event from each date's listing; the listing of dates counts too.
+    assert (events, listings) == (3, 4)
+    assert engine._store.calendar("loc", "cam") == [
+        "2026-01-02",
+        "2026-01-01",
+        "2025-06-01",
+    ]
+
+
+async def test_full_sweep_reconciles_each_date_it_lists() -> None:
+    # A date the bucket still has, less a frame the index holds: the date's
+    # own listing drops the frame, as the whole-camera one used to.
+    engine, _ = _engine(window=0)
+    await engine._store.apply(
+        [
+            ObjectEvent(
+                ObjectKind.CREATED, "loc", f"cam/2026-01-01/c/00000{n}/a.png", "e"
+            )
+            for n in (1, 2)
+        ]
+    )
+    await engine._sweep_camera(LOC, CAM)
+    index = engine._store.date_index("loc", "cam", "2026-01-01")
+    assert index is not None and index.channels == {"c": {1}}
+
+
+async def test_full_sweep_keeps_a_date_indexed_while_it_lists_the_dates() -> None:
+    # A date that reaches the index after the sweep asked which dates the
+    # camera has (one opened on demand, say) isn't in the answer. It isn't
+    # among the dates the sweep knew of beforehand either, so it stays.
+    class HeldDates(FakePoller):
+        def __init__(self) -> None:
+            super().__init__()
+            self.begun = threading.Event()
+            self.release = threading.Event()
+
+        def list_dates(self, location: str, camera: str) -> set[str]:
+            self.begun.set()
+            self.release.wait()
+            return super().list_dates(location, camera)
+
+    poller = HeldDates()
+    engine, _ = _engine(window=0, poller=poller)
+    await _seed_dates(engine, ["2025-05-01"])
+    sweep = asyncio.ensure_future(engine._sweep_camera(LOC, CAM))
+    await asyncio.to_thread(poller.begun.wait)
+    await _seed_dates(engine, ["2025-06-01"])
+    poller.release.set()
+    await asyncio.wait_for(sweep, timeout=5.0)
+    # The one known beforehand and absent from the bucket is dropped.
+    assert engine._store.calendar("loc", "cam") == ["2026-01-01", "2025-06-01"]
 
 
 async def test_recent_scan_warms_metadata_per_camera() -> None:
@@ -273,7 +357,7 @@ async def test_recent_scan_warms_metadata_per_camera() -> None:
         warmed.append((location, camera))
 
     engine, _ = _engine(window=3, metadata_warmer=warm)
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     # Warmed once for the camera, after its recent scan finished.
     assert warmed == [("loc", "cam")]
 
@@ -286,7 +370,7 @@ async def test_full_sweep_warms_only_when_recent_disabled() -> None:
 
     # Window 0: the full sweep is the only phase, so it warms.
     engine, _ = _engine(window=0, metadata_warmer=warm)
-    await engine._scan_all_history()
+    await engine._sweep_camera(LOC, CAM)
     assert warmed == [("loc", "cam")]
 
 
@@ -299,7 +383,7 @@ async def test_full_sweep_skips_warm_when_recent_enabled() -> None:
     # Window > 0: the recent phase owns warming; the full sweep must not
     # re-warm the same dates.
     engine, _ = _engine(window=3, metadata_warmer=warm)
-    await engine._scan_all_history()
+    await engine._sweep_camera(LOC, CAM)
     assert warmed == []
 
 
@@ -310,7 +394,7 @@ async def test_warm_metadata_error_does_not_break_scan() -> None:
     engine, poller = _engine(window=3, metadata_warmer=warm)
     # A warming failure is swallowed; the recent scan still completes and
     # flips the readiness flag.
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     assert engine.camera_status()[("loc", "cam")].recent_ready is True
 
 
@@ -318,20 +402,44 @@ async def test_rollover_publishes_day_change_and_rescans_old_day() -> None:
     engine, poller = _engine(window=0)
     engine._current_day = "2020-01-01"  # force a rollover on the next check
     async with engine._store.bus.subscribe() as stream:
-        await engine._check_rollover()
+        day = await engine._check_rollover(LOC, "2020-01-01")
         change = await asyncio.wait_for(anext(stream), timeout=2)
     # Cameras are told to reset their live views to the new day...
     assert change.type == "dayChange"
     assert change.date == get_current_day_obs()
-    assert engine._current_day == get_current_day_obs()
+    assert day == engine._current_day == get_current_day_obs()
     # ...and the old day is listed once more, for what landed at its end.
     assert ("loc", "cam/2020-01-01/") in poller.scanned
 
 
 async def test_rollover_noop_when_day_unchanged() -> None:
     engine, poller = _engine(window=0)
-    await engine._check_rollover()
+    today = get_current_day_obs()
+    assert await engine._check_rollover(LOC, today) == today
     assert poller.scanned == []
+
+
+async def test_rollover_is_announced_once_for_every_location() -> None:
+    # Each location's loop notices the new day for itself and lists its own
+    # old day once more; the first to notice tells every camera's pages.
+    poller = FakePoller()
+    engine = PollEngine(_two_locations(), EventStore(), poller)  # type: ignore[arg-type]
+    engine._current_day = "2020-01-01"
+    published: list[tuple[str, str]] = []
+    publish = engine._store.bus.publish
+
+    def record(change: object) -> None:
+        published.append((change.type, change.location))  # type: ignore[attr-defined]
+        publish(change)  # type: ignore[arg-type]
+
+    engine._store.bus.publish = record  # type: ignore[method-assign]
+    for location in engine._models.locations:
+        await engine._check_rollover(location, "2020-01-01")
+    assert [p for p in published if p[0] == "dayChange"] == [
+        ("dayChange", "one"),
+        ("dayChange", "two"),
+    ]
+    assert poller.scanned == [("one", "cam/2020-01-01/"), ("two", "cam/2020-01-01/")]
 
 
 async def test_scan_date_fills_store_on_demand() -> None:
@@ -393,15 +501,17 @@ async def test_trigger_rescan_wakes_long_sleep() -> None:
     # A long sleep that would normally block; triggering a rescan must wake it
     # near-immediately rather than waiting out the timeout.
     engine.trigger_rescan()
-    await asyncio.wait_for(engine._sleep_or_rescan(3600), timeout=1.0)
-    assert engine._rescan.is_set()  # caller (the loop) clears it, not the sleep
+    poll = engine._polls["loc"]
+    await asyncio.wait_for(engine._sleep_or_rescan(poll, 3600), timeout=1.0)
+    assert poll.rescan.is_set()  # caller (the loop) clears it, not the sleep
 
 
 async def test_sleep_or_rescan_times_out_without_trigger() -> None:
     engine, _ = _engine(window=1)
     # Returns on timeout when neither stop nor rescan fires.
-    await asyncio.wait_for(engine._sleep_or_rescan(0.01), timeout=1.0)
-    assert not engine._rescan.is_set()
+    poll = engine._polls["loc"]
+    await asyncio.wait_for(engine._sleep_or_rescan(poll, 0.01), timeout=1.0)
+    assert not poll.rescan.is_set()
 
 
 class FlakyPoller(FakePoller):
@@ -418,12 +528,12 @@ class FlakyPoller(FakePoller):
         return super().scan(location, prefix)
 
 
-async def _run_one_current_cycle(engine: PollEngine) -> None:
+async def _run_one_current_cycle(engine: PollEngine, location: Location = LOC) -> None:
     # Drive exactly one current-day loop iteration. The loop checks _stop at
     # the top of each pass, so we let the first body run, then stop it during
     # the post-cycle sleep (which wakes immediately on _stop).
     engine._interval = 0.01
-    task = asyncio.ensure_future(engine._current_day_loop())
+    task = asyncio.ensure_future(engine._current_day_loop(location))
     await asyncio.sleep(0.05)  # enough for one full body + sleep
     engine._stop.set()
     await asyncio.wait_for(task, timeout=1.0)
@@ -523,8 +633,8 @@ async def test_s3_slow_cleared_when_cycle_fails() -> None:
         poller,  # type: ignore[arg-type]
         recent_window_days=1,
     )
-    engine.s3_slow = True  # pretend a prior slow cycle set it
-    engine.s3_last_cycle_seconds = 6.0  # ...and recorded its latency
+    engine._polls["loc"].slow = True  # pretend a prior slow cycle set it
+    engine._polls["loc"].last_cycle_seconds = 6.0  # ...and recorded its latency
     poller.fail = True
     await _run_one_current_cycle(engine)
     assert engine.s3_healthy is False
@@ -539,12 +649,12 @@ async def test_s3_slow_cleared_when_cycle_fails() -> None:
 
 async def test_pause_reports_a_triggered_rescan() -> None:
     engine, _ = _engine(window=1)
-    assert await engine._pause(0.01) is False
+    assert await engine._pause("loc", 0.01) is False
     engine.trigger_rescan()
     # Wakes at once rather than waiting out the sleep, and says why.
-    assert await asyncio.wait_for(engine._pause(60), timeout=1.0) is True
+    assert await asyncio.wait_for(engine._pause("loc", 60), timeout=1.0) is True
     assert engine.historical_loading is True
-    assert not engine._rescan.is_set()  # consumed
+    assert not engine._polls["loc"].rescan.is_set()  # consumed
 
 
 class _StopAfter(FakePoller):
@@ -570,7 +680,7 @@ class _StopAfter(FakePoller):
         return super().scan(location, prefix)
 
 
-async def _no_wait(seconds: float) -> bool:
+async def _no_wait(location: str, seconds: float) -> bool:
     # Stand-in for PollEngine._pause: tick immediately, no rescan requested.
     return False
 
@@ -580,7 +690,7 @@ async def test_recent_refresh_rescans_the_window_between_full_sweeps() -> None:
     engine, _ = _engine(window=3, recent_refresh=1.0, poller=poller)
     poller.engine = engine
     engine._pause = _no_wait  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
+    await asyncio.wait_for(engine._refresh_recent_until(LOC, 3600), timeout=5.0)
     # Several recent passes ran, each scanning the per-date prefix only —
     # never the bare {camera}/ prefix, which is the full sweep's job. Of the
     # window's three days that is the oldest.
@@ -591,7 +701,7 @@ async def test_recent_pass_lists_yesterday_without_its_own_loop() -> None:
     # With the previous-day refresh off, the recent pass is all that
     # re-checks yesterday. Today still belongs to the current-day loop.
     engine, poller = _engine(window=3, previous_day_refresh=0)
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     assert [p for _, p in poller.scanned] == [
         f"cam/{d}/" for d in recent_day_obs(3)[1:]
     ]
@@ -602,13 +712,13 @@ async def test_recent_refresh_waits_out_the_period_when_disabled() -> None:
     # the full sweep: the wait is one plain sleep, no scans.
     for window, refresh in ((0, 0.01), (3, 0.0)):
         engine, poller = _engine(window=window, recent_refresh=refresh)
-        await asyncio.wait_for(engine._refresh_recent_until(0.03), timeout=1.0)
+        await asyncio.wait_for(engine._refresh_recent_until(LOC, 0.03), timeout=1.0)
         assert poller.scanned == []
 
 
 async def test_recent_refresh_returns_early_on_rescan_trigger() -> None:
     engine, poller = _engine(window=3, recent_refresh=60)
-    task = asyncio.create_task(engine._refresh_recent_until(600))
+    task = asyncio.create_task(engine._refresh_recent_until(LOC, 600))
     await asyncio.sleep(0.01)
     engine.trigger_rescan()
     # Drops the wait so the loop can start the fresh cold sweep at once; the
@@ -623,7 +733,7 @@ async def test_recent_refresh_survives_a_failed_pass() -> None:
     engine, _ = _engine(window=3, recent_refresh=1.0, poller=poller)
     poller.engine = engine
     engine._pause = _no_wait  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
+    await asyncio.wait_for(engine._refresh_recent_until(LOC, 3600), timeout=5.0)
     # Each failure is logged and the next tick tries again.
     assert len(poller.scanned) == 3
 
@@ -641,7 +751,7 @@ async def test_previous_day_loop_rescans_yesterday_every_interval() -> None:
         slept.append(seconds)
 
     engine._sleep = sleep  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._previous_day_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._previous_day_loop(LOC), timeout=5.0)
     # One listing of yesterday per pass, a full interval apart.
     assert [p for _, p in poller.scanned] == [f"cam/{recent_day_obs(2)[1]}/"] * 3
     assert slept == [120.0] * 3
@@ -660,7 +770,7 @@ async def test_previous_day_loop_survives_a_failed_pass(
         return None
 
     engine._sleep = sleep  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._previous_day_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._previous_day_loop(LOC), timeout=5.0)
     # Each failure is logged and the next pass tries again.
     assert len(poller.scanned) == 3
     assert logged.events.count("poll.previous.error") == 3
@@ -675,7 +785,7 @@ async def test_previous_day_loop_lists_yesterday_at_once() -> None:
         engine._stop.set()
 
     engine._sleep = sleep  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._previous_day_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._previous_day_loop(LOC), timeout=5.0)
     assert [p for _, p in poller.scanned] == [f"cam/{recent_day_obs(2)[1]}/"]
 
 
@@ -685,7 +795,7 @@ async def test_previous_day_loop_runs_only_when_its_refresh_is_on() -> None:
         engine.start()
         names = {task.get_name() for task in engine._tasks}
         await engine.stop()
-        assert ("poll-previous" in names) is running
+        assert ("poll-previous-loc" in names) is running
 
 
 # -- known data days outside the window ---------------------------------------
@@ -697,7 +807,7 @@ async def test_recent_pass_adds_a_cameras_newest_data_days_outside_window() -> N
     await _seed_dates(engine, ["2020-01-01", "2020-03-01", "2020-02-01", "2020-04-01"])
     days = recent_day_obs(3)
     await _seed_dates(engine, days)
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     prefixes = [p for _, p in poller.scanned]
     # The window's one day without a faster loop, then the two newest known
     # data days — not the older two, and not today or yesterday, which are
@@ -711,7 +821,7 @@ async def test_known_days_skip_dates_the_window_already_covers() -> None:
     # Data on a window day and on one older day: the window day must not be
     # listed twice.
     await _seed_dates(engine, [days[1], "2020-01-01"])
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     prefixes = [p for _, p in poller.scanned]
     assert prefixes == [f"cam/{d}/" for d in days[1:]] + ["cam/2020-01-01/"]
 
@@ -719,7 +829,7 @@ async def test_known_days_skip_dates_the_window_already_covers() -> None:
 async def test_known_days_disabled_scans_the_window_only() -> None:
     engine, poller = _engine(window=3, known_days=0)
     await _seed_dates(engine, ["2020-01-01"])
-    await engine._scan_recent_window()
+    await engine._scan_recent_window(LOC)
     assert [p for _, p in poller.scanned] == [f"cam/{recent_day_obs(3)[2]}/"]
 
 
@@ -730,9 +840,9 @@ async def test_periodic_recent_pass_does_not_rewarm_metadata() -> None:
         warmed.append((location, camera))
 
     engine, _ = _engine(window=1, metadata_warmer=warmer)
-    await engine._scan_recent_window()  # cold start: warms
+    await engine._scan_recent_window(LOC)  # cold start: warms
     assert warmed == [("loc", "cam")]
-    await engine._scan_recent_window(warm=False)  # periodic tick: doesn't
+    await engine._scan_recent_window(LOC, warm=False)  # periodic tick: doesn't
     assert warmed == [("loc", "cam")]
 
 
@@ -756,23 +866,23 @@ async def test_historical_loop_retries_a_failed_sweep() -> None:
             super().__init__()
             self.failed = False
 
-        def scan(self, location: str, prefix: str) -> ScanResult:
-            if prefix == "cam/" and not self.failed:
+        def list_dates(self, location: str, camera: str) -> set[str]:
+            if not self.failed:
                 self.failed = True
-                self.scanned.append((location, prefix))
+                self.listed.append((location, camera))
                 raise RuntimeError("listing failed")
-            return super().scan(location, prefix)
+            return super().list_dates(location, camera)
 
     poller = FailFirstSweep()
     engine, _ = _engine(window=0, poller=poller)
     pauses: list[tuple[float, bool]] = []
     refreshes = 0
 
-    async def pause(seconds: float) -> bool:
+    async def pause(location: str, seconds: float) -> bool:
         pauses.append((seconds, engine.historical_loading))
         return False
 
-    async def refresh(seconds: float) -> None:
+    async def refresh(location: Location, seconds: float) -> None:
         nonlocal refreshes
         refreshes += 1
         if refreshes == 2:
@@ -780,15 +890,103 @@ async def test_historical_loop_retries_a_failed_sweep() -> None:
 
     engine._pause = pause  # type: ignore[method-assign]
     engine._refresh_recent_until = refresh  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._historical_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._historical_loop(LOC), timeout=5.0)
     assert pauses == [(tasks._HISTORICAL_RETRY_SECONDS, True)]
-    assert [p for _, p in poller.scanned] == ["cam/", "cam/", "cam/"]
+    # The sweep that failed, its retry, and the next round's.
+    assert len(poller.listed) == 3
     assert engine.historical_loading is False
+
+
+def _two_cameras() -> Location:
+    return Location(
+        name="loc",
+        title="Loc",
+        bucket="b",
+        cameras=[Camera(name=n, title=n) for n in ("first", "second")],
+    )
+
+
+async def test_a_retried_round_carries_on_from_the_camera_that_failed() -> None:
+    # A blip part-way through a location's cameras used to start the whole
+    # recent-then-full sequence again, listing every camera before it a
+    # second time, and a third, each minute it went on.
+    class FailsSecondOnce(FakePoller):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed = False
+
+        def list_dates(self, location: str, camera: str) -> set[str]:
+            if camera == "second" and not self.failed:
+                self.failed = True
+                raise RuntimeError("listing failed")
+            return super().list_dates(location, camera)
+
+    location = _two_cameras()
+    poller = FailsSecondOnce()
+    engine = PollEngine(
+        Models(locations=[location]),
+        EventStore(),
+        poller,  # type: ignore[arg-type]
+        recent_window_days=3,
+    )
+
+    async def refresh(location: Location, seconds: float) -> None:
+        engine._stop.set()
+
+    engine._pause = _no_wait  # type: ignore[method-assign]
+    engine._refresh_recent_until = refresh  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._historical_loop(location), timeout=5.0)
+    # Each camera's recent day once, then each camera's sweep once: the
+    # first camera's isn't repeated for the second's retry.
+    recent = f"{recent_day_obs(3)[2]}/"
+    assert [p for _, p in poller.scanned] == [
+        f"first/{recent}",
+        f"second/{recent}",
+        "first/2026-01-01/",
+        "second/2026-01-01/",
+    ]
+    assert poller.listed == [("loc", "first"), ("loc", "second")]
+    status = engine.camera_status()
+    assert all(status[("loc", cam)].full_complete for cam in ("first", "second"))
+
+
+async def test_a_rescan_asked_for_during_a_retry_starts_the_round_again() -> None:
+    class FailsSecondOnce(FakePoller):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed = False
+
+        def list_dates(self, location: str, camera: str) -> set[str]:
+            self.listed.append((location, camera))
+            if camera == "second" and not self.failed:
+                self.failed = True
+                raise RuntimeError("listing failed")
+            return set(self.dates)
+
+    location = _two_cameras()
+    poller = FailsSecondOnce()
+    engine = PollEngine(
+        Models(locations=[location]),
+        EventStore(),
+        poller,  # type: ignore[arg-type]
+        recent_window_days=0,
+    )
+
+    async def rescan(location: str, seconds: float) -> bool:
+        return True
+
+    async def refresh(location: Location, seconds: float) -> None:
+        engine._stop.set()
+
+    engine._pause = rescan  # type: ignore[method-assign]
+    engine._refresh_recent_until = refresh  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._historical_loop(location), timeout=5.0)
+    assert [cam for _, cam in poller.listed] == ["first", "second", "first", "second"]
 
 
 async def test_recent_refresh_with_no_time_left_returns_at_once() -> None:
     engine, poller = _engine(window=3, recent_refresh=1.0)
-    await asyncio.wait_for(engine._refresh_recent_until(0), timeout=1.0)
+    await asyncio.wait_for(engine._refresh_recent_until(LOC, 0), timeout=1.0)
     assert poller.scanned == []
 
 
@@ -820,36 +1018,140 @@ async def test_empty_date_memo_is_bounded_oldest_first(
     assert [p for _, p in poller.scanned] == ["cam/2026-01-01/"]
 
 
-async def test_failing_locations_all_finish_before_the_error_propagates(
+# -- a location that fails, and the ones that don't ---------------------------
+
+
+class _OneDown(FakePoller):
+    """A poller for which location ``two`` can't be reached, and which says
+    when location ``one`` has been listed enough to have got somewhere."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        super().__init__()
+        self._loop = loop
+        self.enough = asyncio.Event()
+
+    def _reach(self, location: str) -> None:
+        if location == "two":
+            raise ConnectionError("endpoint unreachable")
+
+    def list_dates(self, location: str, camera: str) -> set[str]:
+        self._reach(location)
+        return super().list_dates(location, camera)
+
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        self._reach(location)
+        result = super().scan(location, prefix)
+        if sum(1 for loc, _ in self.scanned if loc == "one") >= 20:
+            self._loop.call_soon_threadsafe(self.enough.set)
+        return result
+
+
+async def test_a_location_that_cant_be_reached_holds_up_no_other(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A bare gather would raise at the first failure and leave the other
-    # location's worker running detached into the next cycle. Every worker
-    # finishes first; the first error propagates and the rest are logged.
-    class AlwaysFails(FakePoller):
-        def scan(self, location: str, prefix: str) -> ScanResult:
-            self.scanned.append((location, prefix))
-            raise RuntimeError(f"{location} unreachable")
-
-    logged: list[str] = []
-
-    class Recorder:
-        def __getattr__(self, level: str) -> object:
-            return lambda event, **fields: logged.append(event)
-
-    monkeypatch.setattr(tasks, "log", Recorder())
-    models = Models(
-        locations=[
-            Location(name=n, title=n, bucket=n, cameras=[Camera(name="cam", title="C")])
-            for n in ("one", "two")
-        ]
+    # One barrier used to gather every location's listings: a location
+    # whose endpoint was down failed every cycle and pass for them all, so
+    # readiness never fired, no location's full sweep ever ran, and "S3
+    # unreachable" showed everywhere. Each location now has loops of its
+    # own.
+    monkeypatch.setattr(tasks, "log", _Logged())
+    ready: list[bool] = []
+    poller = _OneDown(asyncio.get_running_loop())
+    engine = PollEngine(
+        _two_locations(),
+        EventStore(),
+        poller,  # type: ignore[arg-type]
+        poll_interval=0.0,
+        recent_window_days=3,
+        on_ready=lambda: ready.append(True),
     )
-    poller = AlwaysFails()
-    engine = PollEngine(models, EventStore(), poller)  # type: ignore[arg-type]
-    with pytest.raises(RuntimeError, match="one unreachable"):
-        await engine._scan_day("2026-01-05")
-    assert sorted(loc for loc, _ in poller.scanned) == ["one", "two"]
-    assert logged == ["poll.scan.location_error"]
+    engine.start()
+    await asyncio.wait_for(poller.enough.wait(), timeout=10.0)
+    await engine.stop()
+
+    # Ready, though one location never managed a cycle.
+    assert ready == [True]
+    status = engine.location_status()
+    assert status["one"].s3_healthy is True
+    assert status["one"].historical_loading is False
+    assert status["one"].last_poll_age_seconds is not None
+    assert status["two"].s3_healthy is False
+    assert status["two"].historical_loading is True
+    assert status["two"].last_poll_age_seconds is None
+    cameras = engine.camera_status()
+    assert cameras[("one", "cam")].full_complete is True
+    assert cameras[("two", "cam")].recent_ready is False
+    # What a page with no location in view goes by: the worst of each.
+    assert engine.s3_healthy is False
+    assert engine.historical_loading is True
+    assert engine.last_poll_age_seconds() is not None
+
+
+async def test_ready_waits_for_every_locations_first_cycle() -> None:
+    # ...whichever way it ends: a location that can't be reached mustn't
+    # keep the app from serving the ones that can.
+    ready: list[bool] = []
+    poller = FlakyPoller()
+    engine = PollEngine(
+        _two_locations(),
+        EventStore(),
+        poller,  # type: ignore[arg-type]
+        on_ready=lambda: ready.append(True),
+    )
+    one, two = engine._models.locations
+    await _run_one_current_cycle(engine, one)
+    assert ready == []
+    poller.fail = True
+    engine._stop.clear()
+    await _run_one_current_cycle(engine, two)
+    assert ready == [True]
+    assert engine.location_status()["two"].s3_healthy is False
+
+
+async def test_an_app_with_no_locations_is_ready_at_once() -> None:
+    ready: list[bool] = []
+    engine = PollEngine(
+        Models(locations=[]),
+        EventStore(),
+        FakePoller(),  # type: ignore[arg-type]
+        on_ready=lambda: ready.append(True),
+    )
+    engine.start()
+    await engine.stop()
+    assert ready == [True]
+
+
+async def test_a_location_that_stays_down_logs_its_traceback_now_and_then(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Its loop retries every interval. A traceback for each attempt was one
+    # a second for as long as the endpoint stayed down.
+    logged = _Logged()
+    monkeypatch.setattr(tasks, "log", logged)
+    poller = FlakyPoller()
+    poller.fail = True
+    engine, _ = _engine(window=0, poller=poller)
+    cycles = 0
+
+    async def sleep(seconds: float) -> None:
+        nonlocal cycles
+        cycles += 1
+        if cycles == 3:
+            # Long enough since the last traceback for another.
+            monkeypatch.setattr(tasks, "_ERROR_LOG_SECONDS", 0.0)
+        if cycles == 4:
+            poller.fail = False
+        if cycles == 5:
+            engine._stop.set()
+
+    engine._sleep = sleep  # type: ignore[method-assign]
+    await asyncio.wait_for(engine._current_day_loop(LOC), timeout=5.0)
+    # Four failed cycles: the first logged, the next two not, the fourth
+    # logged again; then one that reached S3, which says it is back.
+    assert logged.events.count("poll.current.error") == 2
+    (back,) = logged.of("poll.current.recovered")
+    assert back["location"] == "loc" and "failed_seconds" in back
+    assert engine.s3_healthy is True
 
 
 async def test_a_loops_unchanged_listing_is_not_logged(
@@ -922,7 +1224,7 @@ async def test_heartbeat_sums_the_cycles_since_the_last(
             engine._stop.set()
 
     engine._sleep = sleep  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._current_day_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._current_day_loop(LOC), timeout=5.0)
     beats = logged.of("poll.current.heartbeat")
     assert [(b["cycle"], b["cycles"]) for b in beats] == [(2, 2), (4, 2)]
     for beat in beats:
@@ -937,7 +1239,7 @@ async def test_heartbeat_sums_the_cycles_since_the_last(
 async def test_recent_pass_counts_the_listings_it_made() -> None:
     engine, poller = _engine(window=4, known_days=2)
     await _seed_dates(engine, ["2020-01-01", "2020-02-01", "2020-03-01"])
-    events, listings = await engine._scan_recent_window()
+    events, listings = await engine._scan_recent_window(LOC)
     # The window's two days without a faster loop and the two newest known
     # data days, for the one camera.
     assert listings == len(poller.scanned) == 4
@@ -954,7 +1256,7 @@ async def test_recent_refresh_logs_one_line_for_the_pass(
     poller.engine = engine
     await _seed_dates(engine, [recent_day_obs(3)[2]])
     engine._pause = _no_wait  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._refresh_recent_until(3600), timeout=5.0)
+    await asyncio.wait_for(engine._refresh_recent_until(LOC, 3600), timeout=5.0)
     # The listing found nothing new, so it has no line of its own: the
     # pass's says how many there were and how long they took.
     assert "poll.scan" not in logged.events
@@ -970,11 +1272,11 @@ async def test_startup_passes_log_how_long_they_took(
     monkeypatch.setattr(tasks, "log", logged)
     engine, _ = _engine(window=3)
 
-    async def refresh(seconds: float) -> None:
+    async def refresh(location: Location, seconds: float) -> None:
         engine._stop.set()
 
     engine._refresh_recent_until = refresh  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._historical_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._historical_loop(LOC), timeout=5.0)
     (recent,) = logged.of("poll.recent.done")
     assert recent["listings"] == 1 and "pass_seconds" in recent
     (sweep,) = logged.of("poll.historical.done")
@@ -1006,11 +1308,18 @@ async def test_a_cycle_that_never_ends_is_reported_stalled(
     # Any cycle still running counts as overrun: no real minute to wait out.
     monkeypatch.setattr(tasks, "STALLED_CYCLE_SECONDS", 0.0)
     poller = _HeldPoller()
-    engine, _ = _engine(window=0, poller=poller)
+    ready: list[bool] = []
+    engine = PollEngine(
+        _models(),
+        EventStore(),
+        poller,  # type: ignore[arg-type]
+        recent_window_days=0,
+        on_ready=lambda: ready.append(True),
+    )
     assert engine.poll_stalled() is False
     assert engine.last_poll_age_seconds() is None
 
-    loop = asyncio.ensure_future(engine._current_day_loop())
+    loop = asyncio.ensure_future(engine._current_day_loop(LOC))
     await asyncio.to_thread(poller.begun.wait)
     assert engine.poll_stalled() is True
     assert engine.s3_healthy is True and engine.s3_slow is False
@@ -1019,6 +1328,9 @@ async def test_a_cycle_that_never_ends_is_reported_stalled(
     engine._check_stall()
     engine._check_stall()
     assert logged.events.count("poll.current.stalled") == 1
+    assert engine.location_status()["loc"].poll_stalled is True
+    # A first cycle that never ends doesn't hold readiness back either.
+    assert ready == [True]
 
     engine._stop.set()  # so the loop ends with this cycle
     poller.release.set()
@@ -1132,6 +1444,34 @@ async def test_scans_that_overlap_share_one_cache_write() -> None:
     assert cache.written == [{a}, {b}]
 
 
+async def test_each_locations_cache_is_rewritten_after_its_own_sweep() -> None:
+    # A location's rewrite asked for while another's is being written
+    # follows it in the same job; none is written twice or left out.
+    begun = asyncio.Event()
+    release = asyncio.Event()
+    written: list[str] = []
+
+    async def rewrite(location: str) -> None:
+        written.append(location)
+        begun.set()
+        await release.wait()
+
+    engine = PollEngine(
+        _two_locations(),
+        EventStore(),
+        FakePoller(),  # type: ignore[arg-type]
+        cache_writer=rewrite,
+    )
+    first = asyncio.ensure_future(engine._rewrite_location("one"))
+    await asyncio.wait_for(begun.wait(), timeout=5.0)
+    second = asyncio.ensure_future(engine._rewrite_location("two"))
+    await asyncio.sleep(0)  # the second caller reaches its wait
+    assert written == ["one"] and not second.done()
+    release.set()
+    await asyncio.wait_for(asyncio.gather(first, second), timeout=5.0)
+    assert written == ["one", "two"]
+
+
 async def test_stop_gives_up_on_a_hung_cache_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1153,14 +1493,13 @@ async def test_a_failed_cache_write_fails_no_scan(
     # unreachable"; after a full sweep, it had the whole sweep run again.
     logged = _Logged()
     monkeypatch.setattr(tasks, "log", logged)
-    rewrites = 0
+    rewrites: list[str] = []
 
     async def write(touched: set[tuple[str, str, str]]) -> None:
         raise RuntimeError("dictionary changed size during iteration")
 
-    async def rewrite() -> None:
-        nonlocal rewrites
-        rewrites += 1
+    async def rewrite(location: str) -> None:
+        rewrites.append(location)
 
     engine = PollEngine(
         _models(),
@@ -1171,13 +1510,13 @@ async def test_a_failed_cache_write_fails_no_scan(
         cache_slice_writer=write,
     )
 
-    async def refresh(seconds: float) -> None:
+    async def refresh(location: Location, seconds: float) -> None:
         engine._stop.set()
 
     engine._refresh_recent_until = refresh  # type: ignore[method-assign]
-    await asyncio.wait_for(engine._historical_loop(), timeout=5.0)
+    await asyncio.wait_for(engine._historical_loop(LOC), timeout=5.0)
     assert "cache.write.error" in logged.events
     assert "poll.historical.error" not in logged.events
-    # The sweep went on to its whole-cache rewrite, and finished.
-    assert rewrites == 1 and "cache.written" in logged.events
+    # The sweep went on to rewrite its location's cache, and finished.
+    assert rewrites == ["loc"] and "cache.written" in logged.events
     assert engine.historical_loading is False

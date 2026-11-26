@@ -240,15 +240,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # WS send and the 1s poll cycle — for its whole multi-second duration. Each
     # batch runs in one worker thread (one hop, not one per file) so the loop
     # stays responsive.
-    def _write_snapshot() -> None:
+    def _write_snapshot(only: str | None) -> None:
         for (location, camera), dates in store.snapshot().items():
+            if only is not None and location != only:
+                continue
             for date, index in dates.items():
                 cache.write(location, camera, date, index)
 
-    async def write_cache() -> None:
+    async def write_cache(location: str | None = None) -> None:
+        # One location's slices (after its own full sweep), or all of them.
         if not cache.enabled:
             return
-        await asyncio.to_thread(_write_snapshot)
+        await asyncio.to_thread(_write_snapshot, location)
 
     def _write_touched(touched: set[tuple[str, str, str]]) -> None:
         for location, camera, date in touched:
@@ -313,9 +316,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         metadata_warmer=warm_metadata,
     )
     # Expose the engine's scan-progress to the status endpoint: the global
-    # loading flag plus the per-camera readiness map.
+    # loading flag plus the per-camera readiness map, and each location's
+    # own polling beside the flags that sum them.
     state.historical_loading = lambda: engine.historical_loading
     state.camera_status = engine.camera_status
+    state.location_status = engine.location_status
     state.s3_healthy = lambda: engine.s3_healthy
     state.s3_slow = lambda: engine.s3_slow
     state.s3_last_cycle_seconds = lambda: engine.s3_last_cycle_seconds

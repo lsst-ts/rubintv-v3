@@ -31,8 +31,9 @@ Reads JSON-lines log output (a file, or stdin) produced with
 - ``ws.frame.sent``: frames and bytes per message type, and per-connection
   totals from ``ws.disconnect``;
 - ``poll.current.heartbeat``: the current-day cycles each one sums, their
-  mean and longest cycle time, and the keys last listed (a heartbeat comes
-  every 60 cycles, so a session shorter than that has none);
+  mean and longest cycle time, and the keys last listed, over every
+  location's poll (a heartbeat comes every 60 cycles, so a session shorter
+  than that has none);
 - ``poll.scan``: the listings that changed something, per scope, and the
   on-demand ones that didn't (the loops' unchanged listings aren't
   logged; their own lines count them);
@@ -104,11 +105,11 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
     ws_types: dict[str, Series] = defaultdict(Series)
     ws_conns: list[tuple[int, int]] = []
     # Current-day cycles: how many, their summed and longest time, and the
-    # keys the latest listed.
+    # keys each location's latest listed.
     cycles = 0
     cycle_seconds = 0.0
     cycle_max = 0.0
-    cycle_keys = 0
+    cycle_keys: dict[str, int] = {}
     scans: dict[str, Series] = defaultdict(Series)
     applies = Series()
 
@@ -141,7 +142,7 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
             cycles += n
             cycle_seconds += n * float(r.get("cycle_seconds_mean") or 0)
             cycle_max = max(cycle_max, float(r.get("cycle_seconds_max") or 0))
-            cycle_keys = int(r.get("keys_last_cycle") or 0)
+            cycle_keys[str(r.get("location"))] = int(r.get("keys_last_cycle") or 0)
         elif event == "poll.scan":
             row = scans[str(r.get("scope"))]
             row.count += 1
@@ -197,7 +198,7 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
         out.append(
             f"  {cycles} cycles; cycle_seconds mean"
             f" {cycle_seconds / cycles:.3f} max {cycle_max:.3f};"
-            f" keys in the last cycle {cycle_keys}"
+            f" keys in the last cycle {sum(cycle_keys.values())}"
         )
     else:
         out.append("  (none)")

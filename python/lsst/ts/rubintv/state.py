@@ -36,7 +36,7 @@ from lsst.ts.rubintv.config.models import Models
 
 if TYPE_CHECKING:
     from lsst.ts.rubintv.data.redis_inputs import RedisInputs
-    from lsst.ts.rubintv.data.tasks import CameraScanState
+    from lsst.ts.rubintv.data.tasks import CameraScanState, LocationPollStatus
 from lsst.ts.rubintv.config.settings import Settings
 from lsst.ts.rubintv.data.blocknames import BlockNameService
 from lsst.ts.rubintv.data.cache import CacheInspector
@@ -79,28 +79,36 @@ class AppState:
     false, older dates only appear as the cold sweep discovers them."""
     historical_loading: Callable[[], bool] = field(default=lambda: True)
     """Callable returning whether the historical back-catalogue is still
-    loading (the poll engine owns the flag; this reads it)."""
+    loading at any location (the poll engine owns the flags; this reads
+    them)."""
     s3_healthy: Callable[[], bool] = field(default=lambda: True)
-    """Callable returning whether the last current-day poll cycle reached S3
-    (the poll engine owns the flag; this reads it). False means the bucket
-    endpoint was unreachable on the most recent cycle."""
+    """Callable returning whether every location's last current-day poll
+    cycle reached S3 (the poll engine owns the flags; this reads them).
+    False means some location's bucket endpoint was unreachable on its most
+    recent cycle."""
     s3_slow: Callable[[], bool] = field(default=lambda: False)
-    """Callable returning whether the last successful poll cycle was unusually
-    slow (the poll engine owns the flag; this reads it). True warns of a
-    degrading link before it fails the s3_healthy check outright."""
+    """Callable returning whether any location's last successful poll cycle
+    was unusually slow (the poll engine owns the flags; this reads them).
+    True warns of a degrading link before it fails the s3_healthy check
+    outright."""
     s3_last_cycle_seconds: Callable[[], float] = field(default=lambda: 0.0)
-    """Callable returning the wall-clock seconds of the last successful
-    current-day poll cycle (the poll engine owns it; this reads it). Lets the
-    status view show the actual latency, not just the slow/not-slow flag; 0.0
-    before the first cycle completes."""
+    """Callable returning the wall-clock seconds of the longest of the
+    locations' last successful current-day poll cycles (the poll engine owns
+    them; this reads them). Lets the status view show the actual latency,
+    not just the slow/not-slow flag; 0.0 before the first cycle completes."""
     poll_stalled: Callable[[], bool] = field(default=lambda: False)
-    """Callable returning whether the current-day poll cycle now running has
-    overrun (the poll engine works it out; this reads it). The flags above
-    describe the last cycle to finish, so they can't show one that hasn't."""
+    """Callable returning whether any location's current-day poll cycle now
+    running has overrun (the poll engine works it out; this reads it). The
+    flags above describe the last cycle to finish, so they can't show one
+    that hasn't."""
     last_poll_age_seconds: Callable[[], float | None] = field(default=lambda: None)
-    """Callable returning the seconds since a current-day poll cycle last
-    succeeded (the poll engine owns the clock; this reads it); ``None`` until
-    one has."""
+    """Callable returning the seconds since the location furthest behind
+    last finished a current-day poll cycle (the poll engine owns the clock;
+    this reads it); ``None`` until one has."""
+    location_status: Callable[[], dict[str, LocationPollStatus]] = field(default=dict)
+    """Callable returning each location's own polling, keyed by location
+    (the poll engine owns it; this reads it). The six callables above sum
+    it."""
     cache_write_error: Callable[[], str | None] = field(default=lambda: None)
     """Callable returning what the disk cache's most recent write failed
     with, ``None`` if it succeeded (the cache owns it; this reads it)."""

@@ -31,16 +31,25 @@ code path and differ only in *what* they scan and *how often*:
 - historical scanner: recent window then the full back-catalogue on startup;
   afterwards the recent window — plus each camera's few most recent data
   days outside it — is re-scanned every ``recent_refresh`` (2h) and the full
-  sweep repeats every 12h: recent dates are mutable, old ones rarely are
+  sweep repeats every 12h: recent dates are mutable, old ones rarely are.
+  The full sweep goes a date at a time, so what it holds and how long it
+  keeps the event loop are a camera-day's worth whatever the bucket's size
 - on-demand scan: one camera-date, for a request that hits an unindexed date
+
+Each location has its own three loops. A location whose endpoint is down,
+slow or hung fails, slows or stalls its own cycles and passes and no other
+location's: the rest keep their cadence, load their history and report
+themselves healthy, and the app is ready once every location's first
+current-day cycle has ended, whichever way.
 
 A day is reconciled by one loop. Reconciling drops whatever a listing
 didn't see, so a slower loop's older listing of a day would drop what a
 faster loop had indexed since: the historical scanner leaves today to the
 current-day poller and yesterday to the previous-day poller.
 
-Day rollover (UTC-12) is detected by the current-day loop and published as a
-``dayChange`` so clients reset their live views.
+Day rollover (UTC-12) is detected by the current-day loops and published
+as a ``dayChange``, once, by the first to notice, so clients reset their
+live views.
 
 Polling latency floor (USDF measurement, 2026-05-29)
 ----------------------------------------------------
@@ -69,7 +78,7 @@ Conclusions encoded in this module:
   session cold-start dominates), so the location-shared client model
   is correct.
 - The S3 endpoint serialises beyond ~4 concurrent requests; going
-  past that buys nothing. We gather across all locations regardless,
+  past that buys nothing. Every location is polled at once regardless,
   which is fine — typical deployments have ~4 locations.
 - ``head_object`` is unaffected by concurrent listings on the same or
   a separate client (~4ms either way) on-network, so the separate
@@ -87,9 +96,9 @@ import asyncio
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from lsst.ts.rubintv.config.models import Location, Models
+from lsst.ts.rubintv.config.models import Camera, Location, Models
 from lsst.ts.rubintv.data.dayobs import get_current_day_obs, recent_day_obs
 from lsst.ts.rubintv.data.events import StoreChange
 from lsst.ts.rubintv.data.source import S3Poller, ScanResult
@@ -140,6 +149,11 @@ _ON_DEMAND_MAX_CONCURRENCY = 3
 # every time. Bounded (FIFO eviction) so the memo itself can't grow unbounded.
 _ON_DEMAND_EMPTY_MAX = 4096
 
+# How often a location whose current-day cycles keep failing logs the
+# traceback again. It retries every interval, and a line for each attempt
+# would be one a second for as long as its endpoint stayed down.
+_ERROR_LOG_SECONDS = 60.0
+
 # Retry delay after a failed historical sweep. A transient S3 blip during the
 # cold scan must not hide the back-catalogue for the full refresh cadence —
 # the current-day loop retries every second; history retries on this backoff.
@@ -156,12 +170,66 @@ class CameraScanState:
 
     ``recent_ready`` flips once the recent-window scan has been applied, so
     recent dates are viewable while the full sweep runs in the background.
-    ``full_complete`` flips once the whole ``{camera}/`` prefix has been
+    ``full_complete`` flips once every date the camera has has been
     scanned at least once.
     """
 
     recent_ready: bool = False
     full_complete: bool = False
+
+
+@dataclass(slots=True)
+class LocationPoll:
+    """One location's polling, as its own loops last left it.
+
+    Every location is polled by loops of its own, so one whose endpoint is
+    down, slow or hung shows here and holds up no other.
+    """
+
+    healthy: bool = True
+    """Whether the last current-day cycle reached S3. Optimistic until the
+    first one ends, so the frontend's 'S3 unreachable' alert waits for a
+    cycle that throws (e.g. a botocore ConnectTimeout to the endpoint)."""
+    slow: bool = False
+    """Whether the last successful cycle was unusually slow: a degrading
+    link shows as an amber 'S3 slow' ahead of the red 'unreachable'."""
+    last_cycle_seconds: float = 0.0
+    """Wall-clock seconds of the last successful cycle, so the status view
+    can show the latency and not just slow or not. 0.0 until one completes;
+    unchanged by a failed cycle."""
+    cycle_started: float | None = None
+    """When the cycle now running began; ``None`` between cycles. The flags
+    above are only written as a cycle ends, so a cycle that never ends
+    leaves them saying what the last one found; this and ``last_poll`` are
+    what show it (both monotonic)."""
+    last_poll: float | None = None
+    """When a cycle last succeeded; ``None`` until one has."""
+    stall_logged: bool = False
+    polled: bool = False
+    """Whether a first cycle has ended, or stalled: readiness waits for
+    every location's."""
+    failing_since: float | None = None
+    """When the run of failed cycles now going on began."""
+    error_logged: float | None = None
+    """When that run's traceback was last logged."""
+    historical_loading: bool = True
+    """True until the location's first full historical scan completes, and
+    again from a rescan until that one does."""
+    rescan: asyncio.Event = field(default_factory=asyncio.Event)
+    """Set to interrupt the historical loop's 12h sleep and start a fresh
+    sweep at once (the admin 'flush historical cache' action)."""
+
+
+@dataclass(frozen=True, slots=True)
+class LocationPollStatus:
+    """What the status endpoint reports of one location's polling."""
+
+    s3_healthy: bool
+    s3_slow: bool
+    s3_last_cycle_seconds: float
+    poll_stalled: bool
+    last_poll_age_seconds: float | None
+    historical_loading: bool
 
 
 class _CacheWrites:
@@ -236,7 +304,7 @@ class PollEngine:
         recent_refresh: float = 2 * 60 * 60,
         recent_known_days: int = 5,
         on_ready: ReadyCallback | None = None,
-        cache_writer: Callable[[], Awaitable[None]] | None = None,
+        cache_writer: Callable[[str], Awaitable[None]] | None = None,
         cache_slice_writer: (
             Callable[[set[tuple[str, str, str]]], Awaitable[None]] | None
         ) = None,
@@ -258,12 +326,11 @@ class PollEngine:
         self._cache_slice_writer = cache_slice_writer
         self._cache_slice_deleter = cache_slice_deleter
         self._metadata_warmer = metadata_warmer
+        # The observing day last announced to clients; each location's loop
+        # keeps the day it is listing.
         self._current_day = get_current_day_obs()
         self._tasks: list[asyncio.Task[None]] = []
         self._stop = asyncio.Event()
-        # Set to interrupt the historical loop's 12h sleep and start a fresh
-        # sweep immediately (the admin 'flush historical cache' action).
-        self._rescan = asyncio.Event()
         # In-flight on-demand date scans, keyed (location, camera, date), so
         # concurrent requests for the same missing date share one S3 listing.
         self._on_demand: dict[tuple[str, str, str], asyncio.Task[int]] = {}
@@ -276,52 +343,86 @@ class PollEngine:
         # A later real change is still picked up by the periodic sweep.
         self._on_demand_empty: OrderedDict[tuple[str, str, str], None] = OrderedDict()
         self._ready_fired = False
-        # Per-camera cold-start progress. Mutated only from the historical
-        # loop (single task), read by the status endpoint — coarse booleans,
-        # so no lock is needed on the event loop.
+        # Per-camera cold-start progress. Each camera is mutated only from
+        # its location's historical loop, read by the status endpoint —
+        # coarse booleans, so no lock is needed on the event loop.
         self._camera_status: dict[LocCam, CameraScanState] = {
             (loc.name, cam.name): CameraScanState()
             for loc in models.locations
             for cam in loc.cameras
         }
-        self.historical_loading = True
-        """True until the first full historical scan completes. The frontend
-        shows a non-blocking 'historical still loading' affordance while
-        set."""
-        # Whether the most recent current-day poll cycle reached S3. Starts
-        # True (optimistic) and flips on the first failed/succeeded cycle, so
-        # the frontend can show an 'S3 unreachable' alert when a cycle throws
-        # (e.g. a botocore ConnectTimeout to the bucket endpoint).
-        self.s3_healthy = True
-        # Whether the most recent successful cycle was unusually slow. A
-        # degrading link (high latency before it fails outright) shows up here
-        # as an amber 'S3 slow' warning ahead of the red 'unreachable' alert.
-        self.s3_slow = False
-        # Wall-clock seconds of the most recent successful current-day cycle,
-        # so the status view can show the actual latency (and watch it trend
-        # toward SLOW_CYCLE_SECONDS) rather than just the slow/not-slow flag.
-        # 0.0 until the first cycle completes; unchanged by a failed cycle.
-        self.s3_last_cycle_seconds = 0.0
-        # When the current-day cycle now running began, None between cycles,
-        # and when one last succeeded, None until one has (both monotonic).
-        # The flags above are only written as a cycle ends, so a cycle that
-        # never ends leaves them saying what the last one found; these two
-        # are what show it.
-        self._cycle_started: float | None = None
-        self._last_poll: float | None = None
-        self._stall_logged = False
-        # Cache slices waiting to be written (True) or deleted (False), and
-        # the two kinds of cache write. They are waited on separately, so a
-        # scan's few slices don't queue behind the whole-cache rewrite.
+        # Each location's polling, written only by that location's loops.
+        self._polls: dict[str, LocationPoll] = {
+            loc.name: LocationPoll() for loc in models.locations
+        }
+        # Cache slices waiting to be written (True) or deleted (False), the
+        # locations waiting for their whole cache to be rewritten, and the
+        # two kinds of cache write. They are waited on separately, so a
+        # scan's few slices don't queue behind a location's rewrite.
         self._slices_pending: dict[tuple[str, str, str], bool] = {}
+        self._rewrites_pending: set[str] = set()
         self._slice_writes = _CacheWrites("slices", self._write_pending_slices)
         self._cache_rewrite = _CacheWrites("rewrite", self._rewrite_cache)
 
+    # -- what the status endpoint reads ----------------------------------
+    #
+    # ``location_status`` is each location's own; the rest sum them for a
+    # page with no location in view: the worst of each.
+
+    def location_status(self) -> dict[str, LocationPollStatus]:
+        """Snapshot of each location's polling."""
+        return {
+            name: LocationPollStatus(
+                s3_healthy=poll.healthy,
+                s3_slow=poll.slow,
+                s3_last_cycle_seconds=poll.last_cycle_seconds,
+                poll_stalled=self._stalled(poll),
+                last_poll_age_seconds=self._last_poll_age(poll),
+                historical_loading=poll.historical_loading,
+            )
+            for name, poll in self._polls.items()
+        }
+
+    @property
+    def historical_loading(self) -> bool:
+        """True until every location's first full historical scan completes.
+        The frontend shows a non-blocking 'historical still loading'
+        affordance while set."""
+        return any(poll.historical_loading for poll in self._polls.values())
+
+    @property
+    def s3_healthy(self) -> bool:
+        """Whether every location's last current-day cycle reached S3."""
+        return all(poll.healthy for poll in self._polls.values())
+
+    @property
+    def s3_slow(self) -> bool:
+        """Whether any location's last successful cycle was unusually slow."""
+        return any(poll.slow for poll in self._polls.values())
+
+    @property
+    def s3_last_cycle_seconds(self) -> float:
+        """The longest of the locations' last successful cycles."""
+        return max(
+            (poll.last_cycle_seconds for poll in self._polls.values()), default=0.0
+        )
+
     def poll_stalled(self) -> bool:
-        """Whether the current-day cycle now running has overrun
-        ``STALLED_CYCLE_SECONDS``: the live poll has stopped, whatever
+        """Whether any location's current-day cycle now running has overrun
+        ``STALLED_CYCLE_SECONDS``: its live poll has stopped, whatever
         ``s3_healthy`` still says of the cycle before it."""
-        return self._cycle_running_seconds() > STALLED_CYCLE_SECONDS
+        return any(self._stalled(poll) for poll in self._polls.values())
+
+    def last_poll_age_seconds(self) -> float | None:
+        """Seconds since the location furthest behind last finished a
+        current-day cycle: how far behind the bucket today's index may be.
+        ``None`` until one has."""
+        ages = [
+            age
+            for poll in self._polls.values()
+            if (age := self._last_poll_age(poll)) is not None
+        ]
+        return max(ages) if ages else None
 
     def cache_write_stalled_seconds(self) -> float | None:
         """How long a cache write has been outstanding, once scans have
@@ -334,32 +435,41 @@ class PollEngine:
         ]
         return max(overdue) if overdue else None
 
-    def _cycle_running_seconds(self) -> float:
-        started = self._cycle_started
-        return 0.0 if started is None else time.monotonic() - started
-
-    def last_poll_age_seconds(self) -> float | None:
-        """Seconds since a current-day cycle last succeeded: how far behind
-        the bucket today's index may be. ``None`` until one has."""
-        if self._last_poll is None:
-            return None
-        return time.monotonic() - self._last_poll
-
     def camera_status(self) -> dict[LocCam, CameraScanState]:
         """Snapshot of per-camera cold-start scan progress."""
         return dict(self._camera_status)
 
+    @staticmethod
+    def _stalled(poll: LocationPoll) -> bool:
+        return PollEngine._cycle_running_seconds(poll) > STALLED_CYCLE_SECONDS
+
+    @staticmethod
+    def _cycle_running_seconds(poll: LocationPoll) -> float:
+        started = poll.cycle_started
+        return 0.0 if started is None else time.monotonic() - started
+
+    @staticmethod
+    def _last_poll_age(poll: LocationPoll) -> float | None:
+        return None if poll.last_poll is None else time.monotonic() - poll.last_poll
+
     def start(self) -> None:
-        """Launch the background loops."""
+        """Launch the background loops: a set for each location."""
         self._tasks = [
-            asyncio.create_task(self._current_day_loop(), name="poll-current"),
-            asyncio.create_task(self._historical_loop(), name="poll-historical"),
             asyncio.create_task(self._watchdog_loop(), name="poll-watchdog"),
         ]
-        if self._previous_day_refresh > 0:
-            self._tasks.append(
-                asyncio.create_task(self._previous_day_loop(), name="poll-previous")
+        for location in self._models.locations:
+            loops = [
+                ("current", self._current_day_loop(location)),
+                ("historical", self._historical_loop(location)),
+            ]
+            if self._previous_day_refresh > 0:
+                loops.append(("previous", self._previous_day_loop(location)))
+            self._tasks.extend(
+                asyncio.create_task(loop, name=f"poll-{what}-{location.name}")
+                for what, loop in loops
             )
+        # With no location to wait for, there is nothing to be ready after.
+        self._fire_ready()
 
     async def stop(self) -> None:
         """Signal loops to stop and await them."""
@@ -372,27 +482,26 @@ class PollEngine:
 
     # -- loops -----------------------------------------------------------
 
-    async def _current_day_loop(self) -> None:
+    async def _current_day_loop(self, location: Location) -> None:
+        poll = self._polls[location.name]
+        day = self._current_day
         cycle = 0
         # Cycle times since the last heartbeat, which sums them.
         timed: list[float] = []
         log.info(
             "poll.current.start",
-            day=self._current_day,
+            location=location.name,
+            day=day,
             interval_seconds=self._interval,
-            prefixes=[
-                f"{cam.name}/{self._current_day}/"
-                for loc in self._models.locations
-                for cam in loc.cameras
-            ],
+            prefixes=[f"{cam.name}/{day}/" for cam in location.cameras],
         )
         while not self._stop.is_set():
-            started = self._cycle_started = time.monotonic()
+            started = poll.cycle_started = time.monotonic()
             try:
-                await self._check_rollover()
-                total = await self._scan_day(self._current_day)
-                self._last_poll = time.monotonic()
-                elapsed = self._last_poll - started
+                day = await self._check_rollover(location, day)
+                total = await self._scan_day(location, day)
+                poll.last_poll = time.monotonic()
+                elapsed = poll.last_poll - started
                 cycle += 1
                 timed.append(elapsed)
                 # Heartbeat at info level every minute or so so operators can
@@ -402,7 +511,8 @@ class PollEngine:
                 if cycle % max(1, int(60 / max(self._interval, 0.1))) == 0:
                     log.info(
                         "poll.current.heartbeat",
-                        day=self._current_day,
+                        location=location.name,
+                        day=day,
                         cycle=cycle,
                         cycles=len(timed),
                         keys_last_cycle=total,
@@ -414,33 +524,111 @@ class PollEngine:
                 # A slow-but-successful cycle warns of a degrading link before
                 # it fails outright — log the transition into the slow state.
                 slow = elapsed > SLOW_CYCLE_SECONDS
-                if slow and not self.s3_slow:
+                if slow and not poll.slow:
                     log.warning(
                         "poll.current.slow",
+                        location=location.name,
                         cycle_seconds=round(elapsed, 2),
                         threshold_seconds=SLOW_CYCLE_SECONDS,
                     )
-                self.s3_slow = slow
-                self.s3_last_cycle_seconds = elapsed
-                self.s3_healthy = True
-                self._fire_ready()
+                poll.slow = slow
+                poll.last_cycle_seconds = elapsed
+                self._cycle_succeeded(location.name, poll)
             except Exception:  # noqa: BLE001 - a bad cycle must not kill loop
-                # A thrown cycle means S3 was unreachable (e.g. a connect
-                # timeout to the bucket endpoint). Surface it so the frontend
-                # can alert; the loop keeps retrying every interval.
-                self.s3_healthy = False
-                self.s3_slow = False
-                log.exception("poll.current.error")
-            if self._stall_logged:
-                self._stall_logged = False
+                self._cycle_failed(location.name, poll)
+            if poll.stall_logged:
+                poll.stall_logged = False
                 log.info(
                     "poll.current.resumed",
+                    location=location.name,
                     cycle_seconds=round(time.monotonic() - started, 1),
                 )
-            self._cycle_started = None
+            poll.cycle_started = None
+            self._cycle_ended(poll)
             await self._sleep(self._interval)
 
-    async def _previous_day_loop(self) -> None:
+    def _cycle_failed(self, location: str, poll: LocationPoll) -> None:
+        """Note a current-day cycle that threw. Called as it is handled.
+
+        A thrown cycle means S3 was unreachable (e.g. a connect timeout to
+        the bucket endpoint). The location is marked so the frontend can
+        alert, and its loop keeps retrying every interval. The traceback is
+        logged as the failure begins and then every ``_ERROR_LOG_SECONDS``:
+        a location that stays down (revoked keys, an endpoint gone) would
+        otherwise log one a second for as long as it did.
+        """
+        now = time.monotonic()
+        if poll.failing_since is None:
+            poll.failing_since = now
+        poll.healthy = False
+        poll.slow = False
+        if poll.error_logged is None or now - poll.error_logged >= _ERROR_LOG_SECONDS:
+            poll.error_logged = now
+            log.exception(
+                "poll.current.error",
+                location=location,
+                failing_seconds=round(now - poll.failing_since, 1),
+            )
+
+    def _cycle_succeeded(self, location: str, poll: LocationPoll) -> None:
+        if poll.failing_since is not None:
+            log.info(
+                "poll.current.recovered",
+                location=location,
+                failed_seconds=round(time.monotonic() - poll.failing_since, 1),
+            )
+        poll.failing_since = poll.error_logged = None
+        poll.healthy = True
+
+    def _cycle_ended(self, poll: LocationPoll) -> None:
+        """Note that a location's current-day cycle has ended, or stalled,
+        and flip readiness once every location's first has.
+
+        A cycle that failed counts: the app is ready to serve what the other
+        locations have, and the one that can't be reached says so on its
+        own pages. Waiting for it would hold readiness back for as long as
+        its endpoint stayed down.
+        """
+        poll.polled = True
+        self._fire_ready()
+
+    def _fire_ready(self) -> None:
+        if self._ready_fired or not all(p.polled for p in self._polls.values()):
+            return
+        self._ready_fired = True
+        if self._on_ready is not None:
+            self._on_ready()
+        log.info("poll.ready")
+
+    async def _check_rollover(self, location: Location, day: str) -> str:
+        """The day this location should list now. When that has moved on
+        from ``day``, the change is announced and the old day listed once
+        more first."""
+        now_day = get_current_day_obs()
+        if now_day == day:
+            return day
+        self._announce_day(now_day)
+        # One last listing of the old day for what landed in its final
+        # second; the previous-day loop carries on from here.
+        await self._scan_day(location, day)
+        return now_day
+
+    def _announce_day(self, day: str) -> None:
+        """Tell clients the observing day has changed, once: the first
+        location to notice announces it for them all, so no camera's pages
+        wait on a location whose own cycle is stuck."""
+        if day == self._current_day:
+            return
+        log.info("day.rollover", from_=self._current_day, to=day)
+        self._current_day = day
+        # Notify each camera so live views reset to the new day.
+        for location in self._models.locations:
+            for camera in location.cameras:
+                self._store.bus.publish(
+                    StoreChange("dayChange", location.name, camera.name, day)
+                )
+
+    async def _previous_day_loop(self, location: Location) -> None:
         # Its own task, not a step of either other loop: the historical loop
         # refreshes nothing while a full sweep runs, and a cycle of the
         # current-day loop shouldn't wait on yesterday's listings. The first
@@ -449,15 +637,16 @@ class PollEngine:
             day = recent_day_obs(2)[1]
             started = time.monotonic()
             try:
-                total = await self._scan_day(day)
+                total = await self._scan_day(location, day)
                 log.debug(
                     "poll.previous.refresh",
+                    location=location.name,
                     day=day,
                     keys=total,
                     cycle_seconds=round(time.monotonic() - started, 3),
                 )
             except Exception:  # noqa: BLE001 - a bad pass must not kill loop
-                log.exception("poll.previous.error", day=day)
+                log.exception("poll.previous.error", location=location.name, day=day)
             await self._sleep(self._previous_day_refresh)
 
     async def _watchdog_loop(self) -> None:
@@ -466,68 +655,109 @@ class PollEngine:
             self._check_stall()
 
     def _check_stall(self) -> None:
-        """Log a current-day cycle that has stalled, once per stall."""
-        if self._stall_logged or not self.poll_stalled():
-            return
-        self._stall_logged = True
-        age = self.last_poll_age_seconds()
-        log.error(
-            "poll.current.stalled",
-            day=self._current_day,
-            running_seconds=round(self._cycle_running_seconds(), 1),
-            threshold_seconds=STALLED_CYCLE_SECONDS,
-            last_poll_age_seconds=None if age is None else round(age, 1),
-        )
+        """Log each current-day cycle that has stalled, once per stall."""
+        for name, poll in self._polls.items():
+            if poll.stall_logged or not self._stalled(poll):
+                continue
+            poll.stall_logged = True
+            age = self._last_poll_age(poll)
+            log.error(
+                "poll.current.stalled",
+                location=name,
+                day=self._current_day,
+                running_seconds=round(self._cycle_running_seconds(poll), 1),
+                threshold_seconds=STALLED_CYCLE_SECONDS,
+                last_poll_age_seconds=None if age is None else round(age, 1),
+            )
+            # A first cycle that never ends mustn't hold readiness back
+            # either.
+            self._cycle_ended(poll)
 
-    async def _historical_loop(self) -> None:
+    async def _historical_loop(self, location: Location) -> None:
         # Recent-window-first, then a full sweep. The recent phase makes the
         # last N days viewable in seconds while the full back-catalogue
         # continues to load in the background. Between full sweeps the recent
         # window is re-scanned on its own, shorter cadence.
+        poll = self._polls[location.name]
+        # The cameras this round still owes each phase. One leaves its list
+        # as it finishes, so the retry after a failure carries on from the
+        # camera that failed and doesn't list the ones before it again.
+        recent: list[Camera] = []
+        sweep: list[Camera] = []
+        fresh = True
         while not self._stop.is_set():
+            if fresh:
+                recent = list(location.cameras) if self._recent_window_days > 0 else []
+                sweep = list(location.cameras)
             try:
-                cameras = sum(len(loc.cameras) for loc in self._models.locations)
-                if self._recent_window_days > 0:
-                    log.info(
-                        "poll.recent.start",
-                        cameras=cameras,
-                        days=self._recent_window_days,
-                    )
-                    started = time.monotonic()
-                    recent, listings = await self._scan_recent_window()
-                    log.info(
-                        "poll.recent.done",
-                        events=recent,
-                        listings=listings,
-                        pass_seconds=round(time.monotonic() - started, 1),
-                    )
-                log.info("poll.historical.start", cameras=cameras)
-                started = time.monotonic()
-                total = await self._scan_all_history()
-                log.info(
-                    "poll.historical.done",
-                    events=total,
-                    sweep_seconds=round(time.monotonic() - started, 1),
-                )
-                await self._cache_rewrite.flush(CACHE_REWRITE_WAIT_SECONDS)
+                await self._recent_phase(location, recent)
+                await self._sweep_phase(location, sweep)
+                await self._rewrite_location(location.name)
             except Exception:  # noqa: BLE001
                 # A failed sweep leaves history incomplete: keep the loading
                 # flag honest (still True on a cold start, so the frontend
                 # keeps showing its affordance) and retry on a short backoff
                 # rather than sleeping the full refresh cadence with a gap.
-                log.exception("poll.historical.error")
-                await self._pause(_HISTORICAL_RETRY_SECONDS)
+                # A rescan asked for meanwhile starts the round afresh.
+                log.exception("poll.historical.error", location=location.name)
+                fresh = await self._pause(location.name, _HISTORICAL_RETRY_SECONDS)
                 continue
-            if self.historical_loading:
-                self.historical_loading = False
-                log.info("poll.historical.idle")
+            if poll.historical_loading:
+                poll.historical_loading = False
+                log.info("poll.historical.idle", location=location.name)
             # Until the next full sweep, an explicit rescan trigger, or
             # shutdown: keep the recent window fresh. A triggered rescan
             # loops at once.
-            await self._refresh_recent_until(_HISTORICAL_REFRESH_SECONDS)
+            await self._refresh_recent_until(location, _HISTORICAL_REFRESH_SECONDS)
+            fresh = True
 
-    async def _refresh_recent_until(self, seconds: float) -> None:
-        """Wait ``seconds``, re-scanning the recent window every
+    async def _recent_phase(self, location: Location, pending: list[Camera]) -> None:
+        """List the recent dates of each camera in ``pending``, which a
+        camera leaves as it finishes."""
+        if not pending:
+            return
+        log.info(
+            "poll.recent.start",
+            location=location.name,
+            cameras=len(pending),
+            days=self._recent_window_days,
+        )
+        started = time.monotonic()
+        events = listings = 0
+        while pending:
+            found, made = await self._scan_recent(location, pending[0], warm=True)
+            events += found
+            listings += made
+            del pending[0]
+        log.info(
+            "poll.recent.done",
+            location=location.name,
+            events=events,
+            listings=listings,
+            pass_seconds=round(time.monotonic() - started, 1),
+        )
+
+    async def _sweep_phase(self, location: Location, pending: list[Camera]) -> None:
+        """List everything each camera in ``pending`` has, which a camera
+        leaves as it finishes."""
+        log.info("poll.historical.start", location=location.name, cameras=len(pending))
+        started = time.monotonic()
+        events = listings = 0
+        while pending:
+            found, made = await self._sweep_camera(location, pending[0])
+            events += found
+            listings += made
+            del pending[0]
+        log.info(
+            "poll.historical.done",
+            location=location.name,
+            events=events,
+            listings=listings,
+            sweep_seconds=round(time.monotonic() - started, 1),
+        )
+
+    async def _refresh_recent_until(self, location: Location, seconds: float) -> None:
+        """Wait ``seconds``, re-scanning the location's recent window every
         ``recent_refresh`` meanwhile.
 
         Returns early on a rescan trigger or stop. A failed recent pass is
@@ -542,79 +772,65 @@ class PollEngine:
             if remaining <= 0:
                 return
             step = min(remaining, self._recent_refresh) if periodic else remaining
-            if await self._pause(step) or self._stop.is_set():
+            if await self._pause(location.name, step) or self._stop.is_set():
                 return
             if time.monotonic() >= deadline:
                 return
             started = time.monotonic()
             try:
-                events, listings = await self._scan_recent_window(warm=False)
+                events, listings = await self._scan_recent_window(location, warm=False)
                 log.info(
                     "poll.recent.refresh",
+                    location=location.name,
                     events=events,
                     listings=listings,
                     pass_seconds=round(time.monotonic() - started, 1),
                 )
             except Exception:  # noqa: BLE001 - a bad pass must not kill loop
-                log.exception("poll.recent.error")
+                log.exception("poll.recent.error", location=location.name)
 
-    async def _pause(self, seconds: float) -> bool:
+    async def _pause(self, location: str, seconds: float) -> bool:
         """Historical-loop sleep that also honours a triggered rescan.
 
         Returns True if a rescan was requested, so the caller can drop
         whatever it was waiting on and let the loop start a fresh sweep.
         """
-        await self._sleep_or_rescan(seconds)
-        if self._rescan.is_set():
-            self._rescan.clear()
-            self.historical_loading = True
-            log.info("poll.historical.rescan")
+        poll = self._polls[location]
+        await self._sleep_or_rescan(poll, seconds)
+        if poll.rescan.is_set():
+            poll.rescan.clear()
+            poll.historical_loading = True
+            log.info("poll.historical.rescan", location=location)
             return True
         return False
 
     # -- scanning --------------------------------------------------------
 
-    @staticmethod
-    async def _gather_locations(coros: list[Awaitable[int]]) -> int:
-        """Run per-location workers to completion, then raise any failure.
-
-        A bare ``gather`` raises as soon as one location fails, leaving the
-        others running detached — the next cycle would then scan the same
-        prefixes concurrently with the abandoned workers, doubling S3 load
-        and interleaving their store updates. Barrier first (so every
-        worker has finished), then propagate.
-        """
-        results = await asyncio.gather(*coros, return_exceptions=True)
-        errors = [r for r in results if isinstance(r, BaseException)]
-        for extra in errors[1:]:
-            # Only the first failure propagates (and gets a traceback from
-            # the loop's handler); don't let the rest vanish silently.
-            log.error("poll.scan.location_error", error=repr(extra))
-        if errors:
-            raise errors[0]
-        return sum(r for r in results if isinstance(r, int))
-
-    async def _scan_day(self, day: str) -> int:
-        # Per-location workers run concurrently; each location stays serial
-        # internally so it doesn't fan-out onto its single boto3 client's
-        # connection pool. With N locations each holding the slowest camera
-        # ~10s, this cuts the cycle from sum() to max().
-        return await self._gather_locations(
-            [self._scan_day_for_location(loc, day) for loc in self._models.locations]
-        )
-
-    async def _scan_day_for_location(self, location: Location, day: str) -> int:
+    async def _scan_day(self, location: Location, day: str) -> int:
+        # Cameras are listed one after another: they share the location's
+        # one boto3 client, and its endpoint gains nothing past a few
+        # requests at once. Locations don't wait on each other at all; each
+        # has loops of its own.
         total = 0
         for camera in location.cameras:
-            prefix = f"{camera.name}/{day}/"
-            result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
-            total += len(result.events)
-            await self._apply_scan("day", location.name, prefix, result)
-            # This listing is authoritative for exactly one date, so scope
-            # reconciliation to it — an empty result legitimately means
-            # "everything for today was deleted" and must still be applied.
-            await self._reconcile_day(location.name, camera.name, day, result)
+            total += await self._list_date("day", location.name, camera.name, day)
         return total
+
+    async def _list_date(
+        self, scope: str, location: str, camera: str, date: str
+    ) -> int:
+        """List one camera-date, apply it, and reconcile the date against
+        it. Returns the events found.
+
+        The listing is authoritative for exactly that date, so an empty one
+        legitimately means everything for the date was deleted and is still
+        applied.
+        """
+        prefix = f"{camera}/{date}/"
+        result = await asyncio.to_thread(self._poller.scan, location, prefix)
+        await self._apply_scan(scope, location, prefix, result)
+        await self._reconcile_day(location, camera, date, result)
+        return len(result.events)
 
     async def _apply_scan(
         self, scope: str, location: str, prefix: str, result: ScanResult
@@ -664,14 +880,28 @@ class PollEngine:
         yesterday while the previous-day refresh is on."""
         return frozenset(recent_day_obs(2 if self._previous_day_refresh > 0 else 1))
 
-    async def _scan_recent_window(self, *, warm: bool = True) -> tuple[int, int]:
-        """Scan every camera's recent dates: the window, plus known data days.
+    async def _scan_recent_window(
+        self, location: Location, *, warm: bool = True
+    ) -> tuple[int, int]:
+        """Scan the recent dates of every camera at a location. Returns the
+        events found and the listings made."""
+        events = listings = 0
+        for camera in location.cameras:
+            found, made = await self._scan_recent(location, camera, warm=warm)
+            events += found
+            listings += made
+        return events, listings
+
+    async def _scan_recent(
+        self, location: Location, camera: Camera, *, warm: bool
+    ) -> tuple[int, int]:
+        """Scan a camera's recent dates: the window, plus known data days.
 
         Returns the events found and the listings made.
 
         The window is the last N observing days whether or not they hold
         data, so new data landing on a quiet recent day is still found. On
-        top of that each camera gets its ``recent_known_days`` most recent
+        top of that the camera gets its ``recent_known_days`` most recent
         dates *with* data outside the window, from its calendar — a camera
         that observes rarely would otherwise list thirty empty days and never
         re-check the days that matter until the full sweep.
@@ -681,30 +911,21 @@ class PollEngine:
         that loop had just indexed. Nor is yesterday while the previous-day
         loop is on, for the same reason.
 
-        Locations run in parallel, cameras serially within one (same
-        client-pool reasoning as the full sweep). ``warm`` pre-fetches recent
-        metadata afterwards; only the cold start wants that — the periodic
-        pass would otherwise re-download today's file per camera every tick.
+        ``warm`` pre-fetches recent metadata afterwards; only the cold start
+        wants that — the periodic pass would otherwise re-download today's
+        file per camera every tick.
         """
+        loc, cam = location.name, camera.name
         days = recent_day_obs(self._recent_window_days)
         live = self._live_days()
-        window = [d for d in days if d not in live]
-        known = {
-            (loc.name, cam.name): self._known_days(loc.name, cam.name, days)
-            for loc in self._models.locations
-            for cam in loc.cameras
-        }
-        known_days = sum(len(d) for d in known.values())
-        log.debug("poll.recent.plan", window_days=len(window), known_days=known_days)
-        events = await self._gather_locations(
-            [
-                self._scan_recent_for_location(loc, window, known, warm=warm)
-                for loc in self._models.locations
-            ]
-        )
-        # One listing per camera for each day of the window, and one for
-        # each of its known days.
-        return events, len(window) * len(known) + known_days
+        listed = [d for d in days if d not in live] + self._known_days(loc, cam, days)
+        events = 0
+        for day in listed:
+            events += await self._list_date("recent", loc, cam, day)
+        self._mark(loc, cam, "recent_ready")
+        if warm:
+            await self._warm_metadata(loc, cam)
+        return events, len(listed)
 
     def _known_days(self, location: str, camera: str, window: list[str]) -> list[str]:
         """A camera's most recent data days that the window doesn't cover."""
@@ -714,79 +935,52 @@ class PollEngine:
         calendar = self._store.calendar(location, camera)  # newest first
         return [d for d in calendar if d not in inside][: self._recent_known_days]
 
-    async def _scan_recent_for_location(
-        self,
-        location: Location,
-        window: list[str],
-        known: dict[LocCam, list[str]],
-        *,
-        warm: bool,
-    ) -> int:
-        total = 0
-        for camera in location.cameras:
-            days = window + known.get((location.name, camera.name), [])
-            for day in days:
-                prefix = f"{camera.name}/{day}/"
-                result = await asyncio.to_thread(
-                    self._poller.scan, location.name, prefix
-                )
-                total += len(result.events)
-                await self._apply_scan("recent", location.name, prefix, result)
-                await self._reconcile_day(location.name, camera.name, day, result)
-            self._mark(location.name, camera.name, "recent_ready")
-            if warm:
-                await self._warm_metadata(location.name, camera.name)
-        return total
+    async def _sweep_camera(
+        self, location: Location, camera: Camera
+    ) -> tuple[int, int]:
+        """List everything a camera has, a date at a time, newest first.
 
-    async def _scan_all_history(self) -> int:
-        # Same shape as _scan_day: locations in parallel, cameras serial
-        # within a location so a single S3 client's connection pool isn't
-        # fanned out across cameras.
-        return await self._gather_locations(
-            [self._scan_history_for_location(loc) for loc in self._models.locations]
-        )
+        Returns the events found and the listings made.
 
-    async def _scan_history_for_location(self, location: Location) -> int:
-        # Scan each camera's whole prefix. The poller is stateless, so every
-        # sweep re-emits every key (including the recent window's, already
-        # scanned by date) — harmless to the index, the store upserts. Recent
-        # dates change, so the periodic re-scan is what keeps
-        # yesterday/last-week current.
-        total = 0
-        for camera in location.cameras:
-            prefix = f"{camera.name}/"
-            live = self._live_days()
-            result = await asyncio.to_thread(self._poller.scan, location.name, prefix)
-            total += len(result.events)
-            await self._apply_scan("historical", location.name, prefix, result)
-            # The full {camera}/ listing is authoritative for the whole
-            # camera, so reconcile with an unbounded scope: dates the listing
-            # didn't see are gone (e.g. stale warm-start slices whose keys
-            # were deleted while we were down). Protect the days a faster
-            # loop lists — it may have inserted keys *after* this sweep
-            # listed the prefix, so the listing wouldn't include them and
-            # reconciliation would wrongly drop them. Those days are taken
-            # both before the listing and now: a sweep that crosses rollover
-            # has listed the old days while they were still live.
+        One listing names the camera's dates; each is then listed and
+        reconciled on its own, and a date the index holds that the bucket no
+        longer has is dropped (e.g. a warm-start slice whose keys were
+        deleted while the app was down). Listing the whole ``{camera}/``
+        prefix at once held every key the camera has, three times over, and
+        then indexed them in one pass that stopped the event loop for
+        seconds: a cost that grew with the bucket. A date at a time, the
+        most held is one camera-day and the loop turns between dates.
+
+        The days a faster loop lists are left to it, here as in the recent
+        pass. Those days and the index's dates are taken before the listing
+        of dates, so a date that turns up while the sweep runs (tomorrow, at
+        rollover, or one opened on demand) isn't mistaken for one that has
+        gone.
+        """
+        loc, cam = location.name, camera.name
+        live = self._live_days()
+        known = set(self._store.calendar(loc, cam))
+        dates = await asyncio.to_thread(self._poller.list_dates, loc, cam)
+        listed = sorted(dates - live, reverse=True)
+        events = 0
+        for date in listed:
+            events += await self._list_date("historical", loc, cam, date)
+        gone = known - dates - live - self._live_days()
+        if gone:
             outcome = await self._store.reconcile(
-                (location.name, camera.name),
-                result.keys,
-                ScanScope(protect=live | self._live_days()),
+                (loc, cam), set(), ScanScope(dates=frozenset(gone))
             )
-            await self._evict_slices(location.name, camera.name, outcome.dropped)
-            await self._persist_slices(
-                {(location.name, camera.name, d) for d in outcome.changed}
-            )
-            # Recent may not have run (window=0); the full sweep also makes
-            # recent data present, so mark both as it finishes each camera.
-            self._mark(location.name, camera.name, "recent_ready")
-            self._mark(location.name, camera.name, "full_complete")
-            # Only warm here when the recent phase is disabled; otherwise the
-            # recent scan already warmed these dates and re-warming is
-            # redundant.
-            if self._recent_window_days <= 0:
-                await self._warm_metadata(location.name, camera.name)
-        return total
+            await self._evict_slices(loc, cam, outcome.dropped)
+        # Recent may not have run (window=0); the full sweep also makes
+        # recent data present, so mark both as it finishes each camera.
+        self._mark(loc, cam, "recent_ready")
+        self._mark(loc, cam, "full_complete")
+        # Only warm here when the recent phase is disabled; otherwise the
+        # recent scan already warmed these dates and re-warming is
+        # redundant.
+        if self._recent_window_days <= 0:
+            await self._warm_metadata(loc, cam)
+        return events, len(listed) + 1
 
     async def scan_date(self, location: str, camera: str, date: str) -> int:
         """Scan one camera-date prefix on demand and apply it to the store.
@@ -882,10 +1076,20 @@ class PollEngine:
             if writes and self._cache_slice_writer is not None:
                 await self._cache_slice_writer(writes)
 
+    async def _rewrite_location(self, location: str) -> None:
+        """Rewrite a location's whole cache, now its sweep has finished."""
+        if self._cache_writer is None:
+            return
+        self._rewrites_pending.add(location)
+        await self._cache_rewrite.flush(CACHE_REWRITE_WAIT_SECONDS)
+
     async def _rewrite_cache(self) -> None:
-        if self._cache_writer is not None:
-            await self._cache_writer()
-            log.info("cache.written")
+        # Until none is left, so a location whose sweep finished while
+        # another's cache was being written follows it.
+        while self._rewrites_pending and self._cache_writer is not None:
+            location = self._rewrites_pending.pop()
+            await self._cache_writer(location)
+            log.info("cache.written", location=location)
 
     async def _warm_metadata(self, location: str, camera: str) -> None:
         """Pre-fetch recent metadata for a camera once its recent scan is done.
@@ -901,41 +1105,18 @@ class PollEngine:
         except Exception:  # noqa: BLE001 - warming is best-effort
             log.exception("poll.metadata.warm.error", location=location, camera=camera)
 
-    async def _check_rollover(self) -> None:
-        now_day = get_current_day_obs()
-        if now_day != self._current_day:
-            log.info("day.rollover", from_=self._current_day, to=now_day)
-            old = self._current_day
-            self._current_day = now_day
-            # Notify each camera so live views reset to the new day.
-            for location in self._models.locations:
-                for camera in location.cameras:
-                    self._store.bus.publish(
-                        StoreChange("dayChange", location.name, camera.name, now_day)
-                    )
-            # One last listing of the old day for what landed in its final
-            # second; the previous-day loop carries on from here.
-            await self._scan_day(old)
-
-    def _fire_ready(self) -> None:
-        if not self._ready_fired:
-            self._ready_fired = True
-            if self._on_ready is not None:
-                self._on_ready()
-            log.info("poll.ready")
-
     async def _sleep(self, seconds: float) -> None:
         try:
             await asyncio.wait_for(self._stop.wait(), timeout=seconds)
         except TimeoutError:
             pass
 
-    async def _sleep_or_rescan(self, seconds: float) -> None:
-        """Like ``_sleep`` but also wakes on a rescan trigger."""
+    async def _sleep_or_rescan(self, poll: LocationPoll, seconds: float) -> None:
+        """Like ``_sleep`` but also wakes on the location's rescan trigger."""
 
         async def _wait_either() -> None:
             stop = asyncio.ensure_future(self._stop.wait())
-            rescan = asyncio.ensure_future(self._rescan.wait())
+            rescan = asyncio.ensure_future(poll.rescan.wait())
             try:
                 await asyncio.wait({stop, rescan}, return_when=asyncio.FIRST_COMPLETED)
             finally:
@@ -948,13 +1129,15 @@ class PollEngine:
             pass
 
     def trigger_rescan(self) -> None:
-        """Request an immediate historical rescan.
+        """Request an immediate historical rescan of every location.
 
-        Wakes the historical loop out of its long sleep; it then re-runs the
-        recent-window and full-history sweeps. Used after the admin flushes
-        the cache, so the emptied store cold-rebuilds from S3 right away.
+        Wakes each historical loop out of its long sleep; it then re-runs
+        the recent-window and full-history sweeps. Used after the admin
+        flushes the cache, so the emptied store cold-rebuilds from S3 right
+        away.
         """
         # Drop the negative memo: a flush means the world may have changed, so
         # a date previously seen empty must be re-scannable on demand again.
         self._on_demand_empty.clear()
-        self._rescan.set()
+        for poll in self._polls.values():
+            poll.rescan.set()

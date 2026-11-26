@@ -149,6 +149,23 @@ def test_status_endpoint_reports_loading() -> None:
             } <= set(cam)
 
 
+def test_status_reports_each_locations_own_poll() -> None:
+    # Each location is polled on its own; a page on one shows its poll and
+    # not the summary of them all at the top of the response.
+    with run_app() as client:
+        assert wait_until(lambda: historical_idle(client))
+        body = client.get("/api/health/status").json()
+    (location,) = body["locations"]
+    assert location["location"] == "test"
+    assert location["location_title"] == "TEST"
+    assert location["s3_healthy"] is True
+    assert location["s3_slow"] is False
+    assert location["poll_stalled"] is False
+    assert location["historical_loading"] is False
+    assert isinstance(location["s3_last_cycle_seconds"], (int, float))
+    assert isinstance(location["last_poll_age_seconds"], (int, float))
+
+
 def test_status_counts_each_cameras_found_images() -> None:
     # The full sweep's finds show up as a per-camera image tally: two frames
     # and a per-day movie for lsstcam; metadata isn't an image.

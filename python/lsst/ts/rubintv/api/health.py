@@ -77,6 +77,28 @@ class CameraStatus(BaseModel):
     scans run, so the Status page shows how much each one has found."""
 
 
+class LocationStatus(BaseModel):
+    """One location's polling. Each location is polled on its own, so one
+    whose bucket can't be reached says so here and the others don't."""
+
+    location: str
+    location_title: str
+    s3_healthy: bool
+    """Whether the location's last current-day poll cycle reached S3."""
+    s3_slow: bool
+    """Whether its last successful cycle was unusually slow."""
+    s3_last_cycle_seconds: float
+    """Wall-clock seconds of its last successful cycle; 0.0 before one."""
+    poll_stalled: bool
+    """Whether its cycle now running has overrun, so its live poll has
+    stopped."""
+    last_poll_age_seconds: float | None
+    """Seconds, when this was answered, since one of its cycles last
+    succeeded; ``None`` before one has."""
+    historical_loading: bool
+    """True while its back-catalogue is still being scanned."""
+
+
 class RedisStatus(BaseModel):
     """Whether Redis (cluster status, control readbacks) is being read."""
 
@@ -107,31 +129,38 @@ class StatusResponse(BaseModel):
     false it is a cold load (older dates appear only as the sweep finds
     them)."""
     historical_loading: bool
-    """True while the back-catalogue is still being scanned; the frontend
-    shows a non-blocking 'still loading' affordance rather than an error."""
+    """True while any location's back-catalogue is still being scanned; the
+    frontend shows a non-blocking 'still loading' affordance rather than an
+    error."""
     s3_healthy: bool
-    """Whether the last current-day poll cycle reached S3. False means the
-    bucket endpoint was unreachable (e.g. a connect timeout); the frontend
-    shows an 'S3 unreachable' alert beside the live indicator."""
+    """Whether every location's last current-day poll cycle reached S3.
+    False means some bucket endpoint was unreachable (e.g. a connect
+    timeout); the frontend shows an 'S3 unreachable' alert beside the live
+    indicator. This and the five fields around it sum ``locations`` for a
+    page with no location in view: the worst of each."""
     s3_slow: bool
-    """Whether the last successful poll cycle was unusually slow. True warns of
-    a degrading link before it fails outright; the frontend shows an amber
-    'S3 slow' warning. Ignored when s3_healthy is false."""
+    """Whether any location's last successful poll cycle was unusually slow.
+    True warns of a degrading link before it fails outright; the frontend
+    shows an amber 'S3 slow' warning. Ignored when s3_healthy is false."""
     s3_last_cycle_seconds: float
-    """Wall-clock seconds of the last successful current-day poll cycle. The
-    frontend shows this in the 'S3 slow' tooltip and the status view so the
-    actual latency is visible (and can be watched trending toward the slow
-    threshold). 0.0 before the first cycle completes."""
+    """Wall-clock seconds of the longest of the locations' last successful
+    current-day poll cycles. The frontend shows this in the 'S3 slow'
+    tooltip and the status view so the actual latency is visible (and can
+    be watched trending toward the slow threshold). 0.0 before the first
+    cycle completes."""
     poll_stalled: bool
-    """Whether the current-day poll cycle now running has overrun, so the
-    live poll has stopped. The three ``s3_`` fields describe the last cycle
-    to finish and go on saying what it found; the frontend shows a 'Poll
-    stalled' alert ahead of them."""
+    """Whether any location's current-day poll cycle now running has
+    overrun, so its live poll has stopped. The three ``s3_`` fields describe
+    the last cycle to finish and go on saying what it found; the frontend
+    shows a 'Poll stalled' alert ahead of them."""
     last_poll_age_seconds: float | None
-    """Seconds, when this was answered, since a current-day poll cycle last
-    succeeded: how far behind the bucket today's data may be. An age, not a
-    time, so the frontend can place it on its own clock whatever the
-    server's says. ``None`` before the first cycle completes."""
+    """Seconds, when this was answered, since the location furthest behind
+    last finished a current-day poll cycle: how far behind the bucket
+    today's data may be. An age, not a time, so the frontend can place it on
+    its own clock whatever the server's says. ``None`` before the first
+    cycle completes."""
+    locations: list[LocationStatus]
+    """Each location's own polling: what a page on one location shows."""
     redis: RedisStatus
     """Whether Redis is being read, and how long ago it last answered."""
     cameras: list[CameraStatus]
@@ -233,6 +262,21 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
                 image_count=state.store.image_count(location, camera),
             )
         )
+    polls = state.location_status()
+    locations = [
+        LocationStatus(
+            location=loc.name,
+            location_title=loc.title,
+            s3_healthy=poll.s3_healthy,
+            s3_slow=poll.s3_slow,
+            s3_last_cycle_seconds=poll.s3_last_cycle_seconds,
+            poll_stalled=poll.poll_stalled,
+            last_poll_age_seconds=poll.last_poll_age_seconds,
+            historical_loading=poll.historical_loading,
+        )
+        for loc in state.models.locations
+        if (poll := polls.get(loc.name)) is not None
+    ]
     return StatusResponse(
         ready=state.ready,
         cache_enabled=state.cache_enabled,
@@ -243,6 +287,7 @@ async def app_status(state: AppState = Depends(get_app_state)) -> StatusResponse
         s3_last_cycle_seconds=state.s3_last_cycle_seconds(),
         poll_stalled=state.poll_stalled(),
         last_poll_age_seconds=state.last_poll_age_seconds(),
+        locations=locations,
         redis=RedisStatus.model_validate(
             (state.redis.link if state.redis is not None else RedisLink()).report()
         ),

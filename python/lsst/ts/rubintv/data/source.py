@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind
+from lsst.ts.rubintv.data.parser import is_day_obs
 from lsst.ts.rubintv.logging import get_logger
 
 if TYPE_CHECKING:
@@ -68,6 +69,10 @@ class DataSource(Protocol):
 
     def scan(self, location: str, prefix: str) -> ScanResult:
         """Return everything currently under ``prefix``."""
+        ...
+
+    def list_dates(self, location: str, camera: str) -> set[str]:
+        """Return the dates a camera has anything under."""
         ...
 
 
@@ -121,6 +126,30 @@ class S3Poller:
             for key in sorted(etags)
         ]
         return ScanResult(events=events, keys=set(etags))
+
+    def list_dates(self, location: str, camera: str) -> set[str]:
+        """The dates a camera has anything under, without listing what.
+
+        Every key the app indexes is ``{camera}/{date}/...``, so the
+        camera's immediate sub-prefixes are its dates: a delimiter listing
+        returns one entry per date (a thousand to a page), not one per
+        object. This is what lets the full sweep go a date at a time and
+        never hold a camera's whole listing. A sub-prefix that isn't a date
+        holds nothing the parser would accept, and is left out.
+        """
+        bucket = self._buckets.get(location)
+        if bucket is None:
+            raise KeyError(f"no bucket registered for location {location!r}")
+        client: S3Client = self._client_for(location)
+        paginator = client.get_paginator("list_objects_v2")
+        prefix = f"{camera}/"
+        dates: set[str] = set()
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+            for entry in page.get("CommonPrefixes", []):
+                date = entry["Prefix"][len(prefix) :].rstrip("/")
+                if is_day_obs(date):
+                    dates.add(date)
+        return dates
 
     def _list(self, location: str, bucket: str, prefix: str) -> dict[str, str | None]:
         """Keys under ``prefix`` with their ETags.
