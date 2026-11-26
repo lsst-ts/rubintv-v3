@@ -1,0 +1,175 @@
+# This file is part of rubintv-v3.
+#
+# Developed for the Vera C. Rubin Observatory Telescope and Site Systems.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+"""Data sources: how objects arrive.
+
+``DataSource`` is the only thing that knows the ingestion mechanism. It
+emits normalised ``ObjectEvent``s; everything downstream is identical
+whether the source polls S3 or (future) consumes a Kafka topic.
+
+``S3Poller`` implements the interface by listing a prefix and emitting a
+``CREATED`` per object found. It holds no state between scans: the store is
+idempotent (inserts are upserts into presence sets), so re-emitting
+unchanged keys is a no-op that publishes nothing, and deletion is handled
+by the store reconciling against the same listing rather than by a
+synthesised REMOVED.
+
+That statelessness is deliberate. The previous design cached each prefix's
+last listing to diff against, which meant retaining every object key in the
+bucket — gigabytes, and unbounded in the bucket's size — purely to answer
+"did this change?". It doesn't need answering: the store already knows what
+it holds. For the few objects the producer rewrites in place (a date's
+``metadata.json`` and its night report) the store keeps the ETag each
+listing reports and compares the next one with it. A channel frame or movie
+replaced under its own key is not noticed here: a browser holding it asks
+again only when its cached copy expires (see ``api/proxy.py``).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
+
+from lsst.ts.rubintv.data.events import ObjectEvent, ObjectKind
+from lsst.ts.rubintv.data.parser import is_day_obs
+from lsst.ts.rubintv.logging import get_logger
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3.client import S3Client
+
+log = get_logger(__name__)
+
+
+class DataSource(Protocol):
+    """Emits object presence for a location under a key prefix.
+
+    ``scan`` is synchronous (it does blocking I/O); callers run it off the
+    event loop via ``asyncio.to_thread``. A future push-based source (Kafka)
+    would instead implement an async iterator, but the polling source is
+    inherently a blocking listing.
+    """
+
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        """Return everything currently under ``prefix``."""
+        ...
+
+    def list_dates(self, location: str, camera: str) -> set[str]:
+        """Return the dates a camera has anything under."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ScanResult:
+    """One listing: the events to apply, and the raw keys observed.
+
+    ``keys`` is what the listing actually returned, so a caller can
+    reconcile the store against it (anything indexed under the scanned
+    scope but missing here has been deleted). It is consumed immediately
+    and not retained.
+    """
+
+    events: list[ObjectEvent]
+    keys: set[str]
+
+
+class S3Poller:
+    """A ``DataSource`` that lists S3 prefixes.
+
+    Stateless between scans — see the module docstring for why the previous
+    listing is neither kept nor needed.
+    """
+
+    def __init__(self, client_for: ClientFactory) -> None:
+        self._client_for = client_for
+        # location -> bucket name, filled lazily from the client factory.
+        self._buckets: dict[str, str] = {}
+
+    def register_bucket(self, location: str, bucket: str) -> None:
+        """Tell the poller which bucket backs a location."""
+        self._buckets[location] = bucket
+
+    def scan(self, location: str, prefix: str) -> ScanResult:
+        """List ``prefix`` and emit a CREATED for every object under it.
+
+        Events are emitted in sorted key order. ``ExtInfo`` treats the first
+        extension it sees for a channel as that channel's default and the rest
+        as exceptions, so an arbitrary iteration order would make the default
+        depend on which key happened to come first — the same date could
+        classify differently between two scans.
+        """
+        bucket = self._buckets.get(location)
+        if bucket is None:
+            raise KeyError(f"no bucket registered for location {location!r}")
+        etags = self._list(location, bucket, prefix)
+        events = [
+            ObjectEvent(
+                kind=ObjectKind.CREATED, location=location, key=key, etag=etags[key]
+            )
+            for key in sorted(etags)
+        ]
+        return ScanResult(events=events, keys=set(etags))
+
+    def list_dates(self, location: str, camera: str) -> set[str]:
+        """The dates a camera has anything under, without listing what.
+
+        Every key the app indexes is ``{camera}/{date}/...``, so the
+        camera's immediate sub-prefixes are its dates: a delimiter listing
+        returns one entry per date (a thousand to a page), not one per
+        object. This is what lets the full sweep go a date at a time and
+        never hold a camera's whole listing. A sub-prefix that isn't a date
+        holds nothing the parser would accept, and is left out.
+        """
+        bucket = self._buckets.get(location)
+        if bucket is None:
+            raise KeyError(f"no bucket registered for location {location!r}")
+        client: S3Client = self._client_for(location)
+        paginator = client.get_paginator("list_objects_v2")
+        prefix = f"{camera}/"
+        dates: set[str] = set()
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+            for entry in page.get("CommonPrefixes", []):
+                date = entry["Prefix"][len(prefix) :].rstrip("/")
+                if is_day_obs(date):
+                    dates.add(date)
+        return dates
+
+    def _list(self, location: str, bucket: str, prefix: str) -> dict[str, str | None]:
+        """Keys under ``prefix`` with their ETags.
+
+        The ETag is free (it is on every listing entry) and is what lets the
+        store notice a rewritten ``metadata.json`` or night-report object,
+        whose keys never change.
+        """
+        client: S3Client = self._client_for(location)
+        paginator = client.get_paginator("list_objects_v2")
+        result: dict[str, str | None] = {}
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                result[obj["Key"]] = obj.get("ETag")
+        return result
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    ClientFactory = Callable[[str], S3Client]
+else:
+    ClientFactory = object

@@ -1,0 +1,1517 @@
+# Review guide: DM-55435 (the V3 rebuild, one PR)
+
+This PR lands the whole rebuild — 446 commits on `tickets/DM-55435` —
+as a single reviewed merge into `develop`. This guide groups those
+commits so the branch can be read theme-by-theme instead of
+chronologically. Groups are a reading order, not merge units: many
+later commits revisit files introduced earlier, so the diff of a group
+is not always self-contained.
+
+**Reviewers, start with Part V (groups 32–33).** Those commits fix
+critical bugs found by two rounds of adversarial review of the finished
+branch, plus the production OOM fix. They are small, self-contained, each
+carries regression tests, and every commit message states the failure and
+the fix — so they are the fastest-to-review and highest-value part of this
+PR. Because `main`/`develop` are stubs (the whole project lands in this one
+merge), these fixes could not be split into a separate earlier PR: the code
+they fix exists only inside this branch. They are folded in here
+deliberately, not by oversight. Part VI is the design polish and deployment
+hardening that followed, as the app ran on phalanx. Part VII holds the
+fixes from a third, repo-wide review.
+
+Groups 10–25 are carried over from the retired stacked-PR plan
+(`docs/pr-plan.md`, deleted in `5c42eb9`; this document preserves its
+final content). Commits are listed oldest-first within each group.
+
+Regenerate the raw list with:
+`git log --oneline --reverse develop..tickets/DM-55435`
+
+---
+
+## Part I — Foundation and backend
+
+### 1. Foundation (phases 1–7)
+One squashed commit per build phase; each is large but self-contained.
+- `8ca3c03` Phase 1: project foundation
+- `e74c09c` Phase 2: data layer
+- `79b344f` Phase 3: REST API
+- `8acbc21` Phase 4: real-time
+- `4b48e5b` Phase 5: frontend SPA
+- `f9d09c6` Phase 6: sub-apps
+- `a179a71` Phase 7: operational readiness
+- `7c45dec` Point local location at USDF embargo bucket and resolve
+  models_path relative to repo root
+- `b23d651` Fix WS reconnect race on remount and proxy WS origin
+- `b593ceb` Bump vitest to ^3.2.4
+
+### 2. Real deployment configuration
+The config model grown to the real deployment shape, plus the real
+camera/site catalogue.
+- `f7c87cf` Expand config models and loader for the real deployment shape
+- `14be5b9` Surface new camera/location fields through the REST API
+- `7dd3cd4` Port the real RubinTV YAML: full camera catalogue, real
+  sites, real buckets
+- `02d4202` Point tests at the new 'test' site, add coverage for site
+  filter and metadata inheritance
+
+### 3. S3 polling performance and robustness
+Driven by benchmarking against the real USDF endpoint.
+- `4c1d64b` Log per-scan event counts in the poll engine
+- `73e39a1` Survive a race where two coroutines pop the same metadata lock
+- `1d75d8d` Yield to the event loop periodically while applying a large
+  poll batch
+- `611cdb1` Warm up the S3 client pool at startup and split the poller's
+  client
+- `af56da2` Scan locations in parallel and make the poll cycle observable
+- `282391c` Add a standalone S3 polling benchmark for the USDF host
+
+### 4. HTTP caching
+- `e3d4e67` Serve metadata with ETags and 304 handling
+- `7b2e412` Gzip large HTTP responses (group 55 replaces its
+  middleware)
+
+### 5. Streamed metadata and progressive loading
+Large-day metadata streamed to the browser instead of blocking the grid.
+(Group 56 replaces the stream with one REST path; the grid still doesn't
+wait on metadata.)
+- `8296c36` Persist cache slices incrementally as history is scanned
+- `5b731b8` Stream date metadata to clients over the WebSocket
+- `5c0d44f` Show a banner while historical data is still loading
+- `0c94bb9` Consume streamed metadata progressively in the camera table
+- `b7264ff` Fix metadataProgress query warning when no chunks have arrived
+- `d3aeab2` Add debug logging across the metadata broadcast flow
+- `c120fa5` Show all metadata columns; probe the metadata fetch timing
+- `35b4304` Stream metadata incrementally off S3 with ijson
+- `5edced8` Render streamed metadata progressively with a live row count
+- `3ae6394` Lock ijson in uv.lock
+- `c9402b9` Scan recent history first and surface per-camera load progress
+- `a7b0d19` Render the camera grid without waiting on metadata
+- `e023a75` Fix metadata progress indicator never appearing
+
+### 6. Live views and channel serving
+- `46a57bd` Render All Sky as a live view and resolve proxy objects by
+  convention
+- `38ab600` Resolve channel objects by seq prefix and suggest a download
+  filename
+- `1158b28` Add live "current" channel view that follows the latest
+  exposure
+
+### 7. Camera-table features (pre-design)
+- `6267af9` Add a copy-link button to the camera table
+- `a020146` Add per-row viewer/quicklook/copy-row links and metadata
+  download to the table
+- `6cfae39` Disable metadata download until metadata is fully loaded
+
+### 8. Status, Admin, night reports and ops endpoints
+- `acd6915` Surface disk-cache and warm/cold-start state in status API
+  and UI
+- `9b40568` Build out Cluster Status and global Admin pages
+- `49bd43a` Backfill deep-linked dates on demand; reset poller state on
+  flush
+- `c08c27f` Warm recent metadata into the cache after each camera's
+  recent scan
+- `f3bc7cb` Set a reflective browser tab title per page
+- `2b17f93` Serve night-report plots, type text items, backfill deep links
+- `8f72292` Preserve whitespace in multiline night-report text
+- `2da1691` Add pod-local heartbeat endpoint for RA service liveness
+  (removed again in group 42 — nothing in Rapid Analysis ever reported
+  to it; skim rather than review)
+- `ba28985` Prune stale warm-start dates on full historical sweep
+
+### 9. Test quality
+- `9fceb75` Add always-on test coverage reporting
+- `c1d1178` Fix all mypy errors and extend test coverage to 97%
+
+---
+
+## Part II — The design port
+
+### 10. Design foundation: tokens, theme, hand-off
+Everything visual depends on these.
+- `a0955cb` Stage RubinTV design hand-off from Claude Design
+- `783a750` Port design tokens + theme switcher from Claude Design
+- `3f634f2` Refresh design hand-off; sync theme-toggle to latest design
+
+### 11. App shell + per-view design ports
+The shell (sidebar/tabs) plus the first pass restyling each view.
+- `7288262` Port app shell: collapsible sidebar + camera tabs (step 2)
+- `72f8eee` Port channel view: browser + restyled exposure viewer (step 3)
+- `302c944` Channels view: latest-frame card grid per channel
+- `18b1d02` Make historical-scan banner a compact pill above the live
+  indicator
+- `fc64c93` Port CameraTable to the design: angled headers, chips,
+  density (step 4)
+- `e1cfcd2` Restyle Detectors + Status to the design (step 5)
+- `7f20d7f` Restyle AllSky to the design's feed layout (step 6)
+- `02fd13b` Port NightReport to the design's folder-tabbed layout (step 7)
+
+### 12. Column picker
+Column-picker behaviour and the fixed-width fixes it surfaced.
+- `d30c03e` Tidy CameraTable empty state when a date has no data
+- `e69e3a0` Dismiss the column picker on outside click or Escape
+- `fae41ec` Remove column-picker open lag by keeping its rows mounted
+- `232d8df` Fix column-picker open lag at the source: memoize + isolate
+  the table
+- `a969b12` Add the column-picker header (title/count/search/all-none-
+  reset) + real defaults
+- `5ada0b9` Fix stretched channel columns with fixed per-column widths
+- `4bc058a` Keep column widths fixed when few columns are visible
+- `2938ea1` Add toolbar/button icons and fix the 404 rubin-mark asset
+
+### 13. Date picker + heatmap
+An iterative arc (several commits rewrite earlier ones); review the end
+state rather than each step.
+- `3464126` Implement the two-month calendar date picker
+- `f393efc` Replace date picker with a year-heatmap overview + calendar
+  counts
+- `5eeaaaf` Date picker: two-month + heatmap views with a fixed tint ramp
+- `aab7bc8` Date picker: calendar orientation for the heatmap + max seq
+  in month cells
+- `a5b4449` Date picker: drop per-seq dots, 6-across heatmap, binary All
+  Sky heatmap
+- `48f127a` Heatmap: alternating year stripes + day-selects / month-jumps
+  split
+- `928daec` Heatmap: whole mini-month is the month-jump target;
+  distinguish day vs seq
+- `280a1aa` (later, from a user's report) Drop other months' days from
+  the month grids, where they read as empty nights (the 1st sits under
+  its weekday; six week rows keep the height), and open with the newest
+  month on the right rather than beside a future one (`viewFor`)
+
+### 14. Table cells, headers, action columns
+- `9cfebc6` Show channel titles in the camera table header, not ref names
+- `2e62aad` Blank action-column headers + per-cell colour-class from
+  _<col> indicators
+- `02b84df` Add per-cell colour-flag styles from the original app's
+  palette
+- `d2362cb` Replace table action-column text with icons
+- `a1e98bd` Narrow action columns + check-mark copy confirmation
+- `eb273b5` Render object/array metadata cells as a foldout modal
+- `7b1dda7` Simplify table density to two sizes with larger, lighter
+  headers
+
+### 15. Table filtering + header controls
+- `5965549` Implement the table metadata filter from the design
+- `797be84` Move Columns + Filter controls between Copy link and Download
+  metadata
+- `55b1ae6` Open the Columns popover down-and-right, not leftward
+- `ca364d4` Add prev/next-day stepper buttons around the date picker
+- `acf4d5c` Add UTC clock + per-camera time-since-last clock to the table
+  header
+- `5300a99` (later, from a user's report) Scroll the column search's list
+  to follow ↑ ↓: it shows about seven rows, and the highlight went out of
+  sight past them. Keys scroll it, hovering doesn't (`moveTo` in
+  `FilterControl.tsx`)
+
+### 16. Seq.No URL filter
+Another iterative arc landing on the `?seq_filter` catch-all + its docs.
+- `5c5dafe` Support a URL seq range (?seqMin/?seqMax) as removable filter
+  chips
+- `2b622a7` Make all Seq.No filter operators work, not just the URL range
+- `d2eb6cf` Add ?seqNum= URL param for a single-seq filter; mirror it in
+  the URL
+- `2c0b3ac` Replace seq URL params with one catch-all ?seq_filter for all
+  operators
+- `d5d78e4` Make seq_filter URL-readable: spelled tokens, no
+  percent-encoding
+- `2f93679` Document the seq_filter URL parameter in a new viewer guide
+
+### 17. Loading state fix + S3 connectivity indicators
+(Group 58 adds a third state to the S3 pill, "Poll stalled".)
+- `ec7a6ac` Fix empty-table loading state and add S3 connectivity
+  indicators (bundles two concerns in one atomic commit: the empty-table
+  loading fix and the S3 indicators)
+- `2d0f6ea` Move the live pill to Status, scope the S3 pill, rename the
+  site env var (also relocates the WebSocket/live indicator to the
+  Status page — overlaps group 19's liveness cues; kept here since it
+  edits the same ConnectionStatus/S3Status components)
+
+### 18. Header, nav and chrome polish
+Small independent UI fixes to the shell chrome; low review risk.
+(`RubinMark`, added and sized here, is replaced by the RubinTV logo in
+group 34's `8a13341` and removed.)
+- `de6a2d3` Remove appearance controls from the main-page gutter
+- `2dbca79` Add vector Rubin mark and tidy the header status row
+- `ba71c34` Highlight Channels tab on channel pages, drop doubled live dot
+- `676ff9a` Pad the topbar bottom on pages without a tabs row
+- `f32e9a8` Add tooltip explaining the live indicator's states
+- `d25b952` Make breadcrumbs read as breadcrumbs with › separators
+- `0f8ea6a` Give RubinMark intrinsic size to prevent logo flash on refresh
+
+### 19. Liveness cues across views
+Everything that signals "is this the live observing day / is this fresh".
+- `7919ae5` Dim channel cards that lag the night's seq frontier
+- `38c8d44` Show whether Channels cards are the live observing day
+- `9147926` Tint the table date chip by observing-day state
+- `106a2d0` Pass isCurrentDayObs to the All Sky date chip
+- `ac7ed49` Show camera dots as stale when no data for the current day
+- `4611d5a` Reflect S3 unreachable in the historical-refresh pill
+
+### 20. All Sky, Mosaic and live-view cameras
+- `8a88f25` Drop Table/Channels tabs for live-view cameras
+- `cf7601a` Let All Sky frames fill the stage
+- `68f5f33` Shrink All Sky frames to the image on short pages
+- `751dbf5` Autoplay and loop the All Sky movie
+- `bb4c3f6` Make Mosaic a live, embeddable view; drop obsolete has_mosaic
+  flag
+
+### 21. Camera table: virtualization, sorting, config-locked columns
+- `20db80d` Virtualize camera table rows and clip overhanging headers
+- `86564d9` Let cell colour flags show through the newest-row highlight
+- `73effc4` Drive locked metadata columns from config
+- `84e0e4a` Add ascending/descending sort to orderable table columns
+- `282bd32` Pin camera table scroll position during live updates
+- `b8a0e58` Floor @tanstack/virtual-core at >=3.16.0 for anchorTo
+- `7b34ea9` Cap cell-modal key column so short values aren't shredded
+
+### 22. Channel view enrichment
+- `f1f946b` Subscribe the channel browser to live camera updates
+- `cde5078` Enrich the single-channel metadata sidebar
+- `e1788fd` Link empty channel cards to their last known plot
+- `2e9be56` Add a sibling-channel strip and image-load spinner to the
+  channel view
+- `066dbc2` Show a loading spinner on channel grid cards
+
+### 23. Path prefix, legacy redirects, shell header, site banners
+Backend routing parity with V2 deployments plus the header work built on
+it.
+- `bb774c5` Serve the whole app under a configurable path prefix
+- `215a4bf` Redirect legacy deep links to the new SPA routes
+- `c2ea0d4` Clarify metadata LRU cap is global, not per-camera
+- `755a7a2` Hoist the date picker into the shell header
+- `8f3fafc` Add site processing banners and a non-prod header strip
+
+### 24. Sub-apps: DDV websocket bridge + container-start builds
+Replaces v2's start-daemon.sh: the DDV client/worker relay, plus a
+start.sh entrypoint that builds DDV / installs exp_checker at container
+start (kept at container start, as in v2, so pod restarts pick up new
+DDV commits without an image rebuild).
+- `a0da1b3` Replace v2's start-daemon steps: DDV bridge, image-time
+  subapp builds
+- `ec65201` Build DDV at container start again, not at image build
+- `cf7c2b4` Fix image build and exp_checker install found by a real
+  docker run
+
+### 25. Landing pages: location/camera/app logos
+Restyles the Home and Location landing pages into the original RubinTV
+full-bleed logo buttons: each camera/location logo fills its button as a
+background image (jpg photos cover, svg marks contain) with the title
+overlaid using the config's text_colour/text_shadow. Home splits into
+grouped sections (Processing Locations / Apps / Test-stand Locations,
+each hidden when empty), single-location deployments redirect straight
+to that location, and the Location page's cluster-status text link
+becomes a matching logo button. Bundles the logo images under
+`web/public/logos/` and adds logo/text_colour/text_shadow to
+CameraSummary + has_cluster_status to LocationSummary (openapi.json +
+api-types regenerated in the same commit).
+- `35d37ca` Incorporate location/camera/app logos as full-bleed buttons
+
+---
+
+## Part III — Packaging, CI and release
+
+### 26. CI and dependency chores
+- `ff7f010` Apply npm audit fix and ignore the Vite cache
+- `b638da2` Bump CI actions off the deprecated Node 20 runtime
+- `da213b1` Bump setup-uv off the deprecated Node 20 runtime
+- `16d1f94` Inject X-Auth-User in the Vite dev proxy for local admin
+  access (header renamed to `X-Auth-Request-User` by `f318e5c`)
+
+### 27. Version 3.0.0 + build provenance + image-build CI
+Stamps the release: version 3.0.0 everywhere, git sha + commit date on
+the Admin page (baked in as Docker build args — the runtime image has no
+.git), and the V2-convention image-build CI job (tickets/**, deploy**,
+develop, tags → ghcr). The drift-sync commit is mechanical (the
+committed openapi.json/api-types had gone stale); review the feature
+commit for the real schema change.
+- `1f3b7d7` Regenerate the stale openapi.json and api-types
+- `99ce8ac` Bump to 3.0.0 and show git provenance on the Admin page
+
+### 28. Package as `lsst.ts.rubintv` for conda/EUPS install parity
+Repackages the app the way lsst-ts builds and deploys V2: relocates the
+backend to `python/lsst/ts/rubintv/`, adds the conda/EUPS/Jenkins
+scaffolding, the `run_rubintv` entry point, and the GHCR image-build CI
+job. One CI build job passes both the setuptools_scm `RUBINTV_VERSION`
+arg and the `GIT_SHA`/`GIT_DATE` provenance args; the static 3.0.0
+version gives way to the tag-derived one (cut a v3.0.0 tag at release);
+`scripts/start.sh` stays the entrypoint — carrying the container-start
+DDV/exp_checker logic — but launches via the `run_rubintv` console
+script.
+- `07f3015` Package as lsst.ts.rubintv for conda/EUPS install parity
+- `30f1e8c` Fix pre-existing ruff errors in dev scripts
+- `6b324b4` Fix pre-existing mypy errors exposed by the new check target
+- `7e277fa` Document the tag-driven release procedure in the operator
+  guide
+- `25fd05a` Adopt the TSSW pre-commit config for Jenkins CI
+- `ae86180` Conform doc lines and benchmark lambdas to the TSSW hooks
+- `b31dbd7` Make the test suite hermetic to the developer's AWS config
+- `bc99d9d` Survive Kubernetes service links and listen on 8080 in the
+  container
+- `f14e373` Answer the readiness probe at bare / with a redirect into the
+  prefix
+- `a757abe` Merge branch 'design-port' into conda-parity (brings the
+  logos + dev-proxy header work into the packaging lineage)
+- `59c9836` Rewrap a merged doc line to the TSSW 79-char doc limit
+- `6c2a1a9` Default the cache to /scratch and serve public assets from
+  the SPA dist
+- `9f86c55` Redirect bare sub-app paths into their mounts; drop the
+  header links
+- `255bc31` Stop reading RUBINTV_HOST/RUBINTV_PORT; host and port are
+  flags only
+
+---
+
+## Part IV — Deployment iteration and consolidation
+
+### 29. Fixes from running the deployed app
+Polish and fixes found while iterating on the real phalanx deployment.
+- `8d3a21c` Show table floats to 3 decimal places instead of 2
+- `69cf5d9` Rewrap the settings comment to the 79-char doc limit
+- `6c852d0` Add shift-arrow channel navigation to the single-channel view
+- `cd1ef0b` Surface S3 poll-cycle latency and link the header pill to
+  Status
+- `04b6c15` Regenerate openapi.json/api-types to catch up with landed
+  code (mechanical; recipe in the commit message)
+
+### 30. Cluster Status: seed from retained stream entries
+Fixes the page sitting blank after an app restart during a quiet period:
+the producer's 0.5s loop is change-gated, so we seed each stream from
+its `maxlen=2` retained entry (XREVRANGE) before tailing. (Group 61
+gives each seeded set the age of that entry.)
+- `10c5357` Seed cluster-status streams from last retained entry on
+  startup
+- `2a663f3` Add toggleable DEBUG trace for cluster-status data flow
+- `a1e9f0c` Test that a later cluster-status snapshot fully replaces the
+  prior one
+
+### 31. Docs, merges and housekeeping
+Safe to skim.
+- `24bb403` Document the branch model and main's protection ruleset
+- `7439d82` Nudge webhooks for Jenkins CI (no content)
+- `b00ef5f` Merge branch 'deploy' into tickets/DM-55435
+- `3cf8be5` Merge branch 'redis-detector-seed' into tickets/DM-55435
+  (resolution also fixes the seed test's monkeypatch target to the
+  `lsst.ts.rubintv` module path and rewraps for W505)
+- `5c42eb9` Drop the stacked-PR plan; DM-55435 lands as one reviewed
+  merge
+- Plan bookkeeping, docs-only (edits to the now-deleted
+  `docs/pr-plan.md`): `e768300`, `3277c95`, `13069c6`, `87ce19f`,
+  `08596e0`, `0c2e434`, `0dfd491`, `bbd789c`, `bb44b6d`, `1287e8b`,
+  `3822906`, `80fe164`, `147f55d`, `900df83`, `8ea8b18`, `9907373`,
+  `7adcb03`
+- This guide's own revisions, docs-only: `a71d18a`, `24ee2e9`, `017566a`,
+  `d673fcd`, `49fe56b`, `f50907b`, `3550b1e`, `43311b7`, `c67ac85`, `5d1caf9`,
+  `c6873f2`, `6da0777`, `4dcf193`, `8175288`, `52f266e`, `1997cb8`,
+  `175f1e7`, `f5ba744`, `46b1c0a`, `0d35377`, `6290dde`, `24640bc`,
+  `1792bd6`, `095e603`, `6697073`, `33bfb1d`, `a724bfb`, `05b23bf`,
+  `fc0b960`, `be142d2`, `cbfb3ad`, `b73c2d6`, `1b186c9`, `ddd2b18`,
+  `cc8e35c`, `444ff4c`, `dc0530a`, `32071a5`, `87b9657`, `913f884`,
+  `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
+  `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
+  `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
+  `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, `3e84f05`,
+  `96daca6`, `6247b85`, `0fd2112`, `2ba18cc`, and the commit that noted
+  the cache volume's check and sizing.
+
+---
+
+## Part V — Post-review fixes
+
+### 32. Fixes from a post-implementation adversarial review
+An adversarial review of the finished branch (backend concurrency, HTTP/WS
+API, security, both frontend layers, build/deploy) surfaced a set of real
+bugs — two of them silent and process-wide. Each commit is self-contained
+and adds regression tests for what it fixes; review these commits directly
+(their diffs are small and standalone, unlike the feature groups above).
+Highest-risk items to scrutinise: the WebSocket-pump death and the
+`site="local"` admin default in `27d71a4`.
+
+- `27d71a4` Fix backend runtime, security, and API robustness bugs. The
+  load-bearing ones:
+  - **WS bus pump death**: `prune_dates` published a `StoreChange` whose
+    type (`"calendar"`) had no `ServerMessage` counterpart, so `_fan_out`
+    raised `ValidationError` and killed the pump task — silently stopping
+    *all* live updates process-wide until restart. Renamed the type end to
+    end (`calendarUpdate`) and wrapped `_fan_out` in a per-change guard so
+    no future mismatch can kill the pump. (Verify: `ServerMessageType` in
+    `ws/protocol.py` vs `_CHANGE_TO_TOPIC` in `ws/handler.py`; the pump loop
+    in `_pump`.)
+  - **Redis readers die on a blip**: both reader loops had no reconnect and
+    no error handling, so a Redis restart froze Cluster Status / control
+    readback forever with nothing logged. Now supervised with backoff.
+  - **`site="local"` grants everyone admin**: the default site maps to the
+    real USDF locations with `admin_for: ["*"]`, so a pod that booted with a
+    missing/wrong `RAPID_ANALYSIS_LOCATION` granted admin to any
+    authenticated user. The wildcard is now fail-closed behind
+    `RUBINTV_ALLOW_ADMIN_WILDCARD` (named admins still apply). Also:
+    `controls/set` restricted to config-defined keys; night-report link
+    URLs scheme-validated (XSS); proxy path segments validated; on-demand
+    backfill capped + memoised; `prune_dates` race fixed; blocking cache I/O
+    moved off the event loop; `/admin` redirect loop removed; Range→416.
+- `9c932ad` Fix frontend data-layer bugs: column prefs no longer leak/corrupt
+  across cameras (the route doesn't remount on a param change); corrupt
+  localStorage no longer crashes the table; numeric `=`/`between` filters
+  compare by value (a leading `-` no longer breaks a range); WS reconnect
+  refetches missed data; `staleTimeForDate` uses day_obs space; integers
+  render without a spurious `.000`.
+- `f2a76f0` Fix frontend UI bugs: DatePicker "today" tracks the live
+  observing day (was frozen at mount); selectable day cells are keyboard-
+  operable; the newest-row highlight tracks max seq not visual row 0; image
+  cards re-arm on a live frame swap; the Channel viewer resets its latch on
+  rollover and no longer dead-ends on a missing seq; AllSky/Mosaic guard
+  partial configs; stacked overlays close one Escape at a time.
+- `1c20fe2` Use the non-deprecated `HTTP_416_RANGE_NOT_SATISFIABLE`
+  constant (silences a Starlette deprecation warning from the Range fix).
+
+Kept separate on purpose: `bcbf552` (ignore the `.vite` prebundled-dependency
+cache in eslint) is a generated-cache config tidy, not a bug fix, so it is its
+own commit and the fix commits stay pure. A handful of lower-severity review
+findings were judged already-safe on closer inspection (SPA traversal guard,
+legacy redirect, sort comparator).
+
+### 33. Second review round and the production memory fix
+A second adversarial pass once the app was running at USDF, plus the fix
+for the pod being OOMKilled after ~4 days. `fea95f3` and `ba63985` are an
+arc: the first tracked backing files per index slot so a rename could not
+erase a live seq; the second replaced that whole approach (and the poller's
+retained listings that were eating ~4GB) with a presence-only index and
+set-difference reconciliation. Review `ba63985`'s end state — the store,
+`S3Poller` and `ScanScope` — rather than the pair.
+- `fea95f3` Track backing files per index slot so renames can't erase
+  live data (superseded by `ba63985`)
+- `ba63985` Index presence, not object identity, to stop unbounded memory
+  growth. The OOM fix: `S3Poller` is stateless, `EventStore.reconcile`
+  prunes by set difference within a `ScanScope`, and the cache slice
+  format is v3.
+- `7ee75ab` Fix thread-safety and lifecycle hazards around the event loop:
+  sync endpoints that iterated poller-mutated dicts on the threadpool are
+  now async; a failed historical sweep retries on a 60s backoff instead of
+  sleeping 12h and reporting "loaded"; per-location scan workers barrier
+  before a failure propagates.
+- `17195f7` Harden input validation, admin writes, and operator-facing
+  config: `valid_date` requires a real calendar date (each impossible date
+  used to buy an S3 listing); per-location control writes share the
+  site-wide key allow-list; night-report links reject protocol-relative
+  URLs; `RUBINTV_LOG_LEVEL=trace` no longer crashes startup.
+- `6d78f52` Fix SPA state-hygiene bugs: refcounted WS subscriptions (one
+  consumer's unsubscribe killed another's live updates); the streamed
+  metadata slot resets when a REST fetch lands (no ghost rows); stable
+  escape-stack ordering in `useDismiss`; AllSky keeps `headerless` across
+  date changes.
+- `8f6422c` Keep the ws pump's except line in a form black and ruff both
+  accept (formatter tie-break, no behaviour change)
+- `352e424` Read per-day entries as {seq, ext}, as the API now sends them
+  (the frontend half of `ba63985`; moved here from `tickets/DM-56222`)
+- `340ce55` Regenerate openapi.json and api-types to catch up with landed
+  code (mechanical)
+
+---
+
+## Part VI — Design polish and deployment hardening
+
+Smaller UI and operational commits made while the app ran on phalanx.
+Most are independent; the arcs worth reviewing by end state are called
+out.
+
+### 34. Shell, header and chrome, second pass
+- `71331d0` Replace app-shell sidebar with NavMenu drawer and launcher
+  home
+- `7368414` Turn channel-head links into icons; serve images inline
+- `172a5cc` Move env warning into the topbar strip; align status pills
+- `b09547d` Align processing banner with title; slant it as a
+  parallelogram
+- `244b617` Enlarge the topbar date picker without growing the topbar
+- `2b161a9` Remove topbar-main on app pages
+- `e7ab116` Seat the topbar date picker in line with the tabs
+- `388c6de` Seat the date stepper in the title row, not the tab bar
+  (supersedes `e7ab116`: the date is page scope, so it sits after the
+  camera name; the tab row is view switching only)
+- `3f9409e` Pin sort arrow to bottom of angled headers so it survives
+  truncation
+- `e043b70` Add favicon (redrawn as the logo in `4d9a7f0`, below)
+- `3088b59` Add a Simon Krughoff memorial to the home page
+- `0751ea0` Tint the memorial plaque in the mark's own teal
+- `fecbb10` Trim the home page: the location cards drop their ids
+  (just the title, evenly padded) and the hero its "live camera
+  displays" tagline
+- `8a13341` Give the home page a RubinTV logo that arrives as the Rubin
+  mark. The hero's Rubin mark and the "RubinTV" line under it become
+  one lockup at the same height: a television drawn as a constellation,
+  with the name beside it. The first time it is shown in a tab it plays
+  an intro of about 3.5 s, in which the Rubin mark's trails sweep off
+  and its dots and sparkles gather into the set; after that, and with
+  reduced motion, the finished logo is simply there, and a click
+  replays it. Review `lib/brandIntro.ts` (geometry and timing, a pure
+  function of time) and `BrandIntro.tsx` (the clock and the SVG). The
+  test setup's `matchMedia` stub now reports reduced motion, so other
+  tests that mount Home see the finished logo. `RubinMark.tsx` goes
+- `5a78c8e` Head a lone location's page with the brand band. A
+  deployment with one location (summit, base, tucson) redirects past
+  the launcher, so its location page now carries the same band, logo
+  and memorial, above the camera groups; with several locations their
+  pages are unchanged. The band becomes `BrandHero.tsx`, shared by
+  `Home.tsx` and `Location.tsx`. Two details to check: in `Location`
+  the band is the first child of the same `<section>` in all three
+  states, because anywhere else React remounted it when the cameras
+  arrived and cut the intro off; and Home passes `paused` while the
+  locations load, so an intro about to be lost to the redirect is
+  neither started nor counted as played
+- `4d9a7f0` Redraw the favicon and app icons as the RubinTV logo.
+  Assets only, in `web/public`: `favicon.svg` is a bolder small cut
+  that holds at 16px, `icon-large.svg` and `icon-large-tile.svg` are
+  the logo itself, and the PNGs and `.ico` are rendered from them. The
+  `.ico` and small PNGs can't follow the browser's theme, so their
+  lines are a mid grey that shows on light and dark chrome
+
+### 35. Location and Channels cards
+(Group 34's `5a78c8e` puts the brand band above the camera groups on a
+single-location deployment's location page. Group 60 keeps the
+Table/Channels choice below to one browser tab, and refreshes the
+location cards while the page stays open.)
+- `9396183` Hide Previously Used Channels group on USDF Summit
+- `4343548` Border stale Channels cards in the indicative orange
+- `dd0bdc4` Represent each camera card by its primary channel's latest
+  image
+- `49a8149` Share the Channels grid's image-loading logic on location
+  cards
+- `0c0efcf` Distinguish no-data cameras from stale ones on location cards
+- `49547f8` Remember the camera Table/Channels tab across cameras
+- `e5fa4e7` Store Table as the wanted tab when a date is applied
+- `58ddb90` Label the seq on channel cards and drop the duplicated channel
+  label
+- `40385e5` Word the channel-card lag pill as "N behind", not a negative
+  number
+- `c33ff61` Show event-page metadata floats to 3dp like the table
+  (formatCell moves from CameraDataTable into lib/metaCells; its test
+  moves with it)
+- `fedae15` (later) List Summit first among the USDF locations: Home and
+  the Status page follow the models' `locations` order, while a site's
+  `bucket_configurations` list only filters (the loader reads it as a
+  set). Config only
+
+### 36. Camera table and column picker, second pass
+`32e9549` → `22cdffb` → `481035f` is an arc (pick order, then drag to
+reorder, then the picker split into Select / Reorder views); review the
+final `ColumnOrderList` and `useColumnPrefs`.
+- `c8c8b77` Guard CameraTable against a camera payload missing channels
+- `265d393` Tighten the compact table's horizontal spacing
+- `45fd1b2` Stripe alternate metadata columns for readability
+- `32e9549` Order table columns by the sequence they're picked
+- `22cdffb` Let users drag table columns into a custom order
+- `481035f` Split the column picker into Select / Reorder views
+- `98a9574` Show filtered row count, edit filters in place, drop object
+  columns
+- `6fc2481` Fix camera table column widths so they don't jump while
+  scrolling
+- `264367e` Show the time-since clock in days and hours after three days
+- `19e3ba9` Point the lsstcam quicklook link at fov-quicklook's current
+  visit-id format
+- `b952ec3` Show the image-viewer link only at summit and base
+- `b5b6fb8` Flow the column picker's names down columns, not across rows
+- `b985ecd` Scroll truncated column names into view on hover in the picker
+  (`ScrollingTitle`, in both the Select grid and the Reorder list)
+- `eba60db` Let the column picker drag wider until every name fits:
+  custom corner grips (`useColumnPickerWidth`) cap the width at the
+  longest name or `main.app-content`'s edge; the grid now holds at most
+  three columns so extra width widens names
+
+### 37. Channel viewer zoom and keyboard
+(Group 64 paces a held arrow key by the frames' loading, and leaves a
+movie in focus its own arrows.)
+- `1641994` Click-to-zoom the single-channel image (fill/fit toggle)
+- `7363e06` Persist the fit/fill zoom across image changes
+- `07206dd` Stop arrow-key nav from selecting text
+- `f16379d` Disable image zoom when it already fits vertically
+
+### 38. Status, Cluster Status and Admin pages
+- `651bd3b` Tidy the Scan Status page into per-location cards
+- `aed5de7` Give WebSocket and S3 status their own sections
+- `2a1f3c4` Consolidate scan notices and location cards into one section
+- `90880ef` Grid the Cluster Status rows so panels align and share width
+- `c35f938` Gate Cluster Status restart on admin; align + Esc the confirm
+- `580978b` Fix confirm/cancel alignment and overflow in narrow cards
+- `4b624be` Disable all Redis-writing admin actions when Redis is off (one
+  `redisDown` flag gates every write consistently; flush-historical stays
+  enabled since it clears the disk cache, not Redis)
+- `9b0e699` Reword Redis-off warning now that writes are blocked, not
+  failed (group 61 tells an unreachable Redis from an unconfigured
+  one)
+- `d4c2e83` Show full version only on deployed builds; sha+date locally
+- `09517d6` (later) Show each camera's found-image count on the Scan
+  Status page, so a sweep making progress reads differently from one
+  finding nothing: `image_count` per camera on `/status`, summed from
+  the in-memory index by `EventStore.image_count` (frames plus per-day
+  artifacts; no S3). `app_status` turns `async` for loop confinement
+- `1162723` (later) Log refused admin requests and tell non-admins why
+  controls are off: both gates log `admin.denied` (`user`, `reason`
+  `no_user`/`not_admin`, `path`); `/admin/status` echoes the `user`, and
+  the Admin page shows who is signed in and, for a non-admin, an
+  `AdminAccessNote` and every action disabled (the Detectors page gets
+  the note too). An empty header no longer rides the `"*"` wildcard
+- `df40287` (later) Show the Admin page's current control values again:
+  "Current:" looked up the bare control key, but readbacks are keyed
+  `K_READBACK`, so every menu showed "—" even after a change took
+  effect (Merlin's BTS report). The readback reader now also reads each
+  menu's and the witness detector's readback on (re)connect, as V2's
+  page did on load; the old test passed vacuously
+- `bd0edef` (later) Let the free-form control box write as V2's did:
+  `RUBINTV_CONTROL_` + the typed key, uppercased, and a cleaned-up
+  value. The server now accepts the whole `RUBINTV_CONTROL_` namespace
+  rather than only configured keys (`control_key_allowed`), still
+  refusing the cluster's other keys
+- `2ba8518` (later) Admin page: the controls in two grid rows by kind (the
+  menus, one column each; then the free-form box, witness and reset),
+  two columns at medium widths and one on phones; the free-form box's
+  "Sets ..." line spaced and always shown; no orange borders inside the
+  danger zone. CSS and markup only
+- `e8ecc7f` (later) The Admin version line drops setuptools-scm's
+  `+g<sha>` local part, which repeated the sha beside it
+  (`v0.1.dev400 · 9dff062`, not `v0.1.dev400+g9dff062da · 9dff062`)
+- `f3d6544` (later) Admin menus send a value as soon as it's picked, as
+  V2's did (Merlin picked values at BTS and nothing was sent): a list,
+  not a `<select>`, which on Windows/Linux would send every value
+  arrowed past. Each box reports its own outcome, time-stamped; the
+  free-form box no longer doubles a prefix typed in full; fields stand
+  3px proud of the text column
+- `57531c3` (later) The AOS Pipeline menu offers `AI_DONUT_BINNED2` and
+  `AI_DONUT_UNBINNED` in place of `AI_DONUT`, and adds `REFIT_WCS`.
+  Config only
+- `e832d00` (later) Status page: where the disk cache lives and its
+  sizes, and a tidier layout. `/api/health/cache` sizes each top-level
+  entry of the cache dir in allocated blocks (as `du` does) and says
+  what reads it: `index`, `guide` (the observing-block guide's
+  subdirectory, where deployed) or `unused` (old cache versions' slices,
+  to reclaim), plus the volume's used/free/total. It is a sync handler
+  (the walk runs on the threadpool) and separate from `/status`, which
+  every page polls. `/status` gains each camera's `location_title` and
+  `camera_title`. On the page: WebSocket, S3 and start-up (warm, cold or
+  cache off) pills to the right of the title, described by tooltips
+  (help cursor); titles on the cards; bare image counts; one pill width
+  ("Recent ready" is now "Recent"); cards in a row share a height; a key
+  below the cards; the cache table set apart beneath. The "N cameras
+  still loading" headline is gone. (Group 58 moves the walk to a worker
+  thread it waits on for only so long, reports the volume's troubles,
+  and takes the pills out of their boxes.)
+
+### 39. Route validation and the 404 page
+- `a48d0b7` Validate route params and add a 404 page: the bare `/rubintv`
+  (no trailing slash) rendered a blank page because the router's basename
+  kept Vite's slash; unknown locations/cameras now resolve against the
+  fetched config through a `RouteGuard` instead of rendering a half-built
+  shell. (Group 63 adds the page for a view that throws.)
+
+### 40. Deployment config, DDV and operations
+Facts learned from the real phalanx/USDF deployment, each small.
+- `3555f21` Normalise RAPID_ANALYSIS_LOCATION codes to internal site names
+  (the RA env sets BTS/TTS/SUMMIT/USDF; a USDF pod failed startup with
+  "unknown site")
+- `e9a96eb` Declare certifi so boto trusts the USDF embargo gateway
+- `46c1b88` Operator guide: document the entrypoint variables and the
+  missing settings
+- `def7716` Render tracebacks in JSON logs
+- `31d48bf` Set the S3 endpoints for the base, tucson and summit locations
+- `d28337b` Build the Redis URL from the chart's RA_REDIS_* variables
+- `99f1643` Fall back to S3_ENDPOINT_URL for locations without an endpoint
+- `811cae1` Take the base, tucson and summit S3 endpoints from the
+  environment
+- `35ab80a` Don't mount DDV from a half-built Flutter bundle
+- `db9f323` Keep a DDV worker busy after its client disconnects mid-job
+- `20567ba` Build the web DDV (rubintv-ddv) at container start instead of
+  the Flutter app (the runtime image carries Node 24 instead of the
+  Flutter SDK)
+- `fe47422` Serve one image under any prefix and declare dev instances
+  explicitly: Vite builds with a relative base and `render_index`
+  (`spa.py`) fits `index.html` to `RUBINTV_PATH_PREFIX` as it is served
+  (summit dev runs at `/rubintv-dev`); `RUBINTV_INSTANCE_ENV` replaces
+  the "-dev"-in-the-URL guess for the dev strip and `{dev}` links
+- `f318e5c` Read the admin user from `X-Auth-Request-User`, the header
+  Gafaelfawr sets. The gate read `X-Auth-User`, which nothing sets, so
+  every admin write through the ingress 403'd, even on BTS's open
+  `admin_for: ["*"]`; a client-sent `X-Auth-User` is no longer honoured
+- `654423c` Operator guide: say who is an admin (both gates, `admin_for`
+  and the wildcard flag) and why the header is trusted (the chart's only
+  ingress is an authenticated GafaelfawrIngress)
+
+### 41. CI, licensing and tooling
+Safe to skim.
+- `2cc3672` Let ruff own test_settings formatting (unwrap the parametrize
+  line)
+- `eee827a` Wrap two W505-flagged comment lines in test_api
+- `94f29f2` Address CI: ruff format, stabilize a hook dep, bump CI action
+  versions
+- `6cca159` Pin setup-uv to v8.3.2 (no floating v8 tag exists)
+- `887eb48` Enable the mandatory insert-license pre-commit hook
+- `b17284d` Add COPYRIGHT and adopt GPL licence in project file
+- `1efac3f` Add run-rubintv skill: launch and drive the dev stack
+- `1bc673c` Gitignore a local `.env`
+
+### 42. Protocol tidy-up: unused topics and the heartbeat removal
+Dead surface removed once the running app showed what was actually used.
+- `775b098` Drop the unused channel topic and the stale poller-diff
+  comments (the `channel` topic and `event`/`subscribed` message types
+  were never published; comments still described the pre-`ba63985`
+  listing diff)
+- `bce07e0` Remove the RA heartbeat endpoint and the config service
+  registry (undoes group 8's `/internal/heartbeats` and the
+  `services:` YAML it was for — Rapid Analysis never reported to it, and
+  the Cluster Status page covers worker liveness from Redis)
+
+### 43. Polling: silent re-listings and a two-hour recent refresh
+Found by tracing the poll → bus → WebSocket path: because the poller is
+stateless (`ba63985`) and `apply` published for every classified event,
+every 1s cycle re-published every camera with data today and every
+subscribed tab refetched its payload, metadata and calendar each second.
+Review `EventStore._insert`/`apply` and `ReconcileResult` in
+`data/store.py`, then `_refresh_recent_until` in `data/tasks.py`.
+- `40ee3ff` Publish a store change only when the index actually changed:
+  inserts report whether they altered the index; `metadata.json` (same
+  key, new content) is tracked by the ETag the listing already carries,
+  persisted in the cache slice; reconcile also returns surviving dates
+  that lost entries so their slices are rewritten.
+- `4491599` Re-scan the recent window every two hours between full
+  sweeps (`RUBINTV_RECENT_REFRESH_SECONDS`, default 7200). Previously
+  recent dates refreshed only with the 12h full sweep, despite the module
+  docstring saying otherwise. (Group 62 takes today and yesterday out of
+  the window.)
+- `636f562` Make the recent-refresh tests count passes, not wall-clock time
+  (a Jenkins box blew through the 60ms budget in one pass)
+- `983f46c` Re-scan each camera's newest data days outside the window every
+  pass (`RUBINTV_RECENT_KNOWN_DAYS`, default 5, from the camera's
+  calendar), and stop re-warming metadata on the periodic pass
+- `d7a9d45` Yield while publishing so a bulk apply can't overflow the bus:
+  a cold full sweep publishes thousands of changes in one apply, past
+  the 1000-entry bus queue, and the overflow was dropped — tabs on those
+  dates never learned they had changed.
+- `3ca0b5b` (later, found against V2 on USDF dev) Let a date with only
+  `metadata.json` reach the calendar: `40ee3ff` recorded metadata only
+  against a date that already had channel data, so a day whose producer
+  had written metadata but no images yet (daytime calibrations) never
+  appeared, though the table builds its rows from metadata.
+  `DateIndex.has_metadata` now makes the date on its own; reconcile clears
+  it when the file goes, and old cache slices infer it from their ETag.
+
+### 44. Data-flow instrumentation
+Debug-level timing and size for every hop (`http.request`,
+`ws.frame.sent`, `poll.current.cycle`, `store.apply`, `poll.scan` with
+`keys`/`slices_touched`), the `scripts/flow_summary.py` aggregator, and
+the operator-guide recipe. Two behaviour changes ride along: `poll.scan`
+is info only when a listing changed the index (it had been one info line
+per camera per second since the poller became stateless), and
+`WsService.handle` deregisters the connection before awaiting in its
+`finally`, so a cancelled handler no longer leaks a registry entry.
+(Group 52's last commit drops `poll.current.cycle` for a summed
+heartbeat, and `flow_summary.py` reads that.)
+- `01ecaf8` Log the timing and size of every hop so the data flow can be
+  measured
+- `8fceca6` Report streamed responses as such in flow_summary, not as 0
+  bytes
+- `4861e5a` Satisfy the Jenkins flake8 and mypy hooks on the newest tests
+  and script (flake8 counts a line ending in a type-ignore pragma; the
+  Jenkins mypy hook covers `scripts/`)
+- `88c259a` Read ReconcileResult in check_reconcile, which still expected
+  a set — a script break from `40ee3ff` that the looser Jenkins mypy
+  config did not catch
+- `90ccb29` Mark the late import in check_reconcile for flake8 like its
+  neighbours
+- `e2a951d` Add a log guide (`docs/log-guide.md`): getting at the logs in
+  the cluster, what to grep for by symptom, and a catalogue of all 112
+  events. `tests/test_log_guide.py` fails when the code logs an event no
+  doc lists, or the catalogue lists one the code no longer logs
+
+### 45. Metadata by the stream alone; calendar on new dates only
+What the first capture showed: the REST metadata request duplicated the
+WebSocket stream (98% of session bytes) and, sharing the server's
+per-date lock, queued 18–28s behind the stream's download on a slow
+link; the calendar was refetched on every exposure. Review
+`web/src/lib/useMetadata.ts` (the backstop rule), the chunk accounting in
+`liveQuery.ts`, the `refresh` action in `ws/handler.py`, and
+`calendarUpdate` on a new date in `EventStore.apply`. (Group 56 removes
+the stream, the backstop rule and `refresh`; the delta and the calendar
+change stand.)
+- `40d1220` Deliver metadata by the stream alone; refresh the calendar only
+  on a new date
+- `252a73c` Send a metadata delta on refresh when the client's version
+  allows: the cache diffs each version against the one it replaced;
+  `refresh` carries `since_etag`; a `metadataDelta` (rows + removed)
+  replaces the full re-stream when the versions line up, else it falls
+  back to the stream.
+- `612cf58` (later, from a USDF dev pod log) Don't refetch the date payload
+  when metadata.json is rewritten: the payload carries no metadata, yet a
+  `metadata` message invalidated it, so a poll finding an exposure's
+  images and its metadata rewrite fetched the payload twice (the first
+  fetch cancelled but already sent). Only the REST metadata query is
+  refreshed now
+
+### 46. All Sky, second pass
+Review `web/src/views/AllSky.tsx` and the All Sky block of
+`web/src/index.css`, whose `.allsky-stage--fit` modifier holds the
+historical-only sizing (renamed `.media-stage--fit` in group 47, which
+shares it).
+- `39777e3` Fit the historical All Sky movie to the stage; add caption
+  actions: a grid of size-container cells caps the lone past-day movie at
+  the stage's height (the current day keeps its full-width, scrolling
+  columns); download and open-in-new-tab caption buttons; the live movie
+  captioned `#1 → #<seq>`
+- `3ddf2ac` Wait for the calendar before drawing All Sky tiles (a link to
+  today no longer renders as a past day first and 404s on a "final" movie)
+
+### 47. Per-day channels: a night-by-night movie viewer
+A per-day channel (AuxTel's Tonight's Movie) opened from the Channels grid
+rendered nothing: the single-channel view only knew seq channels. Review
+`web/src/views/PerDayChannel.tsx` with the dispatch at the top of
+`Channel.tsx`, the `perDayChannel` branch in `useShellNav.ts` and
+`applyDate` in `Layout.tsx` (the shell picker steps a per-day channel's
+nights in place), and `EventStore.calendar_per_day_dates`.
+- `e1d7f64` List each per-day channel's nights in the calendar
+  (`CalendarOut.per_day_dates`; API artifacts regenerated)
+- `4ea49b2` Give per-day channels a night-by-night movie viewer: the
+  night's movie fitted like All Sky's past day, captioned with the night's
+  exposure range (linking to its table) and a download button; `/current`
+  follows the channel's newest night; a `perDay` live message refreshes
+  the calendar. All Sky's stage classes become neutral `media-*` ones
+  (a rename, no style changes) and `DownloadMovieLink` moves to
+  `components/`
+- `e6267c2` Mark the movie-nights date picker apart from the exposure
+  picker: DatePicker's `allSky` prop becomes `movies`, which takes a movie
+  violet (`--movie`) and a film icon; a `title` heads the popover in both
+  modes ("AuxTel · nights with exposures" / "Tonight's Movie · nights with
+  a movie")
+- `329edf2` Hold back camera-specific header parts until the config lands:
+  while a camera's config is in flight the shell no longer draws a regular
+  camera's title, Table tab and date picker (which flashed on All Sky);
+  invisible stand-ins keep the title and tabs rows' height (`cameraPending`
+  in `useShellNav.ts` and `Layout.tsx`)
+- `67f7bff` Link a night's per-day artifact from its table: the per-day
+  strip's "movies: final" label becomes a link to that night in the
+  viewer, worded from the channel's label ("Movie for 2024-10-23")
+- `3a31fe0` Mark the days with a per-night artifact in the table's date
+  picker: a movie-violet dog-ear on those days in both views, keyed in the
+  heading (`perDay` on DatePicker, `perDayMarks` in `useShellNav.ts`)
+
+### 48. Interrupted media downloads
+An S3 read that broke mid-stream logged a traceback and, worse, reached
+the browser as a short file that looked whole and was cached as such (the
+`BaseHTTPMiddleware` ended the response normally before re-raising).
+Review `_iter_body` in `api/proxy.py`, `CorrelationMiddleware` and
+`ResponseAborted` in `middleware.py` (the ASGI-level tests in
+`tests/test_ops.py` show the response left unfinished), then
+`web/src/components/ProxiedMedia.tsx` and the pill in `Layout.tsx`.
+(Group 57 fetches such media again when the tab's connection returns.)
+- `ac5c75d` Resume a broken proxy stream, and abort one that can't be
+  resumed: the rest is fetched with a Range from the break, pinned to the
+  ETag (`IfMatch`), up to twice; otherwise `ResponseAborted` leaves the
+  response unfinished so the connection is cut. `correlation_middleware`
+  becomes the plain-ASGI `CorrelationMiddleware` (same id, header and
+  timing log)
+- `c2e0773` Show what arrived of a cut-short image and offer a reload:
+  `ProxiedImg` refetches a failed image and shows the bytes that arrive;
+  `ProxiedVideo` reports a failed movie the server still serves; a
+  "Download interrupted · Reload" pill in the topbar. The Vite dev proxy
+  now passes a backend abort on instead of holding the connection open
+- `4454bf5` Accept either body in the aborted-stream proxy test, which
+  failed on Jenkins only: from starlette 1.9 (Jenkins has it; `uv.lock`
+  pins 1.1.0) the TestClient streams the body, so an unfinished response
+  reads back the bytes sent rather than nothing. `test_ops` still checks
+  that the response is left unfinished
+
+### 49. Nightly Summary, second pass
+The night report's page (headed Nightly Summary) drew its plots too
+small to read, its button and URLs still said "night report", and its
+camera tab never appeared. Review `PlotModal` and `PlotPanel` in
+`web/src/views/NightReport.tsx`, then the renamed routes in
+`routes.tsx`, `api/nightreport.py`, `api/proxy.py` and
+`legacy_redirects.py`, then `tabsForCamera` in
+`web/src/lib/useShellNav.ts`. (Group 59 makes the page follow the
+report as the producer rewrites it; group 63 gives a report with no
+readable sections a line of its own.)
+- `59dba2c` Enlarge a Nightly Summary plot on click: each plot opens
+  filling the window; a click anywhere but the caption, Escape or the
+  close button closes it. It closes on the click, not on pointerdown, so
+  on a touch screen a tap outside can't land on (and open) the plot
+  underneath
+- `1dea769` Call the night report the Nightly Summary wherever users see
+  it: the table's button, the page route (`/nightly-summary`), the API
+  routes and the OpenAPI tag (API artifacts regenerated). The old app's
+  `night_report` links redirect to the new page on the server; this
+  app's pre-rename `night-report` URL redirects in the SPA's route table,
+  so it also works under the Vite dev server. Internal names, JSON
+  fields, camera config keys and the bucket's keys are unchanged
+- `b3f10a0` Show the Nightly Summary tab for cameras configured by
+  prefix: the tab was gated on `night_report_label`, which no camera
+  sets, so auxtel (configured by `night_report_prefix` alone) never got
+  it; either field now opens the tab and the label stays an optional
+  rename
+- `b151804` Show the tab only on nights that have a Nightly Summary: it
+  also needs the date payload's `has_night_report`, which the shell
+  reads from the query slot the Table and Channels views share (asked
+  for only when the camera's config offers a summary). On the summary's
+  own page the tab stays, so a deep link to a night without one still
+  shows which view it is. The table's toolbar button, shown under the
+  same condition, goes as a duplicate
+
+### 50. Coverage pass, a CI coverage report and a gate
+Tests for what the suites never ran, on both halves, a coverage report
+on every GitHub Actions run, and a gate that fails CI when coverage
+drops. Tests and CI apart from dead-code removals: no shipped behaviour
+changes. Read `.github/workflows/ci.yml` and the `no_dotenv` fixture in
+`tests/conftest.py`; skim the rest.
+- `fc56967` CI: publish a coverage report. Each job writes its total
+  and the files short of 100% to the run's summary page and uploads the
+  HTML report as an artifact (kept 14 days), even when a test fails.
+  Backend coverage now counts branches
+  (`[tool.coverage.run] branch = true`, so Jenkins and local runs too);
+  `web/scripts/coverage-summary.mjs` renders Vitest's json-summary
+- `96421c9` Keep the whole suite off the developer's `.env`: a
+  session-wide autouse fixture switches Settings' env file off, so the
+  suite behaves the same wherever pytest starts. A local `.env` had
+  pointed tests at the real cache dir (and, with the guide, at live
+  Zephyr)
+- Backend tests, branch coverage 94% → 99.4%: `ee02596` the app's
+  cache upkeep, metadata preload and root serving; `99f62bf` the
+  WebSocket handler's failure and cancellation paths; `5ba239a` config
+  edge cases, the settings cache, the CLI and build provenance;
+  `9484764` the data layer's failure, abort and bookkeeping paths;
+  `be7c6b7` API revalidation, proxy edge cases and relay failures
+- `6a33b40` Remove the store's unused `_date_of` helper (its last
+  caller went in `ba63985`; `data/source.py` keeps the live copy)
+- Frontend tests, statements 89% → 99.7%, branches 86% → 96%,
+  functions 77% → 98%: `de289b4` the theme picker, nav menu, cell modal
+  and small shared parts; `de8aef6` the socket's reconnects and the
+  layout-measuring hooks; `3e83582` the channel viewer's keys and zoom
+  and the table's toolbar; `6ae2e2b` the other views' actions,
+  fallbacks and failure paths; `cfd41b1` the pickers, filters, media
+  recovery and route guard. The stub socket in `src/test-setup.ts`
+  gains `liveSockets()`, `dropLiveSocket()` and `pushRawLiveFrame()`
+- `d2ae567` Remove dead code the pass turned up: the `api.controls` and
+  `api.detectorsConfig` client helpers (the endpoints stay),
+  `basePath.logoUrl` (pointed at a `public/logos/` the SPA no longer
+  ships) and `ScanResult.dates` with the private `_date_of` behind it
+- `1669b1e` Fail CI when coverage drops: backend below 99% (99.5%
+  today); frontend below 99% of statements and lines, 97% of functions
+  and 94% of branches. Set on the CI command lines only, so partial
+  local runs and Jenkins report without failing
+
+### 51. Previews: off the worker threads, then thumbnails
+On USDF dev a slow grid of previews stalled the page a user clicked
+through to. The media proxy is sync, so it runs on Starlette's shared
+worker-thread pool, and the JSON endpoints' dependencies were sync
+too, so a page's data queued behind preview downloads. The previews
+were also full-size frames. Review `api/deps.py`, then
+`data/thumbs.py`, `proxy_thumbnail` in `api/proxy.py` and their tests.
+- `8e4ced1` Keep page data off the thread pool the image proxy fills:
+  the shared dependencies (`get_app_state`, `get_models`,
+  `get_location`, `get_camera`, `valid_date`) and the camera detail
+  endpoint are async, so page data never needs a worker thread; the
+  proxy stays sync. Previews ask for low fetch priority.
+  `test_page_data_needs_no_worker_thread` makes the pool unusable and
+  checks page data still answers
+- `fc2bc5f` Show the cards' previews as thumbnails built on request: a
+  route beside the proxy (`.../{seq}/thumb/{filename}`) shrinks the
+  frame to fit 640px as JPEG with Pillow, 7x fewer bytes across every
+  USDF channel's latest frame for 18 ms median, 62 ms worst. The cache
+  keeps the newest thumbnail per configured channel; concurrent
+  requests share one build on the cache's own threads. A movie has no
+  thumbnail; an unreadable frame redirects to the full one. Pillow
+  joins the dependencies; API artifacts regenerated
+
+### 52. Logging: requests, and a debug level worth reading
+A pod's info log was nearly all uvicorn access lines, plain text with
+no timestamp: the kubelet's probes and every open camera page's 5 s
+status poll. Its debug log was about 22 lines a second of the poll
+saying nothing had changed. Review `_routine` and the level choice in
+`middleware.py`, then `configure_logging`, then the `day` rule in
+`PollEngine._apply_scan`.
+- `3744ef1` Log each request once, as JSON, and keep probes and polls
+  out of info: `http.request` (already logged, at debug) becomes the
+  access log at info, uvicorn's own is disabled, and successful
+  `kube-probe/` requests and `/api/health/status` polls stay at debug.
+  A failed one (400 and up) is info, probe or not
+- `0b0552a` Log who sent each request: `client` (the peer, in the
+  cluster the ingress), `forwarded_for` and `user_agent`, after a burst
+  of requests for one date payload on USDF dev couldn't be traced
+- `990d2ca` Make debug readable: a current-day listing that changed
+  nothing isn't logged (`poll.current.cycle` sums them), `store.apply`
+  only when it changed something, and websockets' frame and keepalive
+  lines are filtered off `uvicorn.error` unless the level is `trace`
+- `d3f46e4` (later) Keep the Redis password out of the logs:
+  `redis.connected` logged the whole `RA_REDIS_*` URL, password and all,
+  at every startup; it's masked now (`redacted`). Readbacks are logged
+  as they arrive (`redis.readback.change`) and the startup seed lists
+  what it found, so an unacknowledged control send shows in the log
+- `a8d5cec` (later) Sum the poll's cycles and passes in one line each,
+  not a line per listing. A pod at debug lost the start of its log
+  within three minutes: a recent pass logged a line for each listing
+  that changed nothing, about 790 on usdf-k8s, and the current-day loop
+  a line a second. Only an on-demand listing that changed nothing is
+  logged now (the rule in `_apply_scan` is by scope, no longer `day`
+  alone). `poll.current.heartbeat` carries the `cycles` it covers and
+  their shortest, mean and longest time, and `poll.current.cycle` is
+  gone; `poll.recent.done` and `poll.recent.refresh` give `listings`
+  and `pass_seconds`, and `poll.historical.done` gives `sweep_seconds`.
+  `flow_summary.py` reports mean and longest cycle time from the
+  heartbeats, no longer p50 and p95
+
+### 53. Camera table, third pass: the whole window for rows
+The table scrolled in a box under the topbar, toolbar and a 150px
+header, so a laptop showed about a dozen rows. Review `syncTopbar`,
+`scrollKeyTarget` and `focusOwnsKey` in `CameraDataTable.tsx` (with
+the `.topbar` hide rule in `index.css` and `measureTopbar` in
+`Layout.tsx`), then `lib/prefs.ts` and the NavMenu's two new rows.
+- `f90a2b7` Shorten the table's angled header to 110px, and keep its
+  labels inside it: the length cap now allows for a label's 6px lift
+  and 16px thickness, so a long one ends in an ellipsis rather than
+  being clipped at the header's top
+- `e9ef9b7` Let the camera table fill the window, and page it from the
+  keyboard: scrolled down, the table hides the topbar (an "Auto-hide
+  topbar" switch in the NavMenu, on by default); jump to top / bottom
+  buttons in the toolbar; PageUp/PageDown and friends from anywhere,
+  without taking focus, paging by rows so none hides under the sticky
+  header; row density moves to the NavMenu
+
+### 54. Keyboard shortcuts: a ? panel, and [ ] and / keys
+Review `lib/shortcuts.ts` first: the one list of shortcuts, which the
+panel (`components/KeyboardHelp.tsx`) shows and every handler matches
+key presses against (`pressed`), and `pageKeysPaused`, which stands the
+page's keys down in a text field or under a modal. Then the handlers that
+read it: `onDayKey` in `Layout.tsx`, `FilterControl`'s `/`, the channel
+arrows in `Channel.tsx`, `scrollKeyTarget` in `CameraDataTable.tsx`, and
+Esc in `useDismiss` and the NavMenu.
+- `aa65cea` Add a keyboard-shortcuts panel (press ?, or the NavMenu's last
+  entry), grouped by where the keys work with this page's groups first;
+  [ and ] step the day like the ‹ › by the date picker; / opens the
+  add-filter form with the column search in focus. Controls name their
+  keys in tooltips and aria-keyshortcuts. The channel arrows now stand
+  down while typing or under a modal, and ignore ⌘/Ctrl/Alt
+
+---
+
+## Part VII — Third review round
+
+### 55. The three to fix first: test isolation, gzip, proxy chunks
+A repo-wide review of the branch in November 2026 put three small
+changes ahead of everything else it found. Review the `no_settings_env`
+fixture in `tests/conftest.py`; then `CompressionMiddleware` in
+`middleware.py` with its tests in `tests/test_ops.py` (the ASGI-level
+ones show what is held back, compressed and passed through); then
+`_CHUNK_BYTES` in `api/proxy.py`.
+- `7ae2bbb` Keep the test suite off the developer's environment. The
+  fixtures switched off `.env` but not exported variables, and Settings
+  builds a Redis URL from `RA_REDIS_HOST` even when a test passes
+  `redis_url=None`: with it exported, the admin tests sent `FLUSHDB` and
+  the head-node reset to that Redis. A session-wide fixture now removes
+  every variable Settings reads
+- `0e9c5d5` Gzip only text responses, and large ones off the event
+  loop. Starlette's middleware (from `7b2e412`, group 4) compressed
+  everything at level 9 on the loop, proxied media and 206 ranges
+  included; a 16 MiB metadata response stalled the loop for about 2 s.
+  The replacement compresses text types only, never a 206, at level 6,
+  and bodies of 64 KiB or more on its own two-thread pool: the stall
+  falls to 1–3 ms for a body 5% larger
+- `d254984` Stream proxied S3 objects in 64 KiB chunks, not botocore's
+  default 1 KiB, each of which cost a thread hop and a send: a 50 MiB
+  movie took about 4 s to stream in-process, now 0.1 s
+
+### 56. Metadata by one REST path
+The same review found the metadata path the weakest part of the app: a
+WebSocket stream (ijson), a delta, and a REST snapshot (json.loads) that
+the page merged across six cache slots, and which disagreed with one
+another. This group replaces all three with one path and supersedes
+groups 5 and 45. Review `MetadataCache` in `data/metadata.py` end to end
+(`get`, `_fetch`, `_read`, `gzipped`, and `MetadataDoc.changes_since`),
+then `get_metadata_changes` in `api/data.py`; on the page,
+`web/src/lib/metadata.ts` and `useMetadata.ts`, and the `metadata` case
+in `liveQuery.ts`. `ws/handler.py` and `ws/protocol.py` only lose code.
+The three commits after the first tune it against timings from the
+usdf-dev pod.
+- `5c3ac87` Load metadata over one REST path, not a stream merged with a
+  snapshot. The page reads `/metadata/{date}/changes?since=<etag>`: the
+  whole document, or the rows that changed since the version it holds,
+  kept in one query slot; the WebSocket's `metadata` message only says
+  when to ask again, and a rewrite during a fetch is asked about when it
+  lands instead of restarting it. The server parses once with
+  json.loads (NaN and Infinity read as null, numbers stay numbers),
+  shares one fetch among readers that arrive together, bounds the cache
+  by bytes and touches it from the event loop only. A file that can't
+  be read is a 503 and "metadata unavailable", not a table that loads
+  for ever. Gone: the stream, its chunk, complete and delta messages,
+  `refresh`, and the `date` on a subscription. What is lost is the table
+  filling while the server is still downloading
+- `aef0a2b` Drop the ijson dependency
+- `0b97905` Read large metadata files as ranges at once, and log where a
+  fetch's time goes: a file of 4 MiB or more is read as 2 MiB ranges, up
+  to eight at a time, each pinned with IfMatch to the version the HEAD
+  saw. A 20 MB night that took 3.6 s in one request downloads in about
+  0.07 s on an idle pod. `metadata.fetch` logs `s3_ms`, `parse_ms` and
+  `requests`
+- `f96502e` Send a whole metadata document from a compressed copy kept
+  with it: compressed once per version, on a worker thread, and by the
+  preload for the nights it loads. A repeat open of a 13.5 MB night is
+  answered in about 50 ms
+- `3ec0d2b` Compress whole metadata documents at level 1, and log how
+  long it takes (`metadata.compress`): compression had become half of a
+  first open, and level 1 takes under a third of level 6's time for a
+  reply 40% larger
+
+### 57. A tab that says when it's disconnected
+The same review found that no data page showed whether its WebSocket
+was connected: the date chip said "updates live" from the date alone,
+and a socket that died without closing was never noticed, so a page
+could sit on stale data looking current. Review `HEARTBEAT_SECONDS` and
+`_send_loop` in `ws/handler.py`; on the page, `web/src/lib/ws.ts` (the
+silence clock and `lostSinceOpenRef`), then `disconnected` and
+`reconnects` in `LiveContext.tsx`, which `ConnectionStatus.tsx`,
+`LiveBadge.tsx` and the views only read; last `ProxiedMedia.tsx` (from
+group 48) for what a reconnect fetches again. This heartbeat is a
+WebSocket message to the page, and has nothing to do with the Rapid
+Analysis endpoint that group 42 removed.
+- `b59f074` Send a heartbeat on a WebSocket with nothing else to carry:
+  a `heartbeat` message once the server has sent nothing for 20 s, so a
+  page can take silence to mean the socket is dead
+- `2aca315` Say when a tab has lost its live connection, and catch up
+  when it's back. The page replaces a socket it has heard nothing on
+  for 45 s, or a connect that hangs. Down for more than 5 s, the topbar
+  says "Disconnected", and the date chip, the channel views' badge and
+  tab title, All Sky's tag and the Channels cards stop reading as live;
+  a warning triangle stands in where the topbar is out of sight (the
+  camera table scrolled down, a headerless embed); a failed status poll
+  reads "Server unreachable". An open that follows a loss refetches
+  what the page shows, now also for a tab opened during the outage,
+  and fetches again any image or movie that failed, was cut short or
+  is still loading
+- `2e2f1ca` (later) Reconnect as soon as a status poll shows the server
+  is back. While a server is down the retries thin out to one every
+  10 s, so a tab could wait most of that after it returned (5.8 s in a
+  local test; 2.3 s with this). A status poll that gets an answer while
+  a retry is waiting brings it forward: `retryNow` in `ws.ts`, called
+  from `LiveContext.tsx`. Only that poll triggers it, which bounds the
+  extra tries when a server answers HTTP but won't take a WebSocket
+- `d1dda7f` (later) Say why a date's table couldn't be loaded. A date
+  picked from a calendar already on the page, with the server gone,
+  read "No data for <date>". The notice now says the server is
+  unreachable and that the date will load when the connection is back
+  (it goes by the socket, not the 5 s-delayed "Disconnected"), or,
+  with the connection up, gives the HTTP status and says to reload:
+  `loadFailure` in `CameraTable.tsx`
+
+### 58. A stalled poll and a troubled cache, both made visible
+The same review found that a current-day poll cycle which never ends
+left every health flag green: they are written as a cycle ends, and
+nothing recorded when one last had. It reproduced that with a cache
+write that hangs. These three commits make the stall visible, remove
+that cause of it, and then report the cache volume's own troubles,
+which the pages can't show because the app only reads the cache at
+startup. Review `poll_stalled`, `last_poll_age_seconds`, `_check_stall`
+and `_CacheWrites` in `data/tasks.py`; `brief_error`, `_inspect` and
+`CacheInspector` in `data/cache.py`; and `cache_usage` in
+`api/health.py`. On the page, `web/src/lib/lastPoll.ts` and
+`DataAsOf.tsx`, then `CacheProblems` and `CacheNotice` in `Status.tsx`.
+A permissions change refuses a write at once, so it exercises the third
+commit, not the second; hanging the volume takes a stub (see
+`_HeldCache` in `tests/test_poll_engine.py`).
+- `7a983f8` Say when the live poll has stalled, and when it last
+  succeeded. `/api/health/status` gains `poll_stalled` (the running
+  cycle has gone over 60 s) and `last_poll_age_seconds`; a watchdog
+  logs `poll.current.stalled` and `.resumed`. The S3 pill reads "Poll
+  stalled" ahead of its other states. Camera pages show "as of HH:MM:SS
+  UTC" after the current day's date, counted on the tab's own clock so
+  it turns amber past 30 s without waiting on a status poll, and stands
+  still while the tab is disconnected. The Status page gives the last
+  poll's time and duration on a line under its pills, which lose their
+  boxes
+- `3b9c4b8` Wait only so long for the cache volume. Cache writes run in
+  a task of their own, one at a time; a scan waits 5 s for its slices
+  (60 s for the rewrite after a full sweep) and then carries on, and
+  while a write is overdue scans only queue what they changed. A hung
+  volume costs how current the next warm start is, not the live poll.
+  `cache.write.stalled`, `.resumed` and `.error` are logged, and a
+  write that raises no longer fails the poll cycle or reruns the sweep
+- `75a70c6` Report trouble with the cache volume on the Status page.
+  `/api/health/cache` lists `problems`: `not_responding`, `unreadable`
+  and `not_writable`, each with its cause in a phrase. The look at the
+  volume runs on a worker thread, one at a time, waited on for 10 s,
+  and isn't made at all while a write is overdue. The page shows a red
+  pill per problem and a block in the cache notice (what it is, what it
+  costs, the cause), and "unknown" where it used to say 0 B
+- `a78f59a` (later) Check the cache volume on every poll, and size it
+  every five minutes. The look stats every cached file: about 6 s for
+  the USDF PVC's 6,000 slices when quiet, and up to a minute while a
+  sweep writes to it. Waited on for 10 s, with a late result thrown
+  away and the look begun again, it read as "Cache not responding" for
+  the whole of a restart's sweep. `CacheInspector` now makes a check of
+  a few calls (`_inspect`) for every request, which only a hung volume
+  keeps for 10 s, and sizes the entries (`dir_usage`) behind the
+  answer, keeping the result until it is five minutes old.
+  `/api/health/cache` gains `entries_age_seconds`; the page reads
+  "being measured" before the first sizing, and gives a size a minute
+  old or more its age (`cacheSize` in `Status.tsx`)
+
+### 59. A night report that follows the night
+The same review found that the store noticed a rewrite of an object
+under its own key only for `metadata.json`. The producer rebuilds the
+night report after every exposure and uploads its text and every plot
+under the same keys, so an open Nightly Summary (group 49) stayed as it
+was when the page loaded, and a reload still showed plots from the
+browser's hour-long cache. Review the night-report branch of `_insert`
+and the matching lines of `_apply_stale` in `data/store.py`, with
+`night_report_etags` in `data/index.py` and its two codec lines in
+`data/cache.py`; then `PlotOut.version` in `api/nightreport.py` and
+`nightReportPlotUrl` in `web/src/lib/api.ts`. Channel frames and movies
+are deliberately still indexed by presence: the producer uploads each
+of them once.
+- `3a5411a` Follow a night report's rewrites, and reload its redrawn
+  plots. The index keeps each night-report object's ETag as last
+  listed, and a different one publishes `nightReport`, on which the
+  page already refetched. Each plot in the reply carries a `version`
+  (its ETag) that the page puts in the plot's URL as `?v=`, so a
+  redrawn plot is fetched and an unchanged one stays cached. The ETags
+  are saved in the warm-start slices under a new field with the cache
+  version unchanged, so the first listing after an upgrade publishes
+  one `nightReport` for each date that has a report, once (API
+  artifacts regenerated)
+- `e1e7405` Show the Nightly Summary tab when a night's first report
+  lands. The tab (from `b151804`, group 49) reads the date payload's
+  `has_night_report`, and `nightReport` goes to a topic that the Table
+  and Channels views don't subscribe to, so they heard nothing. The
+  store now also publishes `channelData` for a date's first
+  night-report object, on which those pages already refetch the
+  payload: `first_report` in `EventStore.apply`. Later objects and
+  rewrites publish `nightReport` alone
+
+### 60. Views that navigation no longer freezes
+The same review found three pages that stopped keeping up because of
+how they were reached, with the data still arriving: a table held on
+tonight's date by a tab click, a table moved to Channels by a choice
+made in another browser tab, and location cards that were fetched
+once. Review `web/src/lib/cameraTabPref.ts`, the `arrival` ref in
+`CameraTable.tsx` and the matching effect in `ChannelBrowser.tsx`;
+`linkDate` in `web/src/lib/useShellNav.ts` with `applyDate` and the
+tab links in `Layout.tsx`; and the query at the top of
+`Location.tsx`. The remembered tab is from `49547f8` and `e5fa4e7`
+(group 35).
+- `69227c0` Keep the Table/Channels choice to the browser tab that
+  made it. The choice was read from localStorage on every render, so
+  a Table on the bare camera URL jumped to Channels at the next live
+  update after another tab picked Channels. Each browser tab now
+  keeps its own in sessionStorage, seeded once from the last tab
+  clicked anywhere. The redirect to Channels is settled once per
+  arrival and only for a link followed inside the app: a camera URL
+  that is loaded, reloaded or come back to with Back opens the view
+  it names, and that view becomes the tab's choice for the next
+  camera
+- `521da2f` Keep a camera table following the newest night across tab
+  clicks. The Table and Channels links carried the date in view, and
+  a Table URL that names a date stays on it, so a trip to Channels
+  and back pinned the table to tonight. The links now carry a date
+  only when it isn't the camera's newest, and picking the newest date
+  clears `?date=`. The Nightly Summary link keeps its date. A link
+  from outside that names the newest night still holds the table on
+  it
+- `1cc850a` Refresh a Location page's camera cards while it stays
+  open. The query never went stale and the page subscribes to no
+  camera topic, so a card's status, date and thumbnail were those of
+  the tab's first visit. They are fetched again on coming back to the
+  page (30 s stale time) and once a minute while it is open and in
+  view, by polling: the live topics are per camera. The clock is
+  re-read each minute for the noon-UTC rollover, and a refresh that
+  fails leaves the cards up
+
+### 61. Redis: retried for ever, and its answers given an age
+The same review found that a Redis which was down as the app started
+was never tried again (the supervision from group 32 began only after
+a first successful exchange), that keyspace notifications were set
+once at start-up although Redis forgets them when it restarts, and
+that Cluster Status and the Admin readbacks said nothing of their age.
+Review `_supervise`, `_read`, `_lost`, `_ensure_keyspace_events`,
+`_read_readbacks` and the two reader loops in `data/redis_inputs.py`,
+with `RedisLink` and `DetectorStore.ages` in `data/controls.py` and
+`_site_payload` in `ws/handler.py`. On the page,
+`web/src/lib/redisLink.ts`, then `Freshness` and `SetAge` in
+`Detectors.tsx`, `RedisDown` and `Readback` in `Admin.tsx`, and
+`RedisPill` in `Status.tsx`. The producer writes only on change
+(group 30) and sends no heartbeat, so an old set may be a quiet one or
+a dead producer: the pages give the age and no verdict.
+- `0f42697` Keep retrying Redis, and report how old its answers are.
+  Start-up no longer talks to Redis; each reader retries for as long
+  as the app runs, after 1 s doubling to 30 s, and from 1 s again
+  after 30 s healthy. An outage logs one `redis.unavailable` per
+  reader and one `redis.connected`. The keyspace setting is checked on
+  connect and every 10 s (redis-py can reconnect a subscription with
+  no error raised), adding `K` and `$` to what the server holds
+  instead of overwriting it; the same tick reads the readbacks
+  outright and drops those whose key has gone. The detector reader
+  asks every 5 s and a reply 15 s late counts as a dead connection.
+  `RedisLink` goes out as ages on `detectorStatus` and
+  `controlReadback`, in `/api/health/status` (`redis`) and in
+  `/api/admin/status` (`redis_connected`); each set carries the age
+  of its stream entry. A control write that fails answers 503 with
+  the reason (API artifacts regenerated)
+- `adc473d` Show Redis's link state and the age of what it last said.
+  Cluster Status has a "Last change" line and an age beside each set,
+  and dims the picture under a notice while the server has no answer
+  from Redis. Admin tells "Redis unreachable since ..." from "not
+  configured", labels its values "Last read" and disables the
+  controls. The Status page gains a Redis pill and a "Redis last
+  read" line. Ages are placed on the browser's clock as they arrive,
+  as `lastPoll` does (group 58)
+- `1f79ba8` (later) Leave an age out until a second of it has passed:
+  a cluster writing several times a second read "(0 s ago)" on every
+  line. `hasAged` in `lib/lastPoll.ts` gates the "Last change" line's
+  age, each set's, and the unreachable notices'
+
+### 62. Yesterday re-listed every two minutes, by a loop of its own
+The same review found that the previous observing day was listed once,
+at the instant of rollover, and then only by the two-hourly recent pass
+(group 43), though final movies, late analysis and metadata rewrites
+land in it after rollover and V2 re-polled it every two minutes. It
+also found, by running the real loops against a bucket that only
+grows, that the recent pass listed today alongside the one-second loop
+and reconciled it from the older listing, removing frames that loop
+had just indexed. Review `_previous_day_loop`, `_live_days`,
+`_scan_recent_window` and the `protect` set in
+`_scan_history_for_location`, all in `data/tasks.py`; the module
+docstring states the rule, that a day is reconciled by one loop.
+(Group 65 gives each location these loops for itself, and replaces
+`_scan_history_for_location` and its `protect` set with a sweep that
+goes a date at a time, `_sweep_camera`.)
+- `67aaeae` Re-list yesterday every two minutes, and keep older
+  listings off live days. A third task lists yesterday for every
+  camera at start-up and then every
+  `RUBINTV_PREVIOUS_DAY_REFRESH_SECONDS` (default 120, `0` = off); it
+  is its own task because the historical loop refreshes nothing during
+  a full sweep. The recent window leaves out today, and yesterday
+  while that task is on, in the pass before a full sweep as well as
+  the periodic one. The full sweep protects yesterday as well as today
+  from pruning, taking the protected days both before its listing and
+  at the reconcile, so a sweep that crosses noon UTC keeps the old
+  days. `poll.recent.refresh` gains `pass_seconds`. Left open: a
+  listing that begins and is applied within the flight of another
+  listing of the same day is reconciled away by the older one until
+  the next listing restores it (a store-level guard would close it; a
+  full sweep takes minutes, so it should be rare), and after an admin
+  flush yesterday returns at the task's next pass or when opened
+
+### 63. A view that throws no longer takes the app down
+The same review opened a Nightly Summary whose reply said the report
+existed but held no text sections and no plots, and got react-router's
+"Unexpected Application Error!" page in place of the whole app: the
+view threw, and no route had an `errorElement`. Review the `tabs.length`
+check in `web/src/views/NightReport.tsx`, then
+`web/src/components/RouteError.tsx` and the two places `routes.tsx`
+uses it (`caught` around the views, and the root route).
+- `71a744f` Say so when none of a night report's sections could be
+  read. The server reports a night's report as existing when its
+  objects are indexed and leaves out a text object it can't fetch or
+  parse, so a reply can be empty; the page took its first tab without
+  checking there was one. It now reads "The summary for this date can't
+  be shown: none of its sections could be read.", which is kept apart
+  from "No summary for this date."
+- `6265435` Keep the shell when a view throws, and give the app its own
+  error page. Every view's route gets `RouteError` as its
+  `errorElement`, drawn where the view was, so the header, breadcrumbs,
+  tabs and menu stay and any move elsewhere clears it. The page shows
+  what was thrown and a "Try again" button, which drops the queries
+  the view left behind (so it fetches afresh, not from the cached
+  payload it may have tripped over) and navigates to where it already
+  is, which is what resets the router's boundary. The root route has
+  the page in its `whole` form for a throw in the Layout itself: it
+  stands alone, with a reload and a plain link home. A view that has
+  thrown is unmounted and hears no live updates, so its error page
+  stays until Try again or a move elsewhere
+
+### 64. A live channel view that keeps up, and arrow keys that don't flood
+The same review found the single-channel viewer's live mode could sit
+on one frame under LIVE for as long as frames landed faster than one
+could load: each new seq gave up the wait on the frame before (`f2a76f0`
+in group 33 introduced the hold) while that frame's download ran on.
+It also found a held arrow key stepped an exposure on every repeat,
+starting full-size downloads that were never stopped. Both are in
+`web/src/views/Channel.tsx`: review `latchKey`, the `loading` ref and
+the effect under it, then `lagging`, then the `neighbours` effect and
+`onKey`. `Channel.test.tsx` stands in for the off-screen image and
+settles each decode by hand, since jsdom loads no images.
+- `fd8956d` Keep a live channel view advancing when frames land faster
+  than they load. One frame is loaded at a time and left to finish; it
+  is shown though no longer the newest, and the newest by then is
+  loaded next, skipping those between. A load is given up, and its
+  download stopped, only when the view stops following, its seq leaves
+  the night, the tab reconnects, or it has taken `LIVE_LOAD_LIMIT_MS`
+  (a minute; the newest seq is then loaded afresh). The frame held
+  belongs to one spell of following, so Jump to current after a step
+  back starts from the newest frame, not the one the earlier spell had
+  reached. A spell's first frame goes straight to the page, and the
+  neighbouring frames aren't fetched while a newer one is waited for
+- `8319d7a` Name the frame a live channel view is waiting on once it
+  falls behind. After `LIVE_LAG_CUE_MS` (three seconds) the seq nav
+  shows the seq being loaded, dimmed with a spinner, where the Next
+  link would be; the badge still reads LIVE. Left as it is: a view one
+  load behind for less than that says nothing
+- `bbaf376` Step a held arrow key at the pace frames load, and stop
+  preloads left behind. A key repeat steps only once the frame in view
+  is drawn (separate presses step at once); a neighbour's preload is
+  stopped once its frame is neither a neighbour nor the one in view;
+  and while a movie has focus the plain arrows are its player's, to
+  seek with (Shift+arrows still switch channel)
+
+### 65. A location that fails alone, and a sweep that goes a date at a time
+The same review ran the real loops with one of two locations always
+raising, and found the healthy one never became ready, never swept
+its history and polled at the pace of the other's failures: one
+barrier (`_gather_locations`) gathered every location's listings and
+failed them together. It also measured the full sweep, which listed a
+camera's whole prefix at once: for a million keys, 308 MiB held and a
+two-second stall of the event loop while `reconcile` indexed them. In
+`data/tasks.py`, review `LocationPoll`, then `start`, then
+`_current_day_loop` with `_cycle_failed`, `_cycle_ended` and
+`_check_rollover`, then `_historical_loop` with its two phases, then
+`_sweep_camera`; `S3Poller.list_dates` is in `data/source.py`. On the
+page, start from `web/src/lib/pollStatus.ts`.
+- `9f36aba` Poll each location on its own, and sweep a camera a date
+  at a time. Every location has its own current-day, previous-day and
+  historical loops and its own health, stall and loading state.
+  Readiness fires once every location's first cycle has ended, failed
+  or stalled ones included. A location that stays down logs its
+  traceback as the failures begin and then once a minute
+  (`poll.current.recovered` when it is back). A failed recent pass or
+  sweep is retried from the camera it failed on. Rollover is announced
+  once, by the first location's loop to notice. The cache rewrite
+  after a sweep is per location. `/api/health/status` gains
+  `locations`; its top-level poll fields stay, as the worst of each.
+  The sweep asks for a camera's dates with one delimiter listing, then
+  lists and reconciles each date, newest first, and drops the dates
+  the index held beforehand that the bucket no longer has: the
+  million-key case stalls the loop for 32 ms and holds no more than
+  the index. Against the real buckets the listing of dates took 0.2 to
+  1.3 s a camera through a tunnel (5,955 dates in all); sweep time on
+  a pod is not yet measured, and `poll.historical.done` gives
+  `listings` and `sweep_seconds` for it. Every `poll.` line but
+  `poll.ready` carries its `location`; `poll.recent.plan` and
+  `poll.scan.location_error` are gone. Left as they are: the store's
+  whole-camera reconcile scope and `protect` set, now unused by the
+  engine; the poller's listings on the default thread pool; the
+  progress flags an admin flush leaves set
+- `7f6141b` Show each location its own S3 state, and count them where
+  they are summed. A camera page's S3 pill, loading pill and "as of"
+  time go by that camera's location. The Status page's header pill
+  says how many locations it means ("S3: 1 of 4 unreachable"; the
+  plain label only when all are), and each location's card carries its
+  own pill and its own "Last poll" line, which replaces the one under
+  the header. With no location in view the loading pill reads "Refresh
+  stalled" only once none of the locations still loading can reach its
+  bucket. A server that reports no `locations` is read by its summary
+
+---
+
+## Notes for the reviewer
+
+- Groups 13 and 16 are iterative arcs where later commits rewrite
+  earlier ones — review their end state (the final diff of the touched
+  files) rather than commit-by-commit.
+- `ec7a6ac` (group 17) bundles two concerns (the empty-table loading
+  fix and the S3 indicators) in one atomic commit.
+- Commit order across groups 18–25 is thematic, not chronological; a
+  group's commits may interleave with other groups' in the raw log.
+- The API artifacts (`openapi.json`, `web/src/lib/api-types.ts`) are
+  generated. Regen recipe: export `create_app().openapi()` with
+  `RUBINTV_PATH_PREFIX=""`, pin `info.version` to `3.0.0`, then
+  `npm run gen:api` in `web/`. They are verified in sync at the branch
+  tip.

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- RubinTV favicon, small cut: the constellation television of the logo
+       with heavier lines and points, fatter sparkles and only the one star
+       on screen, so it holds at 16px. Lines and points flip to their light
+       colours on dark browser chrome via prefers-color-scheme. -->
+  <style>
+    .ink { stroke: #23282d; }
+    .pt { fill: #0a8d93; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #e8edef; }
+      .pt { fill: #19d3da; }
+    }
+  </style>
+  <path class="ink" d="M9 27L55 25L57 55L11 57ZM18 8L31 26L46 8" fill="none"
+        stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <g class="pt">
+    <circle cx="9" cy="27" r="5.5"/><circle cx="55" cy="25" r="5.5"/>
+    <circle cx="57" cy="55" r="5.5"/><circle cx="11" cy="57" r="5.5"/>
+    <circle cx="31" cy="26" r="4.2"/>
+    <path d="M18 0Q19.2 6.8 26 8Q19.2 9.2 18 16Q16.8 9.2 10 8Q16.8 6.8 18 0Z"/>
+    <path d="M46 0Q47.2 6.8 54 8Q47.2 9.2 46 16Q44.8 9.2 38 8Q44.8 6.8 46 0Z"/>
+    <path d="M33 30.5Q34.6 39.9 44 41.5Q34.6 43.1 33 52.5Q31.4 43.1 22 41.5Q31.4 39.9 33 30.5Z"/>
+  </g>
+</svg>

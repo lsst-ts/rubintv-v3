@@ -1,0 +1,261 @@
+/* RubinTV hi-fi channels-tab styles
+ * Matches the dark navy + serif aesthetic of the Summit reference (image.png) */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #0F1424;
+  --bg-2: #161C30;
+  --bg-3: #1B2238;
+  --surf: #1A2138;
+  --surf-2: #222B47;
+  --hair: #293356;
+  --hair-2: #344070;
+  --cream: #EFE9D8;
+  --cream-2: #D6CFBC;
+  --dim: #8088A8;
+  --dim-2: #6F7595;
+  --sun: #E6B065;
+  --sun-soft: #C8924A;
+  --grn: #5FA56C;
+  --grn-bg: rgba(95,165,108,0.14);
+  --amb: #D2A14A;
+  --amb-bg: rgba(210,161,74,0.14);
+  --red: #D87073;
+
+  --serif: 'IBM Plex Serif', Georgia, serif;
+  --sans:  'IBM Plex Sans', system-ui, sans-serif;
+  --mono:  'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.ch-root {
+  background: var(--bg);
+  color: var(--cream);
+  font-family: var(--sans);
+  min-height: 100%;
+  height: 100%;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ───── Top chrome shared across layouts ───── */
+
+.ch-topbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  padding: 22px 36px 10px;
+  align-items: start;
+}
+.ch-topnav {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+.ch-topnav .sep { color: var(--hair-2); margin: 0 10px; }
+.ch-topnav .dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+  background: var(--sun); margin-right: 8px; vertical-align: middle;
+}
+.ch-topnav a { color: var(--cream-2); text-decoration: none; }
+.ch-topnav .cur { color: var(--cream); }
+.ch-topnav .br {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--dim); text-transform: none; letter-spacing: 0.04em;
+  margin-top: 6px;
+}
+.ch-topnav .br .slash { color: var(--hair-2); margin: 0 8px; }
+.ch-topnav .br .here { color: var(--cream); }
+
+.ch-brand {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--hair); border-radius: 999px;
+  background: var(--bg-2);
+  padding: 8px 20px 8px 10px;
+}
+.ch-brand .sun {
+  width: 36px; height: 36px; border-radius: 999px;
+  background: radial-gradient(circle at 40% 40%, #F4D08A 0 30%, #E6B065 32% 60%, #B3823F 62% 100%);
+  box-shadow: 0 0 0 1px rgba(230,176,101,0.35), 0 0 18px rgba(230,176,101,0.25);
+  flex-shrink: 0;
+}
+.ch-brand .meta { line-height: 1.15; }
+.ch-brand .name { font-family: var(--serif); font-weight: 600; font-size: 19px; }
+.ch-brand .sub { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+
+.ch-memorial {
+  margin-top: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--cream-2);
+  padding: 5px 14px;
+  border: 1px solid rgba(95,165,108,0.45); border-radius: 999px;
+  background: rgba(95,165,108,0.06);
+}
+.ch-memorial .flw { color: var(--grn); }
+.ch-memorial em { font-family: var(--serif); font-style: italic; color: var(--cream); font-weight: 500; }
+
+/* ───── Camera hero & tab bar ───── */
+
+.ch-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 24px;
+  padding: 18px 36px 18px;
+  border-bottom: 1px solid var(--hair);
+}
+.ch-hero h1 {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 56px;
+  line-height: 1;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.ch-hero .sub {
+  font-size: 14px; color: var(--cream-2);
+}
+.ch-hero .sub .pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: 4px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  background: var(--grn-bg); color: var(--grn);
+  margin-right: 10px; vertical-align: middle;
+}
+
+.ch-hero .clocks {
+  display: flex; gap: 14px;
+}
+.ch-hero .clock {
+  text-align: right; line-height: 1.1;
+}
+.ch-hero .clock .lbl {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+  color: var(--dim); text-transform: uppercase;
+}
+.ch-hero .clock .val {
+  font-family: var(--mono); font-size: 22px; color: var(--cream);
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.ch-hero .clock .val .u { font-size: 11px; color: var(--dim); margin-left: 4px; }
+
+/* Tab bar shared */
+.ch-tabs {
+  display: flex; gap: 0; align-items: end;
+  border-bottom: 1px solid var(--hair);
+  padding: 0 36px;
+}
+.ch-tab {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  padding: 14px 22px 14px;
+  font-family: var(--serif); font-size: 17px;
+  color: var(--dim);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.ch-tab .count { font-family: var(--mono); font-size: 11px; color: var(--dim-2); }
+.ch-tab.active {
+  color: var(--cream);
+  border-bottom-color: var(--sun);
+}
+.ch-tab.active .count { color: var(--cream-2); }
+
+/* ───── Reusable bits ───── */
+
+.placeholder {
+  position: relative;
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(255,255,255,0.025) 0 6px,
+      rgba(255,255,255,0.055) 6px 12px);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 4px;
+  color: var(--dim);
+}
+.placeholder .ph-label {
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--cream-2);
+}
+.placeholder .ph-sub {
+  font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: 0.1em; color: var(--dim);
+  text-transform: uppercase;
+}
+
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border-radius: 4px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.tag-active { background: var(--grn-bg); color: var(--grn); }
+.tag-standby { background: var(--amb-bg); color: var(--amb); }
+.tag-live::before {
+  content:''; width:6px; height:6px; border-radius:999px;
+  background: var(--grn); box-shadow: 0 0 0 3px rgba(95,165,108,0.18);
+  margin-right: 6px;
+  animation: pulse 1.8s infinite;
+}
+@keyframes pulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.7); opacity: 0.55; }
+}
+
+.section-h {
+  display: grid; grid-template-columns: auto 1fr auto;
+  gap: 14px; align-items: end;
+  padding: 24px 36px 12px;
+}
+.section-h h2 {
+  font-family: var(--serif); font-weight: 600; font-size: 24px;
+  margin: 0; letter-spacing: -0.005em;
+}
+.section-h .rule {
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 8px;
+}
+.section-h .meta {
+  font-family: var(--mono); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--dim);
+}
+
+.toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 36px 14px;
+  flex-wrap: wrap;
+}
+.tb-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+  color: var(--cream-2);
+  cursor: pointer;
+}
+.tb-btn:hover { background: var(--bg-3); }
+.tb-btn .ic { color: var(--dim); }
+.tb-clock {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--bg-2); border: 1px solid var(--hair); border-radius: 4px;
+  padding: 6px 12px; font-variant-numeric: tabular-nums;
+}
+.tb-since {
+  font-family: var(--mono); font-size: 11px;
+  padding: 7px 14px; border-radius: 4px;
+  background: var(--grn-bg); color: var(--grn);
+  border: 1px solid rgba(95,165,108,0.25);
+}
+.tb-clock .u { font-size: 9.5px; color: var(--dim); margin-left: 4px; }
+.tb-grow { flex: 1; }
