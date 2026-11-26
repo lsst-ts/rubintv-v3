@@ -6,6 +6,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { RouteError } from "./components/RouteError";
 import { RouteGuard } from "./components/RouteGuard";
 import { Home } from "./views/Home";
 import { Location } from "./views/Location";
@@ -37,6 +38,12 @@ function NightReportRedirect() {
   return <Navigate to={`/${location}/${camera}/nightly-summary${search}`} replace />;
 }
 
+// Gives each view its own error page: what a view throws while rendering or
+// in an effect is caught at its route and drawn where the view was, inside
+// the Layout, so the header and navigation stay.
+const caught = (views: RouteObject[]): RouteObject[] =>
+  views.map((view) => ({ ...view, errorElement: <RouteError /> }));
+
 // Path-based route table — each path fully describes a tab's state, so a
 // deep link restores the exact view on hard reload (Decision 7). The backend
 // serves a catch-all -> index.html in production (Phase 7) so these resolve.
@@ -45,7 +52,10 @@ export const routes: RouteObject[] = [
   {
     path: "/",
     element: <Layout />,
-    children: [
+    // Last resort, for a throw in the shell itself: nothing of the app is
+    // left to draw, so this stands alone.
+    errorElement: <RouteError whole />,
+    children: caught([
       { index: true, element: <Home /> },
       // Site-wide views; these precede :location so their fixed path segments
       // aren't read as location names. Cluster status and admin control
@@ -78,6 +88,6 @@ export const routes: RouteObject[] = [
       // there's nothing in useParams to tell it apart from Home) and drop the
       // status pills that have nothing to report on a 404.
       { path: "*", element: <NotFound />, handle: { notFound: true } },
-    ],
+    ]),
   },
 ];
