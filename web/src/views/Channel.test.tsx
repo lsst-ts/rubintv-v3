@@ -5,7 +5,7 @@ import { queryKeys } from "../lib/liveQuery";
 import { createQueryClient } from "../lib/queryClient";
 import { DISCONNECT_GRACE_MS, LiveProvider } from "../lib/LiveContext";
 import { routes } from "../routes";
-import { LIVE_LOAD_LIMIT_MS } from "./Channel";
+import { LIVE_LAG_CUE_MS, LIVE_LOAD_LIMIT_MS } from "./Channel";
 import {
   liveSockets,
   loseLiveConnection,
@@ -474,6 +474,65 @@ describe("live mode's hold on the frame in view", () => {
       });
       expect(again.src).not.toBe("");
       expect(shown()).toBe("11");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The seq nav's note of the frame being waited for.
+  const awaited = () =>
+    screen.queryByRole("status", { name: /^Loading exposure/ });
+  const pass = (ms: number) =>
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
+
+  test("a view left behind says which frame it is waiting on", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt("/local/auxtel/monitor/current");
+      await screen.findByRole("img", { name: "monitor 9" });
+      await land(11);
+      expect(awaited()).toBeNull();
+
+      pass(LIVE_LAG_CUE_MS);
+      expect(awaited()?.textContent).toBe("11");
+      expect(awaited()?.getAttribute("aria-label")).toBe("Loading exposure 11");
+      // In the Next link's place; the view is still following.
+      expect(awaited()?.closest("nav")?.className).toBe("seq-nav");
+      expect(screen.getByText("LIVE")).toBeDefined();
+
+      // Still behind once that one is in: the note moves on to the next.
+      await land(12);
+      await decoded(11);
+      expect(shown()).toBe("11");
+      expect(awaited()?.textContent).toBe("12");
+
+      await decoded(12);
+      expect(shown()).toBe("12");
+      expect(awaited()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a frame that loads in good time is never announced", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderAt("/local/auxtel/monitor/current");
+      await screen.findByRole("img", { name: "monitor 9" });
+      await land(11);
+      pass(LIVE_LAG_CUE_MS - 500);
+      await decoded(11);
+      pass(LIVE_LAG_CUE_MS);
+      expect(awaited()).toBeNull();
+
+      // The next frame's wait is counted from its own start.
+      await land(12);
+      pass(LIVE_LAG_CUE_MS - 500);
+      expect(awaited()).toBeNull();
+      pass(500);
+      expect(awaited()?.textContent).toBe("12");
     } finally {
       vi.useRealTimers();
     }

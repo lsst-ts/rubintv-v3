@@ -2682,6 +2682,9 @@ a.chv-chan:hover { filter: brightness(1.08); }
 a.seq-arrow:hover { background: var(--line-soft); }
 .seq-arrow svg { width: 15px; height: 15px; }
 .seq-arrow-off { color: var(--ink-soft); opacity: 0.4; }
+/* The frame a live view is waiting on, where its Next link would be. */
+.seq-awaited { color: var(--ink-soft); gap: 5px; }
+.seq-awaited .chv-spinner { width: 11px; height: 11px; border-width: 1.5px; }
 /* Jump-to-current sits a touch apart from the prev/next pair. */
 .seq-jump { margin-left: 0.25rem; }
 .seq-current { font-weight: 700; color: var(--ink); }
