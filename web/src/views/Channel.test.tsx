@@ -591,6 +591,105 @@ describe("live mode's hold on the frame in view", () => {
   });
 });
 
+describe("stepping quickly through a night", () => {
+  const at = (seq: number) => `/local/auxtel/monitor?seq=${seq}&date=2026-04-10`;
+  // A keydown the keyboard sends by itself while the key stays down.
+  const repeat = (key: string) => fireEvent.keyDown(window, { key, repeat: true });
+
+  test("a held arrow steps on only once the frame it has reached is drawn", async () => {
+    const router = renderAt(at(5));
+    await screen.findByRole("link", { name: "Next (7)" });
+    const img = screen.getByRole("img", { name: "monitor 5" });
+    let drawn = false;
+    Object.defineProperty(img, "complete", { get: () => drawn });
+
+    // Still loading: the repeats go nowhere, and aren't left to the browser
+    // either (it would scroll, or drag a selection).
+    expect(repeat("ArrowRight")).toBe(false);
+    expect(repeat("ArrowRight")).toBe(false);
+    expect(where(router)).toBe(at(5));
+
+    drawn = true;
+    expect(repeat("ArrowRight")).toBe(false);
+    await waitFor(() => expect(where(router)).toBe(at(7)));
+    await screen.findByRole("link", { name: "Next (9)" });
+
+    // A press of its own doesn't wait.
+    drawn = false;
+    press("ArrowRight");
+    await waitFor(() => expect(where(router)).toBe(at(9)));
+  });
+
+  test("a held arrow on a movie steps once for each press", async () => {
+    const router = renderAt("/local/auxtel/movie?seq=4&date=2026-04-10");
+    await screen.findByRole("link", { name: "Previous (3)" });
+    expect(repeat("ArrowLeft")).toBe(false);
+    expect(where(router)).toBe("/local/auxtel/movie?seq=4&date=2026-04-10");
+    press("ArrowLeft");
+    await waitFor(() =>
+      expect(where(router)).toBe("/local/auxtel/movie?seq=3&date=2026-04-10"),
+    );
+  });
+
+  test("with a movie in focus the plain arrows are left to its player", async () => {
+    const router = renderAt("/local/auxtel/movie?seq=4&date=2026-04-10");
+    await screen.findByRole("link", { name: "Previous (3)" });
+    const video = document.querySelector("video")!;
+    video.tabIndex = 0;
+    video.focus();
+    expect(document.activeElement).toBe(video);
+    // Not prevented: the player seeks.
+    expect(press("ArrowLeft")).toBe(true);
+    expect(where(router)).toBe("/local/auxtel/movie?seq=4&date=2026-04-10");
+
+    video.blur();
+    expect(press("ArrowLeft")).toBe(false);
+    await waitFor(() =>
+      expect(where(router)).toBe("/local/auxtel/movie?seq=3&date=2026-04-10"),
+    );
+  });
+
+  test("the frames either side are made ready, and dropped once left behind", async () => {
+    // Stand-ins for the viewer's off-screen images, recording what each was
+    // asked to load; a src set back to "" is a download stopped.
+    const made: Array<{ src: string }> = [];
+    class Preload {
+      src = "";
+      constructor() {
+        made.push(this);
+      }
+    }
+    vi.stubGlobal("Image", Preload);
+    try {
+      const loadingSeqs = () =>
+        made
+          .filter((img) => img.src !== "")
+          .map((img) => Number(/\/(\d{6})\/image\.png$/.exec(img.src)?.[1]))
+          .sort((a, b) => a - b);
+      monitorSeqs = [3, 5, 7, 9];
+      const router = renderAt(at(5));
+      await screen.findByRole("link", { name: "Next (7)" });
+      expect(loadingSeqs()).toEqual([3, 7]);
+
+      // On to 7: its download is the page's now and is left alone, 3 is
+      // behind and stopped, and nothing is asked for twice.
+      press("ArrowRight");
+      await screen.findByRole("link", { name: "Next (9)" });
+      expect(loadingSeqs()).toEqual([5, 7, 9]);
+      expect(made.length).toBe(4);
+
+      press("ArrowRight");
+      await screen.findByRole("link", { name: "Previous (7)" });
+      expect(loadingSeqs()).toEqual([7, 9]);
+
+      await act(() => router.navigate("/local/auxtel"));
+      expect(loadingSeqs()).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 test("a broken image clears the loading spinner too", async () => {
   renderAt("/local/auxtel/monitor?seq=7&date=2026-04-10");
   const img = await screen.findByRole("img", { name: "monitor 7" });
