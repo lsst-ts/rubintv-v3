@@ -30,10 +30,12 @@ Reads JSON-lines log output (a file, or stdin) produced with
   every ``/dates/2026-10-07`` folds into one row);
 - ``ws.frame.sent``: frames and bytes per message type, and per-connection
   totals from ``ws.disconnect``;
-- ``poll.current.cycle``: cycle time and keys listed per current-day cycle;
-- ``poll.scan``: listings per scope, how many changed anything (the
-  current-day poll's ``day`` listings appear only when they changed
-  something; its cycles count the rest);
+- ``poll.current.heartbeat``: the current-day cycles each one sums, their
+  mean and longest cycle time, and the keys last listed (a heartbeat comes
+  every 60 cycles, so a session shorter than that has none);
+- ``poll.scan``: the listings that changed something, per scope, and the
+  on-demand ones that didn't (the loops' unchanged listings aren't
+  logged; their own lines count them);
 - ``store.apply``: events seen vs. changes published, for the listings
   that changed something.
 
@@ -101,7 +103,12 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
     http: dict[str, Series] = defaultdict(Series)
     ws_types: dict[str, Series] = defaultdict(Series)
     ws_conns: list[tuple[int, int]] = []
-    cycles = Series()
+    # Current-day cycles: how many, their summed and longest time, and the
+    # keys the latest listed.
+    cycles = 0
+    cycle_seconds = 0.0
+    cycle_max = 0.0
+    cycle_keys = 0
     scans: dict[str, Series] = defaultdict(Series)
     applies = Series()
 
@@ -127,10 +134,14 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
             ws_conns.append(
                 (int(r.get("frames_sent") or 0), int(r.get("bytes_sent") or 0))
             )
-        elif event == "poll.current.cycle":
-            cycles.count += 1
-            cycles.values.append(float(r.get("cycle_seconds") or 0))
-            cycles.extra += int(r.get("keys") or 0)
+        elif event == "poll.current.heartbeat":
+            # Each heartbeat sums the cycles since the last: weight its mean
+            # by how many that was.
+            n = int(r.get("cycles") or 0)
+            cycles += n
+            cycle_seconds += n * float(r.get("cycle_seconds_mean") or 0)
+            cycle_max = max(cycle_max, float(r.get("cycle_seconds_max") or 0))
+            cycle_keys = int(r.get("keys_last_cycle") or 0)
         elif event == "poll.scan":
             row = scans[str(r.get("scope"))]
             row.count += 1
@@ -182,13 +193,11 @@ def summarise(records: Iterable[dict[str, Any]]) -> str:
 
     out.append("")
     out.append("Current-day poll cycles")
-    if cycles.count:
+    if cycles:
         out.append(
-            f"  {cycles.count} cycles; cycle_seconds p50"
-            f" {percentile(cycles.values, 50):.3f}"
-            f" p95 {percentile(cycles.values, 95):.3f}"
-            f" max {max(cycles.values):.3f};"
-            f" keys/cycle avg {cycles.extra / cycles.count:.0f}"
+            f"  {cycles} cycles; cycle_seconds mean"
+            f" {cycle_seconds / cycles:.3f} max {cycle_max:.3f};"
+            f" keys in the last cycle {cycle_keys}"
         )
     else:
         out.append("  (none)")

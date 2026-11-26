@@ -374,6 +374,8 @@ class PollEngine:
 
     async def _current_day_loop(self) -> None:
         cycle = 0
+        # Cycle times since the last heartbeat, which sums them.
+        timed: list[float] = []
         log.info(
             "poll.current.start",
             day=self._current_day,
@@ -392,23 +394,23 @@ class PollEngine:
                 self._last_poll = time.monotonic()
                 elapsed = self._last_poll - started
                 cycle += 1
+                timed.append(elapsed)
                 # Heartbeat at info level every minute or so so operators can
-                # see polling is alive even when nothing is changing.
+                # see polling is alive even when nothing is changing. It
+                # carries the spread of the cycles since the last one: a line
+                # for each, one a second, was most of a debug log.
                 if cycle % max(1, int(60 / max(self._interval, 0.1))) == 0:
                     log.info(
                         "poll.current.heartbeat",
                         day=self._current_day,
                         cycle=cycle,
+                        cycles=len(timed),
                         keys_last_cycle=total,
-                        cycle_seconds=round(elapsed, 2),
+                        cycle_seconds_min=round(min(timed), 3),
+                        cycle_seconds_mean=round(sum(timed) / len(timed), 3),
+                        cycle_seconds_max=round(max(timed), 3),
                     )
-                log.debug(
-                    "poll.current.cycle",
-                    day=self._current_day,
-                    cycle=cycle,
-                    keys=total,
-                    cycle_seconds=round(elapsed, 3),
-                )
+                    timed.clear()
                 # A slow-but-successful cycle warns of a degrading link before
                 # it fails outright — log the transition into the slow state.
                 slow = elapsed > SLOW_CYCLE_SECONDS
@@ -491,11 +493,22 @@ class PollEngine:
                         cameras=cameras,
                         days=self._recent_window_days,
                     )
-                    recent = await self._scan_recent_window()
-                    log.info("poll.recent.done", events=recent)
+                    started = time.monotonic()
+                    recent, listings = await self._scan_recent_window()
+                    log.info(
+                        "poll.recent.done",
+                        events=recent,
+                        listings=listings,
+                        pass_seconds=round(time.monotonic() - started, 1),
+                    )
                 log.info("poll.historical.start", cameras=cameras)
+                started = time.monotonic()
                 total = await self._scan_all_history()
-                log.info("poll.historical.done", events=total)
+                log.info(
+                    "poll.historical.done",
+                    events=total,
+                    sweep_seconds=round(time.monotonic() - started, 1),
+                )
                 await self._cache_rewrite.flush(CACHE_REWRITE_WAIT_SECONDS)
             except Exception:  # noqa: BLE001
                 # A failed sweep leaves history incomplete: keep the loading
@@ -535,10 +548,11 @@ class PollEngine:
                 return
             started = time.monotonic()
             try:
-                events = await self._scan_recent_window(warm=False)
+                events, listings = await self._scan_recent_window(warm=False)
                 log.info(
                     "poll.recent.refresh",
                     events=events,
+                    listings=listings,
                     pass_seconds=round(time.monotonic() - started, 1),
                 )
             except Exception:  # noqa: BLE001 - a bad pass must not kill loop
@@ -607,17 +621,19 @@ class PollEngine:
     ) -> set[tuple[str, str, str]]:
         """Apply one listing to the store, persist what changed, and log it.
 
-        ``poll.scan`` is info only when something changed. An unchanged
-        listing is the routine case and goes to debug, except the
-        current-day loop's: it re-lists every prefix each second, so even at
-        debug that was a line per camera per second saying nothing happened.
-        Its ``poll.current.cycle`` line sums them instead.
+        ``poll.scan`` is info when something changed. An unchanged listing
+        is the routine case, and only one made on demand is logged, at debug.
+        The loops' aren't: the current-day loop re-lists every prefix each
+        second and a recent pass makes hundreds of listings in a burst, so
+        even at debug that was mostly lines saying nothing happened. Each
+        loop's own line sums them instead (``poll.current.heartbeat``,
+        ``poll.previous.refresh``, ``poll.recent.done``).
         """
         touched: set[tuple[str, str, str]] = set()
         if result.events:
             touched = await self._store.apply(result.events)
             await self._persist_slices(touched)
-        if touched or scope != "day":
+        if touched or scope == "on-demand":
             emit = log.info if touched else log.debug
             emit(
                 "poll.scan",
@@ -648,8 +664,10 @@ class PollEngine:
         yesterday while the previous-day refresh is on."""
         return frozenset(recent_day_obs(2 if self._previous_day_refresh > 0 else 1))
 
-    async def _scan_recent_window(self, *, warm: bool = True) -> int:
+    async def _scan_recent_window(self, *, warm: bool = True) -> tuple[int, int]:
         """Scan every camera's recent dates: the window, plus known data days.
+
+        Returns the events found and the listings made.
 
         The window is the last N observing days whether or not they hold
         data, so new data landing on a quiet recent day is still found. On
@@ -676,17 +694,17 @@ class PollEngine:
             for loc in self._models.locations
             for cam in loc.cameras
         }
-        log.debug(
-            "poll.recent.plan",
-            window_days=len(window),
-            known_days=sum(len(d) for d in known.values()),
-        )
-        return await self._gather_locations(
+        known_days = sum(len(d) for d in known.values())
+        log.debug("poll.recent.plan", window_days=len(window), known_days=known_days)
+        events = await self._gather_locations(
             [
                 self._scan_recent_for_location(loc, window, known, warm=warm)
                 for loc in self._models.locations
             ]
         )
+        # One listing per camera for each day of the window, and one for
+        # each of its known days.
+        return events, len(window) * len(known) + known_days
 
     def _known_days(self, location: str, camera: str, window: list[str]) -> list[str]:
         """A camera's most recent data days that the window doesn't cover."""
