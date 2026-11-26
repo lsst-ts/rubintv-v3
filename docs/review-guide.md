@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 444 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 446 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -410,8 +410,8 @@ Safe to skim.
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
   `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, `3e84f05`,
-  `96daca6`, `6247b85`, `0fd2112`, and the commit that noted the
-  locations' own polls.
+  `96daca6`, `6247b85`, `0fd2112`, `2ba18cc`, and the commit that noted
+  the cache volume's check and sizing.
 
 ---
 
@@ -1232,6 +1232,18 @@ commit, not the second; hanging the volume takes a stub (see
   and isn't made at all while a write is overdue. The page shows a red
   pill per problem and a block in the cache notice (what it is, what it
   costs, the cause), and "unknown" where it used to say 0 B
+- `a78f59a` (later) Check the cache volume on every poll, and size it
+  every five minutes. The look stats every cached file: about 6 s for
+  the USDF PVC's 6,000 slices when quiet, and up to a minute while a
+  sweep writes to it. Waited on for 10 s, with a late result thrown
+  away and the look begun again, it read as "Cache not responding" for
+  the whole of a restart's sweep. `CacheInspector` now makes a check of
+  a few calls (`_inspect`) for every request, which only a hung volume
+  keeps for 10 s, and sizes the entries (`dir_usage`) behind the
+  answer, keeping the result until it is five minutes old.
+  `/api/health/cache` gains `entries_age_seconds`; the page reads
+  "being measured" before the first sizing, and gives a size a minute
+  old or more its age (`cacheSize` in `Status.tsx`)
 
 ### 59. A night report that follows the night
 The same review found that the store noticed a rewrite of an object
