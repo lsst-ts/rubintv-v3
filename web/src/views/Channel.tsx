@@ -29,6 +29,9 @@ import { ProxiedImg, ProxiedVideo } from "../components/ProxiedMedia";
 // merely slow is better left to finish than started over.
 export const LIVE_LOAD_LIMIT_MS = 60_000;
 
+// How long a live view may be behind the newest frame before it says so.
+export const LIVE_LAG_CUE_MS = 3_000;
+
 // The single-channel route. A per-day channel (one artifact per night, e.g.
 // Tonight's Movie) has no seqs to step through or exposure metadata to show,
 // so it gets its own night-by-night viewer; every other channel gets the
@@ -173,6 +176,8 @@ function SeqChannel({ live }: { live: boolean }) {
   const reconnects = useReconnects();
   // How many loads have run out of time; a change starts the next.
   const [overdue, setOverdue] = useState(0);
+  // The seq being loaded, for the page to name (see `lagging`).
+  const [loadingSeq, setLoadingSeq] = useState<number | null>(null);
 
   useEffect(() => {
     // A load is given up only when it has nothing left to show (its spell is
@@ -208,6 +213,7 @@ function SeqChannel({ live }: { live: boolean }) {
       reconnects,
       abandon: () => {
         loading.current = null;
+        setLoadingSeq(null);
         clearTimeout(limit);
         img.onload = img.onerror = null;
         // Stops the download too.
@@ -217,6 +223,7 @@ function SeqChannel({ live }: { live: boolean }) {
     const promote = () => {
       if (loading.current !== mine) return;
       loading.current = null;
+      setLoadingSeq(null);
       clearTimeout(limit);
       setLatch({ key: latchKey, seq: targetSeq });
     };
@@ -228,6 +235,7 @@ function SeqChannel({ live }: { live: boolean }) {
       setOverdue((n) => n + 1);
     }, LIVE_LOAD_LIMIT_MS);
     loading.current = mine;
+    setLoadingSeq(targetSeq);
     img.src = mediaFor(targetSeq);
     if (typeof img.decode === "function") {
       // decode() resolves when the bitmap is paint-ready; rejects on a
@@ -273,6 +281,22 @@ function SeqChannel({ live }: { live: boolean }) {
   // is no next anyway — so the link only ever appears after a manual step back.
   const hasNewer = nextIdx >= 0 && nextIdx < seqs.length;
   const catchingUp = live && seq !== targetSeq;
+
+  // A frame normally takes the place of the one in view within a moment of
+  // landing. Once the view has been behind for LIVE_LAG_CUE_MS (a slow link,
+  // or a load that is stuck) the seq nav says which frame it is waiting on,
+  // in the slot its Next link would take; the badge still reads LIVE, since
+  // the view is following, only late.
+  const [lagging, setLagging] = useState(false);
+  useEffect(() => {
+    if (!catchingUp) {
+      setLagging(false);
+      return;
+    }
+    const due = setTimeout(() => setLagging(true), LIVE_LAG_CUE_MS);
+    return () => clearTimeout(due);
+  }, [catchingUp]);
+  const awaitedSeq = lagging && catchingUp ? (loadingSeq ?? targetSeq) : null;
 
   const liveWord = useLiveWord();
   usePageTitle(
@@ -537,6 +561,16 @@ function SeqChannel({ live }: { live: boolean }) {
               {next}
               <ArrowRightIcon />
             </Link>
+          ) : awaitedSeq !== null ? (
+            <span
+              className="seq-arrow seq-awaited"
+              role="status"
+              aria-label={`Loading exposure ${awaitedSeq}`}
+              title={`Exposure ${awaitedSeq} has landed and is loading`}
+            >
+              {awaitedSeq}
+              <span className="chv-spinner" />
+            </span>
           ) : (
             <span className="seq-arrow seq-arrow-off" aria-hidden="true">
               <ArrowRightIcon />
