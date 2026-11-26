@@ -1,6 +1,6 @@
 # Review guide: DM-55435 (the V3 rebuild, one PR)
 
-This PR lands the whole rebuild — 432 commits on `tickets/DM-55435` —
+This PR lands the whole rebuild — 434 commits on `tickets/DM-55435` —
 as a single reviewed merge into `develop`. This guide groups those
 commits so the branch can be read theme-by-theme instead of
 chronologically. Groups are a reading order, not merge units: many
@@ -409,8 +409,8 @@ Safe to skim.
   `da6cb7f`, `6604211`, `1c16cfa`, `40a8862`, `cd1de75`, `771865f`,
   `460e78f`, `c25ba26`, `1d1dc6a`, `6c248f8`, `9573e19`, `ef192a7`,
   `121fbdd`, `5adc9cf`, `f75546a`, `ba7d6a6`, `88abcfc`, `22596bc`,
-  `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, and the
-  commit that noted yesterday's own poll.
+  `914c136`, `f329047`, `65c7485`, `f91afe2`, `a8da757`, `3e84f05`,
+  and the commit that noted the poll's summed log lines.
 
 ---
 
@@ -796,6 +796,8 @@ is info only when a listing changed the index (it had been one info line
 per camera per second since the poller became stateless), and
 `WsService.handle` deregisters the connection before awaiting in its
 `finally`, so a cancelled handler no longer leaks a registry entry.
+(Group 52's last commit drops `poll.current.cycle` for a summed
+heartbeat, and `flow_summary.py` reads that.)
 - `01ecaf8` Log the timing and size of every hop so the data flow can be
   measured
 - `8fceca6` Report streamed responses as such in flow_summary, not as 0
@@ -1032,6 +1034,18 @@ saying nothing had changed. Review `_routine` and the level choice in
   at every startup; it's masked now (`redacted`). Readbacks are logged
   as they arrive (`redis.readback.change`) and the startup seed lists
   what it found, so an unacknowledged control send shows in the log
+- `a8d5cec` (later) Sum the poll's cycles and passes in one line each,
+  not a line per listing. A pod at debug lost the start of its log
+  within three minutes: a recent pass logged a line for each listing
+  that changed nothing, about 790 on usdf-k8s, and the current-day loop
+  a line a second. Only an on-demand listing that changed nothing is
+  logged now (the rule in `_apply_scan` is by scope, no longer `day`
+  alone). `poll.current.heartbeat` carries the `cycles` it covers and
+  their shortest, mean and longest time, and `poll.current.cycle` is
+  gone; `poll.recent.done` and `poll.recent.refresh` give `listings`
+  and `pass_seconds`, and `poll.historical.done` gives `sweep_seconds`.
+  `flow_summary.py` reports mean and longest cycle time from the
+  heartbeats, no longer p50 and p95
 
 ### 53. Camera table, third pass: the whole window for rows
 The table scrolled in a box under the topbar, toolbar and a 150px
