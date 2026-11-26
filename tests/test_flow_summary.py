@@ -61,6 +61,7 @@ SAMPLE = [
     {"event": "ws.disconnect", "frames_sent": 2, "bytes_sent": 50120},
     {
         "event": "poll.current.heartbeat",
+        "location": "usdf",
         "cycles": 60,
         "keys_last_cycle": 6000,
         "cycle_seconds_mean": 0.8,
@@ -68,10 +69,19 @@ SAMPLE = [
     },
     {
         "event": "poll.current.heartbeat",
+        "location": "usdf",
         "cycles": 20,
         "keys_last_cycle": 6002,
         "cycle_seconds_mean": 1.0,
         "cycle_seconds_max": 1.1,
+    },
+    {
+        "event": "poll.current.heartbeat",
+        "location": "summit",
+        "cycles": 20,
+        "keys_last_cycle": 100,
+        "cycle_seconds_mean": 0.25,
+        "cycle_seconds_max": 0.3,
     },
     {"event": "poll.scan", "scope": "day", "keys": 6000, "slices_touched": 0},
     {"event": "poll.scan", "scope": "day", "keys": 6002, "slices_touched": 1},
@@ -93,7 +103,9 @@ def test_summary_folds_paths_and_reports_each_flow() -> None:
     assert "6144" in text  # 2048 + 4096 bytes on the dates row
     assert "detectorStatus" in text and "50000" in text
     assert "1 connection(s) closed: 2 frames, 50120 bytes" in text
-    # Heartbeats are weighted by the cycles each sums: (60*0.8 + 20*1.0)/80.
-    assert "80 cycles; cycle_seconds mean 0.850 max 1.200" in text
-    assert "keys in the last cycle 6002" in text
+    # Heartbeats are weighted by the cycles each sums, over every
+    # location's: (60*0.8 + 20*1.0 + 20*0.25)/100. The keys are each
+    # location's latest, added up.
+    assert "100 cycles; cycle_seconds mean 0.730 max 1.200" in text
+    assert "keys in the last cycle 6102" in text
     assert "6002 events -> 2 changes" in text

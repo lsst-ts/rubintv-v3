@@ -69,9 +69,11 @@ comes up without the sub-app and logs why.
 ## Health & readiness
 
 - `GET /api/health/live` — process is up (liveness probe).
-- `GET /api/health/ready` — 200 once the **first current-day poll** has
-  completed; 503 before that. Use as the k8s readiness probe so traffic is
-  not routed to an empty store.
+- `GET /api/health/ready` — 200 once **every location's first current-day
+  poll** has ended; 503 before that. Use as the k8s readiness probe so
+  traffic is not routed to an empty store. A poll that failed counts, and
+  so does one that has stalled: a location whose bucket can't be reached
+  doesn't keep the app from serving the others.
 - `GET /api/health/status` — `{ ready, historical_loading }`.
   `historical_loading` is true until the first full back-catalogue scan
   finishes; the SPA shows a non-blocking "still loading" affordance.
@@ -80,7 +82,12 @@ comes up without the sub-app and logs why.
   is true when the cycle now running has gone over a minute without
   finishing, and `last_poll_age_seconds` is how long ago a cycle last
   succeeded. Pages show the last as "as of HH:MM:SS UTC" beside the current
-  day's date, amber once it is over 30 s old. `redis` reports the Redis
+  day's date, amber once it is over 30 s old. Each location is polled by
+  loops of its own, so `locations` gives these, and `historical_loading`,
+  for each one, and that is what a page on a location shows: a bucket the
+  server can't reach, or that is slow to answer, is that location's
+  trouble and holds up no other. The top-level fields sum them, the worst
+  of each, for a page with no location in view. `redis` reports the Redis
   readers: `configured`, `connected`, how long that has held
   (`changed_age_seconds`) and how long ago Redis last answered
   (`read_age_seconds`, a few seconds at most while connected).

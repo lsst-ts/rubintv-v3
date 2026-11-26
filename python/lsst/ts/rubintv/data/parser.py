@@ -87,6 +87,15 @@ class NightReportRef:
     group: str | None = None
 
 
+_DATE_RE = re.compile(_DATE)
+
+
+def is_day_obs(segment: str) -> bool:
+    """Whether a key's second segment is a date, by the rule the key
+    patterns above apply to it."""
+    return _DATE_RE.fullmatch(segment) is not None
+
+
 def parse_seq(raw: str) -> SeqNum:
     """Coerce a seq segment to int, or keep the sentinel string
     (e.g. final)."""

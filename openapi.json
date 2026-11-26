@@ -2667,6 +2667,62 @@
         ],
         "title": "LocationOut"
       },
+      "LocationStatus": {
+        "properties": {
+          "location": {
+            "type": "string",
+            "title": "Location"
+          },
+          "location_title": {
+            "type": "string",
+            "title": "Location Title"
+          },
+          "s3_healthy": {
+            "type": "boolean",
+            "title": "S3 Healthy"
+          },
+          "s3_slow": {
+            "type": "boolean",
+            "title": "S3 Slow"
+          },
+          "s3_last_cycle_seconds": {
+            "type": "number",
+            "title": "S3 Last Cycle Seconds"
+          },
+          "poll_stalled": {
+            "type": "boolean",
+            "title": "Poll Stalled"
+          },
+          "last_poll_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Poll Age Seconds"
+          },
+          "historical_loading": {
+            "type": "boolean",
+            "title": "Historical Loading"
+          }
+        },
+        "type": "object",
+        "required": [
+          "location",
+          "location_title",
+          "s3_healthy",
+          "s3_slow",
+          "s3_last_cycle_seconds",
+          "poll_stalled",
+          "last_poll_age_seconds",
+          "historical_loading"
+        ],
+        "title": "LocationStatus",
+        "description": "One location's polling. Each location is polled on its own, so one\nwhose bucket can't be reached says so here and the others don't."
+      },
       "LocationSummary": {
         "properties": {
           "name": {
@@ -3040,6 +3096,13 @@
             ],
             "title": "Last Poll Age Seconds"
           },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/LocationStatus"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
           "redis": {
             "$ref": "#/components/schemas/RedisStatus"
           },
@@ -3062,6 +3125,7 @@
           "s3_last_cycle_seconds",
           "poll_stalled",
           "last_poll_age_seconds",
+          "locations",
           "redis",
           "cameras"
         ],

@@ -134,3 +134,34 @@ def test_scan_of_an_unregistered_location_fails_loud(poller: PollerFixture) -> N
     # bucket: listing must not quietly report "nothing here".
     with pytest.raises(KeyError, match="no bucket registered for location 'ghost'"):
         poller.poller.scan("ghost", "auxtel/")
+
+
+def test_list_dates_names_a_cameras_dates_without_its_objects(
+    poller: PollerFixture,
+) -> None:
+    # What lets the full sweep go a date at a time: one entry per date,
+    # however many objects each holds. Another camera's dates, a camera
+    # whose name this one's begins, and a sub-prefix that isn't a date (which
+    # can hold nothing the parser would accept) are all left out.
+    for key in (
+        "lsstcam/2026-04-10/c/000001/a.png",
+        "lsstcam/2026-04-10/c/000002/a.png",
+        "lsstcam/2026-04-11/metadata.json",
+        "lsstcam/scratch/notes.txt",
+        "lsstcam/readme.txt",
+        "lsstcam_aos/2026-04-12/c/000001/a.png",
+        "auxtel/2026-04-13/c/000001/a.png",
+    ):
+        poller.put(key)  # type: ignore[operator]
+    assert poller.poller.list_dates("local", "lsstcam") == {
+        "2026-04-10",
+        "2026-04-11",
+    }
+    assert poller.poller.list_dates("local", "comcam") == set()
+
+
+def test_list_dates_of_an_unregistered_location_fails_loud(
+    poller: PollerFixture,
+) -> None:
+    with pytest.raises(KeyError, match="no bucket registered for location 'ghost'"):
+        poller.poller.list_dates("ghost", "auxtel")
