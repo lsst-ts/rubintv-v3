@@ -627,11 +627,13 @@ h1, h2 {
   justify-content: flex-end;
   gap: 0.4rem 0.5rem;
 }
-.status-signals .s3-latency {
+.status-signals .s3-latency,
+.scan-loc-poll {
   font-family: var(--mono);
   font-size: 0.75rem;
   white-space: nowrap;
 }
+.scan-loc-poll { display: block; margin-top: 0.15rem; }
 
 /* Scan progress: the key and the location cards as one group, the disk
    cache card set apart below them by a wider gap. */
@@ -791,6 +793,12 @@ h1, h2 {
   font-size: 1rem;
   margin: 0;
 }
+.scan-loc-state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.scan-loc-state .conn { white-space: nowrap; }
 .scan-loc-count {
   font-family: var(--mono);
   font-size: 0.8rem;

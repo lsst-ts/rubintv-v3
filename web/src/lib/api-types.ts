@@ -981,6 +981,29 @@ export interface components {
             /** Camera Groups */
             camera_groups: components["schemas"]["CameraGroupOut"][];
         };
+        /**
+         * LocationStatus
+         * @description One location's polling. Each location is polled on its own, so one
+         *     whose bucket can't be reached says so here and the others don't.
+         */
+        LocationStatus: {
+            /** Location */
+            location: string;
+            /** Location Title */
+            location_title: string;
+            /** S3 Healthy */
+            s3_healthy: boolean;
+            /** S3 Slow */
+            s3_slow: boolean;
+            /** S3 Last Cycle Seconds */
+            s3_last_cycle_seconds: number;
+            /** Poll Stalled */
+            poll_stalled: boolean;
+            /** Last Poll Age Seconds */
+            last_poll_age_seconds: number | null;
+            /** Historical Loading */
+            historical_loading: boolean;
+        };
         /** LocationSummary */
         LocationSummary: {
             /** Name */
@@ -1122,6 +1145,8 @@ export interface components {
             poll_stalled: boolean;
             /** Last Poll Age Seconds */
             last_poll_age_seconds: number | null;
+            /** Locations */
+            locations: components["schemas"]["LocationStatus"][];
             redis: components["schemas"]["RedisStatus"];
             /** Cameras */
             cameras: components["schemas"]["CameraStatus"][];

@@ -19,7 +19,12 @@ import {
 } from "../lib/redisLink";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { S3Status } from "../components/S3Status";
-import type { CacheEntry, CacheProblem, CameraStatus } from "../lib/types";
+import type {
+  CacheEntry,
+  CacheProblem,
+  CameraStatus,
+  LocationStatus,
+} from "../lib/types";
 
 // Site-wide operational view of historical-scan progress. Collection is
 // per-camera (recent window first, then the full back-catalogue), so this
@@ -262,7 +267,9 @@ function CacheNotice() {
   );
 }
 
-// When the server's last S3 poll cycle succeeded, and how long it took.
+// When the server's last poll cycle of a location's bucket succeeded, and
+// how long it took. On the location's card: each location is polled on its
+// own, so no one time or duration stands for them all.
 //
 // The time is what shows a poll that has stopped: it stops moving, and turns
 // amber with its age once that is more than a normal gap (the age is counted
@@ -273,16 +280,21 @@ function CacheNotice() {
 // slow threshold is visible before it crosses it (amber once flagged slow).
 // `seconds` is null while S3 is unreachable: the last cycle to succeed says
 // nothing of the link now.
-function LastPoll({ seconds, slow }: { seconds: number | null; slow: boolean }) {
-  const at = useLastPoll();
+function LastPoll({ poll }: { poll: LocationStatus }) {
+  const at = useLastPoll(poll.location);
   const now = useNow();
   if (at === null) return null;
   const age = now - at;
   const stale = age > STALE_AFTER_MS;
+  const seconds =
+    poll.s3_healthy && poll.s3_last_cycle_seconds > 0
+      ? poll.s3_last_cycle_seconds
+      : null;
+  const slow = poll.s3_slow;
   return (
     <span
-      className="s3-latency"
-      title="When the server's last S3 poll cycle succeeded, and how long it took"
+      className="s3-latency scan-loc-poll"
+      title="When the server's last poll cycle of this location's S3 bucket succeeded, and how long it took"
     >
       Last poll:{" "}
       <span className={stale ? "s3-latency--slow" : undefined}>
@@ -392,10 +404,12 @@ export function Status() {
           browser↔app-server WebSocket, the server↔bucket S3 poll and the
           server↔Redis readers — then how the server started (the cache mode)
           and anything wrong with the cache. S3 gets the verbose pill
-          (explicit green when healthy — quiet here would read as "unknown").
-          Under the row, on quiet lines of their own so they don't stretch
-          it, when the last poll cycle succeeded and how long it took (see
-          LastPoll), and when Redis last answered (see LastRedisRead). */}
+          (explicit green when healthy — quiet here would read as "unknown"),
+          which here sums every location's poll: each location's card below
+          carries its own when it is in trouble, and when its last poll
+          cycle succeeded (see LastPoll).
+          Under the row, on a quiet line of its own so it doesn't stretch
+          it, when Redis last answered (see LastRedisRead). */}
       <div className="status-top">
         <h1>Scan status</h1>
         <div className="status-signals">
@@ -424,14 +438,6 @@ export function Status() {
               </section>
             )}
           </div>
-          <LastPoll
-            seconds={
-              data && data.s3_healthy && data.s3_last_cycle_seconds > 0
-                ? data.s3_last_cycle_seconds
-                : null
-            }
-            slow={data?.s3_slow ?? false}
-          />
           {redis && <LastRedisRead link={redis} />}
         </div>
       </div>
@@ -446,14 +452,26 @@ export function Status() {
           <div className="scan-groups">
             {[...groups.entries()].map(([location, cams]) => {
               const done = cams.filter((c) => c.full_complete).length;
+              // The location's own poll, where the server reports it.
+              const poll = data.locations?.find((l) => l.location === location);
               return (
                 <div key={location} className="scan-loc">
                   <div className="scan-loc-head">
                     <h3>{cams[0].location_title}</h3>
-                    <span className="scan-loc-count">
-                      {done}/{cams.length} complete
+                    {/* Each location is polled on its own, so the header's
+                        S3 pill, which sums them, can't say which one it
+                        means. A location whose own poll is in trouble says
+                        so here; a healthy one stays quiet. Only where the
+                        server reports the location's own: the pill would
+                        fall back on the summary and repeat the header. */}
+                    <span className="scan-loc-state">
+                      {poll && <S3Status location={location} />}
+                      <span className="scan-loc-count">
+                        {done}/{cams.length} complete
+                      </span>
                     </span>
                   </div>
+                  {poll && <LastPoll poll={poll} />}
                   <ul className="scan-cams">
                     {cams.map((c) => {
                       const stage = stageOf(c);

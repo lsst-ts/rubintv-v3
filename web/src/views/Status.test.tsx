@@ -30,6 +30,7 @@ function renderWith(
     s3_last_cycle_seconds: 0.8,
     poll_stalled: false,
     last_poll_age_seconds: 2,
+    locations: [],
     redis: {
       configured: false,
       connected: false,
@@ -66,6 +67,22 @@ const cam = (over: Partial<StatusResponse["cameras"][number]>) => ({
   recent_ready: false,
   full_complete: false,
   image_count: 0,
+  ...over,
+});
+
+// One location's own poll, as the server reports it beside the summary;
+// "loc" is the location of `cam`'s cameras.
+const poll = (
+  over: Partial<StatusResponse["locations"][number]> = {},
+): StatusResponse["locations"][number] => ({
+  location: "loc",
+  location_title: "Loc",
+  s3_healthy: true,
+  s3_slow: false,
+  s3_last_cycle_seconds: 0.8,
+  poll_stalled: false,
+  last_poll_age_seconds: 2,
+  historical_loading: false,
   ...over,
 });
 
@@ -321,15 +338,61 @@ test("surfaces the S3 pill here when the bucket is unreachable", async () => {
   expect(await screen.findByText(/S3 unreachable/)).toBeDefined();
 });
 
-test("shows when the last S3 poll succeeded and how long it took", async () => {
-  renderWith([cam({})], { s3_healthy: true, s3_last_cycle_seconds: 1.2 });
-  const line = await screen.findByText(/Last poll:/);
-  expect(line.textContent).toMatch(/Last poll: \d\d:\d\d:\d\d UTC, took 1\.2s/);
-  expect(line.querySelector(".s3-latency--slow")).toBeNull();
+test("a location whose own bucket is unreachable says so on its card", async () => {
+  // The header's pill sums every location and says how many it means; the
+  // card says which.
+  const { container } = renderWith(
+    [
+      cam({ location: "summit", location_title: "Summit" }),
+      cam({ location: "base", location_title: "Base" }),
+    ],
+    {
+      s3_healthy: false,
+      locations: [
+        poll({ location: "summit" }),
+        poll({ location: "base", s3_healthy: false }),
+      ],
+    },
+  );
+  await screen.findByText("Base");
+  const header = container.querySelector(".status-sections [aria-label='S3']");
+  expect(header?.textContent).toBe("S3: 1 of 2 unreachable");
+  const cards = [...container.querySelectorAll(".scan-loc")];
+  const pills = cards.map(
+    (card) => card.querySelector(".scan-loc-head .conn")?.textContent ?? null,
+  );
+  expect(pills).toEqual([null, "S3 unreachable"]);
+});
+
+test("each location's card shows when its own last poll succeeded and how long it took", async () => {
+  // Each is polled on its own, so the times and durations differ.
+  const { container } = renderWith(
+    [
+      cam({ location: "summit", location_title: "Summit" }),
+      cam({ location: "base", location_title: "Base" }),
+    ],
+    {
+      locations: [
+        poll({ location: "summit", s3_last_cycle_seconds: 1.2 }),
+        poll({ location: "base", s3_last_cycle_seconds: 0.4 }),
+      ],
+    },
+  );
+  await screen.findByText("Base");
+  const lines = [...container.querySelectorAll(".scan-loc .scan-loc-poll")];
+  expect(lines.map((line) => line.textContent)).toEqual([
+    expect.stringMatching(/^Last poll: \d\d:\d\d:\d\d UTC, took 1\.2s$/),
+    expect.stringMatching(/^Last poll: \d\d:\d\d:\d\d UTC, took 0\.4s$/),
+  ]);
+  expect(container.querySelector(".s3-latency--slow")).toBeNull();
+  // No one line for them all in the header.
+  expect(container.querySelector(".status-signals .scan-loc-poll")).toBeNull();
 });
 
 test("a slow last poll has its duration in amber", async () => {
-  renderWith([cam({})], { s3_slow: true, s3_last_cycle_seconds: 6.34 });
+  renderWith([cam({})], {
+    locations: [poll({ s3_slow: true, s3_last_cycle_seconds: 6.34 })],
+  });
   const line = await screen.findByText(/Last poll:/);
   expect(line.querySelector(".s3-latency--slow")?.textContent).toBe("6.3s");
 });
@@ -337,18 +400,27 @@ test("a slow last poll has its duration in amber", async () => {
 test("a last poll that is no longer recent is amber, with its age", async () => {
   // Unreachable, so the last cycle to succeed says nothing of the link now:
   // the time stays, the duration goes.
-  renderWith([cam({})], { s3_healthy: false, last_poll_age_seconds: 300 });
+  renderWith([cam({})], {
+    s3_healthy: false,
+    locations: [poll({ s3_healthy: false, last_poll_age_seconds: 300 })],
+  });
   const line = await screen.findByText(/Last poll:/);
   expect(line.textContent).toMatch(/UTC \(5 min ago\)$/);
   expect(line.querySelector(".s3-latency--slow")?.textContent).toMatch(/5 min ago/);
 });
 
-test("hides the last-poll line before the first cycle completes", async () => {
+test("hides a location's last-poll line before its first cycle completes", async () => {
   renderWith([cam({})], {
-    s3_healthy: true,
-    s3_last_cycle_seconds: 0,
-    last_poll_age_seconds: null,
+    locations: [poll({ s3_last_cycle_seconds: 0, last_poll_age_seconds: null })],
   });
+  await screen.findByText(/Scan status/);
+  expect(screen.queryByText(/Last poll:/)).toBeNull();
+});
+
+test("a server that reports no locations gets no last-poll line", async () => {
+  // A tab left open across a deploy can be asking a server older than it,
+  // which has one time for them all and no card to put it on.
+  renderWith([cam({})], { locations: undefined, last_poll_age_seconds: 2 });
   await screen.findByText(/Scan status/);
   expect(screen.queryByText(/Last poll:/)).toBeNull();
 });

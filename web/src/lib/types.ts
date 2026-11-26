@@ -25,6 +25,7 @@ export type AdminStatusOut = Schemas["AdminStatusOut"];
 export type AdminActionOut = Schemas["AdminActionOut"];
 export type StatusResponse = Schemas["StatusResponse"];
 export type RedisStatus = Schemas["RedisStatus"];
+export type LocationStatus = Schemas["LocationStatus"];
 export type CameraStatus = Schemas["CameraStatus"];
 export type CacheUsageResponse = Schemas["CacheUsageResponse"];
 export type CacheEntry = Schemas["CacheEntry"];

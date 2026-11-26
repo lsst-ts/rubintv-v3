@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
+import { pollFor } from "./pollStatus";
 
 // When the server last polled the S3 bucket successfully: the moment today's
-// data on a page is "as of".
+// data on a page is "as of". Each location is polled on its own, so a page
+// on one asks for that location's; without one it is the time of the
+// location furthest behind.
 //
 // The server reports it as an age (seconds before its answer), and this
 // places it on the tab's own clock, so the two clocks needn't agree. The
@@ -17,13 +20,13 @@ import { api } from "./api";
 // between status polls; a cycle that can't reach S3 takes 20 to fail.
 export const STALE_AFTER_MS = 30_000;
 
-export function useLastPoll(): number | null {
+export function useLastPoll(location?: string): number | null {
   const { data, dataUpdatedAt } = useQuery({
     queryKey: ["status"],
     queryFn: () => api.status(),
     refetchInterval: 5000,
   });
-  const age = data?.last_poll_age_seconds;
+  const age = data ? pollFor(data, location).last_poll_age_seconds : null;
   return age == null ? null : dataUpdatedAt - age * 1000;
 }
 

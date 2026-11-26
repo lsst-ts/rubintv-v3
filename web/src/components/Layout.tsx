@@ -376,7 +376,7 @@ export function Layout() {
                 {/* S3 connectivity is only meaningful (and only actionable)
                     while viewing a camera's images, so — like the historical
                     refresh pill — it's scoped to camera pages. */}
-                {onCamera && <S3Status linkToStatus />}
+                {onCamera && <S3Status linkToStatus location={location} />}
                 {/* Historical-scan notice sits with the other status signals
                     as a compact inline pill, not a full-width banner. Scan
                     progress for a location/camera that doesn't exist is
@@ -456,7 +456,9 @@ export function Layout() {
                   )}
                   {/* Only the current day is polled every second, so only
                       its data has a time it is "as of". */}
-                  {showDatePicker && nav.isCurrentDayObs && <DataAsOf />}
+                  {showDatePicker && nav.isCurrentDayObs && (
+                    <DataAsOf location={location} />
+                  )}
                   {banner && (
                     <span
                       className={`processing-banner site-${location}`}

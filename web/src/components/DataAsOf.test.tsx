@@ -28,11 +28,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-function renderLabel() {
+function renderLabel(location?: string) {
   const view = render(
     <QueryClientProvider client={createQueryClient()}>
       <LiveProvider>
-        <DataAsOf />
+        <DataAsOf location={location} />
       </LiveProvider>
     </QueryClientProvider>,
   );
@@ -47,6 +47,25 @@ test("says when the server last polled, quietly while that is recent", async () 
   const label = await screen.findByText("as of 14:59:58 UTC");
   expect(label.className).toBe("data-as-of");
   expect(label.getAttribute("title")).toMatch(/last checked the bucket/);
+});
+
+test("on a location's page it is that location's last poll", async () => {
+  // Each location is polled on its own: the summary's time is that of the
+  // one furthest behind, which needn't be the one in view.
+  globalThis.fetch = (() =>
+    Promise.resolve({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          last_poll_age_seconds: 600,
+          locations: [
+            { location: "summit", last_poll_age_seconds: 2 },
+            { location: "base", last_poll_age_seconds: 600 },
+          ],
+        }),
+    })) as unknown as typeof fetch;
+  renderLabel("summit");
+  expect((await screen.findByText("as of 14:59:58 UTC")).className).toBe("data-as-of");
 });
 
 test("says nothing before the server's first poll", async () => {

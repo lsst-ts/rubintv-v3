@@ -9,7 +9,7 @@ import {
 } from "../lib/lastPoll";
 
 // "as of HH:MM:SS UTC" beside the current day's date: when the server last
-// polled the bucket, so how current the page's data is. Quiet while that is
+// polled the location's bucket, so how current the page's data is. Quiet while that is
 // recent; amber, with its age, once it isn't, whatever the cause (the poll
 // has stalled or can't reach S3, the server is unreachable, or this tab has
 // lost its connection).
@@ -17,9 +17,9 @@ import {
 // While the tab is disconnected the time stands at the last one seen before
 // it dropped: the server may well be polling still, but nothing it finds is
 // reaching this page.
-export function DataAsOf() {
+export function DataAsOf({ location }: { location?: string }) {
   const { disconnected } = useLive();
-  const polled = useLastPoll();
+  const polled = useLastPoll(location);
   const [asOf, setAsOf] = useState<number | null>(null);
   useEffect(() => {
     if (!disconnected && polled !== null) setAsOf(polled);
